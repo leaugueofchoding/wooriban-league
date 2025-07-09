@@ -157,10 +157,23 @@ function MatchRow({ match }) {
 
 // --- AdminPage Component ---
 function AdminPage() {
-    const { players, teams, matches, addNewPlayer, removePlayer, addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam, autoAssignTeams } = useLeagueStore();
-
-    const [newPlayerName, setNewPlayerName] = useState('');
+    const {
+        players,
+        teams,
+        matches,
+        addNewPlayer,
+        removePlayer,
+        addNewTeam,
+        removeTeam,
+        assignPlayerToTeam,
+        unassignPlayerFromTeam,
+        autoAssignTeams,
+        leagueType,
+        setLeagueType
+    } = useLeagueStore();
     const [newTeamName, setNewTeamName] = useState('');
+    const [newPlayerName, setNewPlayerName] = useState('');
+    const [newPlayerGender, setNewPlayerGender] = useState('남'); // 기본값 '남'
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
 
@@ -183,7 +196,7 @@ function AdminPage() {
     };
 
     const handleAddPlayer = () => {
-        addNewPlayer(newPlayerName);
+        addNewPlayer(newPlayerName, newPlayerGender);
         setNewPlayerName('');
     };
 
@@ -201,6 +214,24 @@ function AdminPage() {
             <h1>관리자 페이지</h1>
 
             <Section>
+                <Title>리그 방식 설정</Title>
+                <TabContainer>
+                    <TabButton
+                        active={leagueType === 'mixed'}
+                        onClick={() => setLeagueType('mixed')}
+                    >
+                        통합 리그
+                    </TabButton>
+                    <TabButton
+                        active={leagueType === 'separated'}
+                        onClick={() => setLeagueType('separated')}
+                    >
+                        남녀 분리 리그
+                    </TabButton>
+                </TabContainer>
+            </Section>
+
+            <Section>
                 <Title>선수 관리</Title>
                 <InputGroup>
                     <input
@@ -209,12 +240,16 @@ function AdminPage() {
                         onChange={(e) => setNewPlayerName(e.target.value)}
                         placeholder="새 선수 이름"
                     />
+                    <div>
+                        <label><input type="radio" value="남" checked={newPlayerGender === '남'} onChange={(e) => setNewPlayerGender(e.target.value)} /> 남</label>
+                        <label><input type="radio" value="여" checked={newPlayerGender === '여'} onChange={(e) => setNewPlayerGender(e.target.value)} /> 여</label>
+                    </div>
                     <button onClick={handleAddPlayer}>선수 추가</button>
                 </InputGroup>
                 <List>
                     {players.map(player => (
                         <ListItem key={player.id}>
-                            <span>{player.name}</span>
+                            <span>{player.name} <strong>({player.gender || '미지정'})</strong></span>
                             <button onClick={() => removePlayer(player.id)}>삭제</button>
                         </ListItem>
                     ))}

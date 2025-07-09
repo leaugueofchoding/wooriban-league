@@ -19,8 +19,10 @@ export const useLeagueStore = create((set, get) => ({
     matches: [],
     currentSeasonId: 1,
     isLoading: true,
+    leagueType: 'mixed', // 'mixed' 또는 'separated'
 
-    // --- 2. Actions (데이터를 변경하는 함수들) ---
+    // 리그 방식을 변경하는 함수
+    setLeagueType: (type) => set({ leagueType: type }),
 
     // # 초기 데이터 로딩
     fetchInitialData: async () => {
