@@ -29,6 +29,7 @@ const InputGroup = styled.div`
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  align-items: center;
 `;
 
 const List = styled.ul`
@@ -157,25 +158,20 @@ function MatchRow({ match }) {
 
 // --- AdminPage Component ---
 function AdminPage() {
-    const {
-        players,
-        teams,
-        matches,
-        addNewPlayer,
-        removePlayer,
-        addNewTeam,
-        removeTeam,
-        assignPlayerToTeam,
-        unassignPlayerFromTeam,
-        autoAssignTeams,
-        leagueType,
-        setLeagueType
-    } = useLeagueStore();
-    const [newTeamName, setNewTeamName] = useState('');
+    const { players, teams, matches, addNewPlayer, removePlayer, addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam, autoAssignTeams, generateSchedule, batchCreateTeams, leagueType, setLeagueType } = useLeagueStore();
+
     const [newPlayerName, setNewPlayerName] = useState('');
-    const [newPlayerGender, setNewPlayerGender] = useState('남'); // 기본값 '남'
+    const [newPlayerGender, setNewPlayerGender] = useState('남');
+    const [newTeamName, setNewTeamName] = useState('');
+    const [maleTeamCount, setMaleTeamCount] = useState(2);
+    const [femaleTeamCount, setFemaleTeamCount] = useState(2);
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
+
+    const unassignedPlayers = useMemo(() => {
+        const assignedPlayerIds = teams.flatMap(team => team.members);
+        return players.filter(player => !assignedPlayerIds.includes(player.id));
+    }, [players, teams]);
 
     const filteredMatches = useMemo(() => {
         if (activeTab === 'pending') {
@@ -205,8 +201,18 @@ function AdminPage() {
         setNewTeamName('');
     };
 
+    const handleBatchCreateTeams = () => {
+        const maleCount = Number(maleTeamCount);
+        const femaleCount = Number(femaleTeamCount);
+        batchCreateTeams(maleCount, femaleCount);
+    };
+
     const handleAutoAssign = () => {
         autoAssignTeams();
+    };
+
+    const handleGenerateSchedule = () => {
+        generateSchedule();
     };
 
     return (
@@ -216,16 +222,10 @@ function AdminPage() {
             <Section>
                 <Title>리그 방식 설정</Title>
                 <TabContainer>
-                    <TabButton
-                        active={leagueType === 'mixed'}
-                        onClick={() => setLeagueType('mixed')}
-                    >
+                    <TabButton active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')}>
                         통합 리그
                     </TabButton>
-                    <TabButton
-                        active={leagueType === 'separated'}
-                        onClick={() => setLeagueType('separated')}
-                    >
+                    <TabButton active={leagueType === 'separated'} onClick={() => setLeagueType('separated')}>
                         남녀 분리 리그
                     </TabButton>
                 </TabContainer>
@@ -258,16 +258,28 @@ function AdminPage() {
 
             <Section>
                 <Title>팀 관리</Title>
+                {leagueType === 'separated' ? (
+                    <InputGroup>
+                        <label>남자 팀 수: <input type="number" min="0" value={maleTeamCount} onChange={e => setMaleTeamCount(e.target.value)} /></label>
+                        <label>여자 팀 수: <input type="number" min="0" value={femaleTeamCount} onChange={e => setFemaleTeamCount(e.target.value)} /></label>
+                        <button onClick={handleBatchCreateTeams}>팀 일괄 생성</button>
+                    </InputGroup>
+                ) : (
+                    <InputGroup>
+                        <input
+                            type="text"
+                            value={newTeamName}
+                            onChange={(e) => setNewTeamName(e.target.value)}
+                            placeholder="새 팀 이름"
+                        />
+                        <button onClick={handleAddTeam}>팀 추가</button>
+                    </InputGroup>
+                )}
+
                 <InputGroup>
-                    <input
-                        type="text"
-                        value={newTeamName}
-                        onChange={(e) => setNewTeamName(e.target.value)}
-                        placeholder="새 팀 이름"
-                    />
-                    <button onClick={handleAddTeam}>팀 추가</button>
-                    <button onClick={handleAutoAssign} style={{ marginLeft: 'auto' }}>팀원 자동 배정</button>
+                    <button onClick={handleAutoAssign} style={{ marginLeft: 'auto', padding: '0.5rem 1rem' }}>팀원 자동 배정</button>
                 </InputGroup>
+
                 <List>
                     {teams.map(team => (
                         <ListItem key={team.id}>
@@ -286,10 +298,10 @@ function AdminPage() {
                                     )}
                                 </MemberList>
                             </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <select onChange={(e) => handlePlayerSelect(team.id, e.target.value)}>
                                     <option value="">선수 선택</option>
-                                    {players.map(p => (
+                                    {unassignedPlayers.map(p => (
                                         <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
                                 </select>
@@ -299,6 +311,14 @@ function AdminPage() {
                         </ListItem>
                     ))}
                 </List>
+            </Section>
+
+            <Section>
+                <Title>경기 일정 관리</Title>
+                <button onClick={handleGenerateSchedule}>경기 일정 자동 생성</button>
+                <p style={{ fontSize: '0.8rem', color: '#666' }}>
+                    현재 설정된 리그 방식과 구성된 팀을 기준으로 대진표를 생성합니다.
+                </p>
             </Section>
 
             <Section>
