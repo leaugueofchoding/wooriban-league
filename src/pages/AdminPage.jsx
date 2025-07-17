@@ -75,8 +75,9 @@ const TabButton = styled.button`
   font-size: 1rem;
   font-weight: bold;
   border: 1px solid #ccc;
-  background-color: ${props => props.active ? '#007bff' : 'white'};
-  color: ${props => props.active ? 'white' : 'black'};
+  /* 'props.active'를 'props.$active'로 변경 */
+  background-color: ${props => props.$active ? '#007bff' : 'white'};
+  color: ${props => props.$active ? 'white' : 'black'};
   cursor: pointer;
 
   &:first-child {
@@ -219,13 +220,39 @@ function AdminPage() {
         <AdminWrapper>
             <h1>관리자 페이지</h1>
 
+            {/* ======================= V 시즌 관리 섹션 V ======================= */}
+            <Section>
+                <Title>시즌 관리</Title>
+                {currentSeason ? (
+                    <div>
+                        <h3>{currentSeason.seasonName}</h3>
+                        <p>상태: <strong>{currentSeason.status}</strong></p>
+
+                        {/* 상태에 따라 다른 버튼을 보여줌 */}
+                        {currentSeason.status === 'preparing' && (
+                            <button onClick={() => startSeason(currentSeason.id)}>시즌 시작</button>
+                        )}
+                        {currentSeason.status === 'active' && (
+                            <button onClick={() => endSeason(currentSeason.id)}>시즌 종료 및 우승팀 기록</button>
+                        )}
+                        {currentSeason.status === 'completed' && (
+                            <p>시즌이 종료되었습니다. 새 시즌을 준비해주세요.</p>
+                        )}
+                    </div>
+                ) : (
+                    <p>시즌 정보를 불러오는 중입니다...</p>
+                )}
+            </Section>
+            {/* ======================= Ʌ 시즌 관리 섹션 Ʌ ======================= */}
+
             <Section>
                 <Title>리그 방식 설정</Title>
                 <TabContainer>
-                    <TabButton active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')}>
+                    {/* 'active' prop을 '$active'로 변경 */}
+                    <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')}>
                         통합 리그
                     </TabButton>
-                    <TabButton active={leagueType === 'separated'} onClick={() => setLeagueType('separated')}>
+                    <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')}>
                         남녀 분리 리그
                     </TabButton>
                 </TabContainer>
@@ -324,10 +351,11 @@ function AdminPage() {
             <Section>
                 <Title>경기 결과 입력</Title>
                 <TabContainer>
-                    <TabButton active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>
+                    {/* 'active' prop을 '$active'로 변경 */}
+                    <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>
                         입력 대기
                     </TabButton>
-                    <TabButton active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>
+                    <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>
                         입력 완료
                     </TabButton>
                 </TabContainer>

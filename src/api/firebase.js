@@ -1,6 +1,8 @@
+// src/api/firebase.js 파일의 모든 내용을 지우고 아래 코드를 붙여넣으세요.
+
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, getDocs, query, where, doc, updateDoc, addDoc, deleteDoc, writeBatch } from "firebase/firestore";
-// --- 1. Firebase 연결 설정 ---
+
 const firebaseConfig = {
   apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
   authDomain: "wooriban-league.firebaseapp.com",
@@ -13,16 +15,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-// --- 2. 데이터를 가져오는 함수들 ---
+// --- 모든 함수 앞에 'export'가 있는지 다시 한번 확인합니다. ---
 
-// 'players' 컬렉션의 모든 선수 정보를 가져오는 함수
 export async function getPlayers() {
   const playersRef = collection(db, 'players');
   const querySnapshot = await getDocs(playersRef);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// 특정 시즌의 'teams' 정보를 가져오는 함수
 export async function getTeams(seasonId) {
   const teamsRef = collection(db, 'teams');
   const q = query(teamsRef, where("seasonId", "==", seasonId));
@@ -30,7 +30,6 @@ export async function getTeams(seasonId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// 특정 시즌의 'matches' 정보를 가져오는 함수
 export async function getMatches(seasonId) {
   const matchesRef = collection(db, 'matches');
   const q = query(matchesRef, where("seasonId", "==", seasonId));
@@ -38,9 +37,6 @@ export async function getMatches(seasonId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// --- 3. 데이터를 수정/추가/삭제하는 함수들 ---
-
-// 특정 경기의 점수를 업데이트하는 함수
 export async function updateMatchScores(matchId, scores) {
   const matchRef = doc(db, 'matches', matchId);
   await updateDoc(matchRef, {
@@ -50,25 +46,21 @@ export async function updateMatchScores(matchId, scores) {
   });
 }
 
-// 새로운 선수를 'players' 컬렉션에 추가하는 함수
 export async function addPlayer(newPlayerData) {
   const playersRef = collection(db, 'players');
   await addDoc(playersRef, newPlayerData);
 }
 
-// ID로 특정 선수를 삭제하는 함수
 export async function deletePlayer(playerId) {
   const playerDoc = doc(db, 'players', playerId);
   await deleteDoc(playerDoc);
 }
 
-// 새로운 팀을 'teams' 컬렉션에 추가하는 함수
 export async function addTeam(newTeamData) {
   const teamsRef = collection(db, 'teams');
   await addDoc(teamsRef, newTeamData);
 }
 
-// ID로 특정 팀을 삭제하는 함수
 export async function deleteTeam(teamId) {
   const teamDoc = doc(db, 'teams', teamId);
   await deleteDoc(teamDoc);
@@ -79,7 +71,6 @@ export async function updateTeamMembers(teamId, newMembers) {
 }
 export async function batchUpdateTeams(teamUpdates) {
   const batch = writeBatch(db);
-
   teamUpdates.forEach(update => {
     const teamRef = doc(db, 'teams', update.id);
     batch.update(teamRef, {
@@ -87,6 +78,50 @@ export async function batchUpdateTeams(teamUpdates) {
       captainId: update.captainId,
     });
   });
-
   await batch.commit();
+}
+
+export async function batchAddTeams(newTeamsData) {
+  const batch = writeBatch(db);
+  const teamsRef = collection(db, 'teams');
+  newTeamsData.forEach(teamData => {
+    const newTeamRef = doc(teamsRef);
+    batch.set(newTeamRef, teamData);
+  });
+  await batch.commit();
+}
+
+export async function deleteMatchesBySeason(seasonId) {
+  const matchesRef = collection(db, 'matches');
+  const q = query(matchesRef, where("seasonId", "==", seasonId));
+  const querySnapshot = await getDocs(q);
+  if (querySnapshot.empty) return;
+  const batch = writeBatch(db);
+  querySnapshot.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+}
+
+export async function batchAddMatches(newMatchesData) {
+  const batch = writeBatch(db);
+  const matchesRef = collection(db, 'matches');
+  newMatchesData.forEach(matchData => {
+    const newMatchRef = doc(matchesRef);
+    batch.set(newMatchRef, matchData);
+  });
+  await batch.commit();
+}
+
+export async function getSeasons() {
+  const seasonsRef = collection(db, 'seasons');
+  const q = query(seasonsRef, orderBy("createdAt", "desc")); // 최신순 정렬
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+// 시즌 상태를 업데이트하는 함수
+export async function updateSeason(seasonId, newStatusData) {
+  const seasonDoc = doc(db, 'seasons', seasonId);
+  await updateDoc(seasonDoc, newStatusData);
 }
