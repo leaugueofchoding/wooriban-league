@@ -1,5 +1,3 @@
-// src/store/leagueStore.js 파일의 모든 내용을 지우고 아래 코드를 붙여넣으세요.
-
 import { create } from 'zustand';
 import {
     getPlayers,
@@ -14,14 +12,17 @@ import {
     batchUpdateTeams,
     batchAddTeams,
     deleteMatchesBySeason,
-    batchAddMatches
+    batchAddMatches,
+    getSeasons,      // 새로 추가
+    updateSeason     // 새로 추가
 } from '../api/firebase';
 
 export const useLeagueStore = create((set, get) => ({
+    // --- State ---
     players: [],
     teams: [],
     matches: [],
-    currentSeasonId: 1,
+    currentSeason: null, // 기존 currentSeasonId를 객체로 변경
     isLoading: true,
     leagueType: 'mixed',
 
@@ -30,16 +31,28 @@ export const useLeagueStore = create((set, get) => ({
     fetchInitialData: async () => {
         try {
             set({ isLoading: true });
-            const seasonId = get().currentSeasonId;
+            const seasons = await getSeasons();
+            // 현재 진행중이거나 준비중인 시즌을 찾고, 없으면 첫번째 시즌을 선택
+            const activeSeason = seasons.find(s => s.status === 'active' || s.status === 'preparing') || seasons[0] || null;
+
+            if (!activeSeason) {
+                console.log("활성화된 시즌이 없습니다.");
+                set({ isLoading: false });
+                return;
+            }
+
+            const seasonId = activeSeason.id;
             const [playersData, teamsData, matchesData] = await Promise.all([
                 getPlayers(),
                 getTeams(seasonId),
                 getMatches(seasonId),
             ]);
+
             set({
                 players: playersData,
                 teams: teamsData,
                 matches: matchesData,
+                currentSeason: activeSeason, // 시즌 정보 전체를 저장
                 isLoading: false,
             });
         } catch (error) {
@@ -48,6 +61,40 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
+    // ======== 시즌 관리 액션 ========
+    startSeason: async () => {
+        const season = get().currentSeason;
+        if (!season || season.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
+        if (!confirm('시즌을 시작하시겠습니까? 시작 후에는 선수 및 팀 구성 변경, 경기 일정 생성이 불가능합니다.')) return;
+
+        try {
+            await updateSeason(season.id, { status: 'active' });
+            get().fetchInitialData();
+        } catch (error) {
+            console.error("시즌 시작 오류:", error);
+            alert('시즌 시작 중 오류가 발생했습니다.');
+        }
+    },
+
+    endSeason: async () => {
+        const season = get().currentSeason;
+        if (!season || season.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
+        if (!confirm('시즌을 종료하시겠습니까?')) return;
+
+        // ## 향후 구현될 로직 위치 ##
+        // 1. 순위표 데이터 가져오기
+        // 2. 1위 팀 찾아서 winnerTeamId로 지정
+        // 3. 우승팀 선수들의 wins: +1 업데이트 (batchUpdate 사용)
+
+        try {
+            await updateSeason(season.id, { status: 'completed' /*, winnerTeamId: 'ID' */ });
+            alert('시즌이 종료되었습니다.');
+            get().fetchInitialData();
+        } catch (error) {
+            console.error("시즌 종료 오류:", error);
+            alert('시즌 종료 중 오류가 발생했습니다.');
+        }
+    },
     addNewPlayer: async (playerName, playerGender) => {
         if (!playerName.trim()) return alert('선수 이름을 입력해주세요.');
         await addPlayer({

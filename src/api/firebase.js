@@ -1,7 +1,8 @@
 // src/api/firebase.js 파일의 모든 내용을 지우고 아래 코드를 붙여넣으세요.
 
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, query, where, doc, updateDoc, addDoc, deleteDoc, writeBatch } from "firebase/firestore";
+// 'orderBy'를 import 목록에 추가합니다.
+import { getFirestore, collection, getDocs, query, where, doc, updateDoc, addDoc, deleteDoc, writeBatch, orderBy } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
@@ -15,7 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-// --- 모든 함수 앞에 'export'가 있는지 다시 한번 확인합니다. ---
+// --- 모든 함수는 그대로 둡니다 ---
 
 export async function getPlayers() {
   const playersRef = collection(db, 'players');
@@ -47,27 +48,22 @@ export async function updateMatchScores(matchId, scores) {
 }
 
 export async function addPlayer(newPlayerData) {
-  const playersRef = collection(db, 'players');
-  await addDoc(playersRef, newPlayerData);
+  await addDoc(collection(db, 'players'), newPlayerData);
 }
 
 export async function deletePlayer(playerId) {
-  const playerDoc = doc(db, 'players', playerId);
-  await deleteDoc(playerDoc);
+  await deleteDoc(doc(db, 'players', playerId));
 }
 
 export async function addTeam(newTeamData) {
-  const teamsRef = collection(db, 'teams');
-  await addDoc(teamsRef, newTeamData);
+  await addDoc(collection(db, 'teams'), newTeamData);
 }
 
 export async function deleteTeam(teamId) {
-  const teamDoc = doc(db, 'teams', teamId);
-  await deleteDoc(teamDoc);
+  await deleteDoc(doc(db, 'teams', teamId));
 }
 export async function updateTeamMembers(teamId, newMembers) {
-  const teamDoc = doc(db, 'teams', teamId);
-  await updateDoc(teamDoc, { members: newMembers });
+  await updateDoc(doc(db, 'teams', teamId), { members: newMembers });
 }
 export async function batchUpdateTeams(teamUpdates) {
   const batch = writeBatch(db);
@@ -113,15 +109,15 @@ export async function batchAddMatches(newMatchesData) {
   await batch.commit();
 }
 
+// --- 시즌 관련 함수 ---
 export async function getSeasons() {
   const seasonsRef = collection(db, 'seasons');
-  const q = query(seasonsRef, orderBy("createdAt", "desc")); // 최신순 정렬
+  const q = query(seasonsRef, orderBy("createdAt", "desc")); // 이제 이 orderBy가 정상 작동합니다.
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// 시즌 상태를 업데이트하는 함수
-export async function updateSeason(seasonId, newStatusData) {
+export async function updateSeason(seasonId, dataToUpdate) {
   const seasonDoc = doc(db, 'seasons', seasonId);
-  await updateDoc(seasonDoc, newStatusData);
+  await updateDoc(seasonDoc, dataToUpdate);
 }
