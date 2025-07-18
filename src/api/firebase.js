@@ -1,10 +1,10 @@
 // src/api/firebase.js 파일의 모든 내용을 지우고 아래 코드를 붙여넣으세요.
 
 import { initializeApp } from "firebase/app";
-// 'orderBy'를 import 목록에 추가합니다.
+import { getAuth } from "firebase/auth";
 import { getFirestore, collection, getDocs, query, where, doc, updateDoc, addDoc, deleteDoc, writeBatch, orderBy } from "firebase/firestore";
 import { serverTimestamp } from "firebase/firestore"; // serverTimestamp를 import합니다.
-
+import { setDoc } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
@@ -16,6 +16,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app); // 인증 객체를 export 합니다.
 export const db = getFirestore(app);
 
 // --- 모든 함수는 그대로 둡니다 ---
@@ -58,8 +59,10 @@ export async function updateMatchScores(matchId, scores) {
   });
 }
 
-export async function addPlayer(newPlayerData) {
-  await addDoc(collection(db, 'players'), newPlayerData);
+export async function addPlayer(playerData) {
+  // 문서 ID를 선수의 고유 UID로 지정하여 중복 생성을 방지
+  const playerRef = doc(db, 'players', playerData.authUid);
+  await setDoc(playerRef, playerData);
 }
 
 export async function deletePlayer(playerId) {
@@ -131,4 +134,31 @@ export async function getSeasons() {
 export async function updateSeason(seasonId, dataToUpdate) {
   const seasonDoc = doc(db, 'seasons', seasonId);
   await updateDoc(seasonDoc, dataToUpdate);
+}
+
+// 로그인한 사용자 정보를 'users' 컬렉션에 저장/업데이트하는 함수
+export async function updateUserProfile(user) {
+  const userRef = doc(db, 'users', user.uid);
+  await setDoc(userRef, {
+    uid: user.uid,
+    displayName: user.displayName,
+    email: user.email,
+    photoURL: user.photoURL
+  }, { merge: true }); // merge: true 옵션으로 기존 문서를 덮어쓰지 않고 병합
+}
+
+// 모든 'users' 목록을 가져오는 함수
+export async function getUsers() {
+  const usersRef = collection(db, 'users');
+  const querySnapshot = await getDocs(usersRef);
+  return querySnapshot.docs.map(doc => doc.data());
+}
+
+// 특정 선수에게 authUid와 role을 연결(업데이트)하는 함수
+export async function linkPlayerToAuth(playerId, authUid, role) {
+  const playerRef = doc(db, 'players', playerId);
+  await updateDoc(playerRef, {
+    authUid: authUid,
+    role: role
+  });
 }

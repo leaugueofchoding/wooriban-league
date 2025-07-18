@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
+import PlayerProfile from '../components/PlayerProfile.jsx';
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
@@ -47,6 +48,7 @@ const InputGroup = styled.div`
   gap: 0.5rem;
   margin-bottom: 1rem;
   align-items: center;
+  flex-wrap: wrap;
 `;
 
 const List = styled.ul`
@@ -154,6 +156,64 @@ const SaveButton = styled.button`
   }
 `;
 
+// --- RoleManager Component ---
+function RoleManager() {
+    const { users, players, linkPlayer } = useLeagueStore();
+    const [selectedUser, setSelectedUser] = useState('');
+    const [selectedPlayer, setSelectedPlayer] = useState('');
+    const [selectedRole, setSelectedRole] = useState('player');
+
+    const unlinkedUsers = useMemo(() => {
+        const linkedPlayerUids = players.map(p => p.authUid).filter(Boolean);
+        return users.filter(u => !linkedPlayerUids.includes(u.uid));
+    }, [users, players]);
+
+    // ** 수정 **: authUid가 없는 선수 뿐만 아니라, 아직 참가 신청을 하지 않은
+    // 로그인 유저와 연결하기 위해 모든 선수를 보여주는 것이 아니라,
+    // 참가 신청을 통해 players에 등록된 선수 중 연결 안 된 선수만 보여줍니다.
+    const unlinkedPlayers = useMemo(() => {
+        return players.filter(p => !p.authUid);
+    }, [players]);
+
+    const handleLink = () => {
+        linkPlayer(selectedPlayer, selectedUser, selectedRole);
+    };
+
+    return (
+        <Section>
+            <Title>사용자 역할 관리</Title>
+            <p>학생이 리그 참가 신청을 하면 '로그인한 사용자' 목록에 나타납니다. 해당 사용자와 선수를 연결하고 역할을 부여하세요.</p>
+            <InputGroup>
+                <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
+                    <option value="">로그인한 사용자 선택</option>
+                    {unlinkedUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName}</option>)}
+                </select>
+                <select value={selectedPlayer} onChange={(e) => setSelectedPlayer(e.target.value)}>
+                    <option value="">연결할 선수 선택</option>
+                    {unlinkedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}>
+                    <option value="player">일반 참가자</option>
+                    <option value="captain">팀장</option>
+                    <option value="recorder">기록원</option>
+                    <option value="referee">학생 심판</option>
+                </select>
+                <SaveButton onClick={handleLink}>연결 및 역할 부여</SaveButton>
+            </InputGroup>
+
+            <h4>연결된 선수 목록</h4>
+            <List>
+                {players.filter(p => p.authUid).map(p => (
+                    <ListItem key={p.id}>
+                        <PlayerProfile player={p} />
+                        <strong>{p.role}</strong>
+                    </ListItem>
+                ))}
+            </List>
+        </Section>
+    );
+}
+
 // --- MatchRow Component ---
 function MatchRow({ match }) {
     const { teams, saveScores, currentSeason } = useLeagueStore();
@@ -185,30 +245,18 @@ function MatchRow({ match }) {
     );
 }
 
-
 // --- AdminPage Component ---
 function AdminPage() {
     const {
-        players, teams, matches, addNewPlayer, removePlayer,
+        players, teams, matches, removePlayer,
         addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
         autoAssignTeams, generateSchedule, batchCreateTeams,
         leagueType, setLeagueType,
-        currentSeason, startSeason, endSeason,
-        createNewSeason
+        currentSeason, startSeason, endSeason
     } = useLeagueStore();
 
-    // 디버깅용 로그: 렌더링될 때마다 현재 시즌 상태를 확인
-    useEffect(() => {
-        if (currentSeason) {
-            console.log("AdminPage 현재 시즌 상태:", currentSeason.status);
-        }
-    }, [currentSeason]);
-
-    // '준비중' 상태가 아닐 때 true가 되어 버튼들을 비활성화 시킴
     const isNotPreparing = currentSeason?.status !== 'preparing';
 
-    const [newPlayerName, setNewPlayerName] = useState('');
-    const [newPlayerGender, setNewPlayerGender] = useState('남');
     const [newTeamName, setNewTeamName] = useState('');
     const [maleTeamCount, setMaleTeamCount] = useState(2);
     const [femaleTeamCount, setFemaleTeamCount] = useState(2);
@@ -221,26 +269,15 @@ function AdminPage() {
     }, [players, teams]);
 
     const filteredMatches = useMemo(() => {
-        if (activeTab === 'pending') {
-            return matches.filter(m => m.status !== '완료');
-        }
-        return matches.filter(m => m.status === '완료');
+        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
     }, [matches, activeTab]);
-
-    const getPlayerName = (playerId) => players.find(p => p.id === playerId)?.name || '선수 정보 없음';
 
     const handlePlayerSelect = (teamId, playerId) => {
         setSelectedPlayer(prev => ({ ...prev, [teamId]: playerId }));
     };
 
     const handleAssignPlayer = (teamId) => {
-        const playerId = selectedPlayer[teamId];
-        assignPlayerToTeam(teamId, playerId);
-    };
-
-    const handleAddPlayer = () => {
-        addNewPlayer(newPlayerName, newPlayerGender);
-        setNewPlayerName('');
+        assignPlayerToTeam(teamId, selectedPlayer[teamId]);
     };
 
     const handleAddTeam = () => {
@@ -249,22 +286,14 @@ function AdminPage() {
     };
 
     const handleBatchCreateTeams = () => {
-        const maleCount = Number(maleTeamCount);
-        const femaleCount = Number(femaleTeamCount);
-        batchCreateTeams(maleCount, femaleCount);
-    };
-
-    const handleAutoAssign = () => {
-        autoAssignTeams();
-    };
-
-    const handleGenerateSchedule = () => {
-        generateSchedule();
+        batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount));
     };
 
     return (
         <AdminWrapper>
             <h1>관리자 페이지</h1>
+
+            <RoleManager />
 
             <Section>
                 <Title>시즌 관리</Title>
@@ -277,52 +306,29 @@ function AdminPage() {
                             </p>
                         </div>
                         <div>
-                            {currentSeason.status === 'preparing' && (
-                                <SaveButton onClick={startSeason}>시즌 시작</SaveButton>
-                            )}
-                            {currentSeason.status === 'active' && (
-                                <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>
-                            )}
-                            {currentSeason.status === 'completed' && (
-                                <SaveButton onClick={createNewSeason}>새 시즌 생성</SaveButton>
-                            )}
+                            {currentSeason.status === 'preparing' && <SaveButton onClick={startSeason}>시즌 시작</SaveButton>}
+                            {currentSeason.status === 'active' && <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>}
+                            {currentSeason.status === 'completed' && <p><strong>이 시즌은 종료되었습니다.</strong></p>}
                         </div>
                     </div>
-                ) : (
-                    // 최초 시즌이 하나도 없을 때를 위한 UI
-                    <div>
-                        <p>생성된 시즌이 없습니다. 첫 시즌을 만드세요.</p>
-                        <SaveButton onClick={createNewSeason}>첫 시즌 생성하기</SaveButton>
-                    </div>
-                )}
+                ) : <p>시즌 정보를 불러오는 중입니다...</p>}
             </Section>
 
             <Section>
                 <Title>리그 방식 설정</Title>
                 <TabContainer>
-                    <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')} disabled={isNotPreparing}>
-                        통합 리그
-                    </TabButton>
-                    <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')} disabled={isNotPreparing}>
-                        남녀 분리 리그
-                    </TabButton>
+                    <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')} disabled={isNotPreparing}>통합 리그</TabButton>
+                    <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')} disabled={isNotPreparing}>남녀 분리 리그</TabButton>
                 </TabContainer>
             </Section>
 
             <Section>
                 <Title>선수 관리</Title>
-                <InputGroup>
-                    <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="새 선수 이름" disabled={isNotPreparing} />
-                    <div>
-                        <label><input type="radio" value="남" checked={newPlayerGender === '남'} onChange={(e) => setNewPlayerGender(e.target.value)} disabled={isNotPreparing} /> 남</label>
-                        <label><input type="radio" value="여" checked={newPlayerGender === '여'} onChange={(e) => setNewPlayerGender(e.target.value)} disabled={isNotPreparing} /> 여</label>
-                    </div>
-                    <StyledButton onClick={handleAddPlayer} disabled={isNotPreparing}>선수 추가</StyledButton>
-                </InputGroup>
+                <p>선수 등록은 홈페이지에서 학생이 직접 진행합니다. 관리자는 아래 목록에서 리그 참가 선수를 삭제할 수 있습니다.</p>
                 <List>
                     {players.map(player => (
                         <ListItem key={player.id}>
-                            <span>{player.name} <strong>({player.gender || '미지정'})</strong></span>
+                            <PlayerProfile player={player} />
                             <StyledButton onClick={() => removePlayer(player.id)} disabled={isNotPreparing}>삭제</StyledButton>
                         </ListItem>
                     ))}
@@ -345,7 +351,7 @@ function AdminPage() {
                 )}
 
                 <InputGroup>
-                    <StyledButton onClick={handleAutoAssign} style={{ marginLeft: 'auto' }} disabled={isNotPreparing}>팀원 자동 배정</StyledButton>
+                    <StyledButton onClick={autoAssignTeams} style={{ marginLeft: 'auto' }} disabled={isNotPreparing}>팀원 자동 배정</StyledButton>
                 </InputGroup>
 
                 <List>
@@ -356,7 +362,7 @@ function AdminPage() {
                                 <MemberList>
                                     {team.members?.length > 0 ? team.members.map(memberId => (
                                         <MemberListItem key={memberId}>
-                                            <span>{getPlayerName(memberId)}</span>
+                                            <PlayerProfile player={players.find(p => p.id === memberId)} />
                                             <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
                                         </MemberListItem>
                                     )) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
@@ -365,9 +371,7 @@ function AdminPage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
                                 <select onChange={(e) => handlePlayerSelect(team.id, e.target.value)} disabled={isNotPreparing} style={{ width: '100px' }}>
                                     <option value="">선수 선택</option>
-                                    {unassignedPlayers.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
+                                    {unassignedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                                 <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>추가</StyledButton>
                                 <StyledButton onClick={() => removeTeam(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>팀 삭제</StyledButton>
@@ -379,27 +383,19 @@ function AdminPage() {
 
             <Section>
                 <Title>경기 일정 관리</Title>
-                <StyledButton onClick={handleGenerateSchedule} disabled={isNotPreparing}>경기 일정 자동 생성</StyledButton>
-                <p style={{ fontSize: '0.8rem', color: '#666' }}>
-                    현재 설정된 리그 방식과 구성된 팀을 기준으로 대진표를 생성합니다.
-                </p>
+                <StyledButton onClick={generateSchedule} disabled={isNotPreparing}>경기 일정 자동 생성</StyledButton>
+                <p style={{ fontSize: '0.8rem', color: '#666' }}>현재 설정된 리그 방식과 구성된 팀을 기준으로 대진표를 생성합니다.</p>
             </Section>
 
             <Section>
                 <Title>경기 결과 입력</Title>
                 <TabContainer>
-                    <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>
-                        입력 대기
-                    </TabButton>
-                    <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>
-                        입력 완료
-                    </TabButton>
+                    <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>입력 대기</TabButton>
+                    <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
                 </TabContainer>
                 {filteredMatches.length > 0 ? (
                     filteredMatches.map(match => <MatchRow key={match.id} match={match} />)
-                ) : (
-                    <p>해당 목록에 경기가 없습니다.</p>
-                )}
+                ) : <p>해당 목록에 경기가 없습니다.</p>}
             </Section>
         </AdminWrapper>
     );
