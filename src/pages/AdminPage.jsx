@@ -193,7 +193,8 @@ function AdminPage() {
         addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
         autoAssignTeams, generateSchedule, batchCreateTeams,
         leagueType, setLeagueType,
-        currentSeason, startSeason, endSeason
+        currentSeason, startSeason, endSeason,
+        createNewSeason
     } = useLeagueStore();
 
     // 디버깅용 로그: 렌더링될 때마다 현재 시즌 상태를 확인
@@ -283,12 +284,16 @@ function AdminPage() {
                                 <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>
                             )}
                             {currentSeason.status === 'completed' && (
-                                <p><strong>이 시즌은 종료되었습니다.</strong></p>
+                                <SaveButton onClick={createNewSeason}>새 시즌 생성</SaveButton>
                             )}
                         </div>
                     </div>
                 ) : (
-                    <p>시즌 정보를 불러오는 중입니다...</p>
+                    // 최초 시즌이 하나도 없을 때를 위한 UI
+                    <div>
+                        <p>생성된 시즌이 없습니다. 첫 시즌을 만드세요.</p>
+                        <SaveButton onClick={createNewSeason}>첫 시즌 생성하기</SaveButton>
+                    </div>
                 )}
             </Section>
 

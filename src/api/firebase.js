@@ -3,6 +3,8 @@
 import { initializeApp } from "firebase/app";
 // 'orderBy'를 import 목록에 추가합니다.
 import { getFirestore, collection, getDocs, query, where, doc, updateDoc, addDoc, deleteDoc, writeBatch, orderBy } from "firebase/firestore";
+import { serverTimestamp } from "firebase/firestore"; // serverTimestamp를 import합니다.
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
@@ -17,6 +19,15 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
 // --- 모든 함수는 그대로 둡니다 ---
+
+export async function addSeason(newSeasonData) {
+  const seasonsRef = collection(db, 'seasons');
+  // createdAt 필드에 현재 서버 시간을 자동으로 기록합니다.
+  await addDoc(seasonsRef, {
+    ...newSeasonData,
+    createdAt: serverTimestamp()
+  });
+}
 
 export async function getPlayers() {
   const playersRef = collection(db, 'players');
