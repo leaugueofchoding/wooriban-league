@@ -1,7 +1,11 @@
-import React, { useState, useMemo } from 'react';
+// src/pages/AvatarEditPage.jsx
+
+import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { useLeagueStore } from '../store/leagueStore'; // 스토어 훅 사용
+import { useLeagueStore } from '../store/leagueStore';
+import { auth, updatePlayerAvatar } from '../api/firebase';
+import baseAvatar from '../assets/base-avatar.png';
 
 const EditWrapper = styled.div`
   max-width: 500px;
@@ -27,7 +31,19 @@ const AvatarCanvas = styled.div`
   position: relative;
   border: 4px solid #fff;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
 `;
+
+const PartImage = styled.img`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+`;
+
+const BaseAvatar = styled(PartImage)``;
 
 const Inventory = styled.div`
   border: 1px solid #dee2e6;
@@ -60,20 +76,20 @@ const PartGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
   gap: 10px;
-  
-  /* --- 핵심 수정: 스크롤 기능 추가 --- */
-  max-height: 200px; /* 아이템 목록의 최대 높이 지정 */
-  overflow-y: auto;  /* 아이템이 많아지면 세로 스크롤 생성 */
+  max-height: 200px;
+  overflow-y: auto;
 `;
 
-const PartItem = styled.div`
-  width: 60px;
-  height: 60px;
-  border: 2px solid #ccc;
+const Thumbnail = styled.img`
+  width: 100%;
+  height: 100%;
   border-radius: 8px;
+  object-fit: contain;
   cursor: pointer;
   background-color: white;
-  
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+
   &.selected {
     border-color: #007bff;
     box-shadow: 0 0 0 2px #007bff;
@@ -95,45 +111,94 @@ const Button = styled.button`
   font-weight: 500;
 `;
 
+const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+
+
 function AvatarEditPage() {
     const navigate = useNavigate();
-    // 1. 스토어에서 avatarParts 데이터를 가져옵니다.
-    const { avatarParts } = useLeagueStore();
+    const { players, avatarParts, fetchInitialData } = useLeagueStore();
+    const currentUser = auth.currentUser;
 
-    // 2. DB에서 불러온 데이터를 카테고리별로 그룹화합니다.
+    const myPlayerData = useMemo(() => {
+        return players.find(p => p.authUid === currentUser?.uid);
+    }, [players, currentUser]);
+
+    const [avatarConfig, setAvatarConfig] = useState({});
+
+    useEffect(() => {
+        if (myPlayerData?.avatarConfig) {
+            setAvatarConfig(myPlayerData.avatarConfig);
+        }
+    }, [myPlayerData]);
+
     const partCategories = useMemo(() => {
         return avatarParts.reduce((acc, part) => {
             const category = part.category;
-            if (!acc[category]) {
-                acc[category] = [];
-            }
+            if (!acc[category]) acc[category] = [];
             acc[category].push(part);
             return acc;
         }, {});
     }, [avatarParts]);
 
-    const [currentAvatar, setCurrentAvatar] = useState({});
-    const [activeTab, setActiveTab] = useState(Object.keys(partCategories)[0] || '');
-
-    const handlePartSelect = (category, part) => {
-        setCurrentAvatar(prev => ({
-            ...prev,
-            [category]: part.src
-        }));
-    };
-
-    // 카테고리 순서를 원하는 대로 정렬 (선택 사항)
     const sortedCategories = Object.keys(partCategories).sort((a, b) => {
         const order = ['face', 'eyes', 'nose', 'mouth', 'hair', 'top', 'bottom', 'shoes', 'accessory'];
         return order.indexOf(a) - order.indexOf(b);
     });
+
+    const [activeTab, setActiveTab] = useState(sortedCategories[0] || '');
+
+    useEffect(() => {
+        if (!activeTab && sortedCategories.length > 0) {
+            setActiveTab(sortedCategories[0]);
+        }
+    }, [sortedCategories, activeTab]);
+
+    /**
+     * 파츠 선택 및 해제 로직
+     */
+    const handlePartSelect = (category, partId) => {
+        setAvatarConfig(prev => {
+            // 이미 선택된 파츠를 다시 클릭하면 해제(undefined로 설정)
+            if (prev[category] === partId) {
+                const newConfig = { ...prev };
+                delete newConfig[category]; // 해당 카테고리 키를 제거
+                return newConfig;
+            }
+            // 다른 파츠를 선택하면 교체
+            return {
+                ...prev,
+                [category]: partId
+            };
+        });
+    };
+
+    const handleSave = async () => {
+        if (!myPlayerData) return alert("선수 정보를 찾을 수 없습니다.");
+        try {
+            await updatePlayerAvatar(myPlayerData.id, avatarConfig);
+            alert("아바타가 저장되었습니다!");
+            await fetchInitialData();
+            navigate(`/profile/${myPlayerData.id}`);
+        } catch (error) {
+            console.error("아바타 저장 오류:", error);
+            alert("저장 중 오류가 발생했습니다.");
+        }
+    };
+
+    const selectedPartUrls = useMemo(() => {
+        return Object.entries(avatarConfig).map(([category, partId]) => {
+            const part = partCategories[category]?.find(p => p.id === partId);
+            return part?.src;
+        }).filter(Boolean);
+    }, [avatarConfig, partCategories]);
 
     return (
         <EditWrapper>
             <Title>아바타 꾸미기</Title>
 
             <AvatarCanvas>
-                {Object.values(currentAvatar).map(src => src && <PartImage key={src} src={src} />)}
+                <BaseAvatar src={baseAvatar} alt="기본 아바타" />
+                {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
             </AvatarCanvas>
 
             <Inventory>
@@ -151,20 +216,20 @@ function AvatarEditPage() {
 
                 <PartGrid>
                     {partCategories[activeTab]?.map(part => (
-                        <PartItem
-                            key={part.id}
-                            className={currentAvatar[activeTab] === part.src ? 'selected' : ''}
-                            onClick={() => handlePartSelect(activeTab, part)}
-                        >
-                            <Thumbnail src={part.src} alt={part.id} />
-                        </PartItem>
+                        <div key={part.id} onClick={() => handlePartSelect(activeTab, part.id)}>
+                            <Thumbnail
+                                src={part.src}
+                                alt={part.id}
+                                className={avatarConfig[activeTab] === part.id ? 'selected' : ''}
+                            />
+                        </div>
                     ))}
                 </PartGrid>
             </Inventory>
 
             <ButtonGroup>
                 <Button onClick={() => navigate(-1)} style={{ backgroundColor: '#6c757d', color: 'white' }}>취소</Button>
-                <Button style={{ backgroundColor: '#28a745', color: 'white' }}>저장하기</Button>
+                <Button onClick={handleSave} style={{ backgroundColor: '#28a745', color: 'white' }}>저장하기</Button>
             </ButtonGroup>
         </EditWrapper>
     );

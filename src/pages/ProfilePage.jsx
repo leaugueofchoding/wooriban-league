@@ -1,8 +1,34 @@
+// src/pages/ProfilePage.jsx
+
 import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import baseAvatar from '../assets/base-avatar.png'; // 기본 아바타 import
+
+// 아바타 표시 컴포넌트 스타일 수정
+const AvatarDisplay = styled.div`
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background-color: #e9ecef;
+  margin: 0 auto 1rem;
+  border: 4px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  position: relative; // 겹치기를 위해 position: relative 추가
+  overflow: hidden;
+`;
+
+// 아바타 파츠 이미지 스타일 (편집 페이지와 동일)
+const PartImage = styled.img`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+`;
 
 const ProfileWrapper = styled.div`
   max-width: 800px;
@@ -12,20 +38,6 @@ const ProfileWrapper = styled.div`
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   text-align: center;
-`;
-
-const AvatarDisplay = styled.div`
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  background-color: #e9ecef;
-  margin: 0 auto 1rem;
-  border: 4px solid #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 3rem;
 `;
 
 const UserName = styled.h2`
@@ -69,6 +81,7 @@ const StyledLink = styled(Link)`
     background-color: #f0f0f0;
   }
 `;
+
 const Button = styled.button`
   padding: 0.6em 1.2em;
   border: 1px solid #ccc;
@@ -84,47 +97,66 @@ const Button = styled.button`
   }
 `;
 
+const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+
+
 function ProfilePage() {
-    const { players } = useLeagueStore();
+    const { players, avatarParts } = useLeagueStore(); // avatarParts 추가
     const currentUser = auth.currentUser;
     const { playerId } = useParams();
-    const navigate = useNavigate(); // useNavigate 훅을 사용합니다.
+    const navigate = useNavigate();
 
-    const myPlayerData = useMemo(() => {
-        if (playerId) {
-            return players.find(p => p.id === playerId);
-        } else {
-            return players.find(p => p.authUid === currentUser?.uid);
-        }
+    const playerData = useMemo(() => {
+        const targetId = playerId || currentUser?.uid;
+        // playerId가 있으면 그걸로 찾고, 없으면 현재 로그인한 유저의 authUid로 찾습니다.
+        return players.find(p => p.id === targetId || p.authUid === targetId);
     }, [players, currentUser, playerId]);
 
-    if (!myPlayerData) {
+    // 선택된 파츠의 URL 목록을 계산하는 로직 추가
+    const selectedPartUrls = useMemo(() => {
+        if (!playerData?.avatarConfig || !avatarParts.length) return [];
+
+        const partCategories = avatarParts.reduce((acc, part) => {
+            if (!acc[part.category]) acc[part.category] = [];
+            acc[part.category].push(part);
+            return acc;
+        }, {});
+
+        return Object.entries(playerData.avatarConfig).map(([category, partId]) => {
+            const part = partCategories[category]?.find(p => p.id === partId);
+            return part?.src;
+        }).filter(Boolean);
+    }, [playerData, avatarParts]);
+
+
+    if (!playerData) {
         return (
             <ProfileWrapper>
                 <h2>선수 정보를 찾을 수 없습니다.</h2>
                 <p>리그에 참가 신청을 했거나, 올바른 프로필 주소인지 확인해주세요.</p>
                 <ButtonGroup>
-                    {/* 여기는 에러 페이지이므로 '홈으로'가 적합합니다. */}
                     <StyledLink to="/">홈으로 돌아가기</StyledLink>
                 </ButtonGroup>
             </ProfileWrapper>
         );
     }
 
-    const isMyProfile = myPlayerData.authUid === currentUser?.uid;
+    const isMyProfile = playerData.authUid === currentUser?.uid;
 
     return (
         <ProfileWrapper>
             <AvatarDisplay>
-                🧑‍💻
+                {/* 이모지 대신 아바타 이미지 레이어를 렌더링 */}
+                <PartImage src={baseAvatar} alt="기본 아바타" />
+                {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
             </AvatarDisplay>
-            <UserName>{myPlayerData.name}</UserName>
-            {myPlayerData.role && <UserRole>{myPlayerData.role}</UserRole>}
-            <PointDisplay>💰 {myPlayerData.points || 0} P</PointDisplay>
+
+            <UserName>{playerData.name}</UserName>
+            {playerData.role && <UserRole>{playerData.role}</UserRole>}
+            <PointDisplay>💰 {playerData.points || 0} P</PointDisplay>
 
             <ButtonGroup>
                 {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
-                {/* '나가기' 버튼이 Link가 아닌 일반 button으로 변경되고, onClick 이벤트로 뒤로 가기(-1)를 실행합니다. */}
                 <Button onClick={() => navigate(-1)}>나가기</Button>
             </ButtonGroup>
         </ProfileWrapper>
