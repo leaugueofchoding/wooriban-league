@@ -16,7 +16,8 @@ import {
     getSeasons,
     updateSeason,
     getUsers,
-    linkPlayerToAuth
+    linkPlayerToAuth,
+    getAvatarParts // getAvatarParts import 추가
 } from '../api/firebase';
 
 export const useLeagueStore = create((set, get) => ({
@@ -24,7 +25,8 @@ export const useLeagueStore = create((set, get) => ({
     players: [],
     teams: [],
     matches: [],
-    users: [], // 로그인한 사용자 목록을 저장할 상태 추가
+    users: [],
+    avatarParts: [], // 아바타 파츠를 저장할 상태 추가
     currentSeason: null,
     isLoading: true,
     leagueType: 'mixed',
@@ -39,22 +41,23 @@ export const useLeagueStore = create((set, get) => ({
 
             if (!activeSeason) {
                 console.log("활성화된 시즌이 없습니다.");
-                return set({ isLoading: false, players: [], teams: [], matches: [], users: [] });
+                return set({ isLoading: false, players: [], teams: [], matches: [], users: [], avatarParts: [] });
             }
 
-            const seasonId = activeSeason.id;
-            const [playersData, teamsData, matchesData, usersData] = await Promise.all([
+            const [playersData, teamsData, matchesData, usersData, avatarPartsData] = await Promise.all([
                 getPlayers(),
-                getTeams(seasonId),
-                getMatches(seasonId),
-                getUsers(), // users 데이터도 함께 불러옵니다.
+                getTeams(activeSeason.id),
+                getMatches(activeSeason.id),
+                getUsers(),
+                getAvatarParts() // avatarParts 데이터도 함께 불러옵니다.
             ]);
 
             set({
                 players: playersData,
                 teams: teamsData,
                 matches: matchesData,
-                users: usersData, // 상태에 저장
+                users: usersData,
+                avatarParts: avatarPartsData, // 상태에 저장
                 currentSeason: activeSeason,
                 isLoading: false,
             });
@@ -100,43 +103,34 @@ export const useLeagueStore = create((set, get) => ({
         try {
             await linkPlayerToAuth(playerId, authUid, role);
             alert('성공적으로 연결되었습니다.');
-            get().fetchInitialData(); // 데이터를 새로고침하여 목록 업데이트
+            get().fetchInitialData();
         } catch (error) {
             console.error("계정 연결 오류:", error);
-            alert('계정 연결 중 오류가 발생했습니다.');
         }
     },
 
+    // ======== 선수 등록/관리 ========
     registerAsPlayer: async (user) => {
         if (!user) return alert('로그인 정보가 없습니다.');
-
         const newPlayerData = {
-            authUid: user.uid, // Firebase Auth의 고유 ID
-            name: user.displayName, // Google 계정 이름
+            authUid: user.uid,
+            id: user.uid, // 문서 ID를 authUid와 동일하게 설정
+            name: user.displayName,
             email: user.email,
             photoURL: user.photoURL,
-            gender: null, // 성별은 나중에 관리자가 지정하거나, 본인이 직접 설정
+            gender: null,
             role: 'player',
-            points: 100, // 기본 지급 포인트
+            points: 100,
             wins: 0,
             seasonStats: {}
         };
-
         try {
             await addPlayer(newPlayerData);
             alert(`${user.displayName}님, 선수 등록이 완료되었습니다!`);
             get().fetchInitialData();
         } catch (error) {
             console.error("선수 등록 오류:", error);
-            alert('선수 등록 중 오류가 발생했습니다.');
         }
-    },
-
-    // ======== 선수/팀 관리 ========
-    addNewPlayer: async (playerName, playerGender) => {
-        if (!playerName.trim()) return alert('선수 이름을 입력해주세요.');
-        await addPlayer({ name: playerName, gender: playerGender, status: '재학중', wins: 0, score: 0 });
-        get().fetchInitialData();
     },
 
     removePlayer: async (playerId) => {
@@ -145,11 +139,11 @@ export const useLeagueStore = create((set, get) => ({
         get().fetchInitialData();
     },
 
+    // ======== 팀 관리 ========
     addNewTeam: async (teamName) => {
         if (!teamName.trim()) return alert('팀 이름을 입력해주세요.');
         const seasonId = get().currentSeason?.id;
         if (!seasonId) return alert('현재 시즌 정보를 불러올 수 없습니다.');
-
         await addTeam({ teamName, seasonId, captainId: null, members: [] });
         get().fetchInitialData();
     },
@@ -163,14 +157,9 @@ export const useLeagueStore = create((set, get) => ({
     batchCreateTeams: async (maleCount, femaleCount) => {
         const seasonId = get().currentSeason?.id;
         if (!seasonId) return alert('현재 시즌 정보를 불러올 수 없습니다.');
-
         const newTeams = [];
-        for (let i = 1; i <= maleCount; i++) {
-            newTeams.push({ teamName: `남자 ${i}팀`, gender: '남', seasonId, captainId: null, members: [] });
-        }
-        for (let i = 1; i <= femaleCount; i++) {
-            newTeams.push({ teamName: `여자 ${i}팀`, gender: '여', seasonId, captainId: null, members: [] });
-        }
+        for (let i = 1; i <= maleCount; i++) newTeams.push({ teamName: `남자 ${i}팀`, gender: '남', seasonId, captainId: null, members: [] });
+        for (let i = 1; i <= femaleCount; i++) newTeams.push({ teamName: `여자 ${i}팀`, gender: '여', seasonId, captainId: null, members: [] });
         if (newTeams.length > 0 && confirm(`${newTeams.length}개의 팀을 생성하시겠습니까?`)) {
             try {
                 await batchAddTeams(newTeams);

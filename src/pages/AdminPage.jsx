@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
-import { Link } from 'react-router-dom'; // 1. Link import 추가
+import { Link } from 'react-router-dom';
+// uploadAvatarPart 함수를 새로 import 합니다.
+import { uploadAvatarPart } from '../api/firebase.js';
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
@@ -252,6 +254,76 @@ function MatchRow({ match }) {
     );
 }
 
+function AvatarPartUploader() {
+    // 1. file 상태를 단일 파일이 아닌 배열(여러 파일)로 관리하도록 변경
+    const [files, setFiles] = useState([]);
+    const [category, setCategory] = useState('hair');
+    const [isUploading, setIsUploading] = useState(false);
+    const { fetchInitialData } = useLeagueStore();
+
+    const handleFileChange = (e) => {
+        // 2. 선택된 모든 파일을 배열로 변환하여 상태에 저장
+        if (e.target.files.length > 0) {
+            setFiles(Array.from(e.target.files));
+        }
+    };
+
+    const handleUpload = async () => {
+        if (files.length === 0 || !category) {
+            return alert('파일과 카테고리를 모두 선택해주세요.');
+        }
+        setIsUploading(true);
+        try {
+            // 3. Promise.all을 사용해 모든 파일을 동시에 업로드 요청
+            await Promise.all(
+                files.map(file => uploadAvatarPart(file, category))
+            );
+
+            alert(`${files.length}개의 아이템이 성공적으로 업로드되었습니다!`);
+            setFiles([]); // 파일 선택 초기화
+            // input 값도 초기화하기 위한 DOM 조작
+            document.getElementById('avatar-file-input').value = "";
+            fetchInitialData();
+        } catch (error) {
+            console.error("아이템 업로드 오류:", error);
+            alert('아이템 업로드 중 오류가 발생했습니다.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+
+    return (
+        <Section>
+            <Title>아바타 아이템 관리</Title>
+            <InputGroup>
+                {/* 4. input 태그에 'multiple' 속성 추가 */}
+                <input
+                    type="file"
+                    id="avatar-file-input" // input 초기화를 위한 id 추가
+                    onChange={handleFileChange}
+                    accept="image/png"
+                    multiple
+                />
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                    <option value="face">얼굴</option>
+                    <option value="eyes">눈</option>
+                    <option value="nose">코</option>
+                    <option value="mouth">입</option>
+                    <option value="hair">머리</option>
+                    <option value="top">상의</option>
+                    <option value="bottom">하의</option>
+                    <option value="shoes">신발</option>
+                    <option value="accessory">액세서리</option>
+                </select>
+                <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
+                    {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
+                </SaveButton>
+            </InputGroup>
+        </Section>
+    );
+}
+
 // --- AdminPage Component ---
 function AdminPage() {
     const {
@@ -299,7 +371,7 @@ function AdminPage() {
     return (
         <AdminWrapper>
             <h1>관리자 페이지</h1>
-
+            <AvatarPartUploader />
             <RoleManager />
 
             <Section>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
+import { useLeagueStore } from '../store/leagueStore'; // 스토어 훅 사용
 
 const EditWrapper = styled.div`
   max-width: 500px;
@@ -96,33 +97,48 @@ const Button = styled.button`
 
 function AvatarEditPage() {
     const navigate = useNavigate();
+    // 1. 스토어에서 avatarParts 데이터를 가져옵니다.
+    const { avatarParts } = useLeagueStore();
 
-    // 아이템이 많아진 상황을 가정하기 위해 임시로 데이터 양을 늘림
-    const partCategories = {
-        '얼굴': [1, 2],
-        '눈': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], // 눈 아이템을 10개로 가정
-        '코': [1, 2],
-        '입': [1, 2, 3],
-        '머리': [1, 2, 3, 4],
-        '상의': [1, 2, 3],
-        '하의': [1, 2],
-        '신발': [1, 2],
-        '액세서리': [1, 2, 3]
+    // 2. DB에서 불러온 데이터를 카테고리별로 그룹화합니다.
+    const partCategories = useMemo(() => {
+        return avatarParts.reduce((acc, part) => {
+            const category = part.category;
+            if (!acc[category]) {
+                acc[category] = [];
+            }
+            acc[category].push(part);
+            return acc;
+        }, {});
+    }, [avatarParts]);
+
+    const [currentAvatar, setCurrentAvatar] = useState({});
+    const [activeTab, setActiveTab] = useState(Object.keys(partCategories)[0] || '');
+
+    const handlePartSelect = (category, part) => {
+        setCurrentAvatar(prev => ({
+            ...prev,
+            [category]: part.src
+        }));
     };
 
-    const [activeTab, setActiveTab] = useState('얼굴');
+    // 카테고리 순서를 원하는 대로 정렬 (선택 사항)
+    const sortedCategories = Object.keys(partCategories).sort((a, b) => {
+        const order = ['face', 'eyes', 'nose', 'mouth', 'hair', 'top', 'bottom', 'shoes', 'accessory'];
+        return order.indexOf(a) - order.indexOf(b);
+    });
 
     return (
         <EditWrapper>
             <Title>아바타 꾸미기</Title>
 
             <AvatarCanvas>
-                {/* 선택된 파츠들이 여기에 이미지로 겹쳐서 표시될 예정 */}
+                {Object.values(currentAvatar).map(src => src && <PartImage key={src} src={src} />)}
             </AvatarCanvas>
 
             <Inventory>
                 <TabContainer>
-                    {Object.keys(partCategories).map(category => (
+                    {sortedCategories.map(category => (
                         <Tab
                             key={category}
                             className={activeTab === category ? 'active' : ''}
@@ -134,9 +150,13 @@ function AvatarEditPage() {
                 </TabContainer>
 
                 <PartGrid>
-                    {partCategories[activeTab].map(partId => (
-                        <PartItem key={partId}>
-                            {/* 각 파츠의 썸네일 이미지가 표시될 예정 */}
+                    {partCategories[activeTab]?.map(part => (
+                        <PartItem
+                            key={part.id}
+                            className={currentAvatar[activeTab] === part.src ? 'selected' : ''}
+                            onClick={() => handlePartSelect(activeTab, part)}
+                        >
+                            <Thumbnail src={part.src} alt={part.id} />
                         </PartItem>
                     ))}
                 </PartGrid>
