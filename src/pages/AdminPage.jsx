@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
+import { Link } from 'react-router-dom'; // 1. Link import 추가
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
@@ -206,7 +207,13 @@ function RoleManager() {
                 {players.filter(p => p.authUid).map(p => (
                     <ListItem key={p.id}>
                         <PlayerProfile player={p} />
-                        <strong>{p.role}</strong>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <strong>{p.role}</strong>
+                            {/* 3. 여기에도 '프로필 보기' Link 버튼 추가 */}
+                            <Link to={`/profile/${p.id}`}>
+                                <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
+                            </Link>
+                        </div>
                     </ListItem>
                 ))}
             </List>
@@ -324,12 +331,18 @@ function AdminPage() {
 
             <Section>
                 <Title>선수 관리</Title>
-                <p>선수 등록은 홈페이지에서 학생이 직접 진행합니다. 관리자는 아래 목록에서 리그 참가 선수를 삭제할 수 있습니다.</p>
+                <p>선수 등록은 홈페이지에서 학생이 직접 진행합니다...</p>
                 <List>
                     {players.map(player => (
                         <ListItem key={player.id}>
                             <PlayerProfile player={player} />
-                            <StyledButton onClick={() => removePlayer(player.id)} disabled={isNotPreparing}>삭제</StyledButton>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                {/* 2. '프로필 보기' Link 버튼 추가 */}
+                                <Link to={`/profile/${player.id}`}>
+                                    <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
+                                </Link>
+                                <StyledButton onClick={() => removePlayer(player.id)} disabled={isNotPreparing}>삭제</StyledButton>
+                            </div>
                         </ListItem>
                     ))}
                 </List>

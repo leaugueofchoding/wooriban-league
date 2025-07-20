@@ -4,6 +4,8 @@ import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import LeagueTable from '../components/LeagueTable.jsx'; // 새로 만든 컴포넌트 import
+import defaultEmblem from '../assets/default-emblem.png'; // 1. 기본 엠블럼 이미지를 import 합니다.
+
 
 const HomePageWrapper = styled.div`
   max-width: 1000px;
@@ -20,6 +22,7 @@ function HomePage() {
     let stats = teams.map(team => ({
       id: team.id,
       teamName: team.teamName,
+      emblemUrl: team.emblemUrl || defaultEmblem,
       played: 0,
       wins: 0,
       draws: 0,

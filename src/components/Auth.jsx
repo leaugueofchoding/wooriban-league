@@ -1,9 +1,8 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { auth } from '../api/firebase.js'; // .js 확장자 명시
+import { auth, updateUserProfile } from '../api/firebase.js';
 import styled from 'styled-components';
-import { updateUserProfile } from '../api/firebase.js'; // 새로 만든 함수 import
-
 
 const AuthWrapper = styled.div`
   padding: 1rem;
@@ -23,6 +22,21 @@ const UserProfile = styled.div`
     height: 32px;
     border-radius: 50%;
   }
+  
+  a {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px;
+    border-radius: 18px;
+    transition: background-color 0.2s ease-in-out;
+
+    &:hover {
+        background-color: #e9ecef;
+    }
+  }
 `;
 
 const Button = styled.button`
@@ -39,12 +53,12 @@ function Auth({ user }) {
         const provider = new GoogleAuthProvider();
         signInWithPopup(auth, provider)
             .then((result) => {
-                // 로그인이 성공하면, result.user에 사용자 정보가 담겨옵니다.
-                // 이 정보를 'users' 컬렉션에 저장합니다.
+                // 로그인이 성공하면, result.user 정보를 'users' 컬렉션에 저장합니다.
                 updateUserProfile(result.user);
             })
             .catch((error) => {
                 console.error("Google 로그인 오류:", error);
+                alert(`로그인 중 오류가 발생했습니다: ${error.message}`);
             });
     };
 
@@ -56,8 +70,10 @@ function Auth({ user }) {
         <AuthWrapper>
             {user ? (
                 <UserProfile>
-                    <img src={user.photoURL} alt="프로필 사진" />
-                    <span>{user.displayName}</span>
+                    <Link to="/profile">
+                        <img src={user.photoURL} alt="프로필 사진" />
+                        <span>{user.displayName}</span>
+                    </Link>
                     <Button onClick={handleLogout}>로그아웃</Button>
                 </UserProfile>
             ) : (
@@ -67,7 +83,4 @@ function Auth({ user }) {
     );
 }
 
-
-
-// 이 부분이 가장 중요합니다!
 export default Auth;

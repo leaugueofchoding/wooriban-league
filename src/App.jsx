@@ -9,6 +9,8 @@ import { auth } from './api/firebase';
 import HomePage from './pages/HomePage';
 import AdminPage from './pages/AdminPage';
 import Auth from './components/Auth'; // 새로 만든 Auth 컴포넌트 import
+import ProfilePage from './pages/ProfilePage'; // 1. 새 페이지 import
+import AvatarEditPage from './pages/AvatarEditPage.jsx'; // 1. 새 페이지 import
 
 function App() {
   const { fetchInitialData, isLoading } = useLeagueStore();
@@ -40,15 +42,18 @@ function App() {
     return <div>데이터 로딩 중...</div>;
   }
 
-  return (
+   return (
     <BrowserRouter>
-      {/* Auth 컴포넌트를 앱 최상단에 배치 */}
       <Auth user={authUser} />
-
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/admin" element={<AdminPage />} />
-      </Routes>
+      <div className="main-content">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/profile/:playerId" element={<ProfilePage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/profile/edit" element={<AvatarEditPage />} /> {/* 2. 새 경로 추가 */}
+        </Routes>
+      </div>
     </BrowserRouter>
   );
 }
