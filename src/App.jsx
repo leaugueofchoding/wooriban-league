@@ -7,12 +7,13 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
 
 import HomePage from './pages/HomePage';
+
 import AdminPage from './pages/AdminPage';
 import Auth from './components/Auth'; // 새로 만든 Auth 컴포넌트 import
 import ProfilePage from './pages/ProfilePage'; // 1. 새 페이지 import
 import AvatarEditPage from './pages/AvatarEditPage.jsx'; // 1. 새 페이지 import
 import WinnerPage from './pages/WinnerPage'; // 테스트를 위해 임시로 WinnerPage를 import 합니다.
-
+import ShopPage from './pages/ShopPage'; // 1. ShopPage를 import 합니다.
 
 function App() {
   const { fetchInitialData, isLoading } = useLeagueStore();
@@ -50,6 +51,7 @@ function App() {
       <div className="main-content">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/shop" element={<ShopPage />} /> {/* 2. /shop 경로를 추가합니다. */}
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/profile/:playerId" element={<ProfilePage />} />
           <Route path="/profile" element={<ProfilePage />} />

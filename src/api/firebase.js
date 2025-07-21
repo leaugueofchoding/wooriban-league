@@ -3,7 +3,8 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore, collection, getDocs, query, where, doc,
-  updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc
+  updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc,
+  runTransaction, arrayUnion
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -181,4 +182,63 @@ export async function updatePlayerAvatar(playerId, avatarConfig) {
 export async function updateAvatarPartPrice(partId, price) {
   const partRef = doc(db, 'avatarParts', partId);
   await updateDoc(partRef, { price: price });
+}
+
+export async function batchUpdateAvatarPartPrices(updates) {
+  const batch = writeBatch(db);
+  updates.forEach(item => {
+    const partRef = doc(db, 'avatarParts', item.id);
+    batch.update(partRef, { price: item.price });
+  });
+  await batch.commit();
+}
+
+export async function buyAvatarPart(playerId, part) {
+  const playerRef = doc(db, 'players', playerId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const playerDoc = await transaction.get(playerRef);
+      if (!playerDoc.exists()) {
+        throw "플레이어 정보를 찾을 수 없습니다.";
+      }
+
+      const currentPoints = playerDoc.data().points || 0;
+      const ownedParts = playerDoc.data().ownedParts || [];
+
+      if (ownedParts.includes(part.id)) {
+        throw "이미 소유하고 있는 아이템입니다.";
+      }
+      if (currentPoints < part.price) {
+        throw "포인트가 부족합니다.";
+      }
+
+      const newPoints = currentPoints - part.price;
+      transaction.update(playerRef, {
+        points: newPoints,
+        ownedParts: arrayUnion(part.id) // ownedParts 배열에 아이템 ID 추가
+      });
+    });
+    return "구매에 성공했습니다!"; // 성공 메시지 반환
+  } catch (e) {
+    console.error("구매 트랜잭션 실패: ", e);
+    // 실패 시, 에러 메시지를 그대로 반환
+    throw e;
+  }
+}
+
+export async function createPlayerFromUser(user) {
+  const playerRef = doc(db, 'players', user.uid);
+  const playerData = {
+    authUid: user.uid,
+    id: user.uid,
+    name: user.displayName,
+    email: user.email,
+    photoURL: user.photoURL,
+    points: 100, // 초기 포인트
+    ownedParts: [],
+    avatarConfig: {},
+    role: 'player' // 기본 역할
+  };
+  await setDoc(playerRef, playerData);
 }

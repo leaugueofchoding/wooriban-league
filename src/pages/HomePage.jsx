@@ -1,11 +1,11 @@
-// src/pages/HomePage.jsx 파일의 내용을 아래 코드로 전체 교체하세요.
+// src/pages/HomePage.jsx
 
 import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import LeagueTable from '../components/LeagueTable.jsx'; // 새로 만든 컴포넌트 import
-import defaultEmblem from '../assets/default-emblem.png'; // 1. 기본 엠블럼 이미지를 import 합니다.
-
+import LeagueTable from '../components/LeagueTable.jsx';
+import defaultEmblem from '../assets/default-emblem.png';
+import { auth, createPlayerFromUser } from '../api/firebase.js';
 
 const HomePageWrapper = styled.div`
   max-width: 1000px;
@@ -13,8 +13,48 @@ const HomePageWrapper = styled.div`
   padding: 2rem;
 `;
 
+const JoinLeagueButton = styled.button`
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 2rem;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+
+  &:hover {
+    background-color: #0056b3;
+  }
+`;
+
 function HomePage() {
-  const { matches, teams } = useLeagueStore();
+  const { matches, teams, players, fetchInitialData } = useLeagueStore();
+  const currentUser = auth.currentUser;
+
+  // 현재 로그인한 사용자가 선수로 등록되어 있는지 확인
+  const isPlayerRegistered = useMemo(() => {
+    if (!currentUser) return false;
+    return players.some(p => p.authUid === currentUser.uid);
+  }, [players, currentUser]);
+
+  const handleJoinLeague = async () => {
+    if (!currentUser) return alert('로그인이 필요합니다.');
+    if (window.confirm('리그에 선수로 참가하시겠습니까?')) {
+      try {
+        await createPlayerFromUser(currentUser);
+        alert('리그 참가 신청이 완료되었습니다!');
+        await fetchInitialData(); // 선수 목록 새로고침
+      } catch (error) {
+        console.error("리그 참가 오류:", error);
+        alert('참가 신청 중 오류가 발생했습니다.');
+      }
+    }
+  };
 
   const standingsData = useMemo(() => {
     const completedMatches = matches.filter(m => m.status === '완료');
@@ -45,15 +85,15 @@ function HomePage() {
       teamB.goalsFor += match.teamB_score;
       teamB.goalsAgainst += match.teamA_score;
 
-      if (match.teamA_score > match.teamB_score) { // A팀 승리
+      if (match.teamA_score > match.teamB_score) {
         teamA.wins++;
         teamA.points += 3;
         teamB.losses++;
-      } else if (match.teamB_score > match.teamA_score) { // B팀 승리
+      } else if (match.teamB_score > match.teamA_score) {
         teamB.wins++;
         teamB.points += 3;
         teamA.losses++;
-      } else { // 무승부
+      } else {
         teamA.draws++;
         teamB.draws++;
         teamA.points += 1;
@@ -65,7 +105,6 @@ function HomePage() {
       team.goalDifference = team.goalsFor - team.goalsAgainst;
     });
 
-    // 정렬: 1. 승점(내림차순) 2. 득실차(내림차순) 3. 다득점(내림차순)
     stats.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
       if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
@@ -77,7 +116,14 @@ function HomePage() {
 
   return (
     <HomePageWrapper>
-      <h1>우리반 리그 순위</h1>
+      <h1 style={{ textAlign: 'center' }}>우리반 리그</h1>
+
+      {currentUser && !isPlayerRegistered && (
+        <JoinLeagueButton onClick={handleJoinLeague}>
+          🏆 리그 참가 신청하기
+        </JoinLeagueButton>
+      )}
+
       <LeagueTable standings={standingsData} />
     </HomePageWrapper>
   );

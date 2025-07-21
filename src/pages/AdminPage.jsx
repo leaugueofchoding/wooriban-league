@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
 import { Link } from 'react-router-dom';
-import { uploadAvatarPart, updateAvatarPartPrice } from '../api/firebase.js';
+import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices } from '../api/firebase.js';
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
@@ -166,26 +166,37 @@ const ItemCard = styled.div`
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `;
 
-// 1. 이미지를 감싸는 틀(Wrapper)을 만듭니다.
-const ItemImageWrapper = styled.div`
+// 카테고리별로 배경 위치를 반환하는 헬퍼 함수
+const getBackgroundPosition = (category) => {
+    switch (category) {
+        case 'bottom':
+            return 'center 75%'; // 하의는 살짝 아래쪽
+        case 'shoes':
+            return 'center 100%'; // 신발은 맨 아래쪽
+        case 'hair':
+        case 'top':
+        case 'eyes':
+        case 'nose':
+        case 'mouth':
+            return 'center 25%';
+        default:
+            return 'center 55%'; // 기본값 (상의, )
+    }
+};
+
+const ItemImage = styled.div`
   width: 100px;
   height: 100px;
   border-radius: 8px;
-  background-color: #e9ecef;
   border: 1px solid #dee2e6;
-  overflow: hidden; /* 중요: 틀 밖으로 나가는 이미지를 숨깁니다. */
-`;
-
-// 2. 기존 ItemImage에 transform과 transition 속성을 추가합니다.
-const ItemImage = styled.img`
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  transform: scale(2); /* 이미지를 2배 확대합니다. */
-  transition: transform 0.2s ease-in-out; /* 부드러운 효과를 위한 transition */
-
+  background-image: url(${props => props.src});
+  background-size: 200%;
+  background-repeat: no-repeat;
+  background-color: #e9ecef;
+  transition: background-size 0.2s ease-in-out;
+  background-position: ${props => getBackgroundPosition(props.$category)};
   &:hover {
-    transform: scale(2.2); /* 마우스를 올리면 살짝 더 확대됩니다. */
+    background-size: 220%;
   }
 `;
 
@@ -227,17 +238,20 @@ function AvatarPartManager() {
         setPrices(prev => ({ ...prev, [partId]: value }));
     };
 
-    const handleSavePrice = async (partId) => {
-        const price = Number(prices[partId]);
-        if (isNaN(price) || price < 0) {
-            return alert('유효한 숫자를 입력해주세요.');
-        }
+    const handleSaveAllPrices = async () => {
+        if (!window.confirm("현재 탭의 모든 아이템 가격을 저장하시겠습니까?")) return;
+
         try {
-            await updateAvatarPartPrice(partId, price);
-            alert('가격이 저장되었습니다.');
+            // prices 객체를 Firestore에 업데이트할 형식으로 변환
+            const updates = Object.entries(prices)
+                .filter(([id, price]) => partCategories[activeTab]?.some(part => part.id === id))
+                .map(([id, price]) => ({ id, price: Number(price) }));
+
+            await batchUpdateAvatarPartPrices(updates);
+            alert('가격이 성공적으로 저장되었습니다.');
             await fetchInitialData();
         } catch (error) {
-            console.error("가격 저장 오류:", error);
+            console.error("전체 가격 저장 오류:", error);
             alert('가격 저장 중 오류가 발생했습니다.');
         }
     };
@@ -299,8 +313,8 @@ function AvatarPartManager() {
             <ItemGrid>
                 {partCategories[activeTab]?.map(part => (
                     <ItemCard key={part.id}>
-                        <ItemImage src={part.src} alt={part.id} />
-                        <InputGroup style={{ marginBottom: '0' }}>
+                        <ItemImage src={part.src} category={activeTab} />
+                        <InputGroup style={{ marginBottom: '0', justifyContent: 'center' }}>
                             <ScoreInput
                                 type="number"
                                 value={prices[part.id] || ''}
@@ -308,11 +322,17 @@ function AvatarPartManager() {
                                 placeholder="가격"
                                 style={{ width: '80px', margin: '0' }}
                             />
-                            <SaveButton onClick={() => handleSavePrice(part.id)}>저장</SaveButton>
                         </InputGroup>
                     </ItemCard>
                 ))}
             </ItemGrid>
+
+            {/* ▼▼▼▼▼ 전체 저장 버튼을 추가합니다 ▼▼▼▼▼ */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                <SaveButton onClick={handleSaveAllPrices}>
+                    {activeTab} 가격 저장
+                </SaveButton>
+            </div>
         </Section>
     );
 }
