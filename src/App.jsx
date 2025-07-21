@@ -11,6 +11,8 @@ import AdminPage from './pages/AdminPage';
 import Auth from './components/Auth'; // 새로 만든 Auth 컴포넌트 import
 import ProfilePage from './pages/ProfilePage'; // 1. 새 페이지 import
 import AvatarEditPage from './pages/AvatarEditPage.jsx'; // 1. 새 페이지 import
+import WinnerPage from './pages/WinnerPage'; // 테스트를 위해 임시로 WinnerPage를 import 합니다.
+
 
 function App() {
   const { fetchInitialData, isLoading } = useLeagueStore();
@@ -42,7 +44,7 @@ function App() {
     return <div>데이터 로딩 중...</div>;
   }
 
-   return (
+  return (
     <BrowserRouter>
       <Auth user={authUser} />
       <div className="main-content">
@@ -52,6 +54,11 @@ function App() {
           <Route path="/profile/:playerId" element={<ProfilePage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/edit" element={<AvatarEditPage />} /> {/* 2. 새 경로 추가 */}
+
+          {/* 2. 테스트를 위한 임시 경로를 추가합니다. */}
+          <Route path="/winner" element={<WinnerPage />} />
+
+
         </Routes>
       </div>
     </BrowserRouter>

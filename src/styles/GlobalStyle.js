@@ -1,6 +1,19 @@
-import { createGlobalStyle } from 'styled-components';
+// src/styles/GlobalStyle.js
 
-// 모든 페이지의 기본 배경색, 글꼴 등을 설정하는 코드
+// 1. createGlobalStyle 옆에 keyframes를 추가로 import 합니다.
+import { createGlobalStyle, keyframes } from 'styled-components';
+
+// 2. keyframes 함수를 사용해 bounce 애니메이션을 정의하고 export 합니다.
+export const bounce = keyframes`
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-15px);
+  }
+`;
+
+// 3. GlobalStyle에서는 @keyframes 정의를 삭제합니다.
 const GlobalStyle = createGlobalStyle`
   body {
     margin: 0;
@@ -10,7 +23,7 @@ const GlobalStyle = createGlobalStyle`
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #f0f2f5; // 기본 배경색을 연한 회색으로
+    background-color: #f0f2f5;
   }
 
   * {

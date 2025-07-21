@@ -177,3 +177,8 @@ export async function updatePlayerAvatar(playerId, avatarConfig) {
   const playerRef = doc(db, 'players', playerId);
   await updateDoc(playerRef, { avatarConfig });
 }
+
+export async function updateAvatarPartPrice(partId, price) {
+  const partRef = doc(db, 'avatarParts', partId);
+  await updateDoc(partRef, { price: price });
+}
