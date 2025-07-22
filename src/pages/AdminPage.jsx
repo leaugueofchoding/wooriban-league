@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
-import { Link, useNavigate } from 'react-router-dom'; // useNavigate 추가
+import { Link, useNavigate } from 'react-router-dom';
 import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices, createMission } from '../api/firebase.js';
 
 // --- Styled Components (디자인 부분) ---
@@ -36,6 +36,12 @@ const StyledButton = styled.button`
   font-weight: 500;
   background-color: #1a1a1a;
   color: white;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #333;
+  }
+
   &:disabled {
     background-color: #e9ecef;
     color: #6c757d;
@@ -90,14 +96,31 @@ const TabContainer = styled.div`
 `;
 
 const TabButton = styled.button`
-  padding: 0.75rem;
+  padding: 0.75rem 1.25rem;
   font-size: 1rem;
   font-weight: bold;
   border: 1px solid #ccc;
   background-color: ${props => props.$active ? '#007bff' : 'white'};
   color: ${props => props.$active ? 'white' : 'black'};
   cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
   
+  &:not(:last-child) {
+    border-right: none;
+  }
+
+  &:first-child {
+    border-radius: 8px 0 0 8px;
+  }
+
+  &:last-child {
+    border-radius: 0 8px 8px 0;
+  }
+
+  &:hover {
+    background-color: ${props => props.$active ? '#0056b3' : '#f8f9fa'};
+  }
+
   &:disabled {
     background-color: #e9ecef;
     color: #6c757d;
@@ -138,6 +161,7 @@ const SaveButton = styled.button`
   color: white;
   border-radius: 4px;
   cursor: pointer;
+  transition: background-color 0.2s;
   
   &:hover {
     background-color: #0056b3;
@@ -168,18 +192,10 @@ const ItemCard = styled.div`
 
 const getBackgroundPosition = (category) => {
     switch (category) {
-        case 'bottom':
-            return 'center 75%';
-        case 'shoes':
-            return 'center 100%';
-        case 'hair':
-        case 'top':
-        case 'eyes':
-        case 'nose':
-        case 'mouth':
-            return 'center 25%';
-        default:
-            return 'center 55%';
+        case 'bottom': return 'center 75%';
+        case 'shoes': return 'center 100%';
+        case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+        default: return 'center 55%';
     }
 };
 
@@ -199,9 +215,6 @@ const ItemImage = styled.div`
   }
 `;
 
-// --- Components ---
-
-// MissionManager, AvatarPartManager 등 다른 컴포넌트에서 사용하는 스타일 컴포넌트
 const MissionControls = styled.div`
   display: flex;
   gap: 0.5rem;
@@ -215,6 +228,8 @@ const ToggleButton = styled(StyledButton)`
     background-color: #5a6268;
   }
 `;
+
+// --- Components ---
 
 function MissionManager() {
     const {
@@ -240,7 +255,7 @@ function MissionManager() {
             alert('새로운 미션이 등록되었습니다!');
             setTitle('');
             setReward(50);
-            await fetchInitialData(); // 미션 생성 후 목록 새로고침
+            await fetchInitialData();
         } catch (error) {
             console.error("미션 생성 오류:", error);
             alert('미션 생성 중 오류가 발생했습니다.');
@@ -252,14 +267,13 @@ function MissionManager() {
     return (
         <Section>
             <Title>미션 관리</Title>
-            {/* 미션 출제 폼 */}
             <InputGroup>
                 <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="미션 이름 (예: 수학 익힘책 5쪽)"
-                    style={{ flex: 1, minWidth: '200px' }}
+                    style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
                 />
                 <ScoreInput
                     type="number"
@@ -270,7 +284,6 @@ function MissionManager() {
                 <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
             </InputGroup>
 
-            {/* 미션 목록 */}
             <div style={{ marginTop: '2rem' }}>
                 <ToggleButton onClick={() => setShowArchived(prev => !prev)}>
                     {showArchived ? '활성 미션 보기' : `숨긴 미션 보기 (${archivedMissions.length}개)`}
@@ -419,7 +432,7 @@ function AvatarPartManager() {
             <TabContainer>
                 {sortedCategories.map(category => (
                     <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
-                        {category} ({partCategories[category].length})
+                        {category} ({partCategories[category]?.length || 0})
                     </TabButton>
                 ))}
             </TabContainer>
@@ -461,6 +474,7 @@ function RoleManager() {
         return players.filter(p => !p.authUid);
     }, [players]);
     const handleLink = () => {
+        if (!selectedUser || !selectedPlayer) return alert('사용자와 선수를 모두 선택해주세요.');
         linkPlayer(selectedPlayer, selectedUser, selectedRole);
     };
     return (
@@ -497,6 +511,68 @@ function RoleManager() {
                     </ListItem>
                 ))}
             </List>
+        </Section>
+    );
+}
+
+// PointManager 컴포넌트 추가
+function PointManager() {
+    const { players, adjustPoints } = useLeagueStore();
+    const [selectedPlayerId, setSelectedPlayerId] = useState('');
+    const [amount, setAmount] = useState(0);
+    const [reason, setReason] = useState('');
+
+    const handleSubmit = () => {
+        adjustPoints(selectedPlayerId, Number(amount), reason.trim());
+        setSelectedPlayerId('');
+        setAmount(0);
+        setReason('');
+    };
+
+    return (
+        <Section>
+            <Title>포인트 수동 조정</Title>
+            <p style={{ margin: '-0.5rem 0 1rem', fontSize: '0.9rem', color: '#666' }}>
+                부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다. (차감 시 음수 입력)
+            </p>
+            <InputGroup>
+                <select value={selectedPlayerId} onChange={(e) => setSelectedPlayerId(e.target.value)} style={{ flex: 1, padding: '0.5rem' }}>
+                    <option value="">-- 플레이어 선택 --</option>
+                    {players
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map(player => (
+                            <option key={player.id} value={player.id}>
+                                {player.name} (현재: {player.points || 0}P)
+                            </option>
+                        ))
+                    }
+                </select>
+            </InputGroup>
+            <InputGroup>
+                <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="변경할 포인트"
+                    style={{ width: '150px', padding: '0.5rem' }}
+                />
+                <input
+                    type="text"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="조정 사유 (예: 부정행위 페널티)"
+                    style={{ flex: 1, padding: '0.5rem' }}
+                />
+            </InputGroup>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <SaveButton
+                    onClick={handleSubmit}
+                    disabled={!selectedPlayerId || Number(amount) === 0 || !reason.trim()}
+                    style={{ backgroundColor: '#dc3545' }}
+                >
+                    포인트 조정 실행
+                </SaveButton>
+            </div>
         </Section>
     );
 }
@@ -591,9 +667,11 @@ function AdminPage() {
     return (
         <AdminWrapper>
             <h1>관리자 페이지</h1>
+            {/* 모든 관리자 섹션 컴포넌트 호출 */}
             <MissionManager />
             <AvatarPartManager />
             <RoleManager />
+            <PointManager /> {/* 포인트 관리자 컴포넌트 추가 */}
             <Section>
                 <Title>시즌 관리</Title>
                 {currentSeason ? (

@@ -21,7 +21,8 @@ import {
     getMissions, // getMissions import
     getMissionSubmissions,
     updateMissionStatus, // 추가
-    deleteMission // 추가
+    deleteMission,
+    adjustPlayerPoints
 } from '../api/firebase';
 
 export const useLeagueStore = create((set, get) => ({
@@ -123,6 +124,37 @@ export const useLeagueStore = create((set, get) => ({
             });
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
+            set({ isLoading: false });
+        }
+    },
+
+    adjustPoints: async (playerId, amount, reason) => {
+        if (!playerId || amount === 0 || !reason.trim()) {
+            alert('플레이어, 0이 아닌 포인트, 그리고 사유를 모두 입력해야 합니다.');
+            return;
+        }
+
+        const playerName = get().players.find(p => p.id === playerId)?.name;
+        if (!playerName) {
+            alert('선택된 플레이어를 찾을 수 없습니다.');
+            return;
+        }
+
+        const actionText = amount > 0 ? '지급' : '차감';
+        const confirmationMessage = `${playerName} 선수에게 ${Math.abs(amount)} 포인트를 ${actionText}하시겠습니까?\n\n사유: ${reason}`;
+
+        if (!window.confirm(confirmationMessage)) {
+            return;
+        }
+
+        try {
+            set({ isLoading: true });
+            await adjustPlayerPoints(playerId, amount, reason);
+            alert('포인트가 성공적으로 조정되었습니다.');
+            await get().fetchInitialData(); // 전체 데이터를 새로고침하여 변경사항을 즉시 반영합니다.
+        } catch (error) {
+            console.error("포인트 조정 액션 오류:", error);
+            alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
             set({ isLoading: false });
         }
     },
