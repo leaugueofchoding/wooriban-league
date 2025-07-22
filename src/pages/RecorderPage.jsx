@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, approveMissionsInBatch } from '../api/firebase'; // 함수 교체
+import { auth, approveMissionsInBatch } from '../api/firebase';
+import { useParams } from 'react-router-dom'; // useParams import
 
 const RecorderWrapper = styled.div`
   max-width: 800px;
@@ -56,14 +57,18 @@ const SubmitButton = styled.button`
 
 function RecorderPage() {
     const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
+    const { missionId } = useParams(); // URL로부터 missionId를 가져옵니다.
+
     const [selectedMissionId, setSelectedMissionId] = useState('');
-    const [checkedStudents, setCheckedStudents] = useState(new Set()); // 체크된 학생 Set
+    const [checkedStudents, setCheckedStudents] = useState(new Set());
     const currentUser = auth.currentUser;
 
-    // 미션이 변경되면 체크 목록 초기화
+    // URL 파라미터가 변경되면, select 박스의 값도 동기화합니다.
     useEffect(() => {
-        setCheckedStudents(new Set());
-    }, [selectedMissionId]);
+        if (missionId) {
+            setSelectedMissionId(missionId);
+        }
+    }, [missionId]);
 
     const handleCheck = (studentId) => {
         setCheckedStudents(prev => {
@@ -116,26 +121,32 @@ function RecorderPage() {
                 ))}
             </MissionSelect>
 
-            <StudentList>
-                {players.map(player => {
-                    const isAlreadySubmitted = submittedStudents.has(player.id);
-                    return (
-                        <StudentListItem key={player.id} style={{ opacity: isAlreadySubmitted ? 0.5 : 1 }}>
-                            <input
-                                type="checkbox"
-                                checked={checkedStudents.has(player.id)}
-                                disabled={isAlreadySubmitted}
-                                onChange={() => handleCheck(player.id)}
-                            />
-                            <label>{player.name} {isAlreadySubmitted && '(완료)'}</label>
-                        </StudentListItem>
-                    );
-                })}
-            </StudentList>
+            {selectedMissionId ? (
+                <>
+                    <StudentList>
+                        {players.map(player => {
+                            const isAlreadySubmitted = submittedStudents.has(player.id);
+                            return (
+                                <StudentListItem key={player.id} style={{ opacity: isAlreadySubmitted ? 0.5 : 1 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={checkedStudents.has(player.id)}
+                                        disabled={isAlreadySubmitted}
+                                        onChange={() => handleCheck(player.id)}
+                                    />
+                                    <label>{player.name} {isAlreadySubmitted && '(완료)'}</label>
+                                </StudentListItem>
+                            );
+                        })}
+                    </StudentList>
 
-            <SubmitButton onClick={handleSubmit} disabled={checkedStudents.size === 0}>
-                {checkedStudents.size}명 포인트 지급 승인하기
-            </SubmitButton>
+                    <SubmitButton onClick={handleSubmit} disabled={checkedStudents.size === 0}>
+                        {checkedStudents.size}명 포인트 지급 승인하기
+                    </SubmitButton>
+                </>
+            ) : (
+                <p style={{ textAlign: 'center' }}>확인할 미션을 선택해주세요.</p>
+            )}
         </RecorderWrapper>
     );
 }

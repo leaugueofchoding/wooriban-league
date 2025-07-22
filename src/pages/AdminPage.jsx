@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // useNavigate 추가
 import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices, createMission } from '../api/firebase.js';
 
 // --- Styled Components (디자인 부분) ---
@@ -201,9 +201,35 @@ const ItemImage = styled.div`
 
 // --- Components ---
 
+// MissionManager, AvatarPartManager 등 다른 컴포넌트에서 사용하는 스타일 컴포넌트
+const MissionControls = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const ToggleButton = styled(StyledButton)`
+  background-color: #6c757d;
+  margin-bottom: 1rem;
+  &:hover {
+    background-color: #5a6268;
+  }
+`;
+
 function MissionManager() {
+    const {
+        missions,
+        archivedMissions,
+        archiveMission,
+        unarchiveMission,
+        removeMission,
+        fetchInitialData
+    } = useLeagueStore();
+    const navigate = useNavigate();
+
     const [title, setTitle] = useState('');
     const [reward, setReward] = useState(50);
+    const [showArchived, setShowArchived] = useState(false);
 
     const handleCreateMission = async () => {
         if (!title.trim() || !reward) {
@@ -214,15 +240,19 @@ function MissionManager() {
             alert('새로운 미션이 등록되었습니다!');
             setTitle('');
             setReward(50);
+            await fetchInitialData(); // 미션 생성 후 목록 새로고침
         } catch (error) {
             console.error("미션 생성 오류:", error);
             alert('미션 생성 중 오류가 발생했습니다.');
         }
     };
 
+    const missionsToDisplay = showArchived ? archivedMissions : missions;
+
     return (
         <Section>
             <Title>미션 관리</Title>
+            {/* 미션 출제 폼 */}
             <InputGroup>
                 <input
                     type="text"
@@ -239,6 +269,50 @@ function MissionManager() {
                 />
                 <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
             </InputGroup>
+
+            {/* 미션 목록 */}
+            <div style={{ marginTop: '2rem' }}>
+                <ToggleButton onClick={() => setShowArchived(prev => !prev)}>
+                    {showArchived ? '활성 미션 보기' : `숨긴 미션 보기 (${archivedMissions.length}개)`}
+                </ToggleButton>
+
+                <List>
+                    {missionsToDisplay.length > 0 ? (
+                        missionsToDisplay.map(mission => (
+                            <ListItem key={mission.id}>
+                                <div>
+                                    <strong>{mission.title}</strong>
+                                    <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
+                                        (보상: {mission.reward}P)
+                                    </span>
+                                </div>
+                                <MissionControls>
+                                    <StyledButton
+                                        onClick={() => navigate(`/recorder/${mission.id}`)}
+                                        style={{ backgroundColor: '#17a2b8' }}
+                                    >
+                                        상태 확인
+                                    </StyledButton>
+                                    {showArchived ? (
+                                        <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>
+                                            활성화
+                                        </StyledButton>
+                                    ) : (
+                                        <StyledButton onClick={() => archiveMission(mission.id)} style={{ backgroundColor: '#ffc107', color: 'black' }}>
+                                            숨김
+                                        </StyledButton>
+                                    )}
+                                    <StyledButton onClick={() => removeMission(mission.id)} style={{ backgroundColor: '#dc3545' }}>
+                                        삭제
+                                    </StyledButton>
+                                </MissionControls>
+                            </ListItem>
+                        ))
+                    ) : (
+                        <p>{showArchived ? '숨겨진 미션이 없습니다.' : '현재 출제된 미션이 없습니다.'}</p>
+                    )}
+                </List>
+            </div>
         </Section>
     );
 }

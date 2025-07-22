@@ -1,4 +1,4 @@
-// src/App.jsx 파일의 내용을 아래 코드로 전체 교체합니다.
+// src/App.jsx
 
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
@@ -6,66 +6,76 @@ import { useLeagueStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
 
+// Page Components
 import HomePage from './pages/HomePage';
-
 import AdminPage from './pages/AdminPage';
-import Auth from './components/Auth'; // 새로 만든 Auth 컴포넌트 import
-import ProfilePage from './pages/ProfilePage'; // 1. 새 페이지 import
-import AvatarEditPage from './pages/AvatarEditPage.jsx'; // 1. 새 페이지 import
-import WinnerPage from './pages/WinnerPage'; // 테스트를 위해 임시로 WinnerPage를 import 합니다.
-import ShopPage from './pages/ShopPage'; // 1. ShopPage를 import 합니다.
-import MissionsPage from './pages/MissionsPage'; // MissionsPage import
-import RecorderPage from './pages/RecorderPage'; // RecorderPage import
+import ProfilePage from './pages/ProfilePage';
+import AvatarEditPage from './pages/AvatarEditPage.jsx';
+import ShopPage from './pages/ShopPage';
+import MissionsPage from './pages/MissionsPage';
+import RecorderPage from './pages/RecorderPage';
+import WinnerPage from './pages/WinnerPage';
 
+// Common Components
+import Auth from './components/Auth';
 
 function App() {
   const { fetchInitialData, isLoading } = useLeagueStore();
-  const [authUser, setAuthUser] = useState(null); // 로그인한 사용자 정보 저장
+  const [authUser, setAuthUser] = useState(null);
 
   // Firebase 인증 상태 리스너
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // 사용자가 로그인한 경우
         setAuthUser(user);
         console.log("로그인된 사용자:", user);
       } else {
-        // 사용자가 로그아웃한 경우
         setAuthUser(null);
       }
     });
-
     // 컴포넌트가 언마운트될 때 리스너 정리
     return () => unsubscribe();
   }, []);
 
-  // 리그 데이터 로딩
+  // 초기 데이터 로딩
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
 
+  // 데이터 로딩 중일 때 로딩 화면 표시
   if (isLoading) {
-    return <div>데이터 로딩 중...</div>;
+    return <div style={{ textAlign: 'center', padding: '2rem' }}>데이터 로딩 중...</div>;
   }
 
   return (
     <BrowserRouter>
+      {/* Auth 컴포넌트는 모든 페이지 상단에 위치하여 로그인 및 사용자 정보를 처리합니다. */}
       <Auth user={authUser} />
-      <div className="main-content">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/missions" element={<MissionsPage />} /> {/* /missions 경로 추가 */}
-          <Route path="/shop" element={<ShopPage />} /> {/* 2. /shop 경로를 추가합니다. */}
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/profile/:playerId" element={<ProfilePage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/profile/edit" element={<AvatarEditPage />} /> {/* 2. 새 경로 추가 */}
-          <Route path="/recorder" element={<RecorderPage />} /> {/* /recorder 경로 추가 */}
 
-          {/* 2. 테스트를 위한 임시 경로를 추가합니다. */}
+      <div className="main-content">
+        {/* Routes 컴포넌트는 URL 경로에 따라 렌더링할 컴포넌트를 결정합니다. */}
+        <Routes>
+          {/* 기본 경로 */}
+          <Route path="/" element={<HomePage />} />
+
+          {/* 주요 기능 페이지 경로 */}
+          <Route path="/missions" element={<MissionsPage />} />
+          <Route path="/shop" element={<ShopPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/winner" element={<WinnerPage />} />
 
+          {/* 프로필 관련 경로는 구체적인 경로를 상단에 배치해야 합니다. */}
+          <Route path="/profile/edit" element={<AvatarEditPage />} />
+          <Route path="/profile/:playerId" element={<ProfilePage />} />
+          <Route path="/profile" element={<ProfilePage />} />
 
+          {/* ▼▼▼▼▼ 에러가 발생한 RecorderPage 경로 수정 ▼▼▼▼▼ */}
+          {/* 이 경로는 /recorder/문자열 형태의 URL을 정확히 처리합니다. */}
+          {/* 예: /recorder/3vwRlHzfpfJ1uopTbAUG */}
+          <Route path="/recorder/:missionId" element={<RecorderPage />} />
+
+          {/* 이 경로는 /recorder 라는 URL을 처리합니다. (missionId가 없는 경우) */}
+          <Route path="/recorder" element={<RecorderPage />} />
         </Routes>
       </div>
     </BrowserRouter>

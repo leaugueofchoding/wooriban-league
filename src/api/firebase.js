@@ -252,9 +252,9 @@ export async function createMission(missionData) {
   });
 }
 // ▼▼▼▼▼ 이 함수가 추가되었는지 확인해주세요 ▼▼▼▼▼
-export async function getMissions() {
+export async function getMissions(status = 'active') {
   const missionsRef = collection(db, 'missions');
-  const q = query(missionsRef, where("status", "==", "active"), orderBy("createdAt", "desc"));
+  const q = query(missionsRef, where("status", "==", status), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
@@ -321,4 +321,15 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   }
 
   await batch.commit();
+}
+
+export async function updateMissionStatus(missionId, status) {
+  const missionRef = doc(db, 'missions', missionId);
+  await updateDoc(missionRef, { status });
+}
+
+// 미션을 삭제하는 함수
+export async function deleteMission(missionId) {
+  const missionRef = doc(db, 'missions', missionId);
+  await deleteDoc(missionRef);
 }

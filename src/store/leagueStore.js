@@ -19,7 +19,9 @@ import {
     linkPlayerToAuth,
     getAvatarParts,
     getMissions, // getMissions import
-    getMissionSubmissions
+    getMissionSubmissions,
+    updateMissionStatus, // 추가
+    deleteMission // 추가
 } from '../api/firebase';
 
 export const useLeagueStore = create((set, get) => ({
@@ -30,6 +32,7 @@ export const useLeagueStore = create((set, get) => ({
     users: [],
     avatarParts: [],
     missions: [], // missions 상태 추가
+    archivedMissions: [], // 보관된 미션 목록
     missionSubmissions: [], // missionSubmissions 상태 추가
     currentSeason: null,
     isLoading: true,
@@ -50,15 +53,26 @@ export const useLeagueStore = create((set, get) => ({
             }
 
             // ▼▼▼▼▼ 이 부분의 변수 목록을 수정했습니다 ▼▼▼▼▼
-            const [playersData, teamsData, matchesData, usersData, avatarPartsData, missionsData, submissionsData] = await Promise.all([
+            const [
+                playersData,
+                teamsData,
+                matchesData,
+                usersData,
+                avatarPartsData,
+                activeMissionsData, // 활성 미션
+                archivedMissionsData, // 보관된 미션
+                submissionsData
+            ] = await Promise.all([
                 getPlayers(),
                 getTeams(activeSeason.id),
                 getMatches(activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
-                getMissions(),
-                getMissionSubmissions() // 제출 기록 불러오기
+                getMissions('active'), // 'active' 상태 미션 가져오기
+                getMissions('archived'), // 'archived' 상태 미션 가져오기
+                getMissionSubmissions()
             ]);
+
 
             set({
                 players: playersData,
@@ -66,10 +80,46 @@ export const useLeagueStore = create((set, get) => ({
                 matches: matchesData,
                 users: usersData,
                 avatarParts: avatarPartsData,
-                missions: missionsData,
-                missionSubmissions: submissionsData, // submissionsData를 상태에 저장
+                missions: activeMissionsData,
+                archivedMissions: archivedMissionsData, // 상태에 저장
+                missionSubmissions: submissionsData,
                 currentSeason: activeSeason,
                 isLoading: false,
+
+                archiveMission: async (missionId) => {
+                    if (!confirm('미션을 숨기면 활성 목록에서 사라집니다. 정말 숨기시겠습니까?')) return;
+                    try {
+                        await updateMissionStatus(missionId, 'archived');
+                        alert('미션이 보관되었습니다.');
+                        get().fetchInitialData(); // 데이터를 새로고침하여 목록을 갱신합니다.
+                    } catch (error) {
+                        console.error('미션 보관 오류:', error);
+                        alert('미션 보관 중 오류가 발생했습니다.');
+                    }
+                },
+
+                unarchiveMission: async (missionId) => {
+                    try {
+                        await updateMissionStatus(missionId, 'active');
+                        alert('미션이 다시 활성화되었습니다.');
+                        get().fetchInitialData();
+                    } catch (error) {
+                        console.error('미션 활성화 오류:', error);
+                        alert('미션 활성화 중 오류가 발생했습니다.');
+                    }
+                },
+
+                removeMission: async (missionId) => {
+                    if (!confirm('정말로 미션을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+                    try {
+                        await deleteMission(missionId);
+                        alert('미션이 삭제되었습니다.');
+                        get().fetchInitialData();
+                    } catch (error) {
+                        console.error('미션 삭제 오류:', error);
+                        alert('미션 삭제 중 오류가 발생했습니다.');
+                    }
+                },
             });
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
