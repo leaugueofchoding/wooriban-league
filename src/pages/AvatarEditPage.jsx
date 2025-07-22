@@ -118,34 +118,41 @@ function AvatarEditPage() {
     const navigate = useNavigate();
     const { players, avatarParts, fetchInitialData } = useLeagueStore();
     const currentUser = auth.currentUser;
-    const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
     const [avatarConfig, setAvatarConfig] = useState({});
 
+    const myPlayerData = useMemo(() => {
+        return players.find(p => p.authUid === currentUser?.uid);
+    }, [players, currentUser]);
+
     useEffect(() => {
-        if (myPlayerData?.avatarConfig) setAvatarConfig(myPlayerData.avatarConfig);
+        if (myPlayerData?.avatarConfig) {
+            setAvatarConfig(myPlayerData.avatarConfig);
+        }
     }, [myPlayerData]);
 
-    // ▼▼▼▼▼ 역할(Role)에 따라 아이템을 필터링하도록 수정 ▼▼▼▼▼
-    const myOwnedParts = useMemo(() => {
-        // 1. 관리자인지 확인합니다.
-        if (myPlayerData?.role === 'admin') {
-            // 관리자일 경우, 모든 아이템을 반환합니다.
+    // ▼▼▼▼▼ 핵심 수정: 역할과 소유한 아이템에 따라 인벤토리를 필터링합니다 ▼▼▼▼▼
+    const myInventory = useMemo(() => {
+        if (!myPlayerData) return [];
+
+        // 관리자일 경우, 모든 아이템을 보여줍니다.
+        if (myPlayerData.role === 'admin') {
             return avatarParts;
         }
 
-        // 2. 일반 사용자일 경우, 소유한 아이템과 기본 아이템만 필터링합니다.
-        const myPartIds = myPlayerData?.ownedParts || [];
+        // 일반 사용자일 경우, 소유한 아이템과 기본 아이템(가격이 없거나 0)만 필터링합니다.
+        const myPartIds = myPlayerData.ownedParts || [];
         return avatarParts.filter(part => !part.price || part.price === 0 || myPartIds.includes(part.id));
     }, [avatarParts, myPlayerData]);
 
     const partCategories = useMemo(() => {
-        return myOwnedParts.reduce((acc, part) => {
+        // 필터링된 myInventory를 기준으로 카테고리를 생성합니다.
+        return myInventory.reduce((acc, part) => {
             const category = part.category;
             if (!acc[category]) acc[category] = [];
             acc[category].push(part);
             return acc;
         }, {});
-    }, [myOwnedParts]);
+    }, [myInventory]);
     // ▲▲▲▲▲ 여기까지 수정 ▲▲▲▲▲
 
 

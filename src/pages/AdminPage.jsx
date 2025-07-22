@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
 import { Link } from 'react-router-dom';
-import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices } from '../api/firebase.js';
+import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices, createMission } from '../api/firebase.js';
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
@@ -86,7 +86,7 @@ const MemberListItem = styled.div`
 const TabContainer = styled.div`
   display: flex;
   margin-bottom: 1.5rem;
-  flex-wrap: wrap; /* 탭이 많아지면 줄바꿈 */
+  flex-wrap: wrap;
 `;
 
 const TabButton = styled.button`
@@ -166,13 +166,12 @@ const ItemCard = styled.div`
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `;
 
-// 카테고리별로 배경 위치를 반환하는 헬퍼 함수
 const getBackgroundPosition = (category) => {
     switch (category) {
         case 'bottom':
-            return 'center 75%'; // 하의는 살짝 아래쪽
+            return 'center 75%';
         case 'shoes':
-            return 'center 100%'; // 신발은 맨 아래쪽
+            return 'center 100%';
         case 'hair':
         case 'top':
         case 'eyes':
@@ -180,7 +179,7 @@ const getBackgroundPosition = (category) => {
         case 'mouth':
             return 'center 25%';
         default:
-            return 'center 55%'; // 기본값 (상의, )
+            return 'center 55%';
     }
 };
 
@@ -200,7 +199,50 @@ const ItemImage = styled.div`
   }
 `;
 
-// --- AvatarPartManager Component ---
+// --- Components ---
+
+function MissionManager() {
+    const [title, setTitle] = useState('');
+    const [reward, setReward] = useState(50);
+
+    const handleCreateMission = async () => {
+        if (!title.trim() || !reward) {
+            return alert('미션 이름과 보상 포인트를 모두 입력해주세요.');
+        }
+        try {
+            await createMission({ title, reward: Number(reward) });
+            alert('새로운 미션이 등록되었습니다!');
+            setTitle('');
+            setReward(50);
+        } catch (error) {
+            console.error("미션 생성 오류:", error);
+            alert('미션 생성 중 오류가 발생했습니다.');
+        }
+    };
+
+    return (
+        <Section>
+            <Title>미션 관리</Title>
+            <InputGroup>
+                <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="미션 이름 (예: 수학 익힘책 5쪽)"
+                    style={{ flex: 1, minWidth: '200px' }}
+                />
+                <ScoreInput
+                    type="number"
+                    value={reward}
+                    onChange={(e) => setReward(e.target.value)}
+                    style={{ width: '80px' }}
+                />
+                <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
+            </InputGroup>
+        </Section>
+    );
+}
+
 function AvatarPartManager() {
     const { avatarParts, fetchInitialData } = useLeagueStore();
     const [files, setFiles] = useState([]);
@@ -240,13 +282,10 @@ function AvatarPartManager() {
 
     const handleSaveAllPrices = async () => {
         if (!window.confirm("현재 탭의 모든 아이템 가격을 저장하시겠습니까?")) return;
-
         try {
-            // prices 객체를 Firestore에 업데이트할 형식으로 변환
             const updates = Object.entries(prices)
                 .filter(([id, price]) => partCategories[activeTab]?.some(part => part.id === id))
                 .map(([id, price]) => ({ id, price: Number(price) }));
-
             await batchUpdateAvatarPartPrices(updates);
             alert('가격이 성공적으로 저장되었습니다.');
             await fetchInitialData();
@@ -313,7 +352,7 @@ function AvatarPartManager() {
             <ItemGrid>
                 {partCategories[activeTab]?.map(part => (
                     <ItemCard key={part.id}>
-                        <ItemImage src={part.src} category={activeTab} />
+                        <ItemImage src={part.src} $category={activeTab} />
                         <InputGroup style={{ marginBottom: '0', justifyContent: 'center' }}>
                             <ScoreInput
                                 type="number"
@@ -326,18 +365,15 @@ function AvatarPartManager() {
                     </ItemCard>
                 ))}
             </ItemGrid>
-
-            {/* ▼▼▼▼▼ 전체 저장 버튼을 추가합니다 ▼▼▼▼▼ */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
                 <SaveButton onClick={handleSaveAllPrices}>
-                    {activeTab} 가격 저장
+                    {activeTab} 탭 전체 가격 저장
                 </SaveButton>
             </div>
         </Section>
     );
 }
 
-// --- RoleManager Component ---
 function RoleManager() {
     const { users, players, linkPlayer } = useLeagueStore();
     const [selectedUser, setSelectedUser] = useState('');
@@ -356,7 +392,6 @@ function RoleManager() {
     return (
         <Section>
             <Title>사용자 역할 관리</Title>
-            <p>학생이 리그 참가 신청을 하면 '로그인한 사용자' 목록에 나타납니다. 해당 사용자와 선수를 연결하고 역할을 부여하세요.</p>
             <InputGroup>
                 <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
                     <option value="">로그인한 사용자 선택</option>
@@ -372,7 +407,7 @@ function RoleManager() {
                     <option value="recorder">기록원</option>
                     <option value="referee">학생 심판</option>
                 </select>
-                <SaveButton onClick={handleLink}>연결 및 역할 부여</SaveButton>
+                <SaveButton onClick={handleLink}>연결</SaveButton>
             </InputGroup>
             <h4>연결된 선수 목록</h4>
             <List>
@@ -382,7 +417,7 @@ function RoleManager() {
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                             <strong>{p.role}</strong>
                             <Link to={`/profile/${p.id}`}>
-                                <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
+                                <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필</StyledButton>
                             </Link>
                         </div>
                     </ListItem>
@@ -392,7 +427,6 @@ function RoleManager() {
     );
 }
 
-// --- MatchRow Component ---
 function MatchRow({ match }) {
     const { teams, saveScores, currentSeason } = useLeagueStore();
     const [scoreA, setScoreA] = useState(match.teamA_score ?? '');
@@ -419,15 +453,13 @@ function MatchRow({ match }) {
     );
 }
 
-// --- AdminPage Component ---
 function AdminPage() {
     const {
         players, teams, matches, removePlayer,
         addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
         autoAssignTeams, generateSchedule, batchCreateTeams,
         leagueType, setLeagueType,
-        currentSeason, startSeason, endSeason,
-        updateSeason,
+        currentSeason, startSeason, endSeason, updateSeason,
     } = useLeagueStore();
     const isNotPreparing = currentSeason?.status !== 'preparing';
     const [newTeamName, setNewTeamName] = useState('');
@@ -485,6 +517,7 @@ function AdminPage() {
     return (
         <AdminWrapper>
             <h1>관리자 페이지</h1>
+            <MissionManager />
             <AvatarPartManager />
             <RoleManager />
             <Section>

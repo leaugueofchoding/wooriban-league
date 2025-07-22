@@ -17,7 +17,9 @@ import {
     updateSeason,
     getUsers,
     linkPlayerToAuth,
-    getAvatarParts // getAvatarParts import 추가
+    getAvatarParts,
+    getMissions, // getMissions import
+    getMissionSubmissions
 } from '../api/firebase';
 
 export const useLeagueStore = create((set, get) => ({
@@ -26,10 +28,13 @@ export const useLeagueStore = create((set, get) => ({
     teams: [],
     matches: [],
     users: [],
-    avatarParts: [], // 아바타 파츠를 저장할 상태 추가
+    avatarParts: [],
+    missions: [], // missions 상태 추가
+    missionSubmissions: [], // missionSubmissions 상태 추가
     currentSeason: null,
     isLoading: true,
     leagueType: 'mixed',
+
 
     setLeagueType: (type) => set({ leagueType: type }),
 
@@ -41,15 +46,18 @@ export const useLeagueStore = create((set, get) => ({
 
             if (!activeSeason) {
                 console.log("활성화된 시즌이 없습니다.");
-                return set({ isLoading: false, players: [], teams: [], matches: [], users: [], avatarParts: [] });
+                return set({ isLoading: false, players: [], teams: [], matches: [], users: [], avatarParts: [], missions: [] });
             }
 
-            const [playersData, teamsData, matchesData, usersData, avatarPartsData] = await Promise.all([
+            // ▼▼▼▼▼ 이 부분의 변수 목록을 수정했습니다 ▼▼▼▼▼
+            const [playersData, teamsData, matchesData, usersData, avatarPartsData, missionsData, submissionsData] = await Promise.all([
                 getPlayers(),
                 getTeams(activeSeason.id),
                 getMatches(activeSeason.id),
                 getUsers(),
-                getAvatarParts() // avatarParts 데이터도 함께 불러옵니다.
+                getAvatarParts(),
+                getMissions(),
+                getMissionSubmissions() // 제출 기록 불러오기
             ]);
 
             set({
@@ -57,7 +65,9 @@ export const useLeagueStore = create((set, get) => ({
                 teams: teamsData,
                 matches: matchesData,
                 users: usersData,
-                avatarParts: avatarPartsData, // 상태에 저장
+                avatarParts: avatarPartsData,
+                missions: missionsData,
+                missionSubmissions: submissionsData, // submissionsData를 상태에 저장
                 currentSeason: activeSeason,
                 isLoading: false,
             });

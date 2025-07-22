@@ -34,18 +34,17 @@ const ItemCard = styled.div`
 `;
 
 const getBackgroundPosition = (category) => {
-    switch (category) {
-        case 'bottom': return 'center 75%';
-        case 'shoes': return 'center 100%';
-        case 'hair': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
-        case 'top':
-        default: return 'center 55%';
-    }
+  switch (category) {
+    case 'bottom': return 'center 75%';
+    case 'shoes': return 'center 100%';
+    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+    default: return 'center 55%';
+  }
 };
 
 const ItemImage = styled.div`
-  width: 150px;
-  height: 150px;
+  width: 100px;
+  height: 100px;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
@@ -53,21 +52,11 @@ const ItemImage = styled.div`
   background-repeat: no-repeat;
   background-color: #e9ecef;
   transition: background-size 0.2s ease-in-out;
-  background-position: ${props => getBackgroundPosition(props.category)};
+  background-position: ${props => getBackgroundPosition(props.$category)};
   &:hover {
     background-size: 220%;
   }
 `;
-
-const LoginPrompt = styled.div`
-  text-align: center;
-  padding: 2rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  margin-top: 2rem;
-  font-size: 1.1rem;
-`;
-
 
 const ItemPrice = styled.div`
   font-size: 1.1rem;
@@ -110,70 +99,101 @@ const TabButton = styled.button`
   cursor: pointer;
 `;
 
+const LoginPrompt = styled.div`
+  text-align: center;
+  padding: 2rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin-top: 2rem;
+  font-size: 1.1rem;
+`;
+
 function ShopPage() {
-    const { players, avatarParts, fetchInitialData } = useLeagueStore();
-    const currentUser = auth.currentUser;
-    const [activeTab, setActiveTab] = useState('all');
-    const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
+  const { players, avatarParts, fetchInitialData } = useLeagueStore();
+  const currentUser = auth.currentUser;
+  const [activeTab, setActiveTab] = useState('all');
 
-    const partCategories = useMemo(() => {
-        const categories = avatarParts.reduce((acc, part) => {
-            if (part.price > 0) acc.add(part.category);
-            return acc;
-        }, new Set());
-        return ['all', ...Array.from(categories).sort()];
-    }, [avatarParts]);
+  const myPlayerData = useMemo(() => {
+    return players.find(p => p.authUid === currentUser?.uid);
+  }, [players, currentUser]);
 
-    const itemsForSale = useMemo(() => {
-        let items = avatarParts.filter(part => part.price > 0);
-        if (activeTab !== 'all') {
-            items = items.filter(part => part.category === activeTab);
-        }
-        return items;
-    }, [avatarParts, activeTab]);
+  const partCategories = useMemo(() => {
+    const categories = avatarParts.reduce((acc, part) => {
+      if (part.price > 0) acc.add(part.category);
+      return acc;
+    }, new Set());
+    return ['all', ...Array.from(categories).sort()];
+  }, [avatarParts]);
 
-    const handleBuy = async (part) => { /* ... 이전과 동일 ... */ };
-    const myItems = myPlayerData?.ownedParts || [];
-    const isAdmin = myPlayerData?.role === 'admin'; // 관리자인지 확인
+  const itemsForSale = useMemo(() => {
+    let items = avatarParts.filter(part => part.price > 0);
+    if (activeTab !== 'all') {
+      items = items.filter(part => part.category === activeTab);
+    }
+    return items;
+  }, [avatarParts, activeTab]);
 
+  const handleBuy = async (part) => {
+    // 이중 안전장치: myPlayerData가 확실히 있을 때만 구매 로직 실행
+    if (!myPlayerData) {
+      alert('플레이어 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    if (!window.confirm(`'${part.id}' 아이템을 ${part.price}P에 구매하시겠습니까?`)) return;
+    try {
+      const successMessage = await buyAvatarPart(myPlayerData.id, part);
+      alert(successMessage);
+      await fetchInitialData();
+    } catch (error) {
+      alert(`구매 실패: ${error}`);
+    }
+  };
 
-    // ▼▼▼▼▼ 로그인 상태에 따라 다른 UI를 보여주도록 수정 ▼▼▼▼▼
-    return (
-        <ShopWrapper>
-            <Title>✨ 아이템 상점 ✨</Title>
-            {!currentUser ? (
-                <LoginPrompt>아이템을 구매하려면 로그인이 필요합니다.</LoginPrompt>
-            ) : (
-                <>
-                    <p style={{ textAlign: 'center', fontSize: '1.2rem' }}>
-                        내 포인트: <strong>💰 {myPlayerData?.points || 0} P</strong>
-                    </p>
-                    <TabContainer>
-                        {partCategories.map(category => (
-                            <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
-                                {category === 'all' ? `전체` : category}
-                            </TabButton>
-                        ))}
-                    </TabContainer>
-                    <ItemGrid>
-                        {itemsForSale.map(part => {
-                            // 관리자이거나, 이미 소유한 아이템인지 확인
-                            const isOwnedOrAdmin = isAdmin || myItems.includes(part.id);
-                            return (
-                                <ItemCard key={part.id}>
-                                    <ItemImage src={part.src} $category={part.category} />
-                                    <ItemPrice>💰 {part.price} P</ItemPrice>
-                                    <BuyButton onClick={() => handleBuy(part)} disabled={isOwnedOrAdmin}>
-                                        {isOwnedOrAdmin ? '소유함' : '구매하기'}
-                                    </BuyButton>
-                                </ItemCard>
-                            );
-                        })}
-                    </ItemGrid>
-                </>
-            )}
-        </ShopWrapper>
-    );
+  const myItems = myPlayerData?.ownedParts || [];
+  const isAdmin = myPlayerData?.role === 'admin';
+
+  return (
+    <ShopWrapper>
+      <Title>✨ 아이템 상점 ✨</Title>
+      {!currentUser ? (
+        <LoginPrompt>아이템을 구매하려면 로그인이 필요합니다.</LoginPrompt>
+      ) : (
+        <>
+          <p style={{ textAlign: 'center', fontSize: '1.2rem' }}>
+            내 포인트: <strong>💰 {myPlayerData?.points === undefined ? '불러오는 중...' : `${myPlayerData.points} P`}</strong>
+          </p>
+          <TabContainer>
+            {partCategories.map(category => (
+              <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
+                {category === 'all' ? `전체` : category}
+              </TabButton>
+            ))}
+          </TabContainer>
+          <ItemGrid>
+            {itemsForSale.map(part => {
+              // 플레이어 데이터가 없거나, 관리자이거나, 이미 소유했다면 버튼 비활성화
+              const isButtonDisabled = !myPlayerData || isAdmin || myItems.includes(part.id);
+
+              let buttonText = '구매하기';
+              if (!myPlayerData) buttonText = '정보 확인 중...';
+              else if (isAdmin) buttonText = '관리자';
+              else if (myItems.includes(part.id)) buttonText = '소유함';
+
+              return (
+                <ItemCard key={part.id}>
+                  <ItemImage src={part.src} $category={part.category} />
+                  <ItemPrice>💰 {part.price} P</ItemPrice>
+                  <BuyButton onClick={() => handleBuy(part)} disabled={isButtonDisabled}>
+                    {buttonText}
+                  </BuyButton>
+                </ItemCard>
+              );
+            })}
+          </ItemGrid>
+        </>
+      )}
+    </ShopWrapper>
+  );
 }
 
 export default ShopPage;
