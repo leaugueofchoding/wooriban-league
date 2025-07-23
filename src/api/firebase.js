@@ -510,3 +510,67 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
     throw error;
   }
 }
+
+export async function updatePlayerName(playerId, newName) {
+  if (!newName || newName.trim().length === 0) {
+    throw new Error("이름을 비워둘 수 없습니다.");
+  }
+  const playerRef = doc(db, "players", playerId);
+  await updateDoc(playerRef, {
+    name: newName.trim(),
+  });
+}
+
+export async function createClassGoal(goalData) {
+  await addDoc(collection(db, "classGoals"), {
+    ...goalData,
+    currentPoints: 0, // 생성 시 현재 포인트는 0
+    status: "active",
+    createdAt: serverTimestamp(),
+  });
+}
+
+// [신규] 현재 진행 중인 학급 목표들을 불러오는 함수
+export async function getActiveGoals() {
+  const goalsRef = collection(db, "classGoals");
+  const q = query(goalsRef, where("status", "==", "active"), orderBy("createdAt"));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+// [신규] 학생이 공동 목표에 포인트를 기부하는 함수
+export async function donatePointsToGoal(playerId, goalId, amount) {
+  if (amount <= 0) {
+    throw new Error("기부할 포인트를 올바르게 입력해주세요.");
+  }
+
+  const playerRef = doc(db, "players", playerId);
+  const goalRef = doc(db, "classGoals", goalId);
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    const goalDoc = await transaction.get(goalRef);
+
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+    if (!goalDoc.exists()) throw new Error("존재하지 않는 목표입니다.");
+
+    const playerData = playerDoc.data();
+    if (playerData.points < amount) {
+      throw new Error("포인트가 부족합니다.");
+    }
+
+    // 1. 플레이어 포인트 차감
+    transaction.update(playerRef, { points: increment(-amount) });
+
+    // 2. 공동 목표 포인트 증가
+    transaction.update(goalRef, { currentPoints: increment(amount) });
+
+    // 3. 포인트 변동 내역 기록 (addPointHistory 헬퍼 함수 사용)
+    addPointHistory(
+      playerData.authUid,
+      playerData.name,
+      -amount,
+      `'${goalDoc.data().title}' 목표에 기부`
+    );
+  });
+}

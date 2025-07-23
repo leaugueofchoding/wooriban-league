@@ -13,7 +13,9 @@ import {
     batchUpdateSaleInfo,
     batchEndSale,
     updateAvatarPartDisplayName,
-    batchUpdateSaleDays
+    batchUpdateSaleDays,
+    createClassGoal,
+    getActiveGoals
 } from '../api/firebase.js';
 
 
@@ -268,6 +270,76 @@ const PageButton = styled.button`
 `;
 
 // --- Components ---
+
+function GoalManager() {
+    const { fetchInitialData } = useLeagueStore();
+    const [title, setTitle] = useState('');
+    const [targetPoints, setTargetPoints] = useState(10000);
+    const [activeGoals, setActiveGoals] = useState([]);
+
+    useEffect(() => {
+        const fetchGoals = async () => {
+            const goals = await getActiveGoals();
+            setActiveGoals(goals);
+        };
+        fetchGoals();
+    }, []);
+
+    const handleCreateGoal = async () => {
+        if (!title.trim() || targetPoints <= 0) {
+            return alert('목표 이름과 올바른 목표 포인트를 입력해주세요.');
+        }
+        try {
+            await createClassGoal({ title, targetPoints: Number(targetPoints) });
+            alert('새로운 학급 목표가 설정되었습니다!');
+            setTitle('');
+            setTargetPoints(10000);
+            const goals = await getActiveGoals(); // 목록 새로고침
+            setActiveGoals(goals);
+            // fetchInitialData(); // 필요 시 전체 데이터 갱신
+        } catch (error) {
+            alert(`목표 생성 실패: ${error.message}`);
+        }
+    };
+
+    return (
+        <Section>
+            <Title>학급 목표 관리</Title>
+            <InputGroup>
+                <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="목표 이름 (예: 2단계-영화 보는 날)"
+                    style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
+                />
+                <ScoreInput
+                    type="number"
+                    value={targetPoints}
+                    onChange={(e) => setTargetPoints(e.target.value)}
+                    style={{ width: '120px' }}
+                />
+                <SaveButton onClick={handleCreateGoal}>새 목표 설정</SaveButton>
+            </InputGroup>
+
+            <div style={{ marginTop: '2rem' }}>
+                <h4>진행 중인 목표 목록</h4>
+                <List>
+                    {activeGoals.length > 0 ? (
+                        activeGoals.map(goal => (
+                            <ListItem key={goal.id}>
+                                <span>{goal.title}</span>
+                                <span>{goal.currentPoints} / {goal.targetPoints} P</span>
+                            </ListItem>
+                        ))
+                    ) : (
+                        <p>현재 진행 중인 학급 목표가 없습니다.</p>
+                    )}
+                </List>
+            </div>
+        </Section>
+    );
+}
 
 function MissionManager() {
     const {
@@ -890,6 +962,8 @@ function AdminPage() {
             <AvatarPartManager />
             <RoleManager />
             <PointManager /> {/* 포인트 관리자 컴포넌트 추가 */}
+            <GoalManager /> {/* 👈 [추가] 이 줄을 추가해주세요. */}
+
             <Section>
                 <Title>시즌 관리</Title>
                 {currentSeason ? (

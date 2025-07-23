@@ -1,15 +1,14 @@
-// src/pages/ProfilePage.jsx
-
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db } from '../api/firebase.js';
+// 👇 [수정] updatePlayerName 함수를 import 합니다.
+import { auth, db, updatePlayerName } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
 
-// --- 스타일 컴포넌트 (이전과 동일) ---
+// --- Styled Components ---
 const AvatarDisplay = styled.div`
   width: 150px;
   height: 150px;
@@ -37,6 +36,13 @@ const ProfileWrapper = styled.div`
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   text-align: center;
+`;
+const UserNameContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 38px; /* 편집 <-> 보기 모드 전환 시 높이 변화 방지 */
 `;
 const UserName = styled.h2`
   margin: 0;
@@ -71,10 +77,7 @@ const StyledLink = styled(Link)`
   font-weight: 500;
   text-decoration: none;
   color: #333;
-
-  &:hover {
-    background-color: #f0f0f0;
-  }
+  &:hover { background-color: #f0f0f0; }
 `;
 const Button = styled.button`
   padding: 0.6em 1.2em;
@@ -87,29 +90,35 @@ const Button = styled.button`
   background-color: white;
   font-family: inherit;
   font-size: inherit;
-
-  &:hover {
-    background-color: #f0f0f0;
-  }
+  &:hover { background-color: #f0f0f0; }
 `;
-// --- 스타일 컴포넌트 끝 ---
 
 function ProfilePage() {
-  const { players, avatarParts } = useLeagueStore();
+  const { players, avatarParts, fetchInitialData } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [pointHistory, setPointHistory] = useState([]);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
 
+  useEffect(() => {
+    if (playerData) {
+      setNewName(playerData.name);
+    }
+  }, [playerData]);
+
   const selectedPartUrls = useMemo(() => {
-    if (!playerData?.avatarConfig || !avatarParts.length) return [];
+    if (!playerData || !playerData.avatarConfig || !avatarParts.length) {
+      return [];
+    }
     const partCategories = avatarParts.reduce((acc, part) => {
       if (!acc[part.category]) acc[part.category] = [];
       acc[part.category].push(part);
@@ -122,7 +131,6 @@ function ProfilePage() {
   }, [playerData, avatarParts]);
 
   const fetchPointHistory = async () => {
-    // 👇 **[수정됨] playerData와 playerData.authUid가 모두 존재하는지 확인** 👇
     if (!playerData || !playerData.authUid) {
       console.error("플레이어 정보를 찾을 수 없거나 authUid가 없습니다.");
       return;
@@ -137,14 +145,27 @@ function ProfilePage() {
       const history = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPointHistory(history);
     } catch (error) {
-      console.error("포인트 내역 로딩 실패:", error); // 기존 console.log를 error로 변경
-      // Firebase 색인 오류는 콘솔에 이미 링크가 제공되므로 alert는 제거합니다.
+      console.error("포인트 내역 로딩 실패:", error);
     }
   };
 
   const handleOpenModal = () => {
     fetchPointHistory();
     setIsHistoryModalOpen(true);
+  };
+
+  const handleSaveName = async () => {
+    if (!newName.trim()) {
+      return alert('이름을 입력해주세요.');
+    }
+    try {
+      await updatePlayerName(playerData.id, newName);
+      alert('이름이 변경되었습니다.');
+      setIsEditingName(false);
+      fetchInitialData();
+    } catch (error) {
+      alert(`이름 변경 실패: ${error.message}`);
+    }
   };
 
   if (!playerData) {
@@ -168,14 +189,33 @@ function ProfilePage() {
         {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
       </AvatarDisplay>
 
-      <UserName>{playerData.name}</UserName>
+      <UserNameContainer>
+        {isEditingName ? (
+          <>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              style={{ fontSize: '1.5rem', fontWeight: 'bold', textAlign: 'center', width: '200px', padding: '0.25rem' }}
+            />
+            <Button onClick={handleSaveName} style={{ backgroundColor: '#28a745', color: 'white' }}>저장</Button>
+            <Button onClick={() => setIsEditingName(false)} style={{ backgroundColor: '#6c757d', color: 'white' }}>취소</Button>
+          </>
+        ) : (
+          <>
+            <UserName>{playerData.name}</UserName>
+            {isMyProfile && (
+              <Button onClick={() => setIsEditingName(true)} style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}>✏️</Button>
+            )}
+          </>
+        )}
+      </UserNameContainer>
+
       {playerData.role && <UserRole>{playerData.role}</UserRole>}
       <PointDisplay>💰 {playerData.points || 0} P</PointDisplay>
 
       <ButtonGroup>
-        {isMyProfile && (
-          <Button onClick={handleOpenModal}>포인트 내역</Button>
-        )}
+        {isMyProfile && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
         {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
         <Button onClick={() => navigate(-1)}>나가기</Button>
       </ButtonGroup>
