@@ -57,15 +57,32 @@ export async function buyAvatarPart(playerId, part) {
   }
   const playerData = playerDoc.data();
 
+  // 👇 [수정] 세일 여부 및 기간을 확인하는 로직 추가
+  const now = new Date();
+  let finalPrice = part.price; // 기본 가격을 정가로 설정
+  let isCurrentlyOnSale = false;
+
+  if (part.isSale && part.saleStartDate && part.saleEndDate) {
+    // Firestore Timestamp를 JS Date 객체로 변환
+    const startDate = part.saleStartDate.toDate();
+    const endDate = part.saleEndDate.toDate();
+
+    if (now >= startDate && now <= endDate) {
+      finalPrice = part.salePrice; // 할인 기간이면 할인가 적용
+      isCurrentlyOnSale = true;
+    }
+  }
+
   await runTransaction(db, async (transaction) => {
-    if (playerData.points < part.price) {
+    // 👇 [수정] 최종 가격(finalPrice)으로 포인트 확인
+    if (playerData.points < finalPrice) {
       throw "포인트가 부족합니다.";
     }
     if (playerData.ownedParts?.includes(part.id)) {
       throw "이미 소유하고 있는 아이템입니다.";
     }
 
-    const newPoints = playerData.points - part.price;
+    const newPoints = playerData.points - finalPrice; // 최종 가격으로 포인트 차감
     transaction.update(playerRef, {
       points: newPoints,
       ownedParts: arrayUnion(part.id)
@@ -76,7 +93,7 @@ export async function buyAvatarPart(playerId, part) {
   await addPointHistory(
     playerData.authUid,
     playerData.name,
-    -part.price,
+    -finalPrice, // 차감된 최종 가격으로 기록
     `${part.id} 구매`
   );
   return "구매에 성공했습니다!";
@@ -226,6 +243,43 @@ export async function batchUpdateAvatarPartPrices(updates) {
     const partRef = doc(db, 'avatarParts', item.id);
     batch.update(partRef, { price: item.price });
   });
+  await batch.commit();
+}
+
+export async function batchUpdateSaleInfo(partIds, salePercent, startDate, endDate) {
+  const batch = writeBatch(db);
+
+  for (const partId of partIds) {
+    const partRef = doc(db, "avatarParts", partId);
+    const partSnap = await getDoc(partRef);
+
+    if (partSnap.exists()) {
+      const partData = partSnap.data();
+      const originalPrice = partData.price; // 기존 price를 정가로 사용
+      const salePrice = Math.floor(originalPrice * (1 - salePercent / 100)); // 할인율 적용, 소수점 버림
+
+      batch.update(partRef, {
+        isSale: true,
+        originalPrice: originalPrice, // 만약을 위해 정가도 기록
+        salePrice: salePrice,
+        saleStartDate: startDate, // 시작일 Timestamp
+        saleEndDate: endDate,     // 종료일 Timestamp
+      });
+    }
+  }
+  await batch.commit();
+}
+
+// 👇 [신규 추가] 세일을 종료하는 함수
+export async function batchEndSale(partIds) {
+  const batch = writeBatch(db);
+  for (const partId of partIds) {
+    const partRef = doc(db, "avatarParts", partId);
+    batch.update(partRef, {
+      isSale: false,
+      salePrice: null, // 할인 가격 필드 초기화
+    });
+  }
   await batch.commit();
 }
 
@@ -385,3 +439,4 @@ export async function deleteMission(missionId) {
   const missionRef = doc(db, 'missions', missionId);
   await deleteDoc(missionRef);
 }
+
