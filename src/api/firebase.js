@@ -1,10 +1,12 @@
+// src/api/firebase.js
+
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore, collection, getDocs, query, where, doc,
   updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc,
-  runTransaction, arrayUnion, getDoc, increment
+  runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp
 } from "firebase/firestore";
 
 // Firebase 구성 정보
@@ -12,7 +14,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
   authDomain: "wooriban-league.firebaseapp.com",
   projectId: "wooriban-league",
-  storageBucket: "wooriban-league.appspot.com", // .firebasestorage.app 에서 .appspot.com 으로 변경될 수 있습니다.
+  storageBucket: "wooriban-league.appspot.com",
   messagingSenderId: "1038292353129",
   appId: "1:1038292353129:web:de74062d2fb8046be7e2f8"
 };
@@ -23,7 +25,133 @@ const storage = getStorage(app);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// --- 사용자 프로필 및 역할 ---
+
+// --- 포인트 기록 헬퍼 함수 (파일 내부로 통합) ---
+const addPointHistory = async (playerId, playerName, changeAmount, reason) => {
+  try {
+    await addDoc(collection(db, 'point_history'), {
+      playerId,
+      playerName,
+      changeAmount,
+      reason,
+      timestamp: serverTimestamp(),
+    });
+    console.log(`포인트 내역 기록: ${playerName}, ${changeAmount}P, ${reason}`);
+  } catch (error) {
+    console.error('포인트 변동 내역 기록 중 오류 발생:', error);
+  }
+};
+
+
+// --- 상점 및 아바타 ---
+export async function updatePlayerAvatar(playerId, avatarConfig) {
+  const playerRef = doc(db, 'players', playerId);
+  await updateDoc(playerRef, { avatarConfig });
+}
+
+export async function buyAvatarPart(playerId, part) {
+  const playerRef = doc(db, 'players', playerId);
+  const playerDoc = await getDoc(playerRef);
+  if (!playerDoc.exists()) {
+    throw new Error("플레이어 정보를 찾을 수 없습니다.");
+  }
+  const playerData = playerDoc.data();
+
+  await runTransaction(db, async (transaction) => {
+    if (playerData.points < part.price) {
+      throw "포인트가 부족합니다.";
+    }
+    if (playerData.ownedParts?.includes(part.id)) {
+      throw "이미 소유하고 있는 아이템입니다.";
+    }
+
+    const newPoints = playerData.points - part.price;
+    transaction.update(playerRef, {
+      points: newPoints,
+      ownedParts: arrayUnion(part.id)
+    });
+  });
+
+  // 포인트 기록
+  await addPointHistory(
+    playerData.authUid,
+    playerData.name,
+    -part.price,
+    `${part.id} 구매`
+  );
+  return "구매에 성공했습니다!";
+}
+
+// --- 미션 관리 ---
+export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
+  const batch = writeBatch(db);
+  const missionRef = doc(db, 'missions', missionId);
+  const missionSnap = await getDoc(missionRef);
+  if (!missionSnap.exists()) {
+    throw new Error("미션을 찾을 수 없습니다.");
+  }
+  const missionData = missionSnap.data();
+
+  for (const studentId of studentIds) {
+    const playerRef = doc(db, 'players', studentId);
+    const playerDoc = await getDoc(playerRef);
+
+    if (playerDoc.exists()) {
+      const playerData = playerDoc.data();
+
+      // Submission 문서 생성
+      const submissionRef = doc(collection(db, 'missionSubmissions'));
+      batch.set(submissionRef, {
+        missionId,
+        studentId,
+        checkedBy: recorderId,
+        status: 'approved',
+        createdAt: Timestamp.now(), // Firestore의 현재 시간 기록
+      });
+
+      // 포인트 업데이트
+      batch.update(playerRef, { points: increment(reward) });
+
+      // 포인트 기록
+      await addPointHistory(
+        playerData.authUid,
+        playerData.name,
+        reward,
+        `${missionData.title} 미션 완료`
+      );
+    }
+  }
+
+  await batch.commit();
+}
+
+// --- 포인트 수동 조정 ---
+export async function adjustPlayerPoints(playerId, amount, reason) {
+  const playerRef = doc(db, "players", playerId);
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) {
+      throw new Error("해당 플레이어를 찾을 수 없습니다.");
+    }
+
+    transaction.update(playerRef, { points: increment(amount) });
+
+    // 포인트 기록 (addPointHistory 헬퍼 함수 사용으로 통일)
+    await addPointHistory(
+      playerDoc.data().authUid,
+      playerDoc.data().name,
+      amount,
+      reason
+    );
+  });
+  console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
+}
+
+
+// --- 이하 기존 함수들 (변경 없음) ---
+
+// ... (getUsers, linkPlayerToAuth, addPlayer 등 기존 함수들을 여기에 그대로 유지)
 export async function updateUserProfile(user) {
   const userRef = doc(db, 'users', user.uid);
   await setDoc(userRef, {
@@ -45,7 +173,6 @@ export async function linkPlayerToAuth(playerId, authUid, role) {
   await updateDoc(playerRef, { authUid, role });
 }
 
-// --- 선수 관리 ---
 export async function addPlayer(playerData) {
   const playerRef = doc(db, 'players', playerData.authUid);
   await setDoc(playerRef, playerData);
@@ -61,7 +188,6 @@ export async function deletePlayer(playerId) {
   await deleteDoc(doc(db, 'players', playerId));
 }
 
-// --- 아바타 파츠 관리 ---
 export async function uploadAvatarPart(file, category) {
   const storageRef = ref(storage, `avatar-parts/${category}/${file.name}`);
   const uploadResult = await uploadBytes(storageRef, file);
@@ -96,7 +222,6 @@ export async function batchUpdateAvatarPartPrices(updates) {
   await batch.commit();
 }
 
-// --- 팀 관리 ---
 export async function getTeams(seasonId) {
   const teamsRef = collection(db, 'teams');
   const q = query(teamsRef, where("seasonId", "==", seasonId));
@@ -138,7 +263,6 @@ export async function batchUpdateTeams(teamUpdates) {
   await batch.commit();
 }
 
-// --- 경기 관리 ---
 export async function getMatches(seasonId) {
   const matchesRef = collection(db, 'matches');
   const q = query(matchesRef, where("seasonId", "==", seasonId));
@@ -177,7 +301,6 @@ export async function batchAddMatches(newMatchesData) {
   await batch.commit();
 }
 
-// --- 시즌 관리 ---
 export async function getSeasons() {
   const seasonsRef = collection(db, 'seasons');
   const q = query(seasonsRef, orderBy("createdAt", "desc"));
@@ -188,45 +311,6 @@ export async function getSeasons() {
 export async function updateSeason(seasonId, dataToUpdate) {
   const seasonDoc = doc(db, 'seasons', seasonId);
   await updateDoc(seasonDoc, dataToUpdate);
-}
-
-// --- 상점 및 아바타 ---
-export async function updatePlayerAvatar(playerId, avatarConfig) {
-  const playerRef = doc(db, 'players', playerId);
-  await updateDoc(playerRef, { avatarConfig });
-}
-
-export async function buyAvatarPart(playerId, part) {
-  const playerRef = doc(db, 'players', playerId);
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const playerDoc = await transaction.get(playerRef);
-      if (!playerDoc.exists()) {
-        throw "플레이어 정보를 찾을 수 없습니다.";
-      }
-
-      const currentPoints = playerDoc.data().points || 0;
-      const ownedParts = playerDoc.data().ownedParts || [];
-
-      if (ownedParts.includes(part.id)) {
-        throw "이미 소유하고 있는 아이템입니다.";
-      }
-      if (currentPoints < part.price) {
-        throw "포인트가 부족합니다.";
-      }
-
-      const newPoints = currentPoints - part.price;
-      transaction.update(playerRef, {
-        points: newPoints,
-        ownedParts: arrayUnion(part.id)
-      });
-    });
-    return "구매에 성공했습니다!";
-  } catch (e) {
-    console.error("구매 트랜잭션 실패: ", e);
-    throw e;
-  }
 }
 
 export async function createPlayerFromUser(user) {
@@ -245,7 +329,6 @@ export async function createPlayerFromUser(user) {
   await setDoc(playerRef, playerData);
 }
 
-// --- 미션 관리 ---
 export async function createMission(missionData) {
   const missionsRef = collection(db, 'missions');
   await addDoc(missionsRef, {
@@ -286,26 +369,6 @@ export async function getMissionSubmissions() {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
-  const batch = writeBatch(db);
-
-  for (const studentId of studentIds) {
-    const submissionRef = doc(collection(db, 'missionSubmissions'));
-    batch.set(submissionRef, {
-      missionId,
-      studentId,
-      checkedBy: recorderId,
-      status: 'approved',
-      createdAt: new Date(),
-    });
-
-    const playerRef = doc(db, 'players', studentId);
-    batch.update(playerRef, { points: increment(reward) });
-  }
-
-  await batch.commit();
-}
-
 export async function updateMissionStatus(missionId, status) {
   const missionRef = doc(db, 'missions', missionId);
   await updateDoc(missionRef, { status });
@@ -314,36 +377,4 @@ export async function updateMissionStatus(missionId, status) {
 export async function deleteMission(missionId) {
   const missionRef = doc(db, 'missions', missionId);
   await deleteDoc(missionRef);
-}
-
-// --- 포인트 수동 조정 ---
-export async function adjustPlayerPoints(playerId, amount, reason) {
-  const playerRef = doc(db, "players", playerId);
-  const historyCollectionRef = collection(db, "point_history");
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const playerDoc = await transaction.get(playerRef);
-      if (!playerDoc.exists()) {
-        throw new Error("해당 플레이어를 찾을 수 없습니다.");
-      }
-
-      transaction.update(playerRef, { points: increment(amount) });
-
-      const newHistoryDocRef = doc(historyCollectionRef);
-      transaction.set(newHistoryDocRef, {
-        playerId: playerId,
-        playerName: playerDoc.data().name || '이름없음',
-        amount: amount,
-        reason: reason,
-        type: 'admin_manual',
-        adjustedBy: auth.currentUser?.uid,
-        timestamp: new Date()
-      });
-    });
-    console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
-  } catch (error) {
-    console.error("포인트 조정 트랜잭션 실패:", error);
-    throw error;
-  }
 }
