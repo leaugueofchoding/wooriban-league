@@ -440,3 +440,7 @@ export async function deleteMission(missionId) {
   await deleteDoc(missionRef);
 }
 
+export async function updateAvatarPartDisplayName(partId, displayName) {
+  const partRef = doc(db, "avatarParts", partId);
+  await updateDoc(partRef, { displayName });
+}

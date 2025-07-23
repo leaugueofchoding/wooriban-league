@@ -11,7 +11,8 @@ import {
     createMission,
     updateAvatarPartStatus,
     batchUpdateSaleInfo,
-    batchEndSale
+    batchEndSale,
+    updateAvatarPartDisplayName
 } from '../api/firebase.js';
 
 
@@ -204,7 +205,8 @@ const getBackgroundPosition = (category) => {
     switch (category) {
         case 'bottom': return 'center 75%';
         case 'shoes': return 'center 100%';
-        case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+        case 'hair': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+        case 'top':
         default: return 'center 55%';
     }
 };
@@ -351,6 +353,7 @@ function AvatarPartManager() {
     const [startDate, setStartDate] = useState(new Date());
     const [endDate, setEndDate] = useState(new Date());
     const [isSaleMode, setIsSaleMode] = useState(false);
+    const [displayNames, setDisplayNames] = useState({}); // 아이템 이름 state 추가
 
     const partCategories = useMemo(() => {
         return avatarParts.reduce((acc, part) => {
@@ -368,11 +371,14 @@ function AvatarPartManager() {
     }, [sortedCategories, activeTab]);
 
     useEffect(() => {
-        const initialPrices = avatarParts.reduce((acc, part) => {
-            acc[part.id] = part.price || 0;
-            return acc;
-        }, {});
+        const initialPrices = {};
+        const initialDisplayNames = {}; // 표시 이름 state 초기화
+        avatarParts.forEach(part => {
+            initialPrices[part.id] = part.price || 0;
+            initialDisplayNames[part.id] = part.displayName || ''; // part.displayName이 없으면 빈 문자열
+        });
         setPrices(initialPrices);
+        setDisplayNames(initialDisplayNames); // state 설정
     }, [avatarParts]);
 
     const handlePriceChange = (partId, value) => setPrices(prev => ({ ...prev, [partId]: value }));
@@ -459,11 +465,74 @@ function AvatarPartManager() {
         }
     };
 
+    const handleSelectAll = () => {
+        const currentTabItems = partCategories[activeTab]?.map(part => part.id) || [];
+        const allSelected = currentTabItems.length > 0 && currentTabItems.every(id => checkedItems.has(id));
+
+        if (allSelected) {
+            setCheckedItems(new Set());
+        } else {
+            setCheckedItems(new Set(currentTabItems));
+        }
+    };
+
+    // 👇 [추가] 아이템 이름 수정 핸들러
+    const handleDisplayNameChange = (partId, value) => {
+        setDisplayNames(prev => ({ ...prev, [partId]: value }));
+    };
+
+    const handleSaveDisplayName = async (partId) => {
+        const newName = displayNames[partId].trim();
+        try {
+            await updateAvatarPartDisplayName(partId, newName);
+            // 전체 데이터를 다시 불러오는 대신 로컬 스토어만 업데이트하여 UX 개선
+            useLeagueStore.setState(state => ({
+                avatarParts: state.avatarParts.map(part =>
+                    part.id === partId ? { ...part, displayName: newName } : part
+                )
+            }));
+            alert('아이템 이름이 저장되었습니다.');
+        } catch (error) {
+            alert(`이름 저장 실패: ${error.message}`);
+        }
+    };
+
     return (
         <Section>
             <Title>아바타 아이템 관리</Title>
 
-            <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+            <InputGroup style={{ justifyContent: 'flex-start' }}>
+                <SaveButton onClick={() => setIsSaleMode(prev => !prev)} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                    {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
+                </SaveButton>
+            </InputGroup>
+
+            {isSaleMode && (
+                <div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>
+                            전체 선택/해제
+                        </SaveButton>
+                        <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>
+                            {checkedItems.size}개 세일 적용
+                        </SaveButton>
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>할인율(%):</span>
+                        <ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} style={{ width: '100px' }} />
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>시작일:</span>
+                        <DatePicker selected={startDate} onChange={(date) => setStartDate(date)} dateFormat="yyyy/MM/dd" />
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>종료일:</span>
+                        <DatePicker selected={endDate} onChange={(date) => setEndDate(date)} dateFormat="yyyy/MM/dd" />
+                    </InputGroup>
+                </div>
+            )}
+
+            <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
                 <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
                 <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
                     <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
@@ -474,29 +543,6 @@ function AvatarPartManager() {
                     {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
                 </SaveButton>
             </InputGroup>
-
-            <InputGroup>
-                <SaveButton onClick={() => setIsSaleMode(prev => !prev)} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
-                    {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
-                </SaveButton>
-            </InputGroup>
-
-            {isSaleMode && (
-                <div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
-                    <h3 style={{ marginTop: 0 }}>선택 항목 일괄 세일 적용</h3>
-                    <InputGroup>
-                        <span>할인율(%):</span>
-                        <ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} placeholder="예: 30" style={{ width: '100px' }} />
-                        <span>시작일:</span>
-                        <DatePicker selected={startDate} onChange={(date) => setStartDate(date)} dateFormat="yyyy/MM/dd" />
-                        <span>종료일:</span>
-                        <DatePicker selected={endDate} onChange={(date) => setEndDate(date)} dateFormat="yyyy/MM/dd" />
-                        <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>
-                            {checkedItems.size}개 세일 적용
-                        </SaveButton>
-                    </InputGroup>
-                </div>
-            )}
 
             <TabContainer>
                 {sortedCategories.map(category => (
@@ -510,31 +556,35 @@ function AvatarPartManager() {
                 {partCategories[activeTab]?.map(part => {
                     const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < new Date() && new Date() < part.saleEndDate?.toDate();
                     return (
-                        <ItemCard key={part.id} style={{ opacity: part.status === 'hidden' ? 0.6 : 1, border: isCurrentlyOnSale ? '2px solid #dc3545' : '1px solid #dee2e6' }}>
-                            {isSaleMode && (
-                                <div style={{ height: '25px', width: '100%', textAlign: 'center' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={checkedItems.has(part.id)}
-                                        onChange={() => handleCheckboxChange(part.id)}
-                                        style={{ width: '20px', height: '20px' }}
-                                    />
-                                </div>
-                            )}
+                        <ItemCard key={part.id}>
+                            {isSaleMode && (<div style={{ height: '25px' }}>
+                                <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
+                            </div>)}
                             {!isSaleMode && <div style={{ height: '25px' }}></div>}
 
                             <ItemImage src={part.src} $category={activeTab} />
-                            <InputGroup style={{ justifyContent: 'center', marginBottom: 0 }}>
-                                <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '80px', margin: 0 }} />
-                            </InputGroup>
-                            {isCurrentlyOnSale && (
-                                <div style={{ width: '100%', textAlign: 'center', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px', borderRadius: '4px', fontSize: '0.8em', color: 'red', marginTop: '8px' }}>
-                                    <p style={{ margin: 0, fontWeight: 'bold' }}>{part.salePrice}P ({part.originalPrice ? Math.round(100 - (part.salePrice / part.originalPrice * 100)) : ''}%)</p>
-                                    <p style={{ margin: 0 }}>~{part.saleEndDate.toDate().toLocaleDateString()}</p>
-                                    <button onClick={() => handleEndSale(part.id)} style={{ fontSize: '0.8em', padding: '2px 4px', marginTop: '4px', cursor: 'pointer' }}>즉시 종료</button>
-                                </div>
+
+                            {/* 👇 [추가] 아이템 이름 수정 UI */}
+                            <div style={{ display: 'flex', width: '100%', gap: '0.25rem' }}>
+                                <input
+                                    type="text"
+                                    value={displayNames[part.id] || ''}
+                                    onChange={(e) => handleDisplayNameChange(part.id, e.target.value)}
+                                    placeholder={part.id} // 플레이스홀더로 파일명 보여주기
+                                    style={{ width: '100%', textAlign: 'center', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                                />
+                                <SaveButton onClick={() => handleSaveDisplayName(part.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
+                            </div>
+
+                            <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: 0 }} />
+
+                            {isCurrentlyOnSale && (<div style={{ width: '100%', textAlign: 'center', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px', borderRadius: '4px', fontSize: '0.8em', color: 'red' }}>
+                                <p style={{ margin: 0, fontWeight: 'bold' }}>{part.salePrice}P ({part.originalPrice ? Math.round(100 - (part.salePrice / part.originalPrice * 100)) : ''}%)</p>
+                                <p style={{ margin: 0 }}>~{part.saleEndDate.toDate().toLocaleDateString()}</p>
+                                <button onClick={() => handleEndSale(part.id)} style={{ fontSize: '0.8em', padding: '2px 4px', marginTop: '4px', cursor: 'pointer' }}>즉시 종료</button>
+                            </div>
                             )}
-                            <button onClick={() => handleToggleStatus(part)} style={{ padding: '8px 16px', marginTop: '8px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: 'white', backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745' }}>
+                            <button onClick={() => handleToggleStatus(part)} style={{ padding: '8px 16px', marginTop: 'auto', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: 'white', backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745' }}>
                                 {part.status === 'hidden' ? '숨김 상태' : '진열 중'}
                             </button>
                         </ItemCard>
@@ -543,9 +593,7 @@ function AvatarPartManager() {
             </ItemGrid>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                <SaveButton onClick={handleSaveAllPrices}>
-                    {activeTab} 탭 전체 가격 저장
-                </SaveButton>
+                <SaveButton onClick={handleSaveAllPrices}>{activeTab} 탭 전체 가격 저장</SaveButton>
             </div>
         </Section>
     );

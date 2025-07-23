@@ -49,7 +49,15 @@ export const useLeagueStore = create((set, get) => ({
             )
         }));
     },
-    
+
+    updateLocalAvatarPartDisplayName: (partId, newName) => {
+        set(state => ({
+            avatarParts: state.avatarParts.map(part =>
+                part.id === partId ? { ...part, displayName: newName } : part
+            )
+        }));
+    },
+
     fetchInitialData: async () => {
         try {
             set({ isLoading: true });
