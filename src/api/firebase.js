@@ -444,3 +444,14 @@ export async function updateAvatarPartDisplayName(partId, displayName) {
   const partRef = doc(db, "avatarParts", partId);
   await updateDoc(partRef, { displayName });
 }
+
+export async function batchUpdateSaleDays(partIds, saleDays) {
+  const batch = writeBatch(db);
+  for (const partId of partIds) {
+    const partRef = doc(db, "avatarParts", partId);
+    batch.update(partRef, {
+      saleDays: saleDays, // saleDays 필드에 요일 배열 [0, 1, 2...] 저장
+    });
+  }
+  await batch.commit();
+}

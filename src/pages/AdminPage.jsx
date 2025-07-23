@@ -12,7 +12,8 @@ import {
     updateAvatarPartStatus,
     batchUpdateSaleInfo,
     batchEndSale,
-    updateAvatarPartDisplayName
+    updateAvatarPartDisplayName,
+    batchUpdateSaleDays
 } from '../api/firebase.js';
 
 
@@ -241,6 +242,31 @@ const ToggleButton = styled(StyledButton)`
   }
 `;
 
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 2.5rem;
+`;
+
+const PageButton = styled.button`
+  padding: 0.5rem 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background-color: ${props => props.$isActive ? '#007bff' : 'white'};
+  color: ${props => props.$isActive ? 'white' : 'black'};
+  font-weight: bold;
+  cursor: pointer;
+  &:hover {
+    background-color: #f1f3f5;
+  }
+  &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+  }
+`;
+
 // --- Components ---
 
 function MissionManager() {
@@ -343,17 +369,24 @@ function MissionManager() {
 }
 
 function AvatarPartManager() {
-    const { avatarParts, fetchInitialData, updateLocalAvatarPartStatus } = useLeagueStore();
+    const { avatarParts, fetchInitialData, updateLocalAvatarPartStatus, updateLocalAvatarPartDisplayName } = useLeagueStore();
     const [files, setFiles] = useState([]);
     const [uploadCategory, setUploadCategory] = useState('hair');
     const [isUploading, setIsUploading] = useState(false);
     const [prices, setPrices] = useState({});
+    const [displayNames, setDisplayNames] = useState({});
+    const [isSaleMode, setIsSaleMode] = useState(false);
+    const [isSaleDayMode, setIsSaleDayMode] = useState(false);
     const [checkedItems, setCheckedItems] = useState(new Set());
     const [salePercent, setSalePercent] = useState(0);
     const [startDate, setStartDate] = useState(new Date());
     const [endDate, setEndDate] = useState(new Date());
-    const [isSaleMode, setIsSaleMode] = useState(false);
-    const [displayNames, setDisplayNames] = useState({}); // 아이템 이름 state 추가
+    const [selectedDays, setSelectedDays] = useState(new Set());
+
+    // 👇 [추가] 페이지네이션을 위한 state
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 8;
+    const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 
     const partCategories = useMemo(() => {
         return avatarParts.reduce((acc, part) => {
@@ -372,16 +405,55 @@ function AvatarPartManager() {
 
     useEffect(() => {
         const initialPrices = {};
-        const initialDisplayNames = {}; // 표시 이름 state 초기화
+        const initialDisplayNames = {};
         avatarParts.forEach(part => {
             initialPrices[part.id] = part.price || 0;
-            initialDisplayNames[part.id] = part.displayName || ''; // part.displayName이 없으면 빈 문자열
+            initialDisplayNames[part.id] = part.displayName || '';
         });
         setPrices(initialPrices);
-        setDisplayNames(initialDisplayNames); // state 설정
+        setDisplayNames(initialDisplayNames);
     }, [avatarParts]);
 
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab]);
+
+    const currentTabItems = useMemo(() => partCategories[activeTab] || [], [partCategories, activeTab]);
+    const totalPages = Math.ceil(currentTabItems.length / ITEMS_PER_PAGE);
+    const paginatedItems = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        const endIndex = startIndex + ITEMS_PER_PAGE;
+        return currentTabItems.slice(startIndex, endIndex);
+    }, [currentTabItems, currentPage]);
+
     const handlePriceChange = (partId, value) => setPrices(prev => ({ ...prev, [partId]: value }));
+    const handleFileChange = (e) => setFiles(Array.from(e.target.files));
+    const handleCheckboxChange = (partId) => {
+        setCheckedItems(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(partId)) newSet.delete(partId);
+            else newSet.add(partId);
+            return newSet;
+        });
+    };
+    const handleSelectAll = () => {
+        const currentTabItems = partCategories[activeTab]?.map(part => part.id) || [];
+        const allSelected = currentTabItems.length > 0 && currentTabItems.every(id => checkedItems.has(id));
+        if (allSelected) { setCheckedItems(new Set()); }
+        else { setCheckedItems(new Set(currentTabItems)); }
+    };
+    const handleDisplayNameChange = (partId, value) => setDisplayNames(prev => ({ ...prev, [partId]: value }));
+
+    const handleSaveDisplayName = async (partId) => {
+        const newName = displayNames[partId].trim();
+        try {
+            await updateAvatarPartDisplayName(partId, newName);
+            updateLocalAvatarPartDisplayName(partId, newName);
+        } catch (error) {
+            alert(`이름 저장 실패: ${error.message}`);
+            fetchInitialData();
+        }
+    };
 
     const handleSaveAllPrices = async () => {
         if (!window.confirm("현재 탭의 모든 아이템 가격을 저장하시겠습니까?")) return;
@@ -392,12 +464,8 @@ function AvatarPartManager() {
             await batchUpdateAvatarPartPrices(updates);
             alert('가격이 성공적으로 저장되었습니다.');
             await fetchInitialData();
-        } catch (error) {
-            alert('가격 저장 중 오류가 발생했습니다.');
-        }
+        } catch (error) { alert('가격 저장 중 오류가 발생했습니다.'); }
     };
-
-    const handleFileChange = (e) => setFiles(Array.from(e.target.files));
 
     const handleUpload = async () => {
         if (files.length === 0) return alert('파일을 선택해주세요.');
@@ -410,9 +478,7 @@ function AvatarPartManager() {
             await fetchInitialData();
         } catch (error) {
             alert('아이템 업로드 중 오류가 발생했습니다.');
-        } finally {
-            setIsUploading(false);
-        }
+        } finally { setIsUploading(false); }
     };
 
     const handleToggleStatus = async (part) => {
@@ -426,20 +492,10 @@ function AvatarPartManager() {
         }
     };
 
-    const handleCheckboxChange = (partId) => {
-        setCheckedItems(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(partId)) newSet.delete(partId);
-            else newSet.add(partId);
-            return newSet;
-        });
-    };
-
     const handleApplySale = async () => {
         if (checkedItems.size === 0) return alert('세일을 적용할 아이템을 하나 이상 선택해주세요.');
         if (salePercent <= 0 || salePercent >= 100) return alert('할인율은 1% 이상, 100% 미만이어야 합니다.');
         if (!startDate || !endDate || endDate < startDate) return alert('올바른 할인 기간을 설정해주세요.');
-
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
@@ -447,9 +503,7 @@ function AvatarPartManager() {
                 setCheckedItems(new Set());
                 setIsSaleMode(false);
                 alert('세일이 적용되었습니다.');
-            } catch (error) {
-                alert(`세일 적용 실패: ${error.message}`);
-            }
+            } catch (error) { alert(`세일 적용 실패: ${error.message}`); }
         }
     };
 
@@ -459,41 +513,31 @@ function AvatarPartManager() {
                 await batchEndSale([partId]);
                 await fetchInitialData();
                 alert('세일이 종료되었습니다.');
-            } catch (error) {
-                alert(`세일 종료 실패: ${error.message}`);
-            }
+            } catch (error) { alert(`세일 종료 실패: ${error.message}`); }
         }
     };
 
-    const handleSelectAll = () => {
-        const currentTabItems = partCategories[activeTab]?.map(part => part.id) || [];
-        const allSelected = currentTabItems.length > 0 && currentTabItems.every(id => checkedItems.has(id));
-
-        if (allSelected) {
-            setCheckedItems(new Set());
-        } else {
-            setCheckedItems(new Set(currentTabItems));
-        }
+    const handleDayToggle = (dayIndex) => {
+        setSelectedDays(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(dayIndex)) newSet.delete(dayIndex);
+            else newSet.add(dayIndex);
+            return newSet;
+        });
     };
 
-    // 👇 [추가] 아이템 이름 수정 핸들러
-    const handleDisplayNameChange = (partId, value) => {
-        setDisplayNames(prev => ({ ...prev, [partId]: value }));
-    };
-
-    const handleSaveDisplayName = async (partId) => {
-        const newName = displayNames[partId].trim();
-        try {
-            await updateAvatarPartDisplayName(partId, newName);
-            // 전체 데이터를 다시 불러오는 대신 로컬 스토어만 업데이트하여 UX 개선
-            useLeagueStore.setState(state => ({
-                avatarParts: state.avatarParts.map(part =>
-                    part.id === partId ? { ...part, displayName: newName } : part
-                )
-            }));
-            alert('아이템 이름이 저장되었습니다.');
-        } catch (error) {
-            alert(`이름 저장 실패: ${error.message}`);
+    const handleSaveSaleDays = async () => {
+        if (checkedItems.size === 0) return alert('요일을 설정할 아이템을 하나 이상 선택해주세요.');
+        const dayArray = Array.from(selectedDays).sort();
+        const dayNames = dayArray.map(d => DAYS_OF_WEEK[d]).join(', ');
+        if (window.confirm(`선택한 ${checkedItems.size}개 아이템을 [${dayNames}] 요일에만 판매하도록 설정하시겠습니까?\n(선택한 요일이 없으면 상시 판매로 변경됩니다.)`)) {
+            try {
+                await batchUpdateSaleDays(Array.from(checkedItems), dayArray);
+                await fetchInitialData();
+                setCheckedItems(new Set());
+                setIsSaleDayMode(false);
+                alert('판매 요일이 설정되었습니다.');
+            } catch (error) { alert(`요일 설정 실패: ${error.message}`); }
         }
     };
 
@@ -502,32 +546,45 @@ function AvatarPartManager() {
             <Title>아바타 아이템 관리</Title>
 
             <InputGroup style={{ justifyContent: 'flex-start' }}>
-                <SaveButton onClick={() => setIsSaleMode(prev => !prev)} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                     {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
+                </SaveButton>
+                <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
+                    {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
                 </SaveButton>
             </InputGroup>
 
-            {isSaleMode && (
-                <div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
+            {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
+                <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                    <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>{checkedItems.size}개 세일 적용</SaveButton>
+                </InputGroup>
+                <InputGroup style={{ justifyContent: 'flex-start' }}>
+                    <span>할인율(%):</span><ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} style={{ width: '100px' }} />
+                </InputGroup>
+                <InputGroup style={{ justifyContent: 'flex-start' }}>
+                    <span>시작일:</span><DatePicker selected={startDate} onChange={date => setStartDate(date)} dateFormat="yyyy/MM/dd" />
+                </InputGroup>
+                <InputGroup style={{ justifyContent: 'flex-start' }}>
+                    <span>종료일:</span><DatePicker selected={endDate} onChange={date => setEndDate(date)} dateFormat="yyyy/MM/dd" />
+                </InputGroup>
+            </div>
+            )}
+
+            {isSaleDayMode && (
+                <div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-                        <SaveButton onClick={handleSelectAll}>
-                            전체 선택/해제
-                        </SaveButton>
-                        <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>
-                            {checkedItems.size}개 세일 적용
-                        </SaveButton>
+                        <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleSaveSaleDays} disabled={checkedItems.size === 0}>{checkedItems.size}개 요일 설정</SaveButton>
                     </InputGroup>
                     <InputGroup style={{ justifyContent: 'flex-start' }}>
-                        <span>할인율(%):</span>
-                        <ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} style={{ width: '100px' }} />
-                    </InputGroup>
-                    <InputGroup style={{ justifyContent: 'flex-start' }}>
-                        <span>시작일:</span>
-                        <DatePicker selected={startDate} onChange={(date) => setStartDate(date)} dateFormat="yyyy/MM/dd" />
-                    </InputGroup>
-                    <InputGroup style={{ justifyContent: 'flex-start' }}>
-                        <span>종료일:</span>
-                        <DatePicker selected={endDate} onChange={(date) => setEndDate(date)} dateFormat="yyyy/MM/dd" />
+                        <span>판매 요일:</span>
+                        {DAYS_OF_WEEK.map((day, index) => (
+                            <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input type="checkbox" checked={selectedDays.has(index)} onChange={() => handleDayToggle(index)} />
+                                {day}
+                            </label>
+                        ))}
                     </InputGroup>
                 </div>
             )}
@@ -553,35 +610,41 @@ function AvatarPartManager() {
             </TabContainer>
 
             <ItemGrid>
-                {partCategories[activeTab]?.map(part => {
+
+                {paginatedItems.map(part => {
                     const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < new Date() && new Date() < part.saleEndDate?.toDate();
+                    const saleDaysText = part.saleDays && part.saleDays.length > 0 ? `[${part.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 판매` : null;
+
                     return (
                         <ItemCard key={part.id}>
-                            {isSaleMode && (<div style={{ height: '25px' }}>
+                            {(isSaleMode || isSaleDayMode) && (<div style={{ height: '25px' }}>
                                 <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
                             </div>)}
-                            {!isSaleMode && <div style={{ height: '25px' }}></div>}
+                            {!(isSaleMode || isSaleDayMode) && <div style={{ height: '25px' }}></div>}
 
-                            <ItemImage src={part.src} $category={activeTab} />
-
-                            {/* 👇 [추가] 아이템 이름 수정 UI */}
-                            <div style={{ display: 'flex', width: '100%', gap: '0.25rem' }}>
+                            <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
                                 <input
                                     type="text"
                                     value={displayNames[part.id] || ''}
                                     onChange={(e) => handleDisplayNameChange(part.id, e.target.value)}
-                                    placeholder={part.id} // 플레이스홀더로 파일명 보여주기
+                                    placeholder={part.id}
+                                    onBlur={() => handleSaveDisplayName(part.id)}
                                     style={{ width: '100%', textAlign: 'center', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
                                 />
-                                <SaveButton onClick={() => handleSaveDisplayName(part.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
                             </div>
 
+                            <ItemImage src={part.src} $category={activeTab} />
+                            {saleDaysText && (
+                                <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>
+                                    {saleDaysText}
+                                </div>
+                            )}
                             <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: 0 }} />
 
                             {isCurrentlyOnSale && (<div style={{ width: '100%', textAlign: 'center', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px', borderRadius: '4px', fontSize: '0.8em', color: 'red' }}>
                                 <p style={{ margin: 0, fontWeight: 'bold' }}>{part.salePrice}P ({part.originalPrice ? Math.round(100 - (part.salePrice / part.originalPrice * 100)) : ''}%)</p>
                                 <p style={{ margin: 0 }}>~{part.saleEndDate.toDate().toLocaleDateString()}</p>
-                                <button onClick={() => handleEndSale(part.id)} style={{ fontSize: '0.8em', padding: '2px 4px', marginTop: '4px', cursor: 'pointer' }}>즉시 종료</button>
+                                <button onClick={() => handleEndSale(part.id)}>즉시 종료</button>
                             </div>
                             )}
                             <button onClick={() => handleToggleStatus(part)} style={{ padding: '8px 16px', marginTop: 'auto', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: 'white', backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745' }}>
@@ -591,6 +654,23 @@ function AvatarPartManager() {
                     );
                 })}
             </ItemGrid>
+            <PaginationContainer>
+                <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
+                    이전
+                </PageButton>
+                {Array.from({ length: totalPages }, (_, index) => (
+                    <PageButton
+                        key={index + 1}
+                        $isActive={currentPage === index + 1}
+                        onClick={() => setCurrentPage(index + 1)}
+                    >
+                        {index + 1}
+                    </PageButton>
+                ))}
+                <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
+                    다음
+                </PageButton>
+            </PaginationContainer>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
                 <SaveButton onClick={handleSaveAllPrices}>{activeTab} 탭 전체 가격 저장</SaveButton>
