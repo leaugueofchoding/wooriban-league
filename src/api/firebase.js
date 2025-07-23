@@ -198,8 +198,15 @@ export async function uploadAvatarPart(file, category) {
     id: file.name,
     category: category,
     src: downloadURL,
+    // 👇 [추가] 아이템 생성 시 기본 상태를 'visible'로 설정
+    status: 'visible',
   });
-  return { id: file.name, category, src: downloadURL };
+  return { id: file.name, category, src: downloadURL, status: 'visible' };
+}
+
+export async function updateAvatarPartStatus(partId, status) {
+  const partRef = doc(db, 'avatarParts', partId);
+  await updateDoc(partRef, { status: status });
 }
 
 export async function getAvatarParts() {

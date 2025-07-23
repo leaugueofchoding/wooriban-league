@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices, createMission } from '../api/firebase.js';
+import { uploadAvatarPart, updateAvatarPartPrice, batchUpdateAvatarPartPrices, createMission, updateAvatarPartStatus } from '../api/firebase.js';
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
@@ -331,7 +331,7 @@ function MissionManager() {
 }
 
 function AvatarPartManager() {
-    const { avatarParts, fetchInitialData } = useLeagueStore();
+    const { avatarParts, fetchInitialData, updateLocalAvatarPartStatus } = useLeagueStore();
     const [files, setFiles] = useState([]);
     const [uploadCategory, setUploadCategory] = useState('hair');
     const [isUploading, setIsUploading] = useState(false);
@@ -409,6 +409,22 @@ function AvatarPartManager() {
         }
     };
 
+    const handleToggleStatus = async (part) => {
+        // 👇 [수정] '숨김' 상태가 아니면 무조건 '숨김'으로, '숨김' 상태면 '공개'로 변경합니다.
+        const newStatus = part.status === 'hidden' ? 'visible' : 'hidden';
+
+        try {
+            // DB 상태는 비동기적으로 업데이트
+            await updateAvatarPartStatus(part.id, newStatus);
+            // UI는 스토어 액션을 통해 즉시 업데이트
+            updateLocalAvatarPartStatus(part.id, newStatus);
+        } catch (error) {
+            alert(`오류: ${error.message}`);
+            // 오류 발생 시, 원래 상태로 되돌리기 위해 데이터를 다시 불러옵니다.
+            fetchInitialData();
+        }
+    };
+
     return (
         <Section>
             <Title>아바타 아이템 관리</Title>
@@ -438,7 +454,7 @@ function AvatarPartManager() {
             </TabContainer>
             <ItemGrid>
                 {partCategories[activeTab]?.map(part => (
-                    <ItemCard key={part.id}>
+                    <ItemCard key={part.id} style={{ opacity: part.status === 'hidden' ? 0.6 : 1, transition: 'opacity 0.2s' }}>
                         <ItemImage src={part.src} $category={activeTab} />
                         <InputGroup style={{ marginBottom: '0', justifyContent: 'center' }}>
                             <ScoreInput
@@ -449,6 +465,24 @@ function AvatarPartManager() {
                                 style={{ width: '80px', margin: '0' }}
                             />
                         </InputGroup>
+                        <button
+                            onClick={() => handleToggleStatus(part)}
+                            style={{
+                                width: '100%',
+                                padding: '8px',
+                                marginTop: '8px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                                color: 'white',
+                                // 👇 [수정] '숨김' 상태일 때만 회색, 아니면 모두 초록색으로 변경
+                                backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745'
+                            }}
+                        >
+                            {/* 👇 [수정] '숨김' 상태일 때만 '숨김 상태', 아니면 모두 '진열 중'으로 변경 */}
+                            {part.status === 'hidden' ? '숨김 상태' : '진열 중'}
+                        </button>
                     </ItemCard>
                 ))}
             </ItemGrid>

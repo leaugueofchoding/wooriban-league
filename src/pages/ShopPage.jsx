@@ -126,12 +126,15 @@ function ShopPage() {
   }, [avatarParts]);
 
   const itemsForSale = useMemo(() => {
-    let items = avatarParts.filter(part => part.price > 0);
+    // 👇 [수정] '숨김(hidden)' 상태가 아닌 아이템만 필터링하도록 수정합니다.
+    let items = avatarParts.filter(part => part.price > 0 && part.status !== 'hidden');
+
     if (activeTab !== 'all') {
       items = items.filter(part => part.category === activeTab);
     }
     return items;
   }, [avatarParts, activeTab]);
+
 
   const handleBuy = async (part) => {
     // 이중 안전장치: myPlayerData가 확실히 있을 때만 구매 로직 실행

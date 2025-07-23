@@ -42,6 +42,14 @@ export const useLeagueStore = create((set, get) => ({
 
     setLeagueType: (type) => set({ leagueType: type }),
 
+    updateLocalAvatarPartStatus: (partId, newStatus) => {
+        set(state => ({
+            avatarParts: state.avatarParts.map(part =>
+                part.id === partId ? { ...part, status: newStatus } : part
+            )
+        }));
+    },
+    
     fetchInitialData: async () => {
         try {
             set({ isLoading: true });
