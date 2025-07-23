@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, buyAvatarPart } from '../api/firebase';
+import { auth, buyMultipleAvatarParts } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 
 // --- Styled Components ---
@@ -10,30 +10,25 @@ const ShopWrapper = styled.div`
   margin: 2rem auto;
   padding: 2rem;
 `;
-
 const Title = styled.h1`
   text-align: center;
   margin-bottom: 2rem;
   font-size: 2.5rem;
 `;
-
 const ContentWrapper = styled.div`
   display: flex;
   gap: 2rem;
   align-items: flex-start;
 `;
-
 const ItemContainer = styled.div`
   flex: 3;
 `;
-
 const ItemGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* 3열 고정 그리드 */
+  grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
-  min-height: 450px; /* 페이지 변경 시 레이아웃 흔들림 방지 */
+  min-height: 450px;
 `;
-
 const PreviewPanel = styled.div`
   flex: 2;
   position: sticky;
@@ -43,7 +38,6 @@ const PreviewPanel = styled.div`
   background-color: #f8f9fa;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 `;
-
 const AvatarCanvas = styled.div`
   width: 250px;
   height: 250px;
@@ -55,7 +49,6 @@ const AvatarCanvas = styled.div`
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   overflow: hidden;
 `;
-
 const PartImage = styled.img`
   position: absolute;
   top: 0;
@@ -64,7 +57,6 @@ const PartImage = styled.img`
   height: 100%;
   object-fit: contain;
 `;
-
 const ItemCard = styled.div`
   cursor: pointer;
   position: relative;
@@ -80,18 +72,44 @@ const ItemCard = styled.div`
   overflow: hidden;
   transition: transform 0.2s, box-shadow 0.2s;
   border: 2px solid transparent;
-  
-  /* 미리보기 중인 아이템에 테두리 표시 */
   &.previewing {
     border-color: #007bff;
     box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
   }
-
   &:hover {
     transform: translateY(-5px);
   }
 `;
-
+const SaleBadge = styled.div`
+  position: absolute;
+  top: 10px;
+  right: -25px;
+  background-color: #dc3545;
+  color: white;
+  padding: 2px 25px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  transform: rotate(45deg);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+`;
+const PriceContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 40px;
+  justify-content: center;
+  gap: 2px;
+`;
+const OriginalPrice = styled.span`
+  font-size: 0.9rem;
+  color: #6c757d;
+  text-decoration: line-through;
+`;
+const FinalPrice = styled.span`
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: ${props => (props.$onSale ? '#dc3545' : '#007bff')};
+`;
 const getBackgroundPosition = (category) => {
   switch (category) {
     case 'bottom': return 'center 75%';
@@ -100,7 +118,6 @@ const getBackgroundPosition = (category) => {
     default: return 'center 55%';
   }
 };
-
 const ItemImage = styled.div`
   width: 100px;
   height: 100px;
@@ -112,7 +129,6 @@ const ItemImage = styled.div`
   background-color: #e9ecef;
   background-position: ${props => getBackgroundPosition(props.$category)};
 `;
-
 const BuyButton = styled.button`
   width: 100%;
   padding: 0.75rem;
@@ -122,17 +138,16 @@ const BuyButton = styled.button`
   color: white;
   font-weight: bold;
   cursor: pointer;
+  margin-top: auto;
   transition: background-color 0.2s;
   &:hover { background-color: #218838; }
   &:disabled { background-color: #6c757d; cursor: not-allowed; }
 `;
-
 const TabContainer = styled.div`
   display: flex;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
 `;
-
 const TabButton = styled.button`
   padding: 0.75rem 1rem;
   font-size: 1rem;
@@ -142,7 +157,6 @@ const TabButton = styled.button`
   color: ${props => props.$active ? 'white' : 'black'};
   cursor: pointer;
 `;
-
 const LoginPrompt = styled.div`
   text-align: center;
   padding: 2rem;
@@ -151,7 +165,6 @@ const LoginPrompt = styled.div`
   margin-top: 2rem;
   font-size: 1.1rem;
 `;
-
 const ItemName = styled.h4`
   margin: 0;
   font-size: 1rem;
@@ -162,13 +175,14 @@ const ItemName = styled.h4`
   width: 100%;
   height: 24px;
 `;
-
-const FinalPrice = styled.span`
-  font-size: 1.1rem;
+const SaleDayInfo = styled.div`
+  font-size: 0.8rem;
   font-weight: bold;
-  color: #007bff;
+  color: #17a2b8;
+  background-color: #e8f7fa;
+  padding: 2px 8px;
+  border-radius: 10px;
 `;
-
 const PaginationContainer = styled.div`
   display: flex;
   justify-content: center;
@@ -176,7 +190,6 @@ const PaginationContainer = styled.div`
   gap: 0.5rem;
   margin-top: 2.5rem;
 `;
-
 const PageButton = styled.button`
   padding: 0.5rem 1rem;
   border: 1px solid #dee2e6;
@@ -189,7 +202,8 @@ const PageButton = styled.button`
   &:disabled { cursor: not-allowed; opacity: 0.5; }
 `;
 
-const ITEMS_PER_PAGE = 6; // 3x2 그리드에 맞춰 6개로 수정
+const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+const ITEMS_PER_PAGE = 6;
 
 function ShopPage() {
   const { players, avatarParts, fetchInitialData } = useLeagueStore();
@@ -198,9 +212,8 @@ function ShopPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [previewConfig, setPreviewConfig] = useState(null);
 
-  const myPlayerData = useMemo(() => {
-    return players.find(p => p.authUid === currentUser?.uid);
-  }, [players, currentUser]);
+  const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
+  const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
 
   useEffect(() => {
     if (myPlayerData?.avatarConfig) {
@@ -209,20 +222,29 @@ function ShopPage() {
   }, [myPlayerData]);
 
   const partCategories = useMemo(() => {
+    const today = new Date().getDay();
     const categories = avatarParts.reduce((acc, part) => {
-      if (part.price > 0 && part.status !== 'hidden') acc.add(part.category);
+      if (part.price > 0 && part.status !== 'hidden') {
+        if (!part.saleDays || part.saleDays.length === 0 || part.saleDays.includes(today)) {
+          acc.add(part.category);
+        }
+      }
       return acc;
     }, new Set());
     return ['all', ...Array.from(categories).sort()];
   }, [avatarParts]);
 
   const itemsForSale = useMemo(() => {
-    let items = avatarParts.filter(part => part.price > 0 && part.status !== 'hidden');
-    if (activeTab !== 'all') {
-      items = items.filter(part => part.category === activeTab);
-    }
-    return items;
-  }, [avatarParts, activeTab]);
+    const today = new Date().getDay();
+    let items = avatarParts.filter(part => {
+      if (part.status === 'hidden') return false;
+      if (part.saleDays && part.saleDays.length > 0) {
+        return part.saleDays.includes(today);
+      }
+      return true;
+    });
+    return items.filter(part => part.price > 0);
+  }, [avatarParts]);
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
@@ -234,15 +256,36 @@ function ShopPage() {
     setCurrentPage(1);
   }, [activeTab]);
 
-  const handleBuy = async (part) => {
-    if (!myPlayerData) return alert('플레이어 정보를 불러오는 중입니다.');
-    if (!window.confirm(`'${part.displayName || part.id}' 아이템을 ${part.price}P에 구매하시겠습니까?`)) return;
-    try {
-      await buyAvatarPart(myPlayerData.id, part);
-      alert('구매에 성공했습니다!');
-      await fetchInitialData();
-    } catch (error) {
-      alert(`구매 실패: ${error.message}`);
+  const { newItemsToBuy, totalCost } = useMemo(() => {
+    if (!previewConfig || !myItems) return { newItemsToBuy: [], totalCost: 0 };
+    const newItems = [];
+    const now = new Date();
+    Object.values(previewConfig).forEach(partId => {
+      if (partId && !myItems.includes(partId)) {
+        const partInfo = avatarParts.find(p => p.id === partId);
+        if (partInfo) {
+          const isCurrentlyOnSale = partInfo.isSale && partInfo.saleStartDate?.toDate() < now && now < partInfo.saleEndDate?.toDate();
+          const price = isCurrentlyOnSale ? partInfo.salePrice : partInfo.price;
+          newItems.push({ ...partInfo, price });
+        }
+      }
+    });
+    const cost = newItems.reduce((sum, part) => sum + part.price, 0);
+    return { newItemsToBuy: newItems, totalCost: cost };
+  }, [previewConfig, myItems, avatarParts]);
+
+  const handlePurchasePreview = async () => {
+    if (newItemsToBuy.length === 0) return alert('새로 구매할 아이템이 없습니다.');
+    if (myPlayerData.points < totalCost) return alert('포인트가 부족합니다.');
+    const itemNames = newItemsToBuy.map(p => p.displayName || p.id).join(', ');
+    if (window.confirm(`총 ${newItemsToBuy.length}개의 새 아이템(${itemNames})을 ${totalCost}P에 구매하시겠습니까?`)) {
+      try {
+        await buyMultipleAvatarParts(myPlayerData.id, newItemsToBuy);
+        alert('구매를 완료했습니다!');
+        await fetchInitialData();
+      } catch (error) {
+        alert(`구매 실패: ${error.message}`);
+      }
     }
   };
 
@@ -257,12 +300,10 @@ function ShopPage() {
     });
   };
 
-  const handleResetPreview = () => {
-    setPreviewConfig(myPlayerData.avatarConfig);
-  };
+  const handleResetPreview = () => setPreviewConfig(myPlayerData.avatarConfig);
 
   const previewPartUrls = useMemo(() => {
-    if (!previewConfig || !avatarParts.length) return [];
+    if (!previewConfig) return [];
     const partsByCategory = avatarParts.reduce((acc, part) => {
       if (!acc[part.category]) acc[part.category] = [];
       acc[part.category].push(part);
@@ -280,12 +321,12 @@ function ShopPage() {
     return urls;
   }, [previewConfig, avatarParts]);
 
+  const canAfford = myPlayerData && myPlayerData.points >= totalCost;
+
   return (
     <ShopWrapper>
       <Title>✨ 아이템 상점 ✨</Title>
-      {!currentUser ? (
-        <LoginPrompt>아이템을 구매하려면 로그인이 필요합니다.</LoginPrompt>
-      ) : (
+      {!currentUser ? (<LoginPrompt>아이템을 구매하려면 로그인이 필요합니다.</LoginPrompt>) : (
         <>
           <p style={{ textAlign: 'center', fontSize: '1.2rem' }}>
             내 포인트: <strong>💰 {myPlayerData?.points ?? '...'} P</strong>
@@ -301,14 +342,29 @@ function ShopPage() {
               </TabContainer>
               <ItemGrid>
                 {paginatedItems.map(part => {
-                  const isOwned = myPlayerData?.ownedParts?.includes(part.id);
+                  const isOwned = myItems.includes(part.id);
                   const isPreviewing = previewConfig && previewConfig[part.category] === part.id;
+                  const now = new Date();
+                  const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate();
+                  const saleDaysText = part.saleDays && part.saleDays.length > 0 ? `[${part.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 한정` : null;
+
                   return (
                     <ItemCard key={part.id} onClick={() => handlePreview(part)} className={isPreviewing ? 'previewing' : ''}>
+                      {isCurrentlyOnSale && <SaleBadge>SALE</SaleBadge>}
                       <ItemName>{part.displayName || part.id}</ItemName>
                       <ItemImage src={part.src} $category={part.category} />
-                      <FinalPrice>💰 {part.price} P</FinalPrice>
-                      {isOwned && <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6c757d' }}>소유함</span>}
+                      {saleDaysText && <SaleDayInfo>{saleDaysText}</SaleDayInfo>}
+                      <PriceContainer>
+                        {isCurrentlyOnSale ? (
+                          <>
+                            <OriginalPrice>{part.originalPrice} P</OriginalPrice>
+                            <FinalPrice $onSale={true}>💰 {part.salePrice} P</FinalPrice>
+                          </>
+                        ) : (
+                          <FinalPrice $onSale={false}>💰 {part.price} P</FinalPrice>
+                        )}
+                      </PriceContainer>
+                      {isOwned && <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6c757d', marginTop: 'auto' }}>소유함</span>}
                     </ItemCard>
                   );
                 })}
@@ -330,13 +386,10 @@ function ShopPage() {
                 <PartImage src={baseAvatar} alt="기본 아바타" />
                 {previewPartUrls.map(src => <PartImage key={src} src={src} />)}
               </AvatarCanvas>
-              <BuyButton onClick={() => alert('현재 미리보기 중인 아이템들로 구매하는 기능은 다음 단계에서 구현됩니다!')}>
-                이 모습으로 구매하기
+              <BuyButton onClick={handlePurchasePreview} disabled={newItemsToBuy.length === 0 || !canAfford}>
+                {newItemsToBuy.length > 0 ? `새 아이템 ${newItemsToBuy.length}개 구매 (${totalCost}P)` : '구매할 새 아이템 없음'}
               </BuyButton>
-              <button
-                onClick={handleResetPreview}
-                style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-              >
+              <button onClick={handleResetPreview} style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
                 전체 초기화
               </button>
             </PreviewPanel>

@@ -455,3 +455,58 @@ export async function batchUpdateSaleDays(partIds, saleDays) {
   }
   await batch.commit();
 }
+
+export async function buyMultipleAvatarParts(playerId, partsToBuy) {
+  if (!partsToBuy || partsToBuy.length === 0) {
+    throw new Error("구매할 아이템이 없습니다.");
+  }
+
+  const playerRef = doc(db, "players", playerId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const playerDoc = await transaction.get(playerRef);
+      if (!playerDoc.exists()) {
+        throw new Error("플레이어를 찾을 수 없습니다.");
+      }
+
+      const playerData = playerDoc.data();
+      const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
+
+      // 1. 포인트 확인
+      if (playerData.points < totalCost) {
+        throw new Error("포인트가 부족합니다.");
+      }
+
+      // 2. 이미 소유한 아이템이 있는지 최종 확인 (안전장치)
+      const newPartIds = partsToBuy.map(part => part.id);
+      const alreadyOwned = newPartIds.some(id => playerData.ownedParts?.includes(id));
+      if (alreadyOwned) {
+        throw new Error("이미 소유한 아이템이 구매 목록에 포함되어 있습니다.");
+      }
+
+      // 3. 플레이어 정보 업데이트 (포인트 차감, 아이템 추가)
+      const newPoints = playerData.points - totalCost;
+      transaction.update(playerRef, {
+        points: newPoints,
+        ownedParts: arrayUnion(...newPartIds)
+      });
+
+      // 4. 각 구매 내역을 point_history에 기록
+      for (const part of partsToBuy) {
+        addPointHistory(
+          playerData.authUid,
+          playerData.name,
+          -part.price,
+          `${part.displayName || part.id} 구매`
+        );
+      }
+    });
+
+    return "선택한 아이템을 모두 구매했습니다!";
+  } catch (error) {
+    console.error("일괄 구매 트랜잭션 실패:", error);
+    // 클라이언트에게 에러 메시지를 전달하기 위해 다시 throw
+    throw error;
+  }
+}
