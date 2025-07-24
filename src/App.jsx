@@ -76,30 +76,33 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   const { fetchInitialData, isLoading, subscribeToNotifications, unsubscribeFromNotifications } = useLeagueStore();
   const [authUser, setAuthUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false); // 인증 상태 확인 완료 여부
 
+  // 1. 인증 상태 변경 감지 전용 useEffect (최초 1회만 실행)
   useEffect(() => {
-    // onAuthStateChanged는 인증 상태 변경을 감지하는 리스너를 반환합니다.
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
-      if (user) {
-        // --- ▼▼▼ [수정] 로그인 시 데이터 로딩 및 알림 구독 시작 ▼▼▼ ---
-        fetchInitialData();
-        subscribeToNotifications(user.uid);
-        // --- ▲▲▲ [수정] 여기까지 ---
-      } else {
-        // --- ▼▼▼ [수정] 로그아웃 시 알림 구독 해지 ▼▼▼ ---
-        unsubscribeFromNotifications();
-        // --- ▲▲▲ [수정] 여기까지 ---
-      }
+      setAuthChecked(true); // 인증 상태 확인이 완료되었음을 표시
     });
+    return () => unsubscribe(); // 클린업 함수에서 구독 해지
+  }, []);
 
-    // 컴포넌트가 언마운트될 때 리스너를 정리합니다.
-    return () => unsubscribe();
-  }, [fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications]);
+  // 2. 인증된 사용자(authUser)가 변경될 때 데이터 로딩/알림 구독 처리
+  useEffect(() => {
+    if (authChecked) { // 인증 상태 확인이 완료된 후에만 실행
+      if (authUser) {
+        // 로그인 상태일 때
+        fetchInitialData();
+        subscribeToNotifications(authUser.uid);
+      } else {
+        // 로그아웃 상태일 때
+        unsubscribeFromNotifications();
+      }
+    }
+  }, [authChecked, authUser, fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications]);
 
-  // isLoading 상태를 authUser가 결정된 이후에 판단하도록 변경
-  // authUser가 null(초기 상태)일 때 로딩을 표시하여 깜빡임 방지
-  if (authUser === null) {
+
+  if (!authChecked) {
     return <div style={{ textAlign: 'center', padding: '2rem' }}>인증 정보 확인 중...</div>;
   }
 
