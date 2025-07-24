@@ -123,12 +123,14 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
 
       batch.update(playerRef, { points: increment(reward) });
 
+      // --- ▼▼▼ [수정] 미션 승인 시 알림 생성 기능 추가 ▼▼▼ ---
       createNotification(
         playerData.authUid,
         `'${missionData.title}' 미션 완료!`,
         `${reward}P를 획득했습니다.`,
         'mission'
       );
+      // --- ▲▲▲ [수정] 여기까지 ---
 
       await addPointHistory(
         playerData.authUid,
@@ -196,10 +198,7 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
   console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
 }
 
-
-// --- 이하 기존 함수들 (변경 없음) ---
-
-// ... (getUsers, linkPlayerToAuth, addPlayer 등 기존 함수들을 여기에 그대로 유지)
+// --- 사용자 및 선수 관리 ---
 export async function updateUserProfile(user) {
   const userRef = doc(db, 'users', user.uid);
   await setDoc(userRef, {
@@ -246,7 +245,6 @@ export async function uploadAvatarPart(file, category) {
     id: file.name,
     category: category,
     src: downloadURL,
-    // 👇 [추가] 아이템 생성 시 기본 상태를 'visible'로 설정
     status: 'visible',
   });
   return { id: file.name, category, src: downloadURL, status: 'visible' };
@@ -286,34 +284,34 @@ export async function batchUpdateSaleInfo(partIds, salePercent, startDate, endDa
 
     if (partSnap.exists()) {
       const partData = partSnap.data();
-      const originalPrice = partData.price; // 기존 price를 정가로 사용
-      const salePrice = Math.floor(originalPrice * (1 - salePercent / 100)); // 할인율 적용, 소수점 버림
+      const originalPrice = partData.price;
+      const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
 
       batch.update(partRef, {
         isSale: true,
-        originalPrice: originalPrice, // 만약을 위해 정가도 기록
+        originalPrice: originalPrice,
         salePrice: salePrice,
-        saleStartDate: startDate, // 시작일 Timestamp
-        saleEndDate: endDate,     // 종료일 Timestamp
+        saleStartDate: startDate,
+        saleEndDate: endDate,
       });
     }
   }
   await batch.commit();
 }
 
-// 👇 [신규 추가] 세일을 종료하는 함수
 export async function batchEndSale(partIds) {
   const batch = writeBatch(db);
   for (const partId of partIds) {
     const partRef = doc(db, "avatarParts", partId);
     batch.update(partRef, {
       isSale: false,
-      salePrice: null, // 할인 가격 필드 초기화
+      salePrice: null,
     });
   }
   await batch.commit();
 }
 
+// --- 팀 및 경기 관리 ---
 export async function getTeams(seasonId) {
   const teamsRef = collection(db, 'teams');
   const q = query(teamsRef, where("seasonId", "==", seasonId));
@@ -393,6 +391,7 @@ export async function batchAddMatches(newMatchesData) {
   await batch.commit();
 }
 
+// --- 시즌 관리 ---
 export async function getSeasons() {
   const seasonsRef = collection(db, 'seasons');
   const q = query(seasonsRef, orderBy("createdAt", "desc"));
@@ -421,6 +420,7 @@ export async function createPlayerFromUser(user) {
   await setDoc(playerRef, playerData);
 }
 
+// --- 퀴즈 관련 ---
 const getTodayDateString = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -429,7 +429,6 @@ const getTodayDateString = () => {
   return `${year}-${month}-${day}`;
 }
 
-// 특정 학생의 오늘 퀴즈 기록을 가져오는 함수
 export async function getTodaysQuizHistory(studentId) {
   if (!studentId) return [];
   const todayStr = getTodayDateString();
@@ -439,7 +438,6 @@ export async function getTodaysQuizHistory(studentId) {
   return querySnapshot.docs.map(doc => doc.data());
 }
 
-// 학생의 퀴즈 답변을 제출하고 처리하는 함수
 export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAnswer) {
   const isCorrect = userAnswer.trim().toLowerCase() === String(correctAnswer).toLowerCase();
 
@@ -463,6 +461,7 @@ export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAns
   return isCorrect;
 }
 
+// --- 미션(Missions) 관련 ---
 export async function createMission(missionData) {
   const missionsRef = collection(db, 'missions');
   await addDoc(missionsRef, {
@@ -513,6 +512,7 @@ export async function deleteMission(missionId) {
   await deleteDoc(missionRef);
 }
 
+// --- 아바타 파츠 기타 ---
 export async function updateAvatarPartDisplayName(partId, displayName) {
   const partRef = doc(db, "avatarParts", partId);
   await updateDoc(partRef, { displayName });
@@ -523,7 +523,7 @@ export async function batchUpdateSaleDays(partIds, saleDays) {
   for (const partId of partIds) {
     const partRef = doc(db, "avatarParts", partId);
     batch.update(partRef, {
-      saleDays: saleDays, // saleDays 필드에 요일 배열 [0, 1, 2...] 저장
+      saleDays: saleDays,
     });
   }
   await batch.commit();
@@ -546,26 +546,22 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
       const playerData = playerDoc.data();
       const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
 
-      // 1. 포인트 확인
       if (playerData.points < totalCost) {
         throw new Error("포인트가 부족합니다.");
       }
 
-      // 2. 이미 소유한 아이템이 있는지 최종 확인 (안전장치)
       const newPartIds = partsToBuy.map(part => part.id);
       const alreadyOwned = newPartIds.some(id => playerData.ownedParts?.includes(id));
       if (alreadyOwned) {
         throw new Error("이미 소유한 아이템이 구매 목록에 포함되어 있습니다.");
       }
 
-      // 3. 플레이어 정보 업데이트 (포인트 차감, 아이템 추가)
       const newPoints = playerData.points - totalCost;
       transaction.update(playerRef, {
         points: newPoints,
         ownedParts: arrayUnion(...newPartIds)
       });
 
-      // 4. 각 구매 내역을 point_history에 기록
       for (const part of partsToBuy) {
         addPointHistory(
           playerData.authUid,
@@ -579,7 +575,6 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
     return "선택한 아이템을 모두 구매했습니다!";
   } catch (error) {
     console.error("일괄 구매 트랜잭션 실패:", error);
-    // 클라이언트에게 에러 메시지를 전달하기 위해 다시 throw
     throw error;
   }
 }
@@ -594,16 +589,16 @@ export async function updatePlayerName(playerId, newName) {
   });
 }
 
+// --- 학급 공동 목표 ---
 export async function createClassGoal(goalData) {
   await addDoc(collection(db, "classGoals"), {
     ...goalData,
-    currentPoints: 0, // 생성 시 현재 포인트는 0
+    currentPoints: 0,
     status: "active",
     createdAt: serverTimestamp(),
   });
 }
 
-// [신규] 현재 진행 중인 학급 목표들을 불러오는 함수
 export async function getActiveGoals() {
   const goalsRef = collection(db, "classGoals");
   const q = query(goalsRef, where("status", "==", "active"), orderBy("createdAt"));
@@ -611,7 +606,6 @@ export async function getActiveGoals() {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// [신규] 학생이 공동 목표에 포인트를 기부하는 함수
 export async function donatePointsToGoal(playerId, goalId, amount) {
   if (amount <= 0) {
     throw new Error("기부할 포인트를 올바르게 입력해주세요.");
@@ -632,13 +626,9 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
       throw new Error("포인트가 부족합니다.");
     }
 
-    // 1. 플레이어 포인트 차감
     transaction.update(playerRef, { points: increment(-amount) });
-
-    // 2. 공동 목표 포인트 증가
     transaction.update(goalRef, { currentPoints: increment(amount) });
 
-    // 3. 포인트 변동 내역 기록 (addPointHistory 헬퍼 함수 사용)
     addPointHistory(
       playerData.authUid,
       playerData.name,
@@ -657,11 +647,9 @@ export async function batchDeleteAvatarParts(partsToDelete) {
   const batch = writeBatch(db);
 
   for (const part of partsToDelete) {
-    // 1. Firestore 문서 삭제 목록에 추가
     const partRef = doc(db, "avatarParts", part.id);
     batch.delete(partRef);
 
-    // 2. Storage에 저장된 이미지 파일 삭제
     const imageRef = ref(storage, part.src);
     try {
       await deleteObject(imageRef);
@@ -670,24 +658,22 @@ export async function batchDeleteAvatarParts(partsToDelete) {
     }
   }
 
-  // 3. 일괄 작업 실행
   await batch.commit();
 }
 
-// 특정 사용자에게 알림을 생성하는 함수
+// --- 알림 관련 ---
 export async function createNotification(userId, title, body, type) {
   if (!userId) return;
   await addDoc(collection(db, 'notifications'), {
     userId,
     title,
     body,
-    type, // 'mission', 'point', 'announcement' 등
+    type,
     isRead: false,
     createdAt: serverTimestamp(),
   });
 }
 
-// 특정 사용자의 모든 알림을 최신순으로 가져오는 함수
 export async function getNotificationsForUser(userId) {
   if (!userId) return [];
   const notifsRef = collection(db, 'notifications');
@@ -696,7 +682,6 @@ export async function getNotificationsForUser(userId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// 여러 알림을 한 번에 '읽음'으로 처리하는 함수
 export async function markNotificationsAsRead(userId) {
   const notifsRef = collection(db, 'notifications');
   const q = query(notifsRef, where('userId', '==', userId), where('isRead', '==', false));

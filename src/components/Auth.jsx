@@ -1,10 +1,10 @@
 // src/components/Auth.jsx
 
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom'; // useNavigate 추가
+import React, { useState } from 'react'; // useState 추가
+import { Link, useNavigate } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { auth, updateUserProfile } from '../api/firebase.js';
-import { useLeagueStore } from '../store/leagueStore.js'; // store 추가
+import { useLeagueStore } from '../store/leagueStore.js';
 import styled from 'styled-components';
 
 const AuthWrapper = styled.div`
@@ -18,7 +18,7 @@ const UserProfile = styled.div`
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 1rem; // 간격 조정
+  gap: 1rem;
 
   img {
     width: 32px;
@@ -50,7 +50,11 @@ const Button = styled.button`
   background-color: white;
 `;
 
-// [추가] 알림 버튼 스타일
+// --- ▼▼▼ [추가] 알림 관련 스타일 ▼▼▼ ---
+const NotificationContainer = styled.div`
+    position: relative;
+`;
+
 const NotificationButton = styled.button`
     position: relative;
     background: none;
@@ -71,10 +75,47 @@ const NotificationBadge = styled.div`
     border: 1px solid white;
 `;
 
+const NotificationList = styled.div`
+    position: absolute;
+    top: 120%;
+    right: 0;
+    width: 300px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: 1px solid #dee2e6;
+    z-index: 100;
+    max-height: 400px;
+    overflow-y: auto;
+`;
+
+const NotificationItem = styled.div`
+    padding: 1rem;
+    border-bottom: 1px solid #f1f3f5;
+    text-align: left;
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    h5 {
+        margin: 0 0 0.25rem 0;
+        font-size: 0.9rem;
+    }
+
+    p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #495057;
+    }
+`;
+// --- ▲▲▲ [추가] 여기까지 ---
+
+
 function Auth({ user }) {
-    // [수정] store에서 알림 상태와 액션을 가져옵니다.
-    const { unreadNotificationCount, markAsRead } = useLeagueStore();
+    const { notifications, unreadNotificationCount, markAsRead } = useLeagueStore();
     const navigate = useNavigate();
+    const [showNotifications, setShowNotifications] = useState(false); // 알림 목록 표시 상태
 
     const handleGoogleLogin = () => {
         const provider = new GoogleAuthProvider();
@@ -92,22 +133,43 @@ function Auth({ user }) {
         signOut(auth);
     };
 
+    // --- ▼▼▼ [수정] 알림 버튼 클릭 핸들러 ▼▼▼ ---
     const handleNotificationClick = () => {
+        setShowNotifications(prev => !prev); // 목록 보이기/숨기기 토글
         if (unreadNotificationCount > 0) {
-            markAsRead();
+            markAsRead(); // 읽음 처리
         }
-        navigate('/'); // 클릭 시 대시보드로 이동
     }
+    // --- ▲▲▲ [수정] 여기까지 ---
 
     return (
         <AuthWrapper>
             {user ? (
                 <UserProfile>
-                    {/* [추가] 알림 버튼 */}
-                    <NotificationButton onClick={handleNotificationClick}>
-                        🔔
-                        {unreadNotificationCount > 0 && <NotificationBadge />}
-                    </NotificationButton>
+                    {/* --- ▼▼▼ [수정] 알림 UI 렌더링 로직 추가 ▼▼▼ --- */}
+                    <NotificationContainer>
+                        <NotificationButton onClick={handleNotificationClick}>
+                            🔔
+                            {unreadNotificationCount > 0 && <NotificationBadge />}
+                        </NotificationButton>
+                        {showNotifications && (
+                            <NotificationList>
+                                {notifications.length > 0 ? (
+                                    notifications.map(notif => (
+                                        <NotificationItem key={notif.id}>
+                                            <h5>{notif.title}</h5>
+                                            <p>{notif.body}</p>
+                                        </NotificationItem>
+                                    ))
+                                ) : (
+                                    <NotificationItem>
+                                        <p>새로운 알림이 없습니다.</p>
+                                    </NotificationItem>
+                                )}
+                            </NotificationList>
+                        )}
+                    </NotificationContainer>
+                    {/* --- ▲▲▲ [수정] 여기까지 --- */}
 
                     <Link to="/profile">
                         <img src={user.photoURL} alt="프로필 사진" />

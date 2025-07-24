@@ -25,12 +25,12 @@ import {
     createPlayerFromUser,
     getNotificationsForUser,
     markNotificationsAsRead,
-    getTodaysQuizHistory, // 퀴즈 기록 함수 import
-    submitQuizAnswer as firebaseSubmitQuizAnswer, // 이름 충돌 방지를 위해 별칭 사용
+    getTodaysQuizHistory,
+    submitQuizAnswer as firebaseSubmitQuizAnswer,
     requestMissionApproval
 } from '../api/firebase';
-import { auth } from '../api/firebase'; // auth import 추가
-import allQuizzes from '../assets/missions.json'; // 퀴즈 JSON 데이터 import
+import { auth } from '../api/firebase';
+import allQuizzes from '../assets/missions.json';
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
@@ -47,9 +47,9 @@ export const useLeagueStore = create((set, get) => ({
     leagueType: 'mixed',
     notifications: [],
     unreadNotificationCount: 0,
-    dailyQuiz: null, // 오늘의 퀴즈 상태
-    quizHistory: [], // 오늘 푼 퀴즈 기록
-    currentUser: null, // 현재 로그인 사용자 정보
+    dailyQuiz: null,
+    quizHistory: [],
+    currentUser: null,
 
 
     // --- Actions ---
@@ -75,9 +75,8 @@ export const useLeagueStore = create((set, get) => ({
         try {
             set({ isLoading: true });
 
-            // auth.currentUser를 직접 사용하여 최신 로그인 상태를 확인합니다.
             const currentUser = auth.currentUser;
-            set({ currentUser }); // 스토어 상태에 현재 사용자 저장
+            set({ currentUser });
 
             const seasons = await getSeasons();
             const activeSeason = seasons.find(s => s.status === 'active' || s.status === 'preparing') || seasons[0] || null;
@@ -180,8 +179,16 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     submitMissionForApproval: async (missionId) => {
-        const { players, currentUser } = get();
-        const myPlayerData = players.find(p => p.authUid === currentUser?.uid);
+        const { players } = get();
+        const user = auth.currentUser;
+
+        if (!user) {
+            alert('로그인이 필요합니다.');
+            return;
+        }
+
+        const myPlayerData = players.find(p => p.authUid === user.uid);
+
         if (!myPlayerData) {
             alert('선수 정보를 찾을 수 없습니다.');
             return;
@@ -406,7 +413,6 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    // --- 퀴즈 관련 액션 ---
     fetchDailyQuiz: async (studentId) => {
         const todaysHistory = await getTodaysQuizHistory(studentId);
         set({ quizHistory: todaysHistory });
