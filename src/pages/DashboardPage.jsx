@@ -3,7 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth } from '../api/firebase';
+// --- ▼▼▼ [수정] auth 외 필요한 함수들을 firebase로부터 import 합니다 ▼▼▼ ---
+import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
+// --- ▲▲▲ [수정] 여기까지 ---
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
@@ -293,7 +295,6 @@ function DashboardPage() {
         return players.find(p => p.authUid === currentUser.uid);
     }, [players, currentUser]);
 
-    // ... (이하 모든 함수는 이전 코드와 동일합니다)
     useEffect(() => {
         const fetchGoals = async () => {
             const goals = await getActiveGoals();

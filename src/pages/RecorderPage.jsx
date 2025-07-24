@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore'; // 경로는 실제 프로젝트 구조에 맞게 확인해주세요.
+import { useLeagueStore } from '../store/leagueStore';
 import { auth, approveMissionsInBatch } from '../api/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
 
@@ -33,7 +33,6 @@ const StudentList = styled.ul`
   padding: 0;
 `;
 
-// --- ▼▼▼ 스타일 및 기능 개선 ▼▼▼ ---
 const StudentListItem = styled.li`
   display: flex;
   align-items: center;
@@ -42,36 +41,51 @@ const StudentListItem = styled.li`
   border-radius: 8px;
   margin-bottom: 0.5rem;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  transition: background-color 0.2s ease-in-out;
-  cursor: pointer; // 클릭 가능한 커서로 변경
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
 
-  &:hover {
-    background-color: #e9ecef;
+  &.pending {
+    background-color: #fffbe6;
+    border-left: 5px solid #ffc107;
   }
-
-  // 완료된 항목 스타일
-  &.submitted {
+  
+  &.approved {
     background-color: #e9ecef;
     opacity: 0.6;
-    cursor: not-allowed; // 클릭 불가능 커서
+    cursor: not-allowed;
     
     &:hover {
         background-color: #e9ecef;
     }
   }
 
+  &:not(.approved):hover {
+    background-color: #f8f9fa;
+  }
+
   input[type="checkbox"] {
     width: 20px;
     height: 20px;
     margin-right: 1rem;
-    pointer-events: none; // 체크박스 직접 클릭 방지 (li가 클릭을 제어)
+    pointer-events: none;
   }
 
   label {
-      flex-grow: 1; // 이름 영역이 남은 공간을 모두 차지하도록
+      flex-grow: 1;
+  }
+
+  .status-badge {
+    font-size: 0.8rem;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin-left: auto;
+    color: white;
+
+    &.pending { background-color: #ffc107; color: black; }
+    &.approved { background-color: #28a745; }
   }
 `;
-// --- ▲▲▲ 스타일 및 기능 개선 ▲▲▲ ---
 
 const SubmitButton = styled.button`
   width: 100%;
@@ -92,6 +106,25 @@ const SubmitButton = styled.button`
   }
 `;
 
+const ExitButton = styled.button`
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #5a6268;
+  }
+`;
+
 function RecorderPage() {
     const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
     const { missionId } = useParams();
@@ -107,17 +140,15 @@ function RecorderPage() {
         }
     }, [missionId]);
 
-    // 미션 선택 시 URL 변경
     const handleMissionSelect = (e) => {
         const newMissionId = e.target.value;
         setSelectedMissionId(newMissionId);
-        setCheckedStudents(new Set()); // 미션 변경 시 선택 초기화
-        navigate(`/recorder/${newMissionId}`); // URL을 동적으로 변경
+        setCheckedStudents(new Set());
+        navigate(`/recorder/${newMissionId}`);
     };
 
-    // --- ▼▼▼ 클릭 핸들러 수정 ▼▼▼ ---
-    const handleStudentClick = (studentId, isSubmitted) => {
-        if (isSubmitted) return; // 이미 완료된 학생은 아무것도 하지 않음
+    const handleStudentClick = (studentId, status) => {
+        if (status === 'approved') return;
 
         setCheckedStudents(prev => {
             const newSet = new Set(prev);
@@ -129,12 +160,11 @@ function RecorderPage() {
             return newSet;
         });
     };
-    // --- ▲▲▲ 클릭 핸들러 수정 ▲▲▲ ---
 
     const handleSubmit = async () => {
         const mission = missions.find(m => m.id === selectedMissionId);
         if (!mission || checkedStudents.size === 0) {
-            return alert('미션을 선택하고, 한 명 이상의 학생을 체크해주세요.');
+            return alert('미션을 선택하고, 승인할 학생을 한 명 이상 체크해주세요.');
         }
         if (!currentUser) return alert('기록원 정보가 없습니다.');
 
@@ -143,21 +173,33 @@ function RecorderPage() {
             try {
                 await approveMissionsInBatch(selectedMissionId, Array.from(checkedStudents), currentUser.uid, mission.reward);
                 alert('포인트 지급이 완료되었습니다.');
-                setCheckedStudents(new Set()); // 성공 후 선택 초기화
-                await fetchInitialData(); // 데이터 최신화
+                setCheckedStudents(new Set());
+                await fetchInitialData();
             } catch (error) {
                 alert(`오류: ${error.message}`);
             }
         }
     };
 
-    const submittedStudents = useMemo(() => {
-        return new Set(
-            missionSubmissions
-                .filter(sub => sub.missionId === selectedMissionId)
-                .map(sub => sub.studentId)
-        );
+    const studentSubmissionStatus = useMemo(() => {
+        const statusMap = new Map();
+        missionSubmissions
+            .filter(sub => sub.missionId === selectedMissionId)
+            .forEach(sub => {
+                statusMap.set(sub.studentId, sub.status);
+            });
+        return statusMap;
     }, [missionSubmissions, selectedMissionId]);
+
+    const sortedPlayers = useMemo(() => {
+        return [...players].sort((a, b) => {
+            const statusA = studentSubmissionStatus.get(a.id);
+            const statusB = studentSubmissionStatus.get(b.id);
+            if (statusA === 'pending' && statusB !== 'pending') return -1;
+            if (statusA !== 'pending' && statusB === 'pending') return 1;
+            return a.name.localeCompare(b.name);
+        });
+    }, [players, studentSubmissionStatus]);
 
     return (
         <RecorderWrapper>
@@ -171,41 +213,44 @@ function RecorderPage() {
                 ))}
             </MissionSelect>
 
-            {selectedMissionId ? (
+            {selectedMissionId && (
                 <>
                     <StudentList>
-                        {players.map(player => {
-                            const isAlreadySubmitted = submittedStudents.has(player.id);
+                        {sortedPlayers.map(player => {
+                            const status = studentSubmissionStatus.get(player.id);
 
-                            // --- ▼▼▼ 렌더링 부분 수정 ▼▼▼ ---
                             return (
                                 <StudentListItem
                                     key={player.id}
-                                    className={isAlreadySubmitted ? 'submitted' : ''}
-                                    onClick={() => handleStudentClick(player.id, isAlreadySubmitted)}
+                                    className={status}
+                                    onClick={() => handleStudentClick(player.id, status)}
                                 >
                                     <input
                                         type="checkbox"
                                         checked={checkedStudents.has(player.id)}
-                                        readOnly // 클릭 이벤트는 li에서 처리하므로 읽기 전용으로 변경
+                                        readOnly
+                                        disabled={status === 'approved'}
                                     />
-                                    <label>
-                                        {player.name} {isAlreadySubmitted && '(완료)'}
-                                    </label>
+                                    <label>{player.name}</label>
+
+                                    {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
+                                    {status === 'approved' && <span className="status-badge approved">완료</span>}
                                 </StudentListItem>
                             );
-                            // --- ▲▲▲ 렌더링 부분 수정 ▲▲▲ ---
                         })}
                     </StudentList>
 
                     <SubmitButton onClick={handleSubmit} disabled={checkedStudents.size === 0}>
                         {checkedStudents.size}명 포인트 지급 승인하기
                     </SubmitButton>
+
+                    {/* --- ▼▼▼ [수정] 버튼 기능 및 텍스트 변경 ▼▼▼ --- */}
+                    <ExitButton onClick={() => navigate('/')}>대시보드로 이동</ExitButton>
+                    {/* --- ▲▲▲ [수정] 여기까지 --- */}
                 </>
-            ) : (
-                <p style={{ textAlign: 'center' }}>확인할 미션을 선택해주세요.</p>
             )}
         </RecorderWrapper>
     );
 }
+
 export default RecorderPage;

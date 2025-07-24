@@ -1,10 +1,9 @@
 // src/components/QuizWidget.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth } from '../api/firebase';
-import missionsData from '../assets/missions.json';
 
 const QuizWrapper = styled.div`
     display: flex;
@@ -59,27 +58,26 @@ const RemainingQuizCount = styled.p`
 `;
 
 function QuizWidget() {
-    // 필요한 상태와 함수들을 store에서 가져옵니다.
-    const { myPlayerData, dailyQuiz, fetchDailyQuiz, submitQuizAnswer, quizHistory } = useLeagueStore(state => {
-        const currentUser = auth.currentUser;
-        return {
-            myPlayerData: currentUser ? state.players.find(p => p.authUid === currentUser.uid) : null,
-            dailyQuiz: state.dailyQuiz,
-            fetchDailyQuiz: state.fetchDailyQuiz,
-            submitQuizAnswer: state.submitQuizAnswer,
-            quizHistory: state.quizHistory
-        }
-    });
+    // --- ▼▼▼ [수정] 무한 루프 방지를 위해 스토어 selector 분리 ▼▼▼ ---
+    const currentUser = auth.currentUser;
+    const myPlayerData = useLeagueStore(state =>
+        currentUser ? state.players.find(p => p.authUid === currentUser.uid) : null
+    );
+    const dailyQuiz = useLeagueStore(state => state.dailyQuiz);
+    const fetchDailyQuiz = useLeagueStore(state => state.fetchDailyQuiz);
+    const submitQuizAnswer = useLeagueStore(state => state.submitQuizAnswer);
+    const quizHistory = useLeagueStore(state => state.quizHistory);
+    // --- ▲▲▲ [수정] 여기까지 ---
 
     const [userAnswer, setUserAnswer] = useState('');
     const [feedback, setFeedback] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        if (myPlayerData && !dailyQuiz) {
+        if (myPlayerData?.id && !dailyQuiz) {
             fetchDailyQuiz(myPlayerData.id);
         }
-    }, [myPlayerData, fetchDailyQuiz, dailyQuiz]);
+    }, [myPlayerData?.id, fetchDailyQuiz, dailyQuiz]);
 
     const handleSubmit = async () => {
         if (!userAnswer.trim() || !dailyQuiz) return;
@@ -96,9 +94,11 @@ function QuizWidget() {
         setUserAnswer('');
         // 피드백을 보여준 후 잠시 뒤에 다음 문제로 넘어갑니다.
         setTimeout(() => {
-            setFeedback('');
-            fetchDailyQuiz(myPlayerData.id);
-            setIsSubmitting(false);
+            if (myPlayerData?.id) {
+                setFeedback('');
+                fetchDailyQuiz(myPlayerData.id);
+                setIsSubmitting(false);
+            }
         }, 2000); // 2초 후에 다음 문제로
     };
 
