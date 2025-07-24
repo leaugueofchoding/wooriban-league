@@ -11,12 +11,12 @@ import {
 
 // Firebase 구성 정보
 const firebaseConfig = {
-  apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
-  authDomain: "wooriban-league.firebaseapp.com",
-  projectId: "wooriban-league",
-  storageBucket: "wooriban-league.firebasestorage.app",
-  messagingSenderId: "1038292353129",
-  appId: "1:1038292353129:web:de74062d2fb8046be7e2f8"
+  apiKey: import.meta.env.VITE_API_KEY,
+  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_APP_ID
 };
 
 // Firebase 앱 초기화

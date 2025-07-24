@@ -7,6 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
 
 // Page Components
+import DashboardPage from './pages/DashboardPage'; // 👈 [추가]
 import HomePage from './pages/HomePage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
@@ -56,7 +57,7 @@ function App() {
         {/* Routes 컴포넌트는 URL 경로에 따라 렌더링할 컴포넌트를 결정합니다. */}
         <Routes>
           {/* 기본 경로 */}
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<DashboardPage />} />
 
           {/* 주요 기능 페이지 경로 */}
           <Route path="/missions" element={<MissionsPage />} />

@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, buyMultipleAvatarParts } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
+import { useNavigate, Link } from 'react-router-dom';
 
 // --- Styled Components ---
 const ShopWrapper = styled.div`
@@ -114,7 +115,7 @@ const getBackgroundPosition = (category) => {
   switch (category) {
     case 'bottom': return 'center 75%';
     case 'shoes': return 'center 100%';
-    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 5%';
+    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
     default: return 'center 55%';
   }
 };
@@ -201,6 +202,25 @@ const PageButton = styled.button`
   &:hover { background-color: #f1f3f5; }
   &:disabled { cursor: not-allowed; opacity: 0.5; }
 `;
+const ActionButtonGroup = styled.div`
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+`;
+
+const ActionButton = styled(Link)`
+    flex: 1;
+    text-decoration: none;
+    text-align: center;
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-weight: bold;
+    color: white;
+    background-color: #6c757d;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    &:hover { background-color: #5a6268; }
+`;
 
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const ITEMS_PER_PAGE = 6;
@@ -208,6 +228,7 @@ const ITEMS_PER_PAGE = 6;
 function ShopPage() {
   const { players, avatarParts, fetchInitialData } = useLeagueStore();
   const currentUser = auth.currentUser;
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [previewConfig, setPreviewConfig] = useState(null);
@@ -237,23 +258,18 @@ function ShopPage() {
   const itemsForSale = useMemo(() => {
     const today = new Date().getDay();
     let items = avatarParts.filter(part => {
-      // 1. 숨김 상태 아니고, 가격이 0보다 커야 함
-      if (part.status === 'hidden' || !(part.price > 0)) {
-        return false;
-      }
-      // 2. 판매 요일 필터링
+      if (part.status === 'hidden') return false;
       if (part.saleDays && part.saleDays.length > 0) {
         return part.saleDays.includes(today);
       }
       return true;
     });
-
-    // 3. 마지막으로 카테고리 탭 필터링
+    items = items.filter(part => part.price > 0);
     if (activeTab !== 'all') {
       items = items.filter(part => part.category === activeTab);
     }
     return items;
-  }, [avatarParts, activeTab]); // activeTab을 의존성 배열에 추가
+  }, [avatarParts, activeTab]);
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
@@ -401,6 +417,10 @@ function ShopPage() {
               <button onClick={handleResetPreview} style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
                 전체 초기화
               </button>
+              <ActionButtonGroup>
+                <ActionButton to="/profile/edit">아바타 편집</ActionButton>
+                <ActionButton as="button" onClick={() => navigate(-1)}>나가기</ActionButton>
+              </ActionButtonGroup>
             </PreviewPanel>
           </ContentWrapper>
         </>
