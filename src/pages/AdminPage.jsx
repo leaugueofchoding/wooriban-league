@@ -15,7 +15,8 @@ import {
     updateAvatarPartDisplayName,
     batchUpdateSaleDays,
     createClassGoal,
-    getActiveGoals
+    getActiveGoals,
+    batchDeleteAvatarParts
 } from '../api/firebase.js';
 
 
@@ -208,7 +209,7 @@ const getBackgroundPosition = (category) => {
     switch (category) {
         case 'bottom': return 'center 75%';
         case 'shoes': return 'center 100%';
-        case 'hair': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+        case 'hair': case 'eyes': case 'nose': case 'mouth': return 'center 5%';
         case 'top':
         default: return 'center 55%';
     }
@@ -302,6 +303,20 @@ function GoalManager() {
         }
     };
 
+    const handleGoalDelete = async (goalId) => {
+        if (window.confirm("정말로 이 목표를 삭제하시겠습니까?")) {
+            try {
+                await deleteClassGoal(goalId);
+                alert('목표가 삭제되었습니다.');
+                // 목록 새로고침
+                const goals = await getActiveGoals();
+                setActiveGoals(goals);
+            } catch (error) {
+                alert(`삭제 실패: ${error.message}`);
+            }
+        }
+    };
+
     return (
         <Section>
             <Title>학급 목표 관리</Title>
@@ -328,8 +343,18 @@ function GoalManager() {
                     {activeGoals.length > 0 ? (
                         activeGoals.map(goal => (
                             <ListItem key={goal.id}>
-                                <span>{goal.title}</span>
-                                <span>{goal.currentPoints} / {goal.targetPoints} P</span>
+                                <div>
+                                    <span>{goal.title}</span>
+                                    <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
+                                        ({goal.currentPoints} / {goal.targetPoints} P)
+                                    </span>
+                                </div>
+                                {/* 👇 [추가] 삭제 버튼 */}
+                                <SaveButton
+                                    onClick={() => handleGoalDelete(goal.id)}
+                                    style={{ backgroundColor: '#dc3545' }}>
+                                    삭제
+                                </SaveButton>
                             </ListItem>
                         ))
                     ) : (
@@ -454,6 +479,8 @@ function AvatarPartManager() {
     const [startDate, setStartDate] = useState(new Date());
     const [endDate, setEndDate] = useState(new Date());
     const [selectedDays, setSelectedDays] = useState(new Set());
+    const [isDeleteMode, setIsDeleteMode] = useState(false); // 👈 [추가] 삭제 모드 state
+
 
     // 👇 [추가] 페이지네이션을 위한 state
     const [currentPage, setCurrentPage] = useState(1);
@@ -613,19 +640,56 @@ function AvatarPartManager() {
         }
     };
 
+    const handleBatchDelete = async () => {
+        if (checkedItems.size === 0) return alert('삭제할 아이템을 하나 이상 선택해주세요.');
+
+        const itemsToDelete = Array.from(checkedItems).map(id => avatarParts.find(p => p.id === id)).filter(Boolean);
+        const itemNames = itemsToDelete.map(p => p.displayName || p.id).join(', ');
+
+        if (window.confirm(`선택한 ${checkedItems.size}개 아이템(${itemNames})을 영구적으로 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`)) {
+            try {
+                await batchDeleteAvatarParts(itemsToDelete);
+                await fetchInitialData();
+                setCheckedItems(new Set());
+                setIsDeleteMode(false);
+                alert('선택한 아이템이 삭제되었습니다.');
+            } catch (error) {
+                alert(`삭제 실패: ${error.message}`);
+            }
+        }
+    };
+
     return (
         <Section>
             <Title>아바타 아이템 관리</Title>
 
-            <InputGroup style={{ justifyContent: 'flex-start' }}>
-                <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
-                    {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
-                </SaveButton>
-                <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
-                    {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
+            {/* 파일 업로드 UI */}
+            <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
+                <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
+                <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                    <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
+                    <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
+                    <option value="accessory">액세서리</option>
+                </select>
+                <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
+                    {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
                 </SaveButton>
             </InputGroup>
 
+            {/* 일괄 작업 버튼 UI */}
+            <InputGroup style={{ justifyContent: 'flex-start' }}>
+                <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                    {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
+                </SaveButton>
+                <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
+                    {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
+                </SaveButton>
+                <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                    {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
+                </SaveButton>
+            </InputGroup>
+
+            {/* 세일 모드 UI */}
             {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
                 <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
                     <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
@@ -640,38 +704,33 @@ function AvatarPartManager() {
                 <InputGroup style={{ justifyContent: 'flex-start' }}>
                     <span>종료일:</span><DatePicker selected={endDate} onChange={date => setEndDate(date)} dateFormat="yyyy/MM/dd" />
                 </InputGroup>
-            </div>
-            )}
+            </div>)}
 
-            {isSaleDayMode && (
-                <div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
-                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-                        <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
-                        <SaveButton onClick={handleSaveSaleDays} disabled={checkedItems.size === 0}>{checkedItems.size}개 요일 설정</SaveButton>
-                    </InputGroup>
-                    <InputGroup style={{ justifyContent: 'flex-start' }}>
-                        <span>판매 요일:</span>
-                        {DAYS_OF_WEEK.map((day, index) => (
-                            <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input type="checkbox" checked={selectedDays.has(index)} onChange={() => handleDayToggle(index)} />
-                                {day}
-                            </label>
-                        ))}
-                    </InputGroup>
-                </div>
-            )}
+            {/* 요일별 판매 모드 UI */}
+            {isSaleDayMode && (<div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
+                <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                    <SaveButton onClick={handleSaveSaleDays} disabled={checkedItems.size === 0}>{checkedItems.size}개 요일 설정</SaveButton>
+                </InputGroup>
+                <InputGroup style={{ justifyContent: 'flex-start' }}>
+                    <span>판매 요일:</span>
+                    {DAYS_OF_WEEK.map((day, index) => (
+                        <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <input type="checkbox" checked={selectedDays.has(index)} onChange={() => handleDayToggle(index)} /> {day}
+                        </label>
+                    ))}
+                </InputGroup>
+            </div>)}
 
-            <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
-                <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
-                <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
-                    <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
-                    <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
-                    <option value="accessory">액세서리</option>
-                </select>
-                <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
-                    {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
-                </SaveButton>
-            </InputGroup>
+            {/* 삭제 모드 UI */}
+            {isDeleteMode && (<div style={{ border: '2px solid #dc3545', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff0f1' }}>
+                <InputGroup style={{ justifyContent: 'space-between', marginBottom: 0 }}>
+                    <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                    <SaveButton onClick={handleBatchDelete} disabled={checkedItems.size === 0} style={{ backgroundColor: '#dc3545' }}>
+                        {checkedItems.size}개 영구 삭제
+                    </SaveButton>
+                </InputGroup>
+            </div>)}
 
             <TabContainer>
                 {sortedCategories.map(category => (
@@ -689,10 +748,11 @@ function AvatarPartManager() {
 
                     return (
                         <ItemCard key={part.id}>
-                            {(isSaleMode || isSaleDayMode) && (<div style={{ height: '25px' }}>
-                                <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
-                            </div>)}
-                            {!(isSaleMode || isSaleDayMode) && <div style={{ height: '25px' }}></div>}
+                            {(isSaleMode || isSaleDayMode || isDeleteMode) && (
+                                <div style={{ height: '25px' }}>
+                                    <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
+                                </div>)}
+                            {!(isSaleMode || isSaleDayMode || isDeleteMode) && <div style={{ height: '25px' }}></div>}
 
                             <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
                                 <input
@@ -700,9 +760,9 @@ function AvatarPartManager() {
                                     value={displayNames[part.id] || ''}
                                     onChange={(e) => handleDisplayNameChange(part.id, e.target.value)}
                                     placeholder={part.id}
-                                    onBlur={() => handleSaveDisplayName(part.id)}
                                     style={{ width: '100%', textAlign: 'center', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
                                 />
+                                <SaveButton onClick={() => handleSaveDisplayName(part.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
                             </div>
 
                             <ItemImage src={part.src} $category={activeTab} />
@@ -719,6 +779,7 @@ function AvatarPartManager() {
                                 <button onClick={() => handleEndSale(part.id)}>즉시 종료</button>
                             </div>
                             )}
+
                             <button onClick={() => handleToggleStatus(part)} style={{ padding: '8px 16px', marginTop: 'auto', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: 'white', backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745' }}>
                                 {part.status === 'hidden' ? '숨김 상태' : '진열 중'}
                             </button>

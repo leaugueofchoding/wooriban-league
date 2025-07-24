@@ -1,7 +1,7 @@
 // src/api/firebase.js
 
 import { initializeApp } from "firebase/app";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore, collection, getDocs, query, where, doc,
@@ -14,7 +14,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
   authDomain: "wooriban-league.firebaseapp.com",
   projectId: "wooriban-league",
-  storageBucket: "wooriban-league.appspot.com",
+  storageBucket: "wooriban-league.firebasestorage.app",
   messagingSenderId: "1038292353129",
   appId: "1:1038292353129:web:de74062d2fb8046be7e2f8"
 };
@@ -573,4 +573,30 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
       `'${goalDoc.data().title}' 목표에 기부`
     );
   });
+}
+
+export async function deleteClassGoal(goalId) {
+  const goalRef = doc(db, "classGoals", goalId);
+  await deleteDoc(goalRef);
+}
+
+export async function batchDeleteAvatarParts(partsToDelete) {
+  const batch = writeBatch(db);
+
+  for (const part of partsToDelete) {
+    // 1. Firestore 문서 삭제 목록에 추가
+    const partRef = doc(db, "avatarParts", part.id);
+    batch.delete(partRef);
+
+    // 2. Storage에 저장된 이미지 파일 삭제
+    const imageRef = ref(storage, part.src);
+    try {
+      await deleteObject(imageRef);
+    } catch (error) {
+      console.error("이미지 파일 삭제 실패 (이미 존재하지 않을 수 있음):", error);
+    }
+  }
+
+  // 3. 일괄 작업 실행
+  await batch.commit();
 }

@@ -114,7 +114,7 @@ const getBackgroundPosition = (category) => {
   switch (category) {
     case 'bottom': return 'center 75%';
     case 'shoes': return 'center 100%';
-    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 5%';
     default: return 'center 55%';
   }
 };
@@ -237,14 +237,23 @@ function ShopPage() {
   const itemsForSale = useMemo(() => {
     const today = new Date().getDay();
     let items = avatarParts.filter(part => {
-      if (part.status === 'hidden') return false;
+      // 1. 숨김 상태 아니고, 가격이 0보다 커야 함
+      if (part.status === 'hidden' || !(part.price > 0)) {
+        return false;
+      }
+      // 2. 판매 요일 필터링
       if (part.saleDays && part.saleDays.length > 0) {
         return part.saleDays.includes(today);
       }
       return true;
     });
-    return items.filter(part => part.price > 0);
-  }, [avatarParts]);
+
+    // 3. 마지막으로 카테고리 탭 필터링
+    if (activeTab !== 'all') {
+      items = items.filter(part => part.category === activeTab);
+    }
+    return items;
+  }, [avatarParts, activeTab]); // activeTab을 의존성 배열에 추가
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
