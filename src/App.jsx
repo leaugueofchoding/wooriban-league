@@ -1,7 +1,6 @@
 // src/App.jsx
 
 import React, { useEffect, useState, useMemo } from 'react';
-// [수정] react-router-dom에서 Link를 추가로 import합니다.
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useLeagueStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
@@ -36,7 +35,6 @@ const AccessDeniedMessage = styled.h2`
   color: #dc3545;
 `;
 
-// 이 컴포넌트가 Link를 사용하므로 import가 필요합니다.
 const GoToHomeButton = styled(Link)`
   display: inline-block;
   margin-top: 1.5rem;
@@ -76,19 +74,34 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  const { fetchInitialData, isLoading } = useLeagueStore();
+  const { fetchInitialData, isLoading, subscribeToNotifications, unsubscribeFromNotifications } = useLeagueStore();
   const [authUser, setAuthUser] = useState(null);
 
   useEffect(() => {
+    // onAuthStateChanged는 인증 상태 변경을 감지하는 리스너를 반환합니다.
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
+      if (user) {
+        // --- ▼▼▼ [수정] 로그인 시 데이터 로딩 및 알림 구독 시작 ▼▼▼ ---
+        fetchInitialData();
+        subscribeToNotifications(user.uid);
+        // --- ▲▲▲ [수정] 여기까지 ---
+      } else {
+        // --- ▼▼▼ [수정] 로그아웃 시 알림 구독 해지 ▼▼▼ ---
+        unsubscribeFromNotifications();
+        // --- ▲▲▲ [수정] 여기까지 ---
+      }
     });
-    return () => unsubscribe();
-  }, []);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
+    // 컴포넌트가 언마운트될 때 리스너를 정리합니다.
+    return () => unsubscribe();
+  }, [fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications]);
+
+  // isLoading 상태를 authUser가 결정된 이후에 판단하도록 변경
+  // authUser가 null(초기 상태)일 때 로딩을 표시하여 깜빡임 방지
+  if (authUser === null) {
+    return <div style={{ textAlign: 'center', padding: '2rem' }}>인증 정보 확인 중...</div>;
+  }
 
   if (isLoading) {
     return <div style={{ textAlign: 'center', padding: '2rem' }}>데이터 로딩 중...</div>;

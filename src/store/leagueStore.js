@@ -1,3 +1,5 @@
+// src/store/leagueStore.js
+
 import { create } from 'zustand';
 import {
     getPlayers,
@@ -23,12 +25,14 @@ import {
     deleteMission,
     adjustPlayerPoints,
     createPlayerFromUser,
-    getNotificationsForUser,
     markNotificationsAsRead,
     getTodaysQuizHistory,
     submitQuizAnswer as firebaseSubmitQuizAnswer,
-    requestMissionApproval
+    requestMissionApproval,
+    db // [추가] db import
 } from '../api/firebase';
+// [추가] onSnapshot 등 필요한 함수 import
+import { collection, query, where, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
 
@@ -47,6 +51,7 @@ export const useLeagueStore = create((set, get) => ({
     leagueType: 'mixed',
     notifications: [],
     unreadNotificationCount: 0,
+    notificationListener: null, // [추가] 실시간 리스너 구독 해지 함수 저장
     dailyQuiz: null,
     quizHistory: [],
     currentUser: null,
@@ -78,6 +83,11 @@ export const useLeagueStore = create((set, get) => ({
             const currentUser = auth.currentUser;
             set({ currentUser });
 
+            // [수정] 사용자가 로그인했을 때만 알림 구독 시작
+            if (currentUser) {
+                get().subscribeToNotifications(currentUser.uid);
+            }
+
             const seasons = await getSeasons();
             const activeSeason = seasons.find(s => s.status === 'active' || s.status === 'preparing') || seasons[0] || null;
 
@@ -105,10 +115,6 @@ export const useLeagueStore = create((set, get) => ({
                 getMissions('archived'),
                 getMissionSubmissions()
             ]);
-
-            if (currentUser) {
-                get().fetchNotifications(currentUser.uid);
-            }
 
             set({
                 players: playersData,
@@ -198,8 +204,10 @@ export const useLeagueStore = create((set, get) => ({
             await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name);
             alert('미션 완료를 요청했습니다. 기록원이 확인할 때까지 잠시 기다려주세요!');
 
-            const submissionsData = await getMissionSubmissions();
-            set({ missionSubmissions: submissionsData });
+            // 승인 요청 후에는 submission 상태를 다시 불러올 필요 없이,
+            // 기록원에게 알림이 가므로 별도의 fetch는 제거합니다.
+            // const submissionsData = await getMissionSubmissions();
+            // set({ missionSubmissions: submissionsData });
 
         } catch (error) {
             console.error("미션 제출 오류:", error);
@@ -230,7 +238,9 @@ export const useLeagueStore = create((set, get) => ({
             set({ isLoading: true });
             await adjustPlayerPoints(playerId, amount, reason);
             alert('포인트가 성공적으로 조정되었습니다.');
-            await get().fetchInitialData();
+            // 전체 데이터를 다시 불러오는 대신, player 데이터만 갱신하여 최적화
+            const playersData = await getPlayers();
+            set({ players: playersData, isLoading: false });
         } catch (error) {
             console.error("포인트 조정 액션 오류:", error);
             alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
@@ -238,6 +248,89 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
+    // --- 알림 관련 액션 (실시간으로 변경) ---
+    subscribeToNotifications: (userId) => {
+        get().unsubscribeFromNotifications(); // 기존 리스너가 있다면 해지
+
+        const notifsRef = collection(db, 'notifications');
+        const q = query(notifsRef, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(20));
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const notifications = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const unreadCount = notifications.filter(n => !n.isRead).length;
+            set({ notifications, unreadNotificationCount: unreadCount });
+        }, (error) => {
+            console.error("알림 실시간 수신 오류:", error);
+        });
+
+        set({ notificationListener: unsubscribe }); // 구독 해지 함수 저장
+    },
+
+    unsubscribeFromNotifications: () => {
+        const { notificationListener } = get();
+        if (notificationListener) {
+            notificationListener(); // 구독 해지
+            set({ notificationListener: null });
+        }
+    },
+
+    markAsRead: async () => {
+        const userId = auth.currentUser?.uid;
+        if (!userId || get().unreadNotificationCount === 0) return;
+
+        // Firestore 문서를 업데이트하는 것은 그대로 유지
+        await markNotificationsAsRead(userId);
+
+        // 로컬 상태는 onSnapshot 리스너에 의해 자동으로 갱신되므로
+        // 별도의 set() 호출은 필요 없습니다.
+        // set(state => ({
+        //     notifications: state.notifications.map(n => ({ ...n, isRead: true })),
+        //     unreadNotificationCount: 0
+        // }));
+    },
+
+
+    // --- 퀴즈 관련 (기존과 동일) ---
+    fetchDailyQuiz: async (studentId) => {
+        const todaysHistory = await getTodaysQuizHistory(studentId);
+        set({ quizHistory: todaysHistory });
+
+        if (todaysHistory.length >= 5) {
+            set({ dailyQuiz: null });
+            return;
+        }
+
+        const solvedQuizIds = todaysHistory.map(h => h.quizId);
+
+        const allQuizList = Object.values(allQuizzes).flat();
+
+        const availableQuizzes = allQuizList.filter(q => !solvedQuizIds.includes(q.id));
+
+        if (availableQuizzes.length === 0) {
+            set({ dailyQuiz: null });
+            return;
+        }
+
+        const randomQuiz = availableQuizzes[Math.floor(Math.random() * availableQuizzes.length)];
+        set({ dailyQuiz: randomQuiz });
+    },
+
+    submitQuizAnswer: async (quizId, userAnswer) => {
+        const myPlayerData = get().players.find(p => p.authUid === auth.currentUser?.uid);
+        if (!myPlayerData) return false;
+
+        const correctAnswer = get().dailyQuiz.answer;
+        const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, correctAnswer);
+
+        if (isCorrect) {
+            const playersData = await getPlayers();
+            set({ players: playersData });
+        }
+
+        return isCorrect;
+    },
+
+    // --- 시즌 및 리그 관리 (기존과 동일) ---
     startSeason: async () => {
         const season = get().currentSeason;
         if (!season || season.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
@@ -393,62 +486,5 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) {
             console.error("점수 저장 오류:", error);
         }
-    },
-
-    fetchNotifications: async (userId) => {
-        if (!userId) return;
-        const notifications = await getNotificationsForUser(userId);
-        const unreadCount = notifications.filter(n => !n.isRead).length;
-        set({ notifications, unreadNotificationCount: unreadCount });
-    },
-
-    markAsRead: async () => {
-        const userId = auth.currentUser?.uid;
-        if (!userId || get().unreadNotificationCount === 0) return;
-
-        await markNotificationsAsRead(userId);
-        set(state => ({
-            notifications: state.notifications.map(n => ({ ...n, isRead: true })),
-            unreadNotificationCount: 0
-        }));
-    },
-
-    fetchDailyQuiz: async (studentId) => {
-        const todaysHistory = await getTodaysQuizHistory(studentId);
-        set({ quizHistory: todaysHistory });
-
-        if (todaysHistory.length >= 5) {
-            set({ dailyQuiz: null });
-            return;
-        }
-
-        const solvedQuizIds = todaysHistory.map(h => h.quizId);
-
-        const allQuizList = Object.values(allQuizzes).flat();
-
-        const availableQuizzes = allQuizList.filter(q => !solvedQuizIds.includes(q.id));
-
-        if (availableQuizzes.length === 0) {
-            set({ dailyQuiz: null });
-            return;
-        }
-
-        const randomQuiz = availableQuizzes[Math.floor(Math.random() * availableQuizzes.length)];
-        set({ dailyQuiz: randomQuiz });
-    },
-
-    submitQuizAnswer: async (quizId, userAnswer) => {
-        const myPlayerData = get().players.find(p => p.authUid === auth.currentUser?.uid);
-        if (!myPlayerData) return false;
-
-        const correctAnswer = get().dailyQuiz.answer;
-        const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, correctAnswer);
-
-        if (isCorrect) {
-            const playersData = await getPlayers();
-            set({ players: playersData });
-        }
-
-        return isCorrect;
     },
 }));

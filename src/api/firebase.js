@@ -1,3 +1,5 @@
+// src/api/firebase.js
+
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth } from "firebase/auth";
@@ -112,25 +114,45 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
 
-      const submissionRef = doc(collection(db, 'missionSubmissions'));
-      batch.set(submissionRef, {
-        missionId,
-        studentId,
-        checkedBy: recorderId,
-        status: 'approved',
-        createdAt: Timestamp.now(),
-      });
+      // 미션 제출 상태를 'approved'로 업데이트하거나 새로 생성
+      const submissionQuery = query(
+        collection(db, 'missionSubmissions'),
+        where('missionId', '==', missionId),
+        where('studentId', '==', studentId)
+      );
+      const submissionSnapshot = await getDocs(submissionQuery);
+
+      if (!submissionSnapshot.empty) {
+        // 기존 제출 기록이 있으면 업데이트
+        const submissionDocRef = submissionSnapshot.docs[0].ref;
+        batch.update(submissionDocRef, {
+          status: 'approved',
+          checkedBy: recorderId,
+        });
+      } else {
+        // 기존 기록이 없으면 새로 생성 (관리자가 직접 승인하는 경우)
+        const submissionRef = doc(collection(db, 'missionSubmissions'));
+        batch.set(submissionRef, {
+          missionId,
+          studentId,
+          studentName: playerData.name, // 이름 추가
+          checkedBy: recorderId,
+          status: 'approved',
+          requestedAt: Timestamp.now(), // 요청 시간을 현재로 설정
+        });
+      }
+
 
       batch.update(playerRef, { points: increment(reward) });
 
-      // --- ▼▼▼ [수정] 미션 승인 시 알림 생성 기능 추가 ▼▼▼ ---
+      // --- ▼▼▼ 미션 승인 시 알림 생성 기능 ▼▼▼ ---
       createNotification(
         playerData.authUid,
         `'${missionData.title}' 미션 완료!`,
         `${reward}P를 획득했습니다.`,
         'mission'
       );
-      // --- ▲▲▲ [수정] 여기까지 ---
+      // --- ▲▲▲ 여기까지 ---
 
       await addPointHistory(
         playerData.authUid,
@@ -143,6 +165,7 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
 
   await batch.commit();
 }
+
 
 export async function requestMissionApproval(missionId, studentId, studentName) {
   const submissionsRef = collection(db, 'missionSubmissions');
@@ -157,6 +180,7 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
     throw new Error("이미 승인을 요청했거나 완료된 미션입니다.");
   }
 
+  // 1. 미션 승인 요청 문서 추가
   await addDoc(submissionsRef, {
     missionId,
     studentId,
@@ -165,7 +189,33 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
     requestedAt: serverTimestamp(),
     checkedBy: null,
   });
+
+  // --- ▼▼▼ [추가] 기록원/관리자에게 알림 전송 기능 ▼▼▼ ---
+  // 2. 미션 정보 가져오기
+  const missionRef = doc(db, 'missions', missionId);
+  const missionSnap = await getDoc(missionRef);
+  if (!missionSnap.exists()) return; // 미션 없으면 알림 X
+  const missionTitle = missionSnap.data().title;
+
+  // 3. 모든 기록원과 관리자 찾기
+  const recordersQuery = query(collection(db, 'players'), where('role', 'in', ['recorder', 'admin']));
+  const recordersSnapshot = await getDocs(recordersQuery);
+
+  // 4. 각 기록원/관리자에게 알림 생성
+  recordersSnapshot.forEach(recorderDoc => {
+    const recorderData = recorderDoc.data();
+    if (recorderData.authUid) { // authUid가 있는 사용자에게만 알림
+      createNotification(
+        recorderData.authUid,
+        `[미션] 승인 요청 도착`,
+        `${studentName} 학생이 '${missionTitle}' 미션 완료를 요청했습니다.`,
+        'mission_request'
+      );
+    }
+  });
+  // --- ▲▲▲ [추가] 여기까지 ---
 }
+
 
 // --- 포인트 수동 조정 ---
 export async function adjustPlayerPoints(playerId, amount, reason) {
@@ -186,15 +236,15 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
       `${message} (사유: ${reason})`,
       'point'
     );
-
-    // 포인트 기록 (addPointHistory 헬퍼 함수 사용으로 통일)
-    await addPointHistory(
-      playerDoc.data().authUid,
-      playerDoc.data().name,
-      amount,
-      reason
-    );
   });
+  // 포인트 기록은 트랜잭션 밖으로 이동하여 createNotification과 분리
+  const playerDoc = await getDoc(playerRef);
+  await addPointHistory(
+    playerDoc.data().authUid,
+    playerDoc.data().name,
+    amount,
+    reason
+  );
   console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
 }
 
@@ -461,7 +511,7 @@ export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAns
   return isCorrect;
 }
 
-// --- 미션(Missions) 관련 ---
+// --- 미션(Missions) 관련 (기존 함수 유지) ---
 export async function createMission(missionData) {
   const missionsRef = collection(db, 'missions');
   await addDoc(missionsRef, {
@@ -476,24 +526,6 @@ export async function getMissions(status = 'active') {
   const q = query(missionsRef, where("status", "==", status), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-}
-
-export async function checkMissionForStudent(missionId, studentId, recorderId) {
-  const submissionRef = collection(db, 'missionSubmissions');
-  const q = query(submissionRef, where("missionId", "==", missionId), where("studentId", "==", studentId));
-  const existingSubmission = await getDocs(q);
-
-  if (!existingSubmission.empty) {
-    throw new Error("이미 확인 요청된 미션입니다.");
-  }
-
-  await addDoc(submissionRef, {
-    missionId,
-    studentId,
-    checkedBy: recorderId,
-    status: 'pending',
-    createdAt: new Date(),
-  });
 }
 
 export async function getMissionSubmissions() {
@@ -537,6 +569,12 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
   const playerRef = doc(db, "players", playerId);
 
   try {
+    const playerDocBefore = await getDoc(playerRef);
+    if (!playerDocBefore.exists()) {
+      throw new Error("플레이어를 찾을 수 없습니다.");
+    }
+    const playerDataBefore = playerDocBefore.data();
+
     await runTransaction(db, async (transaction) => {
       const playerDoc = await transaction.get(playerRef);
       if (!playerDoc.exists()) {
@@ -561,16 +599,17 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
         points: newPoints,
         ownedParts: arrayUnion(...newPartIds)
       });
-
-      for (const part of partsToBuy) {
-        addPointHistory(
-          playerData.authUid,
-          playerData.name,
-          -part.price,
-          `${part.displayName || part.id} 구매`
-        );
-      }
     });
+
+    // 트랜잭션 성공 후 포인트 기록
+    for (const part of partsToBuy) {
+      await addPointHistory(
+        playerDataBefore.authUid,
+        playerDataBefore.name,
+        -part.price,
+        `${part.displayName || part.id} 구매`
+      );
+    }
 
     return "선택한 아이템을 모두 구매했습니다!";
   } catch (error) {
@@ -614,6 +653,11 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
   const playerRef = doc(db, "players", playerId);
   const goalRef = doc(db, "classGoals", goalId);
 
+  // 포인트 기록을 위한 플레이어 정보 먼저 조회
+  const playerDocForHistory = await getDoc(playerRef);
+  if (!playerDocForHistory.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+  const playerDataForHistory = playerDocForHistory.data();
+
   await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     const goalDoc = await transaction.get(goalRef);
@@ -629,14 +673,19 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
     transaction.update(playerRef, { points: increment(-amount) });
     transaction.update(goalRef, { currentPoints: increment(amount) });
 
-    addPointHistory(
-      playerData.authUid,
-      playerData.name,
-      -amount,
-      `'${goalDoc.data().title}' 목표에 기부`
-    );
+    // 트랜잭션 내에서는 외부 변수(playerDataForHistory)를 사용한 비동기 호출을 피합니다.
   });
+
+  // 트랜잭션 성공 후 포인트 기록
+  const goalDocAfter = await getDoc(goalRef);
+  await addPointHistory(
+    playerDataForHistory.authUid,
+    playerDataForHistory.name,
+    -amount,
+    `'${goalDocAfter.data().title}' 목표에 기부`
+  );
 }
+
 
 export async function deleteClassGoal(goalId) {
   const goalRef = doc(db, "classGoals", goalId);
