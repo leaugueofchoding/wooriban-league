@@ -5,7 +5,6 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
-import { auth, createPlayerFromUser } from '../api/firebase.js';
 
 const HomePageWrapper = styled.div`
   max-width: 1000px;
@@ -13,48 +12,12 @@ const HomePageWrapper = styled.div`
   padding: 2rem;
 `;
 
-const JoinLeagueButton = styled.button`
-  padding: 1rem 2rem;
-  font-size: 1.2rem;
-  font-weight: bold;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 2rem;
-  display: block;
-  margin-left: auto;
-  margin-right: auto;
-
-  &:hover {
-    background-color: #0056b3;
-  }
-`;
+// [삭제] JoinLeagueButton 관련 코드 모두 삭제
 
 function HomePage() {
-  const { matches, teams, players, fetchInitialData } = useLeagueStore();
-  const currentUser = auth.currentUser;
+  const { matches, teams } = useLeagueStore(); // [수정] players, fetchInitialData, currentUser 등 불필요한 부분 삭제
 
-  // 현재 로그인한 사용자가 선수로 등록되어 있는지 확인
-  const isPlayerRegistered = useMemo(() => {
-    if (!currentUser) return false;
-    return players.some(p => p.authUid === currentUser.uid);
-  }, [players, currentUser]);
-
-  const handleJoinLeague = async () => {
-    if (!currentUser) return alert('로그인이 필요합니다.');
-    if (window.confirm('리그에 선수로 참가하시겠습니까?')) {
-      try {
-        await createPlayerFromUser(currentUser);
-        alert('리그 참가 신청이 완료되었습니다!');
-        await fetchInitialData(); // 선수 목록 새로고침
-      } catch (error) {
-        console.error("리그 참가 오류:", error);
-        alert('참가 신청 중 오류가 발생했습니다.');
-      }
-    }
-  };
+  // [삭제] isPlayerRegistered, handleJoinLeague 관련 로직 모두 삭제
 
   const standingsData = useMemo(() => {
     const completedMatches = matches.filter(m => m.status === '완료');
@@ -116,14 +79,8 @@ function HomePage() {
 
   return (
     <HomePageWrapper>
-      <h1 style={{ textAlign: 'center' }}>우리반 리그</h1>
-
-      {currentUser && !isPlayerRegistered && (
-        <JoinLeagueButton onClick={handleJoinLeague}>
-          🏆 리그 참가 신청하기
-        </JoinLeagueButton>
-      )}
-
+      <h1 style={{ textAlign: 'center' }}>우리반 리그 전체 순위</h1>
+      {/* [삭제] 리그 참가 버튼 렌더링 부분 삭제 */}
       <LeagueTable standings={standingsData} />
     </HomePageWrapper>
   );

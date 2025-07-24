@@ -1,13 +1,15 @@
 // src/App.jsx
 
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react';
+// [수정] react-router-dom에서 Link를 추가로 import합니다.
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useLeagueStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
+import styled from 'styled-components';
 
 // Page Components
-import DashboardPage from './pages/DashboardPage'; // 👈 [추가]
+import DashboardPage from './pages/DashboardPage';
 import HomePage from './pages/HomePage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
@@ -20,63 +22,99 @@ import WinnerPage from './pages/WinnerPage';
 // Common Components
 import Auth from './components/Auth';
 
+const AccessDeniedWrapper = styled.div`
+  max-width: 800px;
+  margin: 4rem auto;
+  padding: 2rem;
+  text-align: center;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+`;
+
+const AccessDeniedMessage = styled.h2`
+  color: #dc3545;
+`;
+
+// 이 컴포넌트가 Link를 사용하므로 import가 필요합니다.
+const GoToHomeButton = styled(Link)`
+  display: inline-block;
+  margin-top: 1.5rem;
+  padding: 0.8rem 1.5rem;
+  background-color: #007bff;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: bold;
+`;
+
+function AccessDenied() {
+  return (
+    <AccessDeniedWrapper>
+      <AccessDeniedMessage>🚫 접근 권한이 없습니다.</AccessDeniedMessage>
+      <p>로그인 후 리그에 참가해야 이용할 수 있는 페이지입니다.</p>
+      <GoToHomeButton to="/">대시보드로 돌아가기</GoToHomeButton>
+    </AccessDeniedWrapper>
+  );
+}
+
+const ProtectedRoute = ({ children }) => {
+  const { players } = useLeagueStore();
+  const currentUser = auth.currentUser;
+  const location = useLocation();
+
+  const isPlayerRegistered = useMemo(() => {
+    if (!currentUser) return false;
+    return players.some(p => p.authUid === currentUser.uid);
+  }, [players, currentUser]);
+
+  if (!currentUser || !isPlayerRegistered) {
+    return <Navigate to="/access-denied" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
 function App() {
   const { fetchInitialData, isLoading } = useLeagueStore();
   const [authUser, setAuthUser] = useState(null);
 
-  // Firebase 인증 상태 리스너
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthUser(user);
-        console.log("로그인된 사용자:", user);
-      } else {
-        setAuthUser(null);
-      }
+      setAuthUser(user);
     });
-    // 컴포넌트가 언마운트될 때 리스너 정리
     return () => unsubscribe();
   }, []);
 
-  // 초기 데이터 로딩
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
 
-  // 데이터 로딩 중일 때 로딩 화면 표시
   if (isLoading) {
     return <div style={{ textAlign: 'center', padding: '2rem' }}>데이터 로딩 중...</div>;
   }
 
   return (
     <BrowserRouter>
-      {/* Auth 컴포넌트는 모든 페이지 상단에 위치하여 로그인 및 사용자 정보를 처리합니다. */}
       <Auth user={authUser} />
-
       <div className="main-content">
-        {/* Routes 컴포넌트는 URL 경로에 따라 렌더링할 컴포넌트를 결정합니다. */}
         <Routes>
-          {/* 기본 경로 */}
+          {/* --- 누구나 접근 가능한 페이지 --- */}
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/access-denied" element={<AccessDenied />} />
+          <Route path="/league" element={<HomePage />} />
 
-          {/* 주요 기능 페이지 경로 */}
-          <Route path="/missions" element={<MissionsPage />} />
-          <Route path="/shop" element={<ShopPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/winner" element={<WinnerPage />} />
 
-          {/* 프로필 관련 경로는 구체적인 경로를 상단에 배치해야 합니다. */}
-          <Route path="/profile/edit" element={<AvatarEditPage />} />
-          <Route path="/profile/:playerId" element={<ProfilePage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-
-          {/* ▼▼▼▼▼ 에러가 발생한 RecorderPage 경로 수정 ▼▼▼▼▼ */}
-          {/* 이 경로는 /recorder/문자열 형태의 URL을 정확히 처리합니다. */}
-          {/* 예: /recorder/3vwRlHzfpfJ1uopTbAUG */}
-          <Route path="/recorder/:missionId" element={<RecorderPage />} />
-
-          {/* 이 경로는 /recorder 라는 URL을 처리합니다. (missionId가 없는 경우) */}
-          <Route path="/recorder" element={<RecorderPage />} />
+          {/* --- 리그 참가자만 접근 가능한 페이지 --- */}
+          <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
+          <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+          <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
+          <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
+          <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
+          <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
         </Routes>
       </div>
     </BrowserRouter>

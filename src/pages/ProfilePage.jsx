@@ -1,14 +1,15 @@
+// src/pages/ProfilePage.jsx
+
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-// 👇 [수정] updatePlayerName 함수를 import 합니다.
 import { auth, db, updatePlayerName } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
 
-// --- Styled Components ---
+// --- Styled Components (기존과 동일) ---
 const AvatarDisplay = styled.div`
   width: 150px;
   height: 150px;
@@ -77,6 +78,7 @@ const StyledLink = styled(Link)`
   font-weight: 500;
   text-decoration: none;
   color: #333;
+  background-color: white; // [추가] 배경색 통일
   &:hover { background-color: #f0f0f0; }
 `;
 const Button = styled.button`
@@ -124,6 +126,7 @@ function ProfilePage() {
       acc[part.category].push(part);
       return acc;
     }, {});
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
     return Object.entries(playerData.avatarConfig).map(([category, partId]) => {
       const part = partCategories[category]?.find(p => p.id === partId);
       return part?.src;
@@ -217,6 +220,8 @@ function ProfilePage() {
       <ButtonGroup>
         {isMyProfile && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
         {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
+        {/* [추가] 상점 가기 버튼 */}
+        <StyledLink to="/shop" style={{ backgroundColor: '#17a2b8', color: 'white' }}>상점 가기</StyledLink>
         <Button onClick={() => navigate(-1)}>나가기</Button>
       </ButtonGroup>
 

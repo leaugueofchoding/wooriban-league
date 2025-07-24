@@ -16,7 +16,8 @@ import {
     batchUpdateSaleDays,
     createClassGoal,
     getActiveGoals,
-    batchDeleteAvatarParts
+    batchDeleteAvatarParts,
+    deleteClassGoal
 } from '../api/firebase.js';
 
 
