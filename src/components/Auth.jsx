@@ -1,7 +1,10 @@
+// src/components/Auth.jsx
+
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // useNavigate 추가
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { auth, updateUserProfile } from '../api/firebase.js';
+import { useLeagueStore } from '../store/leagueStore.js'; // store 추가
 import styled from 'styled-components';
 
 const AuthWrapper = styled.div`
@@ -15,7 +18,7 @@ const UserProfile = styled.div`
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 1rem; // 간격 조정
 
   img {
     width: 32px;
@@ -47,13 +50,36 @@ const Button = styled.button`
   background-color: white;
 `;
 
+// [추가] 알림 버튼 스타일
+const NotificationButton = styled.button`
+    position: relative;
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    cursor: pointer;
+    color: #495057;
+`;
+
+const NotificationBadge = styled.div`
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 10px;
+    height: 10px;
+    background-color: #dc3545;
+    border-radius: 50%;
+    border: 1px solid white;
+`;
+
 function Auth({ user }) {
+    // [수정] store에서 알림 상태와 액션을 가져옵니다.
+    const { unreadNotificationCount, markAsRead } = useLeagueStore();
+    const navigate = useNavigate();
 
     const handleGoogleLogin = () => {
         const provider = new GoogleAuthProvider();
         signInWithPopup(auth, provider)
             .then((result) => {
-                // 로그인이 성공하면, result.user 정보를 'users' 컬렉션에 저장합니다.
                 updateUserProfile(result.user);
             })
             .catch((error) => {
@@ -66,10 +92,23 @@ function Auth({ user }) {
         signOut(auth);
     };
 
+    const handleNotificationClick = () => {
+        if (unreadNotificationCount > 0) {
+            markAsRead();
+        }
+        navigate('/'); // 클릭 시 대시보드로 이동
+    }
+
     return (
         <AuthWrapper>
             {user ? (
                 <UserProfile>
+                    {/* [추가] 알림 버튼 */}
+                    <NotificationButton onClick={handleNotificationClick}>
+                        🔔
+                        {unreadNotificationCount > 0 && <NotificationBadge />}
+                    </NotificationButton>
+
                     <Link to="/profile">
                         <img src={user.photoURL} alt="프로필 사진" />
                         <span>{user.displayName}</span>

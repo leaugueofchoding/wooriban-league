@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, createPlayerFromUser, getActiveGoals, donatePointsToGoal } from '../api/firebase';
+import { auth } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
+import QuizWidget from '../components/QuizWidget'; // 퀴즈 위젯 import
 
 // --- Styled Components ---
 
@@ -151,6 +152,7 @@ const MainGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
+  margin-bottom: 2.5rem;
 `;
 
 const Card = styled.div`
@@ -161,8 +163,8 @@ const Card = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  position: relative; // [추가] 세일 뱃지 위치 기준
-  overflow: hidden; // [추가] 세일 뱃지가 카드를 벗어나지 않도록
+  position: relative;
+  overflow: hidden;
 `;
 
 const CardTitle = styled.h4`
@@ -178,7 +180,6 @@ const CardText = styled.p`
   color: #28a745;
 `;
 
-// [추가] ShopPage에서 가져온 세일 뱃지
 const SaleBadge = styled.div`
   position: absolute;
   top: 10px;
@@ -241,15 +242,47 @@ const DonationArea = styled.div` margin-top: 1.5rem; display: flex; justify-cont
 const DonationInput = styled.input` width: 150px; padding: 0.75rem; border: 1px solid #ced4da; border-radius: 8px; font-size: 1rem; text-align: center; `;
 const DonationButton = styled.button` padding: 0.75rem 1.5rem; border: none; border-radius: 8px; background-color: #28a745; color: white; font-weight: bold; font-size: 1rem; cursor: pointer; &:disabled { background-color: #6c757d; }`;
 
-// [추가] 신규/세일 아이템을 가로로 배치하기 위한 컨테이너
 const ItemWidgetGrid = styled.div`
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
 `;
 
+const RequestButton = styled.button`
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+    margin-left: auto;
+
+    background-color: ${props => {
+        if (props.status === 'approved') return '#007bff';
+        if (props.status === 'pending') return '#6c757d';
+        return '#dc3545';
+    }};
+
+    &:hover:not(:disabled) {
+        background-color: ${props => {
+        if (props.status === 'approved') return '#0056b3';
+        if (props.status === 'pending') return '#5a6268';
+        return '#c82333';
+    }};
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.8;
+    }
+`;
+
+
 function DashboardPage() {
-    const { players, fetchInitialData, avatarParts, missions, matches, teams } = useLeagueStore();
+    const { players, missions, matches, teams, registerAsPlayer, submitMissionForApproval, missionSubmissions } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
@@ -260,30 +293,20 @@ function DashboardPage() {
         return players.find(p => p.authUid === currentUser.uid);
     }, [players, currentUser]);
 
-    const handleJoinLeague = async () => {
-        if (!currentUser) return alert('로그인이 필요합니다.');
-        if (window.confirm('리그에 선수로 참가하시겠습니까? 참가 시 기본 정보가 등록됩니다.')) {
-            try {
-                await createPlayerFromUser(currentUser);
-                alert('리그 참가 신청이 완료되었습니다!');
-                await fetchInitialData();
-            } catch (error) {
-                console.error("리그 참가 오류:", error);
-                alert('참가 신청 중 오류가 발생했습니다.');
-            }
-        }
-    };
-
+    // ... (이하 모든 함수는 이전 코드와 동일합니다)
     useEffect(() => {
         const fetchGoals = async () => {
             const goals = await getActiveGoals();
             if (goals.length > 0) setActiveGoal(goals[0]);
         };
-        fetchGoals();
-    }, []);
+        if (myPlayerData) {
+            fetchGoals();
+        }
+    }, [myPlayerData]);
 
     const myAvatarUrls = useMemo(() => {
-        if (!myPlayerData?.avatarConfig || !avatarParts.length) return [];
+        if (!myPlayerData?.avatarConfig || !useLeagueStore.getState().avatarParts.length) return [];
+        const avatarParts = useLeagueStore.getState().avatarParts;
         const partsByCategory = avatarParts.reduce((acc, part) => {
             if (!acc[part.category]) acc[part.category] = [];
             acc[part.category].push(part);
@@ -299,7 +322,7 @@ function DashboardPage() {
             }
         });
         return urls;
-    }, [myPlayerData, avatarParts]);
+    }, [myPlayerData]);
 
     const handleDonate = async () => {
         if (!myPlayerData) return alert('플레이어 정보를 불러올 수 없습니다.');
@@ -314,7 +337,7 @@ function DashboardPage() {
                 setDonationAmount('');
                 const goals = await getActiveGoals();
                 setActiveGoal(goals[0]);
-                fetchInitialData();
+                useLeagueStore.getState().fetchInitialData();
             } catch (error) {
                 alert(`기부 실패: ${error.message}`);
             }
@@ -322,13 +345,14 @@ function DashboardPage() {
     };
 
     const shopHighlightItems = useMemo(() => {
+        const avatarParts = useLeagueStore.getState().avatarParts;
         const saleItems = avatarParts.filter(part => {
             const now = new Date();
             const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate();
             return isCurrentlyOnSale && part.status !== 'hidden';
         });
-        return saleItems.slice(0, 2); // [수정] 2개만 표시
-    }, [avatarParts]);
+        return saleItems.slice(0, 2);
+    }, []);
 
     const topRankedTeams = useMemo(() => {
         const completedMatches = matches.filter(m => m.status === '완료');
@@ -353,6 +377,17 @@ function DashboardPage() {
         return stats.slice(0, 3);
     }, [matches, teams]);
 
+    const mySubmissions = useMemo(() => {
+        if (!myPlayerData) return {};
+        const submissionsMap = {};
+        missionSubmissions
+            .filter(sub => sub.studentId === myPlayerData.id)
+            .forEach(sub => {
+                submissionsMap[sub.missionId] = sub.status;
+            });
+        return submissionsMap;
+    }, [missionSubmissions, myPlayerData]);
+
     const recentMissions = useMemo(() => missions.slice(0, 2), [missions]);
     const isRecorderOrAdmin = myPlayerData?.role === 'recorder' || myPlayerData?.role === 'admin';
     const progressPercent = activeGoal ? (activeGoal.currentPoints / activeGoal.targetPoints) * 100 : 0;
@@ -361,12 +396,12 @@ function DashboardPage() {
     return (
         <DashboardWrapper>
             {currentUser && !myPlayerData && (
-                <JoinLeagueButton onClick={handleJoinLeague}>
+                <JoinLeagueButton onClick={registerAsPlayer}>
                     🏆 리그 참가하여 선수 등록하기
                 </JoinLeagueButton>
             )}
 
-            {myPlayerData ? (
+            {myPlayerData && (
                 <TopGrid>
                     <MyInfoCard onClick={() => navigate(`/profile`)}>
                         <AvatarDisplay>
@@ -383,35 +418,47 @@ function DashboardPage() {
                         <ShortcutButton to="/missions" color="#17a2b8">📜 미션 확인</ShortcutButton>
                     </ShortcutsPanel>
                 </TopGrid>
-            ) : (<h1>우리반 경영 & 리그 포털</h1>)}
+            )}
 
             <MainGrid>
                 <Section style={{ margin: 0 }}>
                     <TitleWrapper>
                         <Title>📢 새로운 미션</Title>
-                        {/* [삭제] 전체 미션 보기 링크 제거 */}
                     </TitleWrapper>
                     {recentMissions.length > 0 ? (
-                        recentMissions.map(mission => (
-                            <Card as={isRecorderOrAdmin ? Link : 'div'} to={`/recorder/${mission.id}`} key={mission.id}>
-                                <CardTitle>{mission.title}</CardTitle>
-                                <CardText>💰 {mission.reward} P</CardText>
-                            </Card>
-                        ))
+                        recentMissions.map(mission => {
+                            const submissionStatus = mySubmissions[mission.id];
+                            return (
+                                <Card as={isRecorderOrAdmin ? Link : 'div'} to={`/recorder/${mission.id}`} key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <div style={{ flexGrow: 1 }}>
+                                        <CardTitle>{mission.title}</CardTitle>
+                                        <CardText>💰 {mission.reward} P</CardText>
+                                    </div>
+                                    {myPlayerData && myPlayerData.role === 'player' && (
+                                        <RequestButton
+                                            onClick={(e) => { e.preventDefault(); submitMissionForApproval(mission.id); }}
+                                            disabled={!!submissionStatus}
+                                            status={submissionStatus}
+                                        >
+                                            {submissionStatus === 'pending' && '승인 대기중'}
+                                            {submissionStatus === 'approved' && '완료!'}
+                                            {!submissionStatus && '다 했어요!'}
+                                        </RequestButton>
+                                    )}
+                                </Card>
+                            )
+                        })
                     ) : (<p>현재 등록된 새로운 미션이 없습니다.</p>)}
                 </Section>
 
                 <Section style={{ margin: 0 }}>
                     <TitleWrapper>
                         <Title>⭐ 신규/세일 아이템</Title>
-                        {/* [삭제] 상점 전체보기 링크 제거 */}
                     </TitleWrapper>
                     {shopHighlightItems.length > 0 ? (
-                        // [수정] 아이템을 가로로 배치하기 위한 그리드 추가
                         <ItemWidgetGrid>
                             {shopHighlightItems.map(item => (
                                 <Card as={Link} to="/shop" key={item.id}>
-                                    {/* [수정] 세일 중일 때 뱃지 표시 */}
                                     {item.isSale && <SaleBadge>SALE</SaleBadge>}
                                     <ItemImage src={item.src} $category={item.category} />
                                     <CardTitle style={{ textAlign: 'center' }}>{item.displayName || item.id}</CardTitle>
@@ -421,10 +468,10 @@ function DashboardPage() {
                         </ItemWidgetGrid>
                     ) : (<p>현재 할인 중인 아이템이 없습니다.</p>)}
                 </Section>
-                <Section style={{ margin: 0, gridColumn: '1 / -1' }}>
+
+                <Section style={{ margin: 0 }}>
                     <TitleWrapper>
                         <Title>🏆 실시간 리그 순위</Title>
-                        {/* [수정] 버튼 텍스트 변경 */}
                         <ViewAllLink to="/league">리그 정보 보기</ViewAllLink>
                     </TitleWrapper>
                     {topRankedTeams.length > 0 ? (
@@ -437,34 +484,43 @@ function DashboardPage() {
                         ))
                     ) : (<p>아직 리그 순위가 없습니다.</p>)}
                 </Section>
+
+                <Section style={{ margin: 0 }}>
+                    <TitleWrapper>
+                        <Title>🧠 오늘의 퀴즈</Title>
+                    </TitleWrapper>
+                    <QuizWidget />
+                </Section>
             </MainGrid>
 
-            <Section>
-                <TitleWrapper>
-                    <Title>🔥 우리 반 공동 목표! 🔥</Title>
-                </TitleWrapper>
-                {activeGoal ? (
-                    <ThermometerWrapper>
-                        <GoalTitle>{activeGoal.title}</GoalTitle>
-                        <ProgressBarContainer>
-                            <ProgressBar percent={progressPercent}>
-                                {Math.floor(progressPercent)}%
-                            </ProgressBar>
-                        </ProgressBarContainer>
-                        <PointStatus>
-                            {activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()} P
-                        </PointStatus>
-                        <DonationArea>
-                            <DonationInput type="number" value={donationAmount} onChange={e => setDonationAmount(e.target.value)} placeholder="기부할 포인트" />
-                            <DonationButton onClick={handleDonate} disabled={!myPlayerData || !donationAmount || Number(donationAmount) <= 0}>
-                                기부하기
-                            </DonationButton>
-                        </DonationArea>
-                    </ThermometerWrapper>
-                ) : (
-                    <p>현재 진행 중인 학급 공동 목표가 없습니다. 선생님께 새로운 목표를 만들어달라고 요청해보세요!</p>
-                )}
-            </Section>
+            {myPlayerData && (
+                <Section>
+                    <TitleWrapper>
+                        <Title>🔥 우리 반 공동 목표! 🔥</Title>
+                    </TitleWrapper>
+                    {activeGoal ? (
+                        <ThermometerWrapper>
+                            <GoalTitle>{activeGoal.title}</GoalTitle>
+                            <ProgressBarContainer>
+                                <ProgressBar percent={progressPercent}>
+                                    {Math.floor(progressPercent)}%
+                                </ProgressBar>
+                            </ProgressBarContainer>
+                            <PointStatus>
+                                {activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()} P
+                            </PointStatus>
+                            <DonationArea>
+                                <DonationInput type="number" value={donationAmount} onChange={e => setDonationAmount(e.target.value)} placeholder="기부할 포인트" />
+                                <DonationButton onClick={handleDonate} disabled={!myPlayerData || !donationAmount || Number(donationAmount) <= 0}>
+                                    기부하기
+                                </DonationButton>
+                            </DonationArea>
+                        </ThermometerWrapper>
+                    ) : (
+                        <p>현재 진행 중인 학급 공동 목표가 없습니다. 선생님께 새로운 목표를 만들어달라고 요청해보세요!</p>
+                    )}
+                </Section>
+            )}
         </DashboardWrapper>
     );
 }

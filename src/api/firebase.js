@@ -1,12 +1,10 @@
-// src/api/firebase.js
-
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore, collection, getDocs, query, where, doc,
   updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc,
-  runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp
+  runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp, limit
 } from "firebase/firestore";
 
 // Firebase 구성 정보
@@ -26,7 +24,7 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 
-// --- 포인트 기록 헬퍼 함수 (파일 내부로 통합) ---
+// --- 포인트 기록 헬퍼 함수 ---
 const addPointHistory = async (playerId, playerName, changeAmount, reason) => {
   try {
     await addDoc(collection(db, 'point_history'), {
@@ -36,12 +34,10 @@ const addPointHistory = async (playerId, playerName, changeAmount, reason) => {
       reason,
       timestamp: serverTimestamp(),
     });
-    console.log(`포인트 내역 기록: ${playerName}, ${changeAmount}P, ${reason}`);
   } catch (error) {
     console.error('포인트 변동 내역 기록 중 오류 발생:', error);
   }
 };
-
 
 // --- 상점 및 아바타 ---
 export async function updatePlayerAvatar(playerId, avatarConfig) {
@@ -116,20 +112,24 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
 
-      // Submission 문서 생성
       const submissionRef = doc(collection(db, 'missionSubmissions'));
       batch.set(submissionRef, {
         missionId,
         studentId,
         checkedBy: recorderId,
         status: 'approved',
-        createdAt: Timestamp.now(), // Firestore의 현재 시간 기록
+        createdAt: Timestamp.now(),
       });
 
-      // 포인트 업데이트
       batch.update(playerRef, { points: increment(reward) });
 
-      // 포인트 기록
+      createNotification(
+        playerData.authUid,
+        `'${missionData.title}' 미션 완료!`,
+        `${reward}P를 획득했습니다.`,
+        'mission'
+      );
+
       await addPointHistory(
         playerData.authUid,
         playerData.name,
@@ -140,6 +140,29 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   }
 
   await batch.commit();
+}
+
+export async function requestMissionApproval(missionId, studentId, studentName) {
+  const submissionsRef = collection(db, 'missionSubmissions');
+  const q = query(
+    submissionsRef,
+    where("missionId", "==", missionId),
+    where("studentId", "==", studentId)
+  );
+
+  const querySnapshot = await getDocs(q);
+  if (!querySnapshot.empty) {
+    throw new Error("이미 승인을 요청했거나 완료된 미션입니다.");
+  }
+
+  await addDoc(submissionsRef, {
+    missionId,
+    studentId,
+    studentName,
+    status: 'pending',
+    requestedAt: serverTimestamp(),
+    checkedBy: null,
+  });
 }
 
 // --- 포인트 수동 조정 ---
@@ -153,6 +176,14 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
     }
 
     transaction.update(playerRef, { points: increment(amount) });
+
+    const message = amount > 0 ? `+${amount}P가 지급되었습니다.` : `${amount}P가 차감되었습니다.`;
+    createNotification(
+      playerDoc.data().authUid,
+      `포인트가 조정되었습니다.`,
+      `${message} (사유: ${reason})`,
+      'point'
+    );
 
     // 포인트 기록 (addPointHistory 헬퍼 함수 사용으로 통일)
     await addPointHistory(
@@ -390,6 +421,48 @@ export async function createPlayerFromUser(user) {
   await setDoc(playerRef, playerData);
 }
 
+const getTodayDateString = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// 특정 학생의 오늘 퀴즈 기록을 가져오는 함수
+export async function getTodaysQuizHistory(studentId) {
+  if (!studentId) return [];
+  const todayStr = getTodayDateString();
+  const historyRef = collection(db, 'quiz_history');
+  const q = query(historyRef, where('studentId', '==', studentId), where('date', '==', todayStr));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => doc.data());
+}
+
+// 학생의 퀴즈 답변을 제출하고 처리하는 함수
+export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAnswer) {
+  const isCorrect = userAnswer.trim().toLowerCase() === String(correctAnswer).toLowerCase();
+
+  const historyRef = collection(db, 'quiz_history');
+  await addDoc(historyRef, {
+    studentId,
+    quizId,
+    userAnswer,
+    isCorrect,
+    date: getTodayDateString(),
+    timestamp: serverTimestamp(),
+  });
+
+  if (isCorrect) {
+    const playerDoc = await getDoc(doc(db, 'players', studentId));
+    if (playerDoc.exists()) {
+      await adjustPlayerPoints(studentId, 30, `'${quizId}' 퀴즈 정답`);
+    }
+  }
+
+  return isCorrect;
+}
+
 export async function createMission(missionData) {
   const missionsRef = collection(db, 'missions');
   await addDoc(missionsRef, {
@@ -598,5 +671,42 @@ export async function batchDeleteAvatarParts(partsToDelete) {
   }
 
   // 3. 일괄 작업 실행
+  await batch.commit();
+}
+
+// 특정 사용자에게 알림을 생성하는 함수
+export async function createNotification(userId, title, body, type) {
+  if (!userId) return;
+  await addDoc(collection(db, 'notifications'), {
+    userId,
+    title,
+    body,
+    type, // 'mission', 'point', 'announcement' 등
+    isRead: false,
+    createdAt: serverTimestamp(),
+  });
+}
+
+// 특정 사용자의 모든 알림을 최신순으로 가져오는 함수
+export async function getNotificationsForUser(userId) {
+  if (!userId) return [];
+  const notifsRef = collection(db, 'notifications');
+  const q = query(notifsRef, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(20));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+// 여러 알림을 한 번에 '읽음'으로 처리하는 함수
+export async function markNotificationsAsRead(userId) {
+  const notifsRef = collection(db, 'notifications');
+  const q = query(notifsRef, where('userId', '==', userId), where('isRead', '==', false));
+  const querySnapshot = await getDocs(q);
+
+  if (querySnapshot.empty) return;
+
+  const batch = writeBatch(db);
+  querySnapshot.docs.forEach(doc => {
+    batch.update(doc.ref, { isRead: true });
+  });
   await batch.commit();
 }

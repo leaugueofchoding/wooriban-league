@@ -4,7 +4,6 @@ import {
     getTeams,
     getMatches,
     updateMatchScores,
-    addPlayer,
     deletePlayer,
     addTeam,
     deleteTeam,
@@ -18,12 +17,20 @@ import {
     getUsers,
     linkPlayerToAuth,
     getAvatarParts,
-    getMissions, // getMissions import
+    getMissions,
     getMissionSubmissions,
-    updateMissionStatus, // 추가
+    updateMissionStatus,
     deleteMission,
-    adjustPlayerPoints
+    adjustPlayerPoints,
+    createPlayerFromUser,
+    getNotificationsForUser,
+    markNotificationsAsRead,
+    getTodaysQuizHistory, // 퀴즈 기록 함수 import
+    submitQuizAnswer as firebaseSubmitQuizAnswer, // 이름 충돌 방지를 위해 별칭 사용
+    requestMissionApproval
 } from '../api/firebase';
+import { auth } from '../api/firebase'; // auth import 추가
+import allQuizzes from '../assets/missions.json'; // 퀴즈 JSON 데이터 import
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
@@ -32,14 +39,20 @@ export const useLeagueStore = create((set, get) => ({
     matches: [],
     users: [],
     avatarParts: [],
-    missions: [], // missions 상태 추가
-    archivedMissions: [], // 보관된 미션 목록
-    missionSubmissions: [], // missionSubmissions 상태 추가
+    missions: [],
+    archivedMissions: [],
+    missionSubmissions: [],
     currentSeason: null,
     isLoading: true,
     leagueType: 'mixed',
+    notifications: [],
+    unreadNotificationCount: 0,
+    dailyQuiz: null, // 오늘의 퀴즈 상태
+    quizHistory: [], // 오늘 푼 퀴즈 기록
+    currentUser: null, // 현재 로그인 사용자 정보
 
 
+    // --- Actions ---
     setLeagueType: (type) => set({ leagueType: type }),
 
     updateLocalAvatarPartStatus: (partId, newStatus) => {
@@ -61,6 +74,11 @@ export const useLeagueStore = create((set, get) => ({
     fetchInitialData: async () => {
         try {
             set({ isLoading: true });
+
+            // auth.currentUser를 직접 사용하여 최신 로그인 상태를 확인합니다.
+            const currentUser = auth.currentUser;
+            set({ currentUser }); // 스토어 상태에 현재 사용자 저장
+
             const seasons = await getSeasons();
             const activeSeason = seasons.find(s => s.status === 'active' || s.status === 'preparing') || seasons[0] || null;
 
@@ -69,15 +87,14 @@ export const useLeagueStore = create((set, get) => ({
                 return set({ isLoading: false, players: [], teams: [], matches: [], users: [], avatarParts: [], missions: [] });
             }
 
-            // ▼▼▼▼▼ 이 부분의 변수 목록을 수정했습니다 ▼▼▼▼▼
             const [
                 playersData,
                 teamsData,
                 matchesData,
                 usersData,
                 avatarPartsData,
-                activeMissionsData, // 활성 미션
-                archivedMissionsData, // 보관된 미션
+                activeMissionsData,
+                archivedMissionsData,
                 submissionsData
             ] = await Promise.all([
                 getPlayers(),
@@ -85,11 +102,14 @@ export const useLeagueStore = create((set, get) => ({
                 getMatches(activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
-                getMissions('active'), // 'active' 상태 미션 가져오기
-                getMissions('archived'), // 'archived' 상태 미션 가져오기
+                getMissions('active'),
+                getMissions('archived'),
                 getMissionSubmissions()
             ]);
 
+            if (currentUser) {
+                get().fetchNotifications(currentUser.uid);
+            }
 
             set({
                 players: playersData,
@@ -98,49 +118,85 @@ export const useLeagueStore = create((set, get) => ({
                 users: usersData,
                 avatarParts: avatarPartsData,
                 missions: activeMissionsData,
-                archivedMissions: archivedMissionsData, // 상태에 저장
+                archivedMissions: archivedMissionsData,
                 missionSubmissions: submissionsData,
                 currentSeason: activeSeason,
                 isLoading: false,
-
-                archiveMission: async (missionId) => {
-                    if (!confirm('미션을 숨기면 활성 목록에서 사라집니다. 정말 숨기시겠습니까?')) return;
-                    try {
-                        await updateMissionStatus(missionId, 'archived');
-                        alert('미션이 보관되었습니다.');
-                        get().fetchInitialData(); // 데이터를 새로고침하여 목록을 갱신합니다.
-                    } catch (error) {
-                        console.error('미션 보관 오류:', error);
-                        alert('미션 보관 중 오류가 발생했습니다.');
-                    }
-                },
-
-                unarchiveMission: async (missionId) => {
-                    try {
-                        await updateMissionStatus(missionId, 'active');
-                        alert('미션이 다시 활성화되었습니다.');
-                        get().fetchInitialData();
-                    } catch (error) {
-                        console.error('미션 활성화 오류:', error);
-                        alert('미션 활성화 중 오류가 발생했습니다.');
-                    }
-                },
-
-                removeMission: async (missionId) => {
-                    if (!confirm('정말로 미션을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
-                    try {
-                        await deleteMission(missionId);
-                        alert('미션이 삭제되었습니다.');
-                        get().fetchInitialData();
-                    } catch (error) {
-                        console.error('미션 삭제 오류:', error);
-                        alert('미션 삭제 중 오류가 발생했습니다.');
-                    }
-                },
             });
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
             set({ isLoading: false });
+        }
+    },
+
+    archiveMission: async (missionId) => {
+        if (!confirm('미션을 숨기면 활성 목록에서 사라집니다. 정말 숨기시겠습니까?')) return;
+        try {
+            await updateMissionStatus(missionId, 'archived');
+            alert('미션이 보관되었습니다.');
+            get().fetchInitialData();
+        } catch (error) {
+            console.error('미션 보관 오류:', error);
+            alert('미션 보관 중 오류가 발생했습니다.');
+        }
+    },
+
+    unarchiveMission: async (missionId) => {
+        try {
+            await updateMissionStatus(missionId, 'active');
+            alert('미션이 다시 활성화되었습니다.');
+            get().fetchInitialData();
+        } catch (error) {
+            console.error('미션 활성화 오류:', error);
+            alert('미션 활성화 중 오류가 발생했습니다.');
+        }
+    },
+
+    removeMission: async (missionId) => {
+        if (!confirm('정말로 미션을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+        try {
+            await deleteMission(missionId);
+            alert('미션이 삭제되었습니다.');
+            get().fetchInitialData();
+        } catch (error) {
+            console.error('미션 삭제 오류:', error);
+            alert('미션 삭제 중 오류가 발생했습니다.');
+        }
+    },
+
+    registerAsPlayer: async () => {
+        const user = auth.currentUser;
+        if (!user) return alert('로그인이 필요합니다.');
+        if (window.confirm('리그에 선수로 참가하시겠습니까? 참가 시 기본 정보가 등록됩니다.')) {
+            try {
+                await createPlayerFromUser(user);
+                alert('리그 참가 신청이 완료되었습니다!');
+                await get().fetchInitialData();
+            } catch (error) {
+                console.error("리그 참가 오류:", error);
+                alert('참가 신청 중 오류가 발생했습니다.');
+            }
+        }
+    },
+
+    submitMissionForApproval: async (missionId) => {
+        const { players, currentUser } = get();
+        const myPlayerData = players.find(p => p.authUid === currentUser?.uid);
+        if (!myPlayerData) {
+            alert('선수 정보를 찾을 수 없습니다.');
+            return;
+        }
+
+        try {
+            await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name);
+            alert('미션 완료를 요청했습니다. 기록원이 확인할 때까지 잠시 기다려주세요!');
+
+            const submissionsData = await getMissionSubmissions();
+            set({ missionSubmissions: submissionsData });
+
+        } catch (error) {
+            console.error("미션 제출 오류:", error);
+            alert(error.message);
         }
     },
 
@@ -167,7 +223,7 @@ export const useLeagueStore = create((set, get) => ({
             set({ isLoading: true });
             await adjustPlayerPoints(playerId, amount, reason);
             alert('포인트가 성공적으로 조정되었습니다.');
-            await get().fetchInitialData(); // 전체 데이터를 새로고침하여 변경사항을 즉시 반영합니다.
+            await get().fetchInitialData();
         } catch (error) {
             console.error("포인트 조정 액션 오류:", error);
             alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
@@ -175,7 +231,6 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ======== 시즌 관리 액션 ========
     startSeason: async () => {
         const season = get().currentSeason;
         if (!season || season.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
@@ -203,7 +258,6 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ======== 역할 관리 액션 ========
     linkPlayer: async (playerId, authUid, role) => {
         if (!playerId || !authUid || !role) {
             return alert('선수, 사용자, 역할을 모두 선택해야 합니다.');
@@ -217,37 +271,12 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ======== 선수 등록/관리 ========
-    registerAsPlayer: async (user) => {
-        if (!user) return alert('로그인 정보가 없습니다.');
-        const newPlayerData = {
-            authUid: user.uid,
-            id: user.uid, // 문서 ID를 authUid와 동일하게 설정
-            name: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL,
-            gender: null,
-            role: 'player',
-            points: 100,
-            wins: 0,
-            seasonStats: {}
-        };
-        try {
-            await addPlayer(newPlayerData);
-            alert(`${user.displayName}님, 선수 등록이 완료되었습니다!`);
-            get().fetchInitialData();
-        } catch (error) {
-            console.error("선수 등록 오류:", error);
-        }
-    },
-
     removePlayer: async (playerId) => {
         if (!confirm('정말로 이 선수를 삭제하시겠습니까?')) return;
         await deletePlayer(playerId);
         get().fetchInitialData();
     },
 
-    // ======== 팀 관리 ========
     addNewTeam: async (teamName) => {
         if (!teamName.trim()) return alert('팀 이름을 입력해주세요.');
         const seasonId = get().currentSeason?.id;
@@ -279,7 +308,6 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ======== 팀원 배정 ========
     assignPlayerToTeam: async (teamId, playerId) => {
         if (!playerId) return;
         const team = get().teams.find(t => t.id === teamId);
@@ -316,7 +344,6 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ======== 경기 관리 ========
     generateSchedule: async () => {
         if (!confirm('경기 일정을 새로 생성하시겠습니까?')) return;
         const { teams, leagueType, currentSeason } = get();
@@ -359,5 +386,63 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) {
             console.error("점수 저장 오류:", error);
         }
+    },
+
+    fetchNotifications: async (userId) => {
+        if (!userId) return;
+        const notifications = await getNotificationsForUser(userId);
+        const unreadCount = notifications.filter(n => !n.isRead).length;
+        set({ notifications, unreadNotificationCount: unreadCount });
+    },
+
+    markAsRead: async () => {
+        const userId = auth.currentUser?.uid;
+        if (!userId || get().unreadNotificationCount === 0) return;
+
+        await markNotificationsAsRead(userId);
+        set(state => ({
+            notifications: state.notifications.map(n => ({ ...n, isRead: true })),
+            unreadNotificationCount: 0
+        }));
+    },
+
+    // --- 퀴즈 관련 액션 ---
+    fetchDailyQuiz: async (studentId) => {
+        const todaysHistory = await getTodaysQuizHistory(studentId);
+        set({ quizHistory: todaysHistory });
+
+        if (todaysHistory.length >= 5) {
+            set({ dailyQuiz: null });
+            return;
+        }
+
+        const solvedQuizIds = todaysHistory.map(h => h.quizId);
+
+        const allQuizList = Object.values(allQuizzes).flat();
+
+        const availableQuizzes = allQuizList.filter(q => !solvedQuizIds.includes(q.id));
+
+        if (availableQuizzes.length === 0) {
+            set({ dailyQuiz: null });
+            return;
+        }
+
+        const randomQuiz = availableQuizzes[Math.floor(Math.random() * availableQuizzes.length)];
+        set({ dailyQuiz: randomQuiz });
+    },
+
+    submitQuizAnswer: async (quizId, userAnswer) => {
+        const myPlayerData = get().players.find(p => p.authUid === auth.currentUser?.uid);
+        if (!myPlayerData) return false;
+
+        const correctAnswer = get().dailyQuiz.answer;
+        const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, correctAnswer);
+
+        if (isCorrect) {
+            const playersData = await getPlayers();
+            set({ players: playersData });
+        }
+
+        return isCorrect;
     },
 }));
