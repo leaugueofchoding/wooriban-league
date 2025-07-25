@@ -183,7 +183,8 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
         admin.authUid,
         '미션 승인 요청',
         `${studentName} 학생이 미션 완료를 요청했습니다.`,
-        'mission'
+        'mission',
+        `/recorder/${missionId}` // 👈 [수정] 이동할 링크 주소 추가
       );
     }
   });
@@ -685,13 +686,14 @@ export async function batchDeleteAvatarParts(partsToDelete) {
 }
 
 // --- 알림 관련 ---
-export async function createNotification(userId, title, body, type) {
+export async function createNotification(userId, title, body, type, link = null) {
   if (!userId) return;
   await addDoc(collection(db, 'notifications'), {
     userId,
     title,
     body,
     type,
+    link, // 👈 [수정] link 필드 추가
     isRead: false,
     createdAt: serverTimestamp(),
   });

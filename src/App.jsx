@@ -57,16 +57,18 @@ function AccessDenied() {
 }
 
 const ProtectedRoute = ({ children }) => {
-  const { players } = useLeagueStore();
+  const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
   const location = useLocation();
 
   const isPlayerRegistered = useMemo(() => {
-    if (!currentUser) return false;
+    if (!currentUser || players.length === 0) return false;
     return players.some(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
 
-  if (!currentUser || !isPlayerRegistered) {
+  // isLoading 상태일 때는 App 컴포넌트가 전체 로딩 화면을 보여주므로,
+  // 여기서는 로딩이 끝난 후의 접근 권한만 확인합니다.
+  if (!isLoading && (!currentUser || !isPlayerRegistered)) {
     return <Navigate to="/access-denied" state={{ from: location }} replace />;
   }
 
@@ -74,45 +76,36 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  const { fetchInitialData, isLoading, subscribeToNotifications, unsubscribeFromNotifications } = useLeagueStore();
-  const [authUser, setAuthUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false); // 인증 상태 확인 완료 여부
+  const { isLoading, fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications } = useLeagueStore();
+  const [authChecked, setAuthChecked] = useState(false); // Firebase 인증 확인 여부만 관리
 
-  // 1. 인증 상태 변경 감지 전용 useEffect (최초 1회만 실행)
   useEffect(() => {
+    // 앱 시작 시 딱 한 번만 실행되어 Firebase 인증 상태 리스너를 설정
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setAuthUser(user);
-      setAuthChecked(true); // 인증 상태 확인이 완료되었음을 표시
-    });
-    return () => unsubscribe(); // 클린업 함수에서 구독 해지
-  }, []);
-
-  // 2. 인증된 사용자(authUser)가 변경될 때 데이터 로딩/알림 구독 처리
-  useEffect(() => {
-    if (authChecked) { // 인증 상태 확인이 완료된 후에만 실행
-      if (authUser) {
-        // 로그인 상태일 때
+      if (user) {
+        // 사용자가 로그인 되어 있으면 데이터 로딩 시작
         fetchInitialData();
-        subscribeToNotifications(authUser.uid);
+        subscribeToNotifications(user.uid);
       } else {
-        // 로그아웃 상태일 때
+        // 로그아웃 상태이면 데이터 로딩 없이 로딩 상태 종료
+        useLeagueStore.setState({ isLoading: false });
         unsubscribeFromNotifications();
       }
-    }
-  }, [authChecked, authUser, fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications]);
+      setAuthChecked(true); // 인증 상태 확인 완료
+    });
+    return () => unsubscribe(); // 클린업
+  }, [fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications]);
 
 
-  if (!authChecked) {
-    return <div style={{ textAlign: 'center', padding: '2rem' }}>인증 정보 확인 중...</div>;
-  }
-
-  if (isLoading) {
-    return <div style={{ textAlign: 'center', padding: '2rem' }}>데이터 로딩 중...</div>;
+  // 인증 확인이 안됐거나, 데이터 로딩이 끝나지 않았으면 로딩 화면 표시
+  if (!authChecked || isLoading) {
+    const message = !authChecked ? "인증 정보 확인 중..." : "데이터 로딩 중...";
+    return <div style={{ textAlign: 'center', padding: '2rem' }}>{message}</div>;
   }
 
   return (
     <BrowserRouter>
-      <Auth user={authUser} />
+      <Auth user={auth.currentUser} />
       <div className="main-content">
         <Routes>
           {/* --- 누구나 접근 가능한 페이지 --- */}

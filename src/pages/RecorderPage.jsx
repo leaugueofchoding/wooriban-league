@@ -1,3 +1,5 @@
+// src/pages/RecorderPage.jsx
+
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
@@ -233,8 +235,10 @@ function RecorderPage() {
                                     />
                                     <label>{player.name}</label>
 
+                                    {/* ▼▼▼ [핵심 수정] 뱃지 표시 로직 추가 ▼▼▼ */}
                                     {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
                                     {status === 'approved' && <span className="status-badge approved">완료</span>}
+                                    {/* ▲▲▲ [핵심 수정] 여기까지 ▲▲▲ */}
                                 </StudentListItem>
                             );
                         })}
@@ -244,9 +248,7 @@ function RecorderPage() {
                         {checkedStudents.size}명 포인트 지급 승인하기
                     </SubmitButton>
 
-                    {/* --- ▼▼▼ [수정] 버튼 기능 및 텍스트 변경 ▼▼▼ --- */}
                     <ExitButton onClick={() => navigate('/')}>대시보드로 이동</ExitButton>
-                    {/* --- ▲▲▲ [수정] 여기까지 --- */}
                 </>
             )}
         </RecorderWrapper>
