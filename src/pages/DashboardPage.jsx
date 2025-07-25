@@ -398,7 +398,7 @@ function DashboardPage() {
         <DashboardWrapper>
             {currentUser && !myPlayerData && (
                 <JoinLeagueButton onClick={registerAsPlayer}>
-                    🏆 리그 참가하여 선수 등록하기
+                    🏆 선수 등록하여 리그 참가하기
                 </JoinLeagueButton>
             )}
 

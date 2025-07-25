@@ -747,7 +747,7 @@ export async function getNotificationsForUser(userId) {
 
 export async function markNotificationsAsRead(userId) {
   const notifsRef = collection(db, 'notifications');
-  const q = query(notifsRef, where('userId', '==', userId), where('isRead', '==', false)); npm
+  const q = query(notifsRef, where('userId', '==', userId), where('isRead', '==', false)); // 👈 'npm' 삭제
   const querySnapshot = await getDocs(q);
 
   if (querySnapshot.empty) return;
