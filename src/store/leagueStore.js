@@ -30,18 +30,18 @@ import {
     submitQuizAnswer as firebaseSubmitQuizAnswer,
     requestMissionApproval,
     batchAdjustPlayerPoints,
-    isAttendanceRewardAvailable, // 👈 [추가]
-    grantAttendanceReward, // 👈 [추가]
-    db // [추가] db import
+    isAttendanceRewardAvailable,
+    grantAttendanceReward,
+    db
 } from '../api/firebase';
-// [추가] onSnapshot 등 필요한 함수 import
-import { collection, query, where, orderBy, limit, onSnapshot } from "firebase/firestore";
+// [수정] onSnapshot과 doc 함수 import
+import { collection, query, where, orderBy, limit, onSnapshot, doc } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
-    showAttendanceModal: false, // 👈 [추가] 출석 모달 표시 여부 상태
+    showAttendanceModal: false,
     players: [],
     teams: [],
     matches: [],
@@ -51,18 +51,22 @@ export const useLeagueStore = create((set, get) => ({
     archivedMissions: [],
     missionSubmissions: [],
     currentSeason: null,
-    isLoading: true, // 👈 [수정] 초기값을 false로 변경
+    isLoading: true,
     leagueType: 'mixed',
     notifications: [],
     unreadNotificationCount: 0,
-    notificationListener: null, // [추가] 실시간 리스너 구독 해지 함수 저장
+    listeners: {
+        notifications: null,
+        playerData: null,
+        missionSubmissions: null,
+    },
     dailyQuiz: null,
     quizHistory: [],
     currentUser: null,
 
 
     // --- Actions ---
-    setLoading: (status) => set({ isLoading: status }), // 👈 [추가] setLoading 함수 추가
+    setLoading: (status) => set({ isLoading: status }),
     setLeagueType: (type) => set({ leagueType: type }),
 
     updateLocalAvatarPartStatus: (partId, newStatus) => {
@@ -88,9 +92,16 @@ export const useLeagueStore = create((set, get) => ({
             const currentUser = auth.currentUser;
             set({ currentUser });
 
-            // [수정] 사용자가 로그인했을 때만 알림 구독 시작
+            // 사용자가 로그인하면 실시간 구독 시작
             if (currentUser) {
+                get().cleanupListeners(); // 기존 리스너 정리
+                // 플레이어 데이터를 먼저 가져온 후에 구독 시작
+                const playersData = await getPlayers();
+                set({ players: playersData });
+
                 get().subscribeToNotifications(currentUser.uid);
+                get().subscribeToPlayerData(currentUser.uid);
+                get().subscribeToMissionSubmissions(currentUser.uid);
             }
 
             const seasons = await getSeasons();
@@ -98,11 +109,16 @@ export const useLeagueStore = create((set, get) => ({
 
             if (!activeSeason) {
                 console.log("활성화된 시즌이 없습니다.");
-                return set({ isLoading: false, players: [], teams: [], matches: [], users: [], avatarParts: [], missions: [] });
+                const [usersData, avatarPartsData] = await Promise.all([getUsers(), getAvatarParts()]);
+                return set({
+                    isLoading: false,
+                    teams: [], matches: [], missions: [],
+                    users: usersData, avatarParts: avatarPartsData
+                });
             }
 
             const [
-                playersData,
+                playersData, // fetchInitialData 호출 시 players는 이미 위에서 가져왔으므로 한번 더 가져오지 않아도 됨
                 teamsData,
                 matchesData,
                 usersData,
@@ -111,7 +127,7 @@ export const useLeagueStore = create((set, get) => ({
                 archivedMissionsData,
                 submissionsData
             ] = await Promise.all([
-                getPlayers(),
+                get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(), // 플레이어 데이터가 없으면 다시 가져옴
                 getTeams(activeSeason.id),
                 getMatches(activeSeason.id),
                 getUsers(),
@@ -144,7 +160,7 @@ export const useLeagueStore = create((set, get) => ({
         try {
             await updateMissionStatus(missionId, 'archived');
             alert('미션이 보관되었습니다.');
-            get().fetchInitialData();
+            await get().fetchInitialData();
         } catch (error) {
             console.error('미션 보관 오류:', error);
             alert('미션 보관 중 오류가 발생했습니다.');
@@ -155,7 +171,7 @@ export const useLeagueStore = create((set, get) => ({
         try {
             await updateMissionStatus(missionId, 'active');
             alert('미션이 다시 활성화되었습니다.');
-            get().fetchInitialData();
+            await get().fetchInitialData();
         } catch (error) {
             console.error('미션 활성화 오류:', error);
             alert('미션 활성화 중 오류가 발생했습니다.');
@@ -167,7 +183,7 @@ export const useLeagueStore = create((set, get) => ({
         try {
             await deleteMission(missionId);
             alert('미션이 삭제되었습니다.');
-            get().fetchInitialData();
+            await get().fetchInitialData();
         } catch (error) {
             console.error('미션 삭제 오류:', error);
             alert('미션 삭제 중 오류가 발생했습니다.');
@@ -208,71 +224,28 @@ export const useLeagueStore = create((set, get) => ({
         try {
             await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name);
             alert('미션 완료를 요청했습니다. 기록원이 확인할 때까지 잠시 기다려주세요!');
-
-            // 승인 요청 후에는 submission 상태를 다시 불러올 필요 없이,
-            // 기록원에게 알림이 가므로 별도의 fetch는 제거합니다.
-            // const submissionsData = await getMissionSubmissions();
-            // set({ missionSubmissions: submissionsData });
-
         } catch (error) {
             console.error("미션 제출 오류:", error);
             alert(error.message);
         }
     },
 
-    adjustPoints: async (playerId, amount, reason) => {
-        if (!playerId || amount === 0 || !reason.trim()) {
-            alert('플레이어, 0이 아닌 포인트, 그리고 사유를 모두 입력해야 합니다.');
-            return;
-        }
-
-        const playerName = get().players.find(p => p.id === playerId)?.name;
-        if (!playerName) {
-            alert('선택된 플레이어를 찾을 수 없습니다.');
-            return;
-        }
-
-        const actionText = amount > 0 ? '지급' : '차감';
-        const confirmationMessage = `${playerName} 선수에게 ${Math.abs(amount)} 포인트를 ${actionText}하시겠습니까?\n\n사유: ${reason}`;
-
-        if (!window.confirm(confirmationMessage)) {
-            return;
-        }
-
-        try {
-            set({ isLoading: true });
-            const { batchAdjustPlayerPoints } = await import('../api/firebase.js');
-            await batchAdjustPlayerPoints(playerIds, amount, reason);
-            alert('포인트가 성공적으로 일괄 조정되었습니다.');
-            // 전체 데이터를 다시 불러오는 대신, player 데이터만 갱신하여 최적화
-            const playersData = await getPlayers();
-            set({ players: playersData, isLoading: false });
-        } catch (error) {
-            console.error("포인트 조정 액션 오류:", error);
-            alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
-            set({ isLoading: false });
-        }
-    },
     batchAdjustPoints: async (playerIds, amount, reason) => {
         if (playerIds.length === 0 || amount === 0 || !reason.trim()) {
             alert('플레이어, 0이 아닌 포인트, 그리고 사유를 모두 입력해야 합니다.');
             return;
         }
-
         const playerNames = playerIds.map(id => get().players.find(p => p.id === id)?.name).join(', ');
         const actionText = amount > 0 ? '지급' : '차감';
         const confirmationMessage = `${playerNames} 선수들에게 ${Math.abs(amount)} 포인트를 ${actionText}하시겠습니까?\n\n사유: ${reason}`;
-
-        if (!window.confirm(confirmationMessage)) {
-            return;
-        }
+        if (!window.confirm(confirmationMessage)) return;
 
         try {
             set({ isLoading: true });
-            // firebase의 batchAdjustPlayerPoints 함수를 직접 호출하지 않습니다. (액션을 통해 호출)
             await batchAdjustPlayerPoints(playerIds, amount, reason);
             alert('포인트가 성공적으로 일괄 조정되었습니다.');
-            await get().fetchInitialData(); // 전체 데이터 다시 로드
+            // 전체 데이터를 다시 로드하는 대신 필요한 데이터만 갱신 (실시간 리스너가 처리)
+            await get().fetchInitialData();
         } catch (error) {
             console.error("포인트 일괄 조정 액션 오류:", error);
             alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
@@ -281,69 +254,76 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // --- 알림 관련 액션 (실시간으로 변경) ---
-    subscribeToNotifications: (userId) => {
-        get().unsubscribeFromNotifications(); // 기존 리스너가 있다면 해지
+    // --- Realtime Listeners ---
+    subscribeToPlayerData: (userId) => {
+        const playerDocRef = doc(db, 'players', userId);
+        const unsubscribe = onSnapshot(playerDocRef, (doc) => {
+            if (doc.exists()) {
+                const updatedPlayerData = { id: doc.id, ...doc.data() };
+                set(state => ({
+                    players: state.players.map(p => p.id === userId ? updatedPlayerData : p)
+                }));
+            }
+        }, (error) => console.error("플레이어 데이터 실시간 수신 오류:", error));
+        set(state => ({ listeners: { ...state.listeners, playerData: unsubscribe } }));
+    },
 
+    subscribeToMissionSubmissions: (userId) => {
+        const player = get().players.find(p => p.authUid === userId);
+        if (!player) return;
+
+        const submissionsRef = collection(db, 'missionSubmissions');
+        const q = query(submissionsRef, where('studentId', '==', player.id));
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const mySubmissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            set(state => {
+                const othersSubmissions = state.missionSubmissions.filter(sub => sub.studentId !== player.id);
+                return { missionSubmissions: [...othersSubmissions, ...mySubmissions] };
+            });
+        }, (error) => console.error("미션 제출 기록 실시간 수신 오류:", error));
+        set(state => ({ listeners: { ...state.listeners, missionSubmissions: unsubscribe } }));
+    },
+
+    subscribeToNotifications: (userId) => {
         const notifsRef = collection(db, 'notifications');
         const q = query(notifsRef, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(20));
-
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const notifications = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const unreadCount = notifications.filter(n => !n.isRead).length;
             set({ notifications, unreadNotificationCount: unreadCount });
-        }, (error) => {
-            console.error("알림 실시간 수신 오류:", error);
-        });
-
-        set({ notificationListener: unsubscribe }); // 구독 해지 함수 저장
+        }, (error) => console.error("알림 실시간 수신 오류:", error));
+        set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
 
-    unsubscribeFromNotifications: () => {
-        const { notificationListener } = get();
-        if (notificationListener) {
-            notificationListener(); // 구독 해지
-            set({ notificationListener: null });
-        }
+    cleanupListeners: () => {
+        const { listeners } = get();
+        Object.values(listeners).forEach(unsubscribe => {
+            if (unsubscribe) unsubscribe();
+        });
+        set({ listeners: { notifications: null, playerData: null, missionSubmissions: null } });
     },
 
     markAsRead: async () => {
         const userId = auth.currentUser?.uid;
         if (!userId || get().unreadNotificationCount === 0) return;
-
-        // Firestore 문서를 업데이트하는 것은 그대로 유지
         await markNotificationsAsRead(userId);
-
-        // 로컬 상태는 onSnapshot 리스너에 의해 자동으로 갱신되므로
-        // 별도의 set() 호출은 필요 없습니다.
-        // set(state => ({
-        //     notifications: state.notifications.map(n => ({ ...n, isRead: true })),
-        //     unreadNotificationCount: 0
-        // }));
     },
 
-
-    // --- 퀴즈 관련 (기존과 동일) ---
     fetchDailyQuiz: async (studentId) => {
         const todaysHistory = await getTodaysQuizHistory(studentId);
         set({ quizHistory: todaysHistory });
-
         if (todaysHistory.length >= 5) {
             set({ dailyQuiz: null });
             return;
         }
-
         const solvedQuizIds = todaysHistory.map(h => h.quizId);
-
         const allQuizList = Object.values(allQuizzes).flat();
-
         const availableQuizzes = allQuizList.filter(q => !solvedQuizIds.includes(q.id));
-
         if (availableQuizzes.length === 0) {
             set({ dailyQuiz: null });
             return;
         }
-
         const randomQuiz = availableQuizzes[Math.floor(Math.random() * availableQuizzes.length)];
         set({ dailyQuiz: randomQuiz });
     },
@@ -354,21 +334,15 @@ export const useLeagueStore = create((set, get) => ({
 
         const correctAnswer = get().dailyQuiz.answer;
         const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, correctAnswer);
-
-        if (isCorrect) {
-            const playersData = await getPlayers();
-            set({ players: playersData });
-        }
-
+        // 포인트 업데이트는 실시간 리스너가 처리
         return isCorrect;
     },
 
-    // --- 시즌 및 리그 관리 (기존과 동일) ---
+    // --- Season & League Management (기존과 동일) ---
     startSeason: async () => {
         const season = get().currentSeason;
         if (!season || season.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
         if (!confirm('시즌을 시작하면 선수/팀 구성 및 경기 일정 생성이 불가능해집니다. 시작하시겠습니까?')) return;
-
         try {
             await updateSeason(season.id, { status: 'active' });
             await get().fetchInitialData();
@@ -381,7 +355,6 @@ export const useLeagueStore = create((set, get) => ({
         const season = get().currentSeason;
         if (!season || season.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
         if (!confirm('시즌을 종료하시겠습니까?')) return;
-
         try {
             await updateSeason(season.id, { status: 'completed' });
             alert('시즌이 종료되었습니다.');
@@ -459,7 +432,6 @@ export const useLeagueStore = create((set, get) => ({
         if (!confirm('팀원을 자동 배정하시겠습니까?')) return;
         const { players, teams } = get();
         if (players.length === 0 || teams.length === 0) return alert('선수와 팀이 모두 필요합니다.');
-
         try {
             const shuffledPlayers = [...players].sort(() => 0.5 - Math.random());
             const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null }));
@@ -482,7 +454,6 @@ export const useLeagueStore = create((set, get) => ({
         const { teams, leagueType, currentSeason } = get();
         if (!currentSeason) return alert('현재 시즌 정보가 없습니다.');
         if (teams.length < 2) return alert('최소 2팀이 필요합니다.');
-
         let matchesToCreate = [];
         const createRoundRobin = (teamList) => {
             const schedule = [];
@@ -493,15 +464,12 @@ export const useLeagueStore = create((set, get) => ({
             }
             return schedule;
         };
-
         if (leagueType === 'separated') {
             matchesToCreate = [...createRoundRobin(teams.filter(t => t.gender === '남')), ...createRoundRobin(teams.filter(t => t.gender === '여'))];
         } else {
             matchesToCreate = createRoundRobin(teams);
         }
-
         if (matchesToCreate.length === 0) return alert('생성할 경기가 없습니다.');
-
         try {
             await deleteMatchesBySeason(currentSeason.id);
             await batchAddMatches(matchesToCreate);
@@ -524,10 +492,8 @@ export const useLeagueStore = create((set, get) => ({
     checkAttendance: async () => {
         const user = auth.currentUser;
         if (!user) return;
-
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) return;
-
         try {
             const isAvailable = await isAttendanceRewardAvailable(myPlayerData.id);
             if (isAvailable) {
@@ -543,12 +509,11 @@ export const useLeagueStore = create((set, get) => ({
         if (!user) return;
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) return;
-
         try {
-            const rewardAmount = 50; // 출석 보상 포인트
+            const rewardAmount = 50;
             await grantAttendanceReward(myPlayerData.id, rewardAmount);
-            set({ showAttendanceModal: false }); // 보상 수령 후 모달 닫기
-            await get().fetchInitialData(); // 최신 정보로 업데이트
+            set({ showAttendanceModal: false });
+            // 포인트 업데이트는 실시간 리스너가 처리하므로 fetch 불필요
         } catch (error) {
             console.error("출석 보상 지급 중 오류:", error);
             alert(error.message);

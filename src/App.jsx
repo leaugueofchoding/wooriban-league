@@ -17,11 +17,13 @@ import ShopPage from './pages/ShopPage';
 import MissionsPage from './pages/MissionsPage';
 import RecorderPage from './pages/RecorderPage';
 import WinnerPage from './pages/WinnerPage';
+import RecorderDashboardPage from './pages/RecorderDashboardPage'; // [추가]
 
 // Common Components
 import Auth from './components/Auth';
-import AttendanceModal from './components/AttendanceModal'; // 👈 [추가] 출석 모달 import
+import AttendanceModal from './components/AttendanceModal';
 
+// ... (AccessDenied, ProtectedRoute 컴포넌트는 기존과 동일)
 const AccessDeniedWrapper = styled.div`
   max-width: 800px;
   margin: 4rem auto;
@@ -31,11 +33,9 @@ const AccessDeniedWrapper = styled.div`
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 `;
-
 const AccessDeniedMessage = styled.h2`
   color: #dc3545;
 `;
-
 const GoToHomeButton = styled(Link)`
   display: inline-block;
   margin-top: 1.5rem;
@@ -78,26 +78,26 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+
 function App() {
-  const { isLoading, setLoading, fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications, checkAttendance } = useLeagueStore();
+  const { isLoading, setLoading, fetchInitialData, cleanupListeners, checkAttendance } = useLeagueStore();
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
       if (user) {
-        setLoading(true);
         await fetchInitialData();
-        subscribeToNotifications(user.uid);
-        checkAttendance(); // 👈 [추가] 데이터 로딩 후 출석 체크 실행
-        setLoading(false);
+        checkAttendance();
       } else {
-        unsubscribeFromNotifications();
-        setLoading(false); // 로그아웃 시 로딩 상태 해제
+        cleanupListeners();
+        await fetchInitialData();
       }
       setAuthChecked(true);
+      setLoading(false);
     });
     return () => unsubscribe();
-  }, [fetchInitialData, subscribeToNotifications, unsubscribeFromNotifications, checkAttendance, setLoading]);
+  }, [fetchInitialData, cleanupListeners, checkAttendance, setLoading]);
 
 
   if (!authChecked || isLoading) {
@@ -108,7 +108,7 @@ function App() {
   return (
     <BrowserRouter>
       <Auth user={auth.currentUser} />
-      <AttendanceModal /> {/* 👈 [추가] 출석 모달 렌더링 */}
+      <AttendanceModal />
       <div className="main-content">
         <Routes>
           <Route path="/" element={<DashboardPage />} />
@@ -121,6 +121,7 @@ function App() {
           <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
           <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} /> {/* [추가] */}
           <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
           <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
         </Routes>
