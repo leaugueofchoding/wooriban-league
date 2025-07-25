@@ -17,32 +17,139 @@ import {
     createClassGoal,
     getActiveGoals,
     batchDeleteAvatarParts,
-    deleteClassGoal
+    deleteClassGoal,
+    approveMissionsInBatch,
+    rejectMissionSubmission, // 거절 함수 import
+    linkPlayerToAuth,
+    auth,
+    db // onSnapshot을 위해 db import
 } from '../api/firebase.js';
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 
 
 // --- Styled Components (디자인 부분) ---
 const AdminWrapper = styled.div`
+  display: flex;
+  gap: 2rem;
   padding: 2rem;
-  max-width: 800px;
+  max-width: 1400px;
   margin: 0 auto;
   font-family: sans-serif;
+  align-items: flex-start;
 `;
 
-const Section = styled.section`
+const Sidebar = styled.nav`
+  width: 220px;
+  flex-shrink: 0;
+  background-color: #f9f9f9;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  position: sticky;
+  top: 2rem;
+`;
+
+const MainContent = styled.main`
+  flex-grow: 1;
+`;
+
+const NavList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+`;
+
+const NavItem = styled.li`
+  margin-bottom: 0.5rem;
+`;
+
+const NavButton = styled.button`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: ${props => props.$active ? '#007bff' : 'transparent'};
+  color: ${props => props.$active ? 'white' : 'black'};
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    background-color: ${props => props.$active ? '#0056b3' : '#e9ecef'};
+  }
+`;
+
+const SubNavList = styled.ul`
+    list-style: none;
+    padding-left: 1rem;
+    margin-top: 0.5rem;
+`;
+
+const SubNavItem = styled.li`
+    margin-bottom: 0.25rem;
+`;
+
+const SubNavButton = styled.button`
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background-color: ${props => props.$active ? '#6c757d' : 'transparent'};
+    color: ${props => props.$active ? 'white' : '#343a40'};
+    border: none;
+    border-radius: 4px;
+    text-align: left;
+    font-size: 0.9rem;
+    cursor: pointer;
+
+    &:hover {
+        background-color: #e9ecef;
+    }
+`;
+
+
+const Title = styled.h1`
+  margin-top: 0;
+  margin-bottom: 2rem;
+  text-align: center;
+`;
+
+const GridContainer = styled.div`
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+`;
+
+const FullWidthSection = styled.section`
   margin-bottom: 2.5rem;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  grid-column: 1 / -1;
+
+  padding: 0; 
+  & > div {
+      padding: 1.5rem;
+  }
+`;
+
+const Section = styled.div`
   padding: 1.5rem;
   background-color: #f9f9f9;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
 `;
 
-const Title = styled.h2`
+const SectionTitle = styled.h2`
   margin-top: 0;
   border-bottom: 2px solid #eee;
   padding-bottom: 0.5rem;
   margin-bottom: 1rem;
 `;
+
 
 const StyledButton = styled.button`
   padding: 0.6em 1.2em;
@@ -77,11 +184,13 @@ const InputGroup = styled.div`
 const List = styled.ul`
   list-style: none;
   padding: 0;
+  flex-grow: 1;
 `;
 
 const ListItem = styled.li`
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 1rem;
   align-items: center;
   padding: 0.75rem;
   border-bottom: 1px solid #eee;
@@ -273,6 +382,93 @@ const PageButton = styled.button`
 
 // --- Components ---
 
+function PendingMissionWidget() {
+    const { players, missions, fetchInitialData } = useLeagueStore();
+    const [pendingSubmissions, setPendingSubmissions] = useState([]);
+    const [processingIds, setProcessingIds] = useState(new Set());
+    const currentUser = auth.currentUser;
+
+    useEffect(() => {
+        const submissionsRef = collection(db, "missionSubmissions");
+        const q = query(submissionsRef, where("status", "==", "pending"));
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // 삭제된 미션의 제출 기록은 필터링
+            const validSubmissions = submissions.filter(sub =>
+                missions.some(m => m.id === sub.missionId)
+            );
+            setPendingSubmissions(validSubmissions);
+        });
+
+        return () => unsubscribe();
+    }, [missions]);
+
+    const handleAction = async (action, submission) => {
+        setProcessingIds(prev => new Set(prev.add(submission.id)));
+        const student = players.find(p => p.id === submission.studentId);
+        const mission = missions.find(m => m.id === submission.missionId);
+
+        if (!student || !mission || !currentUser) {
+            alert('학생 또는 미션 정보를 찾을 수 없거나, 관리자 정보가 없습니다.');
+            setProcessingIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(submission.id);
+                return newSet;
+            });
+            return;
+        }
+
+        try {
+            if (action === 'approve') {
+                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, mission.reward);
+            } else if (action === 'reject') {
+                await rejectMissionSubmission(submission.id, student.authUid, mission.title);
+            }
+            // onSnapshot이 자동으로 목록을 갱신하므로 fetchInitialData 호출 불필요
+        } catch (error) {
+            console.error(`미션 ${action} 오류:`, error);
+            alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
+        } finally {
+            // onSnapshot으로 인해 목록이 갱신되므로, processingIds에서 수동으로 제거할 필요가 없음
+        }
+    };
+
+    return (
+        <Section>
+            <SectionTitle>승인 대기중인 미션 ✅ ({pendingSubmissions.length}건)</SectionTitle>
+            {pendingSubmissions.length === 0 ? (
+                <p>현재 승인을 기다리는 미션이 없습니다.</p>
+            ) : (
+                <List>
+                    {pendingSubmissions.map(sub => {
+                        const student = players.find(p => p.id === sub.studentId);
+                        const mission = missions.find(m => m.id === sub.missionId);
+                        const isProcessing = processingIds.has(sub.id);
+
+                        if (!mission) return null; // 삭제된 미션은 렌더링하지 않음
+
+                        return (
+                            <ListItem key={sub.id}>
+                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {student?.name} - [{mission?.title}]
+                                </span>
+                                <span style={{ fontWeight: 'bold', color: '#007bff' }}>{mission?.reward}P</span>
+                                <StyledButton onClick={() => handleAction('approve', sub)} style={{ backgroundColor: '#28a745' }} disabled={isProcessing}>
+                                    {isProcessing ? '처리중...' : '승인'}
+                                </StyledButton>
+                                <StyledButton onClick={() => handleAction('reject', sub)} style={{ backgroundColor: '#dc3545' }} disabled={isProcessing}>
+                                    거절
+                                </StyledButton>
+                            </ListItem>
+                        )
+                    })}
+                </List>
+            )}
+        </Section>
+    );
+}
+
 function GoalManager() {
     const { fetchInitialData } = useLeagueStore();
     const [title, setTitle] = useState('');
@@ -296,9 +492,8 @@ function GoalManager() {
             alert('새로운 학급 목표가 설정되었습니다!');
             setTitle('');
             setTargetPoints(10000);
-            const goals = await getActiveGoals(); // 목록 새로고침
+            const goals = await getActiveGoals();
             setActiveGoals(goals);
-            // fetchInitialData(); // 필요 시 전체 데이터 갱신
         } catch (error) {
             alert(`목표 생성 실패: ${error.message}`);
         }
@@ -309,7 +504,6 @@ function GoalManager() {
             try {
                 await deleteClassGoal(goalId);
                 alert('목표가 삭제되었습니다.');
-                // 목록 새로고침
                 const goals = await getActiveGoals();
                 setActiveGoals(goals);
             } catch (error) {
@@ -319,51 +513,52 @@ function GoalManager() {
     };
 
     return (
-        <Section>
-            <Title>학급 목표 관리</Title>
-            <InputGroup>
-                <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="목표 이름 (예: 2단계-영화 보는 날)"
-                    style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
-                />
-                <ScoreInput
-                    type="number"
-                    value={targetPoints}
-                    onChange={(e) => setTargetPoints(e.target.value)}
-                    style={{ width: '120px' }}
-                />
-                <SaveButton onClick={handleCreateGoal}>새 목표 설정</SaveButton>
-            </InputGroup>
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>학급 목표 관리 🎯</SectionTitle>
+                <InputGroup>
+                    <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="목표 이름 (예: 2단계-영화 보는 날)"
+                        style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
+                    />
+                    <ScoreInput
+                        type="number"
+                        value={targetPoints}
+                        onChange={(e) => setTargetPoints(e.target.value)}
+                        style={{ width: '120px' }}
+                    />
+                    <SaveButton onClick={handleCreateGoal}>새 목표 설정</SaveButton>
+                </InputGroup>
 
-            <div style={{ marginTop: '2rem' }}>
-                <h4>진행 중인 목표 목록</h4>
-                <List>
-                    {activeGoals.length > 0 ? (
-                        activeGoals.map(goal => (
-                            <ListItem key={goal.id}>
-                                <div>
-                                    <span>{goal.title}</span>
-                                    <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
-                                        ({goal.currentPoints} / {goal.targetPoints} P)
-                                    </span>
-                                </div>
-                                {/* 👇 [추가] 삭제 버튼 */}
-                                <SaveButton
-                                    onClick={() => handleGoalDelete(goal.id)}
-                                    style={{ backgroundColor: '#dc3545' }}>
-                                    삭제
-                                </SaveButton>
-                            </ListItem>
-                        ))
-                    ) : (
-                        <p>현재 진행 중인 학급 목표가 없습니다.</p>
-                    )}
-                </List>
-            </div>
-        </Section>
+                <div style={{ marginTop: '2rem' }}>
+                    <h4>진행 중인 목표 목록</h4>
+                    <List>
+                        {activeGoals.length > 0 ? (
+                            activeGoals.map(goal => (
+                                <ListItem key={goal.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                                    <div>
+                                        <span>{goal.title}</span>
+                                        <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
+                                            ({goal.currentPoints} / {goal.targetPoints} P)
+                                        </span>
+                                    </div>
+                                    <SaveButton
+                                        onClick={() => handleGoalDelete(goal.id)}
+                                        style={{ backgroundColor: '#dc3545' }}>
+                                        삭제
+                                    </SaveButton>
+                                </ListItem>
+                            ))
+                        ) : (
+                            <p>현재 진행 중인 학급 목표가 없습니다.</p>
+                        )}
+                    </List>
+                </div>
+            </Section>
+        </FullWidthSection>
     );
 }
 
@@ -402,7 +597,7 @@ function MissionManager() {
 
     return (
         <Section>
-            <Title>미션 관리</Title>
+            <SectionTitle>미션 관리 📜</SectionTitle>
             <InputGroup>
                 <input
                     type="text"
@@ -428,7 +623,7 @@ function MissionManager() {
                 <List>
                     {missionsToDisplay.length > 0 ? (
                         missionsToDisplay.map(mission => (
-                            <ListItem key={mission.id}>
+                            <ListItem key={mission.id} style={{ gridTemplateColumns: '1fr auto' }}>
                                 <div>
                                     <strong>{mission.title}</strong>
                                     <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
@@ -480,10 +675,9 @@ function AvatarPartManager() {
     const [startDate, setStartDate] = useState(new Date());
     const [endDate, setEndDate] = useState(new Date());
     const [selectedDays, setSelectedDays] = useState(new Set());
-    const [isDeleteMode, setIsDeleteMode] = useState(false); // 👈 [추가] 삭제 모드 state
+    const [isDeleteMode, setIsDeleteMode] = useState(false);
 
 
-    // 👇 [추가] 페이지네이션을 위한 state
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 8;
     const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
@@ -661,215 +855,219 @@ function AvatarPartManager() {
     };
 
     return (
-        <Section>
-            <Title>아바타 아이템 관리</Title>
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>아바타 아이템 관리 🎨</SectionTitle>
 
-            {/* 파일 업로드 UI */}
-            <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
-                <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
-                <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
-                    <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
-                    <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
-                    <option value="accessory">액세서리</option>
-                </select>
-                <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
-                    {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
-                </SaveButton>
-            </InputGroup>
-
-            {/* 일괄 작업 버튼 UI */}
-            <InputGroup style={{ justifyContent: 'flex-start' }}>
-                <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
-                    {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
-                </SaveButton>
-                <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
-                    {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
-                </SaveButton>
-                <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
-                    {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
-                </SaveButton>
-            </InputGroup>
-
-            {/* 세일 모드 UI */}
-            {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
-                <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-                    <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
-                    <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>{checkedItems.size}개 세일 적용</SaveButton>
-                </InputGroup>
-                <InputGroup style={{ justifyContent: 'flex-start' }}>
-                    <span>할인율(%):</span><ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} style={{ width: '100px' }} />
-                </InputGroup>
-                <InputGroup style={{ justifyContent: 'flex-start' }}>
-                    <span>시작일:</span><DatePicker selected={startDate} onChange={date => setStartDate(date)} dateFormat="yyyy/MM/dd" />
-                </InputGroup>
-                <InputGroup style={{ justifyContent: 'flex-start' }}>
-                    <span>종료일:</span><DatePicker selected={endDate} onChange={date => setEndDate(date)} dateFormat="yyyy/MM/dd" />
-                </InputGroup>
-            </div>)}
-
-            {/* 요일별 판매 모드 UI */}
-            {isSaleDayMode && (<div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
-                <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-                    <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
-                    <SaveButton onClick={handleSaveSaleDays} disabled={checkedItems.size === 0}>{checkedItems.size}개 요일 설정</SaveButton>
-                </InputGroup>
-                <InputGroup style={{ justifyContent: 'flex-start' }}>
-                    <span>판매 요일:</span>
-                    {DAYS_OF_WEEK.map((day, index) => (
-                        <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <input type="checkbox" checked={selectedDays.has(index)} onChange={() => handleDayToggle(index)} /> {day}
-                        </label>
-                    ))}
-                </InputGroup>
-            </div>)}
-
-            {/* 삭제 모드 UI */}
-            {isDeleteMode && (<div style={{ border: '2px solid #dc3545', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff0f1' }}>
-                <InputGroup style={{ justifyContent: 'space-between', marginBottom: 0 }}>
-                    <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
-                    <SaveButton onClick={handleBatchDelete} disabled={checkedItems.size === 0} style={{ backgroundColor: '#dc3545' }}>
-                        {checkedItems.size}개 영구 삭제
+                {/* 파일 업로드 UI */}
+                <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
+                    <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
+                    <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                        <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
+                        <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
+                        <option value="accessory">액세서리</option>
+                    </select>
+                    <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
+                        {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
                     </SaveButton>
                 </InputGroup>
-            </div>)}
 
-            <TabContainer>
-                {sortedCategories.map(category => (
-                    <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
-                        {category} ({partCategories[category]?.length || 0})
-                    </TabButton>
-                ))}
-            </TabContainer>
+                {/* 일괄 작업 버튼 UI */}
+                <InputGroup style={{ justifyContent: 'flex-start' }}>
+                    <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                        {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
+                    </SaveButton>
+                    <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
+                        {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
+                    </SaveButton>
+                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                        {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
+                    </SaveButton>
+                </InputGroup>
 
-            <ItemGrid>
+                {/* 세일 모드 UI */}
+                {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>{checkedItems.size}개 세일 적용</SaveButton>
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>할인율(%):</span><ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} style={{ width: '100px' }} />
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>시작일:</span><DatePicker selected={startDate} onChange={date => setStartDate(date)} dateFormat="yyyy/MM/dd" />
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>종료일:</span><DatePicker selected={endDate} onChange={date => setEndDate(date)} dateFormat="yyyy/MM/dd" />
+                    </InputGroup>
+                </div>)}
 
-                {paginatedItems.map(part => {
-                    const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < new Date() && new Date() < part.saleEndDate?.toDate();
-                    const saleDaysText = part.saleDays && part.saleDays.length > 0 ? `[${part.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 판매` : null;
+                {isSaleDayMode && (<div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleSaveSaleDays} disabled={checkedItems.size === 0}>{checkedItems.size}개 요일 설정</SaveButton>
+                    </InputGroup>
+                    <InputGroup style={{ justifyContent: 'flex-start' }}>
+                        <span>판매 요일:</span>
+                        {DAYS_OF_WEEK.map((day, index) => (
+                            <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input type="checkbox" checked={selectedDays.has(index)} onChange={() => handleDayToggle(index)} /> {day}
+                            </label>
+                        ))}
+                    </InputGroup>
+                </div>)}
 
-                    return (
-                        <ItemCard key={part.id}>
-                            {(isSaleMode || isSaleDayMode || isDeleteMode) && (
-                                <div style={{ height: '25px' }}>
-                                    <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
-                                </div>)}
-                            {!(isSaleMode || isSaleDayMode || isDeleteMode) && <div style={{ height: '25px' }}></div>}
+                {isDeleteMode && (<div style={{ border: '2px solid #dc3545', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff0f1' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: 0 }}>
+                        <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleBatchDelete} disabled={checkedItems.size === 0} style={{ backgroundColor: '#dc3545' }}>
+                            {checkedItems.size}개 영구 삭제
+                        </SaveButton>
+                    </InputGroup>
+                </div>)}
 
-                            <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
-                                <input
-                                    type="text"
-                                    value={displayNames[part.id] || ''}
-                                    onChange={(e) => handleDisplayNameChange(part.id, e.target.value)}
-                                    placeholder={part.id}
-                                    style={{ width: '100%', textAlign: 'center', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
-                                />
-                                <SaveButton onClick={() => handleSaveDisplayName(part.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
-                            </div>
+                <TabContainer>
+                    {sortedCategories.map(category => (
+                        <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
+                            {category} ({partCategories[category]?.length || 0})
+                        </TabButton>
+                    ))}
+                </TabContainer>
 
-                            <ItemImage src={part.src} $category={activeTab} />
-                            {saleDaysText && (
-                                <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>
-                                    {saleDaysText}
+                <ItemGrid>
+
+                    {paginatedItems.map(part => {
+                        const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < new Date() && new Date() < part.saleEndDate?.toDate();
+                        const saleDaysText = part.saleDays && part.saleDays.length > 0 ? `[${part.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 판매` : null;
+
+                        return (
+                            <ItemCard key={part.id}>
+                                {(isSaleMode || isSaleDayMode || isDeleteMode) && (
+                                    <div style={{ height: '25px' }}>
+                                        <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
+                                    </div>)}
+                                {!(isSaleMode || isSaleDayMode || isDeleteMode) && <div style={{ height: '25px' }}></div>}
+
+                                <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                                    <input
+                                        type="text"
+                                        value={displayNames[part.id] || ''}
+                                        onChange={(e) => handleDisplayNameChange(part.id, e.target.value)}
+                                        placeholder={part.id}
+                                        style={{ width: '100%', textAlign: 'center', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                                    />
+                                    <SaveButton onClick={() => handleSaveDisplayName(part.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
                                 </div>
-                            )}
-                            <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: 0 }} />
 
-                            {isCurrentlyOnSale && (<div style={{ width: '100%', textAlign: 'center', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px', borderRadius: '4px', fontSize: '0.8em', color: 'red' }}>
-                                <p style={{ margin: 0, fontWeight: 'bold' }}>{part.salePrice}P ({part.originalPrice ? Math.round(100 - (part.salePrice / part.originalPrice * 100)) : ''}%)</p>
-                                <p style={{ margin: 0 }}>~{part.saleEndDate.toDate().toLocaleDateString()}</p>
-                                <button onClick={() => handleEndSale(part.id)}>즉시 종료</button>
-                            </div>
-                            )}
+                                <ItemImage src={part.src} $category={activeTab} />
+                                {saleDaysText && (
+                                    <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>
+                                        {saleDaysText}
+                                    </div>
+                                )}
+                                <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: 0 }} />
 
-                            <button onClick={() => handleToggleStatus(part)} style={{ padding: '8px 16px', marginTop: 'auto', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: 'white', backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745' }}>
-                                {part.status === 'hidden' ? '숨김 상태' : '진열 중'}
-                            </button>
-                        </ItemCard>
-                    );
-                })}
-            </ItemGrid>
-            <PaginationContainer>
-                <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
-                    이전
-                </PageButton>
-                {Array.from({ length: totalPages }, (_, index) => (
-                    <PageButton
-                        key={index + 1}
-                        $isActive={currentPage === index + 1}
-                        onClick={() => setCurrentPage(index + 1)}
-                    >
-                        {index + 1}
+                                {isCurrentlyOnSale && (<div style={{ width: '100%', textAlign: 'center', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px', borderRadius: '4px', fontSize: '0.8em', color: 'red' }}>
+                                    <p style={{ margin: 0, fontWeight: 'bold' }}>{part.salePrice}P ({part.originalPrice ? Math.round(100 - (part.salePrice / part.originalPrice * 100)) : ''}%)</p>
+                                    <p style={{ margin: 0 }}>~{part.saleEndDate.toDate().toLocaleDateString()}</p>
+                                    <button onClick={() => handleEndSale(part.id)}>즉시 종료</button>
+                                </div>
+                                )}
+
+                                <button onClick={() => handleToggleStatus(part)} style={{ padding: '8px 16px', marginTop: 'auto', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: 'white', backgroundColor: part.status === 'hidden' ? '#6c757d' : '#28a745' }}>
+                                    {part.status === 'hidden' ? '숨김 상태' : '진열 중'}
+                                </button>
+                            </ItemCard>
+                        );
+                    })}
+                </ItemGrid>
+                <PaginationContainer>
+                    <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
+                        이전
                     </PageButton>
-                ))}
-                <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
-                    다음
-                </PageButton>
-            </PaginationContainer>
+                    {Array.from({ length: totalPages }, (_, index) => (
+                        <PageButton
+                            key={index + 1}
+                            $isActive={currentPage === index + 1}
+                            onClick={() => setCurrentPage(index + 1)}
+                        >
+                            {index + 1}
+                        </PageButton>
+                    ))}
+                    <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
+                        다음
+                    </PageButton>
+                </PaginationContainer>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                <SaveButton onClick={handleSaveAllPrices}>{activeTab} 탭 전체 가격 저장</SaveButton>
-            </div>
-        </Section>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                    <SaveButton onClick={handleSaveAllPrices}>{activeTab} 탭 전체 가격 저장</SaveButton>
+                </div>
+            </Section>
+        </FullWidthSection>
     );
 }
 
 function RoleManager() {
-    const { users, players, linkPlayer } = useLeagueStore();
-    const [selectedUser, setSelectedUser] = useState('');
-    const [selectedPlayer, setSelectedPlayer] = useState('');
+    const { players, fetchInitialData } = useLeagueStore();
+    const [selectedPlayerId, setSelectedPlayerId] = useState('');
     const [selectedRole, setSelectedRole] = useState('player');
-    const unlinkedUsers = useMemo(() => {
-        const linkedPlayerUids = players.map(p => p.authUid).filter(Boolean);
-        return users.filter(u => !linkedPlayerUids.includes(u.uid));
-    }, [users, players]);
-    const unlinkedPlayers = useMemo(() => {
-        return players.filter(p => !p.authUid);
-    }, [players]);
-    const handleLink = () => {
-        if (!selectedUser || !selectedPlayer) return alert('사용자와 선수를 모두 선택해주세요.');
-        linkPlayer(selectedPlayer, selectedUser, selectedRole);
+
+    useEffect(() => {
+        if (selectedPlayerId) {
+            const player = players.find(p => p.id === selectedPlayerId);
+            if (player) {
+                setSelectedRole(player.role || 'player');
+            }
+        }
+    }, [selectedPlayerId, players]);
+
+    const handleSaveRole = async () => {
+        const player = players.find(p => p.id === selectedPlayerId);
+        if (!player) return alert('선수를 선택해주세요.');
+        if (!player.authUid) {
+            return alert('역할을 저장하려면 먼저 계정이 연결된 선수여야 합니다. (미연결 선수는 역할 변경 불가)');
+        }
+
+        try {
+            await linkPlayerToAuth(selectedPlayerId, player.authUid, selectedRole);
+            alert(`${player.name}님의 역할이 ${selectedRole}(으)로 변경되었습니다.`);
+            await fetchInitialData();
+        } catch (error) {
+            alert(`역할 변경 실패: ${error.message}`);
+        }
     };
+
     return (
         <Section>
-            <Title>사용자 역할 관리</Title>
+            <SectionTitle>사용자 역할 관리 🧑‍⚖️</SectionTitle>
             <InputGroup>
-                <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
-                    <option value="">로그인한 사용자 선택</option>
-                    {unlinkedUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName}</option>)}
+                <select
+                    value={selectedPlayerId}
+                    onChange={(e) => setSelectedPlayerId(e.target.value)}
+                    style={{ flex: 1, padding: '0.5rem' }}
+                >
+                    <option value="">-- 선수 선택 --</option>
+                    {players.map(p => <option key={p.id} value={p.id}>{p.name} ({p.authUid ? '연결됨' : '미연결'})</option>)}
                 </select>
-                <select value={selectedPlayer} onChange={(e) => setSelectedPlayer(e.target.value)}>
-                    <option value="">연결할 선수 선택</option>
-                    {unlinkedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}>
-                    <option value="player">일반 참가자</option>
-                    <option value="captain">팀장</option>
-                    <option value="recorder">기록원</option>
-                    <option value="referee">학생 심판</option>
-                </select>
-                <SaveButton onClick={handleLink}>연결</SaveButton>
             </InputGroup>
-            <h4>연결된 선수 목록</h4>
-            <List>
-                {players.filter(p => p.authUid).map(p => (
-                    <ListItem key={p.id}>
-                        <PlayerProfile player={p} />
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <strong>{p.role}</strong>
-                            <Link to={`/profile/${p.id}`}>
-                                <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필</StyledButton>
-                            </Link>
-                        </div>
-                    </ListItem>
-                ))}
-            </List>
+            {selectedPlayerId && (
+                <InputGroup>
+                    <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} style={{ flex: 1, padding: '0.5rem' }}>
+                        <option value="player">일반 참가자</option>
+                        <option value="captain">팀장</option>
+                        <option value="recorder">기록원</option>
+                        <option value="referee">학생 심판</option>
+                        <option value="admin">관리자</option>
+                    </select>
+                    <SaveButton onClick={handleSaveRole}>역할 저장</SaveButton>
+                </InputGroup>
+            )}
         </Section>
     );
 }
 
-// PointManager 컴포넌트 추가
+
 function PointManager() {
-    // [수정] 다중 선택을 위해 로직 변경
     const { players, batchAdjustPoints } = useLeagueStore();
     const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
     const [amount, setAmount] = useState(0);
@@ -895,72 +1093,71 @@ function PointManager() {
     };
 
     const sortedPlayers = useMemo(() =>
-        // [수정] b와 a를 바꿔서 내림차순으로 정렬
         [...players].sort((a, b) => a.name.localeCompare(b.name)),
         [players]
     );
 
     return (
-        <Section>
-            <Title>포인트 수동 조정</Title>
-            <p style={{ margin: '-0.5rem 0 1rem', fontSize: '0.9rem', color: '#666' }}>
-                부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다. (차감 시 음수 입력)
-            </p>
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>포인트 수동 조정 💰</SectionTitle>
+                <p style={{ margin: '-0.5rem 0 1rem', fontSize: '0.9rem', color: '#666' }}>
+                    부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다. (차감 시 음수 입력)
+                </p>
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                    gap: '0.5rem',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    backgroundColor: 'white',
+                    marginBottom: '1rem'
+                }}>
+                    {sortedPlayers.map(player => (
+                        <div key={player.id}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedPlayerIds.has(player.id)}
+                                    onChange={() => handlePlayerSelect(player.id)}
+                                    style={{ width: '18px', height: '18px' }}
+                                />
+                                <span>{player.name} (현재: {player.points || 0}P)</span>
+                            </label>
+                        </div>
+                    ))}
+                </div>
 
-            {/* [수정] 플레이어 선택 UI를 체크박스 목록으로 변경 */}
-            <div style={{
-                display: 'grid', // 👈 [추가] Grid 레이아웃 적용
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', // 👈 [추가] 행렬 배치
-                gap: '0.5rem', // 👈 [추가] 아이템 간 간격
-                maxHeight: '200px',
-                overflowY: 'auto',
-                border: '1px solid #dee2e6',
-                borderRadius: '8px',
-                padding: '1rem',
-                backgroundColor: 'white',
-                marginBottom: '1rem'
-            }}>
-                {sortedPlayers.map(player => (
-                    <div key={player.id}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem' }}>
-                            <input
-                                type="checkbox"
-                                checked={selectedPlayerIds.has(player.id)}
-                                onChange={() => handlePlayerSelect(player.id)}
-                                style={{ width: '18px', height: '18px' }}
-                            />
-                            <span>{player.name} (현재: {player.points || 0}P)</span>
-                        </label>
-                    </div>
-                ))}
-            </div>
-
-            <InputGroup>
-                <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="변경할 포인트"
-                    style={{ width: '150px', padding: '0.5rem' }}
-                />
-                <input
-                    type="text"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="조정 사유 (예: 봉사활동 보상)"
-                    style={{ flex: 1, padding: '0.5rem' }}
-                />
-            </InputGroup>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <SaveButton
-                    onClick={handleSubmit}
-                    disabled={selectedPlayerIds.size === 0 || Number(amount) === 0 || !reason.trim()}
-                    style={{ backgroundColor: '#dc3545' }}
-                >
-                    {selectedPlayerIds.size}명에게 포인트 조정 실행
-                </SaveButton>
-            </div>
-        </Section>
+                <InputGroup>
+                    <input
+                        type="number"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="변경할 포인트"
+                        style={{ width: '150px', padding: '0.5rem' }}
+                    />
+                    <input
+                        type="text"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="조정 사유 (예: 봉사활동 보상)"
+                        style={{ flex: 1, padding: '0.5rem' }}
+                    />
+                </InputGroup>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <SaveButton
+                        onClick={handleSubmit}
+                        disabled={selectedPlayerIds.size === 0 || Number(amount) === 0 || !reason.trim()}
+                        style={{ backgroundColor: '#dc3545' }}
+                    >
+                        {selectedPlayerIds.size}명에게 포인트 조정 실행
+                    </SaveButton>
+                </div>
+            </Section>
+        </FullWidthSection>
     );
 }
 
@@ -990,7 +1187,39 @@ function MatchRow({ match }) {
     );
 }
 
-function AdminPage() {
+function PlayerManager() {
+    const { players, removePlayer, currentSeason } = useLeagueStore();
+    const isNotPreparing = currentSeason?.status !== 'preparing';
+
+    const sortedPlayers = useMemo(() =>
+        [...players].sort((a, b) => a.name.localeCompare(b.name)),
+        [players]
+    );
+
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>선수 관리</SectionTitle>
+                <List>
+                    {sortedPlayers.map(player => (
+                        <ListItem key={player.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                            <PlayerProfile player={player} />
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <Link to={`/profile/${player.id}`}>
+                                    <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
+                                </Link>
+                                <StyledButton onClick={() => removePlayer(player.id)} disabled={isNotPreparing}>삭제</StyledButton>
+                            </div>
+                        </ListItem>
+                    ))}
+                </List>
+            </Section>
+        </FullWidthSection>
+    );
+}
+
+
+function LeagueManager() {
     const {
         players, teams, matches, removePlayer,
         addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
@@ -1031,7 +1260,7 @@ function AdminPage() {
     }, [players, teams]);
 
     const filteredMatches = useMemo(() => {
-        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
+        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === 'completed'));
     }, [matches, activeTab]);
 
     const handlePlayerSelect = (teamId, playerId) => {
@@ -1052,125 +1281,189 @@ function AdminPage() {
     };
 
     return (
-        <AdminWrapper>
-            <h1>관리자 페이지</h1>
-            {/* 모든 관리자 섹션 컴포넌트 호출 */}
-            <MissionManager />
-            <AvatarPartManager />
-            <RoleManager />
-            <PointManager /> {/* 포인트 관리자 컴포넌트 추가 */}
-            <GoalManager /> {/* 👈 [추가] 이 줄을 추가해주세요. */}
-
-            <Section>
-                <Title>시즌 관리</Title>
-                {currentSeason ? (
-                    <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <h3>{currentSeason.seasonName}</h3>
-                                <p style={{ margin: 0 }}>
-                                    현재 상태: <strong style={{ color: currentSeason.status === 'preparing' ? 'blue' : (currentSeason.status === 'active' ? 'green' : 'red') }}>{currentSeason.status}</strong>
-                                </p>
+        <>
+            <FullWidthSection>
+                <Section>
+                    <SectionTitle>시즌 관리 🗓️</SectionTitle>
+                    {currentSeason ? (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h3>{currentSeason.seasonName}</h3>
+                                    <p style={{ margin: 0 }}>
+                                        현재 상태: <strong style={{ color: currentSeason.status === 'preparing' ? 'blue' : (currentSeason.status === 'active' ? 'green' : 'red') }}>{currentSeason.status}</strong>
+                                    </p>
+                                </div>
+                                <div>
+                                    {currentSeason.status === 'preparing' && <SaveButton onClick={startSeason}>시즌 시작</SaveButton>}
+                                    {currentSeason.status === 'active' && <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>}
+                                </div>
                             </div>
-                            <div>
-                                {currentSeason.status === 'preparing' && <SaveButton onClick={startSeason}>시즌 시작</SaveButton>}
-                                {currentSeason.status === 'active' && <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>}
-                            </div>
-                        </div>
-                        <InputGroup style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-                            <label htmlFor="prize">우승팀 보상 포인트:</label>
-                            <ScoreInput
-                                id="prize"
-                                type="number"
-                                value={prize}
-                                onChange={(e) => setPrize(e.target.value)}
-                                style={{ width: '100px' }}
-                            />
-                            <SaveButton onClick={handleSavePrize}>보상 저장</SaveButton>
+                            <InputGroup style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                                <label htmlFor="prize">우승팀 보상 포인트:</label>
+                                <ScoreInput
+                                    id="prize"
+                                    type="number"
+                                    value={prize}
+                                    onChange={(e) => setPrize(e.target.value)}
+                                    style={{ width: '100px' }}
+                                />
+                                <SaveButton onClick={handleSavePrize}>보상 저장</SaveButton>
+                            </InputGroup>
+                        </>
+                    ) : <p>시즌 정보를 불러오는 중입니다...</p>}
+                </Section>
+            </FullWidthSection>
+            <FullWidthSection>
+                <Section>
+                    <SectionTitle>리그 방식 설정</SectionTitle>
+                    <TabContainer>
+                        <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')} disabled={isNotPreparing}>통합 리그</TabButton>
+                        <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')} disabled={isNotPreparing}>남녀 분리 리그</TabButton>
+                    </TabContainer>
+                </Section>
+            </FullWidthSection>
+            <FullWidthSection>
+                <Section>
+                    <SectionTitle>팀 관리</SectionTitle>
+                    {leagueType === 'separated' ? (
+                        <InputGroup>
+                            <label>남자 팀 수: <input type="number" min="0" value={maleTeamCount} onChange={e => setMaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
+                            <label>여자 팀 수: <input type="number" min="0" value={femaleTeamCount} onChange={e => setFemaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
+                            <StyledButton onClick={handleBatchCreateTeams} disabled={isNotPreparing}>팀 일괄 생성</StyledButton>
                         </InputGroup>
-                    </>
-                ) : <p>시즌 정보를 불러오는 중입니다...</p>}
-            </Section>
-            <Section>
-                <Title>리그 방식 설정</Title>
-                <TabContainer>
-                    <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')} disabled={isNotPreparing}>통합 리그</TabButton>
-                    <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')} disabled={isNotPreparing}>남녀 분리 리그</TabButton>
-                </TabContainer>
-            </Section>
-            <Section>
-                <Title>선수 관리</Title>
-                <List>
-                    {players.map(player => (
-                        <ListItem key={player.id}>
-                            <PlayerProfile player={player} />
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <Link to={`/profile/${player.id}`}>
-                                    <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
-                                </Link>
-                                <StyledButton onClick={() => removePlayer(player.id)} disabled={isNotPreparing}>삭제</StyledButton>
-                            </div>
-                        </ListItem>
-                    ))}
-                </List>
-            </Section>
-            <Section>
-                <Title>팀 관리</Title>
-                {leagueType === 'separated' ? (
+                    ) : (
+                        <InputGroup>
+                            <input type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="새 팀 이름" disabled={isNotPreparing} />
+                            <StyledButton onClick={handleAddTeam} disabled={isNotPreparing}>팀 추가</StyledButton>
+                        </InputGroup>
+                    )}
                     <InputGroup>
-                        <label>남자 팀 수: <input type="number" min="0" value={maleTeamCount} onChange={e => setMaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
-                        <label>여자 팀 수: <input type="number" min="0" value={femaleTeamCount} onChange={e => setFemaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
-                        <StyledButton onClick={handleBatchCreateTeams} disabled={isNotPreparing}>팀 일괄 생성</StyledButton>
+                        <StyledButton onClick={autoAssignTeams} style={{ marginLeft: 'auto' }} disabled={isNotPreparing}>팀원 자동 배정</StyledButton>
                     </InputGroup>
-                ) : (
-                    <InputGroup>
-                        <input type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="새 팀 이름" disabled={isNotPreparing} />
-                        <StyledButton onClick={handleAddTeam} disabled={isNotPreparing}>팀 추가</StyledButton>
-                    </InputGroup>
-                )}
-                <InputGroup>
-                    <StyledButton onClick={autoAssignTeams} style={{ marginLeft: 'auto' }} disabled={isNotPreparing}>팀원 자동 배정</StyledButton>
-                </InputGroup>
-                <List>
-                    {teams.map(team => (
-                        <ListItem key={team.id}>
-                            <div style={{ flex: 1, marginRight: '1rem' }}>
-                                <strong>{team.teamName}</strong>
-                                <MemberList>
-                                    {team.members?.length > 0 ? team.members.map(memberId => (
-                                        <MemberListItem key={memberId}>
-                                            <PlayerProfile player={players.find(p => p.id === memberId)} />
-                                            <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
-                                        </MemberListItem>
-                                    )) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
-                                </MemberList>
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
-                                <select onChange={(e) => handlePlayerSelect(team.id, e.target.value)} disabled={isNotPreparing} style={{ width: '100px' }}>
-                                    <option value="">선수 선택</option>
-                                    {unassignedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
-                                <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>추가</StyledButton>
-                                <StyledButton onClick={() => removeTeam(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>팀 삭제</StyledButton>
-                            </div>
-                        </ListItem>
-                    ))}
-                </List>
-            </Section>
-            <Section>
-                <Title>경기 일정 관리</Title>
-                <StyledButton onClick={generateSchedule} disabled={isNotPreparing}>경기 일정 자동 생성</StyledButton>
-            </Section>
-            <Section>
-                <Title>경기 결과 입력</Title>
-                <TabContainer>
-                    <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>입력 대기</TabButton>
-                    <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
-                </TabContainer>
-                {filteredMatches.length > 0 ? (
-                    filteredMatches.map(match => <MatchRow key={match.id} match={match} />)
-                ) : <p>해당 목록에 경기가 없습니다.</p>}
-            </Section>
+                    <List>
+                        {teams.map(team => (
+                            <ListItem key={team.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                                <div style={{ flex: 1, marginRight: '1rem' }}>
+                                    <strong>{team.teamName}</strong>
+                                    <MemberList>
+                                        {team.members?.length > 0 ? team.members.map(memberId => (
+                                            <MemberListItem key={memberId}>
+                                                <PlayerProfile player={players.find(p => p.id === memberId)} />
+                                                <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
+                                            </MemberListItem>
+                                        )) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
+                                    </MemberList>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
+                                    <select onChange={(e) => handlePlayerSelect(team.id, e.target.value)} disabled={isNotPreparing} style={{ width: '100px' }}>
+                                        <option value="">선수 선택</option>
+                                        {unassignedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>추가</StyledButton>
+                                    <StyledButton onClick={() => removeTeam(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>팀 삭제</StyledButton>
+                                </div>
+                            </ListItem>
+                        ))}
+                    </List>
+                </Section>
+            </FullWidthSection>
+            <FullWidthSection>
+                <Section>
+                    <SectionTitle>경기 일정 관리</SectionTitle>
+                    <StyledButton onClick={generateSchedule} disabled={isNotPreparing}>경기 일정 자동 생성</StyledButton>
+                </Section>
+            </FullWidthSection>
+            <FullWidthSection>
+                <Section>
+                    <SectionTitle>경기 결과 입력</SectionTitle>
+                    <TabContainer>
+                        <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>입력 대기</TabButton>
+                        <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
+                    </TabContainer>
+                    {filteredMatches.length > 0 ? (
+                        filteredMatches.map(match => <MatchRow key={match.id} match={match} />)
+                    ) : <p>해당 목록에 경기가 없습니다.</p>}
+                </Section>
+            </FullWidthSection>
+        </>
+    )
+}
+
+
+function AdminPage() {
+    const [activeMenu, setActiveMenu] = useState('mission');
+    const [activeSubMenu, setActiveSubMenu] = useState('mission_dashboard');
+
+    const renderContent = () => {
+        if (activeMenu === 'mission') {
+            return (
+                <>
+                    <GridContainer>
+                        <PendingMissionWidget />
+                        <MissionManager />
+                    </GridContainer>
+                    <GoalManager />
+                </>
+            );
+        }
+        if (activeMenu === 'student') {
+            return (
+                <>
+                    <PointManager />
+                    <RoleManager />
+                </>
+            )
+        }
+        if (activeMenu === 'shop') {
+            return <AvatarPartManager />;
+        }
+        if (activeMenu === 'league') {
+            switch (activeSubMenu) {
+                case 'league_manage': return <LeagueManager />;
+                case 'player_manage': return <PlayerManager />;
+                default: return <PlayerManager />;
+            }
+        }
+        return <PendingMissionWidget />;
+    };
+
+    const handleMenuClick = (menu) => {
+        setActiveMenu(menu);
+        if (menu === 'mission') setActiveSubMenu('mission_dashboard');
+        else if (menu === 'student') setActiveSubMenu('role_manage'); // Sub menu for student is now logical parent
+        else if (menu === 'shop') setActiveSubMenu('item_manage');
+        else if (menu === 'league') setActiveSubMenu('player_manage'); // Default to player management
+    };
+
+    return (
+        <AdminWrapper>
+            <Sidebar>
+                <NavList>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
+                    </NavItem>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
+                    </NavItem>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'shop'} onClick={() => handleMenuClick('shop')}>상점 관리</NavButton>
+                    </NavItem>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'league'} onClick={() => handleMenuClick('league')}>가가볼 리그 관리</NavButton>
+                        {activeMenu === 'league' && (
+                            <SubNavList>
+                                <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={activeSubMenu === 'player_manage'} onClick={() => setActiveSubMenu('player_manage')}>선수 관리</SubNavButton></SubNavItem>
+                            </SubNavList>
+                        )}
+                    </NavItem>
+                </NavList>
+            </Sidebar>
+            <MainContent>
+                <Title>👑 관리자 대시보드</Title>
+                {renderContent()}
+            </MainContent>
         </AdminWrapper>
     );
 }

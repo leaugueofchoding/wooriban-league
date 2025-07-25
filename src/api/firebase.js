@@ -18,7 +18,6 @@ const firebaseConfig = {
 };
 
 // Firebase 앱 초기화
-console.log("VITE_API_KEY from env:", import.meta.env.VITE_API_KEY); // 👈 [추가] 디버깅용 코드
 const app = initializeApp(firebaseConfig);
 const storage = getStorage(app);
 export const auth = getAuth(app);
@@ -148,7 +147,6 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   await batch.commit();
 }
 
-// --- ▼▼▼ [수정] 관리자/기록원에게 알림 보내는 기능 추가 ▼▼▼ ---
 export async function requestMissionApproval(missionId, studentId, studentName) {
   const submissionsRef = collection(db, 'missionSubmissions');
   const q = query(
@@ -159,10 +157,19 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
 
   const querySnapshot = await getDocs(q);
   if (!querySnapshot.empty) {
-    throw new Error("이미 승인을 요청했거나 완료된 미션입니다.");
+    const existingDoc = querySnapshot.docs[0].data();
+    if (existingDoc.status === 'pending') {
+      throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
+    } else if (existingDoc.status === 'approved') {
+      throw new Error("이미 완료된 미션입니다.");
+    }
   }
 
-  await addDoc(submissionsRef, {
+  // 기존에 'rejected' 상태의 문서가 있다면 덮어쓰고, 없다면 새로 생성
+  const docId = querySnapshot.empty ? null : querySnapshot.docs[0].id;
+  const submissionRef = docId ? doc(db, 'missionSubmissions', docId) : doc(collection(db, 'missionSubmissions'));
+
+  await setDoc(submissionRef, {
     missionId,
     studentId,
     studentName,
@@ -176,20 +183,58 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
   const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
 
-  adminRecorderSnapshot.forEach(doc => {
-    const admin = doc.data();
-    if (admin.authUid) {
+  adminRecorderSnapshot.forEach(userDoc => {
+    const user = userDoc.data();
+    if (user.authUid) {
+      const link = user.role === 'admin' ? '/admin' : `/recorder/${missionId}`;
       createNotification(
-        admin.authUid,
+        user.authUid,
         '미션 승인 요청',
         `${studentName} 학생이 미션 완료를 요청했습니다.`,
         'mission',
-        `/recorder/${missionId}` // 👈 [수정] 이동할 링크 주소 추가
+        link
       );
     }
   });
 }
-// --- ▲▲▲ [수정] 여기까지 ---
+
+// --- ▼▼▼ [핵심 수정] 미션 거절 시 제출 기록을 삭제하도록 변경 ---
+export async function rejectMissionSubmission(submissionId, studentAuthUid, missionTitle) {
+  const submissionRef = doc(db, 'missionSubmissions', submissionId);
+  await deleteDoc(submissionRef); // 문서를 업데이트하는 대신 삭제
+
+  // 학생에게 거절 알림 보내기
+  if (studentAuthUid) {
+    createNotification(
+      studentAuthUid,
+      '😢 미션이 반려되었습니다.',
+      `'${missionTitle}' 미션이 반려되었습니다. 다시 확인 후 제출해주세요.`,
+      'mission',
+      '/missions'
+    );
+  }
+}
+
+export async function deleteMission(missionId) {
+  const batch = writeBatch(db);
+
+  // 1. 삭제할 미션과 관련된 모든 제출 기록(submissions)을 찾습니다.
+  const submissionsRef = collection(db, "missionSubmissions");
+  const q = query(submissionsRef, where("missionId", "==", missionId));
+  const querySnapshot = await getDocs(q);
+
+  // 2. 찾은 모든 제출 기록을 삭제 배치에 추가합니다.
+  querySnapshot.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+
+  // 3. 원래 미션 문서를 삭제 배치에 추가합니다.
+  const missionRef = doc(db, 'missions', missionId);
+  batch.delete(missionRef);
+
+  // 4. 모든 삭제 작업을 한 번에 실행합니다.
+  await batch.commit();
+}
 
 
 // --- 포인트 수동 조정 ---
@@ -222,20 +267,17 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
   console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
 }
 
-// --- ▼▼▼ [추가] 포인트 일괄 조정 함수 ▼▼▼ ---
 export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
   const batch = writeBatch(db);
 
   for (const playerId of playerIds) {
     const playerRef = doc(db, "players", playerId);
-    const playerDoc = await getDoc(playerRef); // 알림과 기록을 위해 현재 데이터 조회
+    const playerDoc = await getDoc(playerRef);
 
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
-      // 1. 포인트 업데이트 작업 추가
       batch.update(playerRef, { points: increment(amount) });
 
-      // 2. 각 플레이어에게 알림 생성
       const message = amount > 0 ? `+${amount}P가 지급되었습니다.` : `${amount}P가 차감되었습니다.`;
       createNotification(
         playerData.authUid,
@@ -245,8 +287,6 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
         `/profile/${playerId}`
       );
 
-      // 3. 각 플레이어의 포인트 변동 내역 기록
-      // addPointHistory는 batch에 포함할 수 없으므로 개별적으로 호출합니다.
       await addPointHistory(
         playerData.authUid,
         playerData.name,
@@ -256,7 +296,6 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
     }
   }
 
-  // 4. 모아둔 모든 업데이트 작업을 한 번에 실행
   await batch.commit();
 }
 
@@ -560,11 +599,6 @@ export async function updateMissionStatus(missionId, status) {
   await updateDoc(missionRef, { status });
 }
 
-export async function deleteMission(missionId) {
-  const missionRef = doc(db, 'missions', missionId);
-  await deleteDoc(missionRef);
-}
-
 // --- 아바타 파츠 기타 ---
 export async function updateAvatarPartDisplayName(partId, displayName) {
   const partRef = doc(db, "avatarParts", partId);
@@ -722,7 +756,7 @@ export async function createNotification(userId, title, body, type, link = null)
     title,
     body,
     type,
-    link, // 👈 [수정] link 필드 추가
+    link,
     isRead: false,
     createdAt: serverTimestamp(),
   });
@@ -750,9 +784,7 @@ export async function markNotificationsAsRead(userId) {
   await batch.commit();
 }
 
-// --- ▼▼▼ [추가] 출석 체크 관련 함수 ▼▼▼ ---
-
-// YYYY-MM-DD 형식의 오늘 날짜 문자열을 반환하는 헬퍼 함수
+// --- 출석 체크 관련 함수 ---
 const getTodayDateString = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -761,11 +793,6 @@ const getTodayDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
-/**
- * 플레이어의 오늘 출석 보상 가능 여부를 확인합니다.
- * @param {string} playerId - 확인할 플레이어의 ID
- * @returns {Promise<boolean>} - 보상 수령 가능하면 true, 아니면 false
- */
 export async function isAttendanceRewardAvailable(playerId) {
   const playerRef = doc(db, "players", playerId);
   const playerSnap = await getDoc(playerRef);
@@ -778,7 +805,6 @@ export async function isAttendanceRewardAvailable(playerId) {
   const playerData = playerSnap.data();
   const todayStr = getTodayDateString();
 
-  // 마지막 출석 날짜가 오늘과 같으면 보상 불가
   if (playerData.lastAttendance === todayStr) {
     return false;
   }
@@ -786,12 +812,6 @@ export async function isAttendanceRewardAvailable(playerId) {
   return true;
 }
 
-/**
- * 플레이어에게 출석 보상을 지급하고 마지막 출석 날짜를 업데이트합니다.
- * @param {string} playerId - 보상을 지급할 플레이어의 ID
- * @param {number} rewardAmount - 지급할 포인트
- * @returns {Promise<void>}
- */
 export async function grantAttendanceReward(playerId, rewardAmount) {
   const isAvailable = await isAttendanceRewardAvailable(playerId);
   if (!isAvailable) {
@@ -803,13 +823,12 @@ export async function grantAttendanceReward(playerId, rewardAmount) {
 
   await updateDoc(playerRef, {
     points: increment(rewardAmount),
-    lastAttendance: todayStr, // 마지막 출석일을 오늘 날짜로 기록
+    lastAttendance: todayStr,
   });
 
   const playerDoc = await getDoc(playerRef);
   const playerData = playerDoc.data();
 
-  // 포인트 변동 내역 기록
   await addPointHistory(
     playerData.authUid,
     playerData.name,
@@ -817,7 +836,6 @@ export async function grantAttendanceReward(playerId, rewardAmount) {
     "출석 체크 보상"
   );
 
-  // 알림 생성
   createNotification(
     playerData.authUid,
     "🎉 출석 체크 완료!",
