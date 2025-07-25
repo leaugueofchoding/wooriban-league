@@ -1,7 +1,7 @@
 // src/components/Auth.jsx
 
-import React, { useState } from 'react'; // useState 추가
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom'; // useNavigate 추가
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { auth, updateUserProfile } from '../api/firebase.js';
 import { useLeagueStore } from '../store/leagueStore.js';
@@ -50,7 +50,6 @@ const Button = styled.button`
   background-color: white;
 `;
 
-// --- ▼▼▼ [추가] 알림 관련 스타일 ▼▼▼ ---
 const NotificationContainer = styled.div`
     position: relative;
 `;
@@ -93,6 +92,13 @@ const NotificationItem = styled.div`
     padding: 1rem;
     border-bottom: 1px solid #f1f3f5;
     text-align: left;
+    
+    /* 👇 [수정] 링크가 있을 때만 커서 변경 및 호버 효과 적용 */
+    cursor: ${props => (props.$hasLink ? 'pointer' : 'default')};
+    
+    &:hover {
+        background-color: ${props => (props.$hasLink ? '#f8f9fa' : 'white')};
+    }
 
     &:last-child {
         border-bottom: none;
@@ -109,13 +115,12 @@ const NotificationItem = styled.div`
         color: #495057;
     }
 `;
-// --- ▲▲▲ [추가] 여기까지 ---
 
 
 function Auth({ user }) {
     const { notifications, unreadNotificationCount, markAsRead } = useLeagueStore();
-    const navigate = useNavigate();
-    const [showNotifications, setShowNotifications] = useState(false); // 알림 목록 표시 상태
+    const navigate = useNavigate(); // 👈 [추가] useNavigate 훅 사용
+    const [showNotifications, setShowNotifications] = useState(false);
 
     const handleGoogleLogin = () => {
         const provider = new GoogleAuthProvider();
@@ -133,20 +138,17 @@ function Auth({ user }) {
         signOut(auth);
     };
 
-    // --- ▼▼▼ [수정] 알림 버튼 클릭 핸들러 ▼▼▼ ---
     const handleNotificationClick = () => {
-        setShowNotifications(prev => !prev); // 목록 보이기/숨기기 토글
+        setShowNotifications(prev => !prev);
         if (unreadNotificationCount > 0) {
-            markAsRead(); // 읽음 처리
+            markAsRead();
         }
     }
-    // --- ▲▲▲ [수정] 여기까지 ---
 
     return (
         <AuthWrapper>
             {user ? (
                 <UserProfile>
-                    {/* --- ▼▼▼ [수정] 알림 UI 렌더링 로직 추가 ▼▼▼ --- */}
                     <NotificationContainer>
                         <NotificationButton onClick={handleNotificationClick}>
                             🔔
@@ -156,7 +158,17 @@ function Auth({ user }) {
                             <NotificationList>
                                 {notifications.length > 0 ? (
                                     notifications.map(notif => (
-                                        <NotificationItem key={notif.id}>
+                                        <NotificationItem
+                                            key={notif.id}
+                                            $hasLink={!!notif.link} // 👈 [추가] link 존재 여부 전달
+                                            onClick={() => {
+                                                // 👈 [추가] 클릭 시 링크로 이동하는 로직
+                                                if (notif.link) {
+                                                    navigate(notif.link);
+                                                    setShowNotifications(false); // 이동 후 알림 창 닫기
+                                                }
+                                            }}
+                                        >
                                             <h5>{notif.title}</h5>
                                             <p>{notif.body}</p>
                                         </NotificationItem>
@@ -169,7 +181,6 @@ function Auth({ user }) {
                             </NotificationList>
                         )}
                     </NotificationContainer>
-                    {/* --- ▲▲▲ [수정] 여기까지 --- */}
 
                     <Link to="/profile">
                         <img src={user.photoURL} alt="프로필 사진" />
