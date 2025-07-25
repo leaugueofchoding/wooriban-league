@@ -23,7 +23,6 @@ import {
     getMissionSubmissions,
     updateMissionStatus,
     deleteMission,
-    adjustPlayerPoints,
     createPlayerFromUser,
     markNotificationsAsRead,
     getTodaysQuizHistory,
@@ -35,7 +34,7 @@ import {
     db
 } from '../api/firebase';
 // [수정] onSnapshot과 doc 함수 import
-import { collection, query, where, orderBy, limit, onSnapshot, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore"; // Timestamp 추가
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
 
@@ -55,10 +54,13 @@ export const useLeagueStore = create((set, get) => ({
     leagueType: 'mixed',
     notifications: [],
     unreadNotificationCount: 0,
+    approvalBonus: 0, // [추가] 오늘의 승인 보너스 총합
     listeners: {
         notifications: null,
         playerData: null,
         missionSubmissions: null,
+        approvalBonus: null, // [추가] 승인 보너스 리스너
+
     },
     dailyQuiz: null,
     quizHistory: [],
@@ -102,6 +104,10 @@ export const useLeagueStore = create((set, get) => ({
                 get().subscribeToNotifications(currentUser.uid);
                 get().subscribeToPlayerData(currentUser.uid);
                 get().subscribeToMissionSubmissions(currentUser.uid);
+                const myPlayerData = playersData.find(p => p.authUid === currentUser.uid);
+                if (myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role)) {
+                    get().subscribeToApprovalBonus(currentUser.uid);
+                }
             }
 
             const seasons = await getSeasons();
@@ -296,12 +302,40 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
 
+    subscribeToApprovalBonus: (userId) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // 오늘 날짜의 시작
+        const todayTimestamp = Timestamp.fromDate(today);
+
+        const historyRef = collection(db, 'point_history');
+        const q = query(
+            historyRef,
+            where('playerId', '==', userId),
+            where('reason', '>=', '미션 승인 보너스'),
+            where('reason', '<=', '미션 승인 보너스\uf8ff'), // '미션 승인 보너스'로 시작하는 모든 항목을 찾는 쿼리
+            where('timestamp', '>=', todayTimestamp)
+        );
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            let totalBonus = 0;
+            querySnapshot.forEach(doc => {
+                totalBonus += doc.data().changeAmount;
+            });
+            set({ approvalBonus: totalBonus });
+        }, (error) => console.error("승인 보너스 실시간 수신 오류:", error));
+
+        set(state => ({ listeners: { ...state.listeners, approvalBonus: unsubscribe } }));
+    },
+
     cleanupListeners: () => {
         const { listeners } = get();
         Object.values(listeners).forEach(unsubscribe => {
             if (unsubscribe) unsubscribe();
         });
-        set({ listeners: { notifications: null, playerData: null, missionSubmissions: null } });
+        set({
+            listeners: { notifications: null, playerData: null, missionSubmissions: null, approvalBonus: null },
+            approvalBonus: 0 // 로그아웃 시 보너스 초기화
+        });
     },
 
     markAsRead: async () => {

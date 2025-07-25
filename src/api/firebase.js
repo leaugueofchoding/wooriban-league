@@ -101,6 +101,7 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   }
   const missionData = missionSnap.data();
 
+  // 학생들에게 포인트 지급
   for (const studentId of studentIds) {
     const playerRef = doc(db, 'players', studentId);
     const playerDoc = await getDoc(playerRef);
@@ -108,7 +109,6 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
 
-      // 기존 제출 기록을 찾아 'approved'로 업데이트
       const submissionQuery = query(
         collection(db, "missionSubmissions"),
         where("missionId", "==", missionId),
@@ -144,11 +144,42 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
     }
   }
 
+  // --- 기록원에게 인센티브 지급 ---
+  const incentiveAmount = studentIds.length * 10;
+  if (incentiveAmount > 0) {
+    const playersRef = collection(db, 'players');
+    const q = query(playersRef, where("authUid", "==", recorderId), limit(1));
+    const recorderSnapshot = await getDocs(q);
+
+    if (!recorderSnapshot.empty) {
+      const recorderDoc = recorderSnapshot.docs[0];
+      const recorderData = recorderDoc.data();
+      batch.update(recorderDoc.ref, { points: increment(incentiveAmount) });
+
+      await addPointHistory(
+        recorderId,
+        recorderData.name,
+        incentiveAmount,
+        `미션 승인 보너스 (${studentIds.length}건)`
+      );
+
+      // [수정] 기록원에게 통합 알림 전송
+      createNotification(
+        recorderId,
+        `✅ 미션 승인 완료`,
+        `${studentIds.length}건의 미션을 확인하여 ${incentiveAmount}P를 획득했습니다.`,
+        'mission_reward' // 알림 종류를 구별하기 위한 type 변경
+      );
+    }
+  }
+
   await batch.commit();
 }
 
+// [수정] 기록원 알림 링크 수정
 export async function requestMissionApproval(missionId, studentId, studentName) {
   const submissionsRef = collection(db, 'missionSubmissions');
+  const missionRef = doc(db, 'missions', missionId);
   const q = query(
     submissionsRef,
     where("missionId", "==", missionId),
@@ -165,7 +196,6 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
     }
   }
 
-  // 기존에 'rejected' 상태의 문서가 있다면 덮어쓰고, 없다면 새로 생성
   const docId = querySnapshot.empty ? null : querySnapshot.docs[0].id;
   const submissionRef = docId ? doc(db, 'missionSubmissions', docId) : doc(collection(db, 'missionSubmissions'));
 
@@ -178,7 +208,9 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
     checkedBy: null,
   });
 
-  // 관리자와 기록원에게 알림 보내기
+  const missionSnap = await getDoc(missionRef);
+  const missionTitle = missionSnap.exists() ? missionSnap.data().title : "알 수 없는 미션";
+
   const playersRef = collection(db, 'players');
   const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
@@ -186,12 +218,14 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
   adminRecorderSnapshot.forEach(userDoc => {
     const user = userDoc.data();
     if (user.authUid) {
-      const link = user.role === 'admin' ? '/admin' : `/recorder/${missionId}`;
+      const link = user.role === 'recorder' ? '/recorder-dashboard' : '/admin';
+
+      // [수정] 알림 body에 missionTitle 추가
       createNotification(
         user.authUid,
         '미션 승인 요청',
-        `${studentName} 학생이 미션 완료를 요청했습니다.`,
-        'mission',
+        `[${missionTitle}] ${studentName} 학생이 완료를 요청했습니다.`,
+        'mission_request', // 알림 종류를 구별하기 위한 type 변경
         link
       );
     }

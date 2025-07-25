@@ -8,7 +8,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
 import QuizWidget from '../components/QuizWidget';
-import confetti from 'canvas-confetti'; // [추가] 폭죽 효과 import
+import confetti from 'canvas-confetti';
 
 // --- Styled Components ---
 
@@ -280,7 +280,6 @@ function DashboardPage() {
             if (goals.length > 0) {
                 const goal = goals[0];
                 setActiveGoal(goal);
-                // 목표 달성 시 폭죽 효과
                 if (goal.currentPoints >= goal.targetPoints) {
                     confetti({ particleCount: 200, spread: 70, origin: { y: 0.6 } });
                 }
@@ -339,7 +338,7 @@ function DashboardPage() {
                 await donatePointsToGoal(myPlayerData.id, activeGoal.id, amount);
                 alert('포인트를 기부했습니다! 고맙습니다!');
                 setDonationAmount('');
-                const goals = await getActiveGoals(); // 기부 후 목표 데이터 다시 불러오기
+                const goals = await getActiveGoals();
                 if (goals.length > 0) setActiveGoal(goals[0]);
             } catch (error) {
                 alert(`기부 실패: ${error.message}`);
@@ -508,7 +507,7 @@ function DashboardPage() {
                             <PointStatus>
                                 {activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()} P
                             </PointStatus>
-                            {topContributor && (
+                            {topContributor && topContributor[0] && (
                                 <ContributorInfo>
                                     최고 기여자 👑: {topContributor[0]} ({topContributor[1].toLocaleString()}P)
                                 </ContributorInfo>

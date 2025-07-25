@@ -98,7 +98,7 @@ const NotificationList = styled.div`
     position: absolute;
     top: 120%;
     right: 0;
-    width: 300px;
+    width: 350px; /* 너비 확장 */
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -126,6 +126,7 @@ const NotificationItem = styled.div`
     h5 {
         margin: 0 0 0.25rem 0;
         font-size: 0.9rem;
+        font-weight: bold;
     }
 
     p {
@@ -135,9 +136,15 @@ const NotificationItem = styled.div`
     }
 `;
 
+// [추가] 보너스 알림 전용 스타일
+const BonusNotificationItem = styled(NotificationItem)`
+    background-color: #e7f5ff;
+    border-bottom: 2px solid #bce0fd;
+`;
+
 
 function Auth({ user }) {
-    const { players, notifications, unreadNotificationCount, markAsRead } = useLeagueStore();
+    const { players, notifications, unreadNotificationCount, markAsRead, approvalBonus } = useLeagueStore();
     const navigate = useNavigate();
     const [showNotifications, setShowNotifications] = useState(false);
 
@@ -146,27 +153,64 @@ function Auth({ user }) {
         return players.find(p => p.authUid === user.uid);
     }, [players, user]);
 
+    const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
+
+    // [수정] 알림 그룹핑 및 최신 알림 우선 정렬 로직
+    const groupedNotifications = useMemo(() => {
+        if (!notifications) return [];
+
+        const missionRequests = {};
+        const otherNotifications = [];
+
+        notifications.forEach(notif => {
+            if (notif.type === 'mission_request') {
+                const missionTitle = notif.body.split(']')[0] + ']'; // "[미션 이름]" 추출
+                if (!missionRequests.hasOwnProperty(missionTitle)) {
+                    missionRequests[`${missionTitle}`] = { count: 0, link: notif.link, latestCreatedAt: notif.createdAt };
+                }
+                missionRequests[`${missionTitle}`].count += 1;
+                missionRequests[`${missionTitle}`].latestCreatedAt = notif.createdAt > missionRequests[`${missionTitle}`].latestCreatedAt ? notif.createdAt : missionRequests[`${missionTitle}`].latestCreatedAt;
+            } else if (notif.type === 'mission_reward' && isRecorderOrAdmin) {
+                // 기록원의 보상 알림은 별도 처리하므로 목록에서 제외
+            }
+            else {
+                otherNotifications.push(notif);
+            }
+        });
+
+        const requestSummaries = Object.entries(missionRequests).map(([title, data]) => ({
+            id: title,
+            isGrouped: true,
+            title: `승인 요청 (${data.count}건)`,
+            body: `${title} 미션의 승인 요청이 ${data.count}건 있습니다.`,
+            link: data.link,
+            createdAt: data.latestCreatedAt // 최신 요청 시간으로 정렬
+        }));
+
+        const sortedNotifications = [...requestSummaries, ...otherNotifications].sort((a, b) => {
+            // createdAt이 정의되지 않은 경우를 대비하여 처리
+            const dateA = a.createdAt ? a.createdAt.toMillis() : 0;
+            const dateB = b.createdAt ? b.createdAt.toMillis() : 0;
+            return dateB - dateA; // 내림차순 정렬 (최신이 위로)
+        });
+
+        return sortedNotifications;
+
+    }, [notifications, isRecorderOrAdmin]);
+
+
     const handleGoogleLogin = () => {
         const provider = new GoogleAuthProvider();
         signInWithPopup(auth, provider)
-            .then((result) => {
-                updateUserProfile(result.user);
-            })
-            .catch((error) => {
-                console.error("Google 로그인 오류:", error);
-                alert(`로그인 중 오류가 발생했습니다: ${error.message}`);
-            });
+            .then((result) => updateUserProfile(result.user))
+            .catch((error) => console.error("Google 로그인 오류:", error));
     };
 
-    const handleLogout = () => {
-        signOut(auth);
-    };
+    const handleLogout = () => signOut(auth);
 
     const handleNotificationClick = () => {
         setShowNotifications(prev => !prev);
-        if (unreadNotificationCount > 0) {
-            markAsRead();
-        }
+        if (unreadNotificationCount > 0) markAsRead();
     }
 
     return (
@@ -175,12 +219,8 @@ function Auth({ user }) {
                 <UserProfile>
                     <IconContainer>
                         <IconLink to="/">🏠</IconLink>
-                        {myPlayerData?.role === 'admin' && (
-                            <IconLink to="/admin">👑</IconLink>
-                        )}
-                        {myPlayerData?.role === 'recorder' && (
-                            <IconLink to="/recorder-dashboard">📋</IconLink>
-                        )}
+                        {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
+                        {myPlayerData?.role === 'recorder' && <IconLink to="/recorder-dashboard">📋</IconLink>}
                         <NotificationContainer>
                             <IconButton onClick={handleNotificationClick}>
                                 🔔
@@ -188,8 +228,15 @@ function Auth({ user }) {
                             </IconButton>
                             {showNotifications && (
                                 <NotificationList>
-                                    {notifications.length > 0 ? (
-                                        notifications.map(notif => (
+                                    {isRecorderOrAdmin && approvalBonus > 0 && (
+                                        <BonusNotificationItem>
+                                            <h5>💰 오늘의 승인 보너스</h5>
+                                            <p>미션 승인 보너스로 총 {approvalBonus}P를 획득했습니다.</p>
+                                        </BonusNotificationItem>
+                                    )}
+
+                                    {groupedNotifications.length > 0 ? (
+                                        groupedNotifications.map(notif => (
                                             <NotificationItem
                                                 key={notif.id}
                                                 $hasLink={!!notif.link}

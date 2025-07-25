@@ -598,7 +598,7 @@ function MissionManager() {
     const navigate = useNavigate();
 
     const [title, setTitle] = useState('');
-    const [reward, setReward] = useState(50);
+    const [reward, setReward] = useState(100);
     const [showArchived, setShowArchived] = useState(false);
 
     const handleCreateMission = async () => {
