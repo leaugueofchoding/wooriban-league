@@ -29,6 +29,7 @@ import {
     getTodaysQuizHistory,
     submitQuizAnswer as firebaseSubmitQuizAnswer,
     requestMissionApproval,
+    batchAdjustPlayerPoints,
     db // [추가] db import
 } from '../api/firebase';
 // [추가] onSnapshot 등 필요한 함수 import
@@ -47,7 +48,7 @@ export const useLeagueStore = create((set, get) => ({
     archivedMissions: [],
     missionSubmissions: [],
     currentSeason: null,
-    isLoading: false, // 👈 [수정] 초기값을 false로 변경
+    isLoading: true, // 👈 [수정] 초기값을 false로 변경
     leagueType: 'mixed',
     notifications: [],
     unreadNotificationCount: 0,
@@ -237,14 +238,42 @@ export const useLeagueStore = create((set, get) => ({
 
         try {
             set({ isLoading: true });
-            await adjustPlayerPoints(playerId, amount, reason);
-            alert('포인트가 성공적으로 조정되었습니다.');
+            const { batchAdjustPlayerPoints } = await import('../api/firebase.js');
+            await batchAdjustPlayerPoints(playerIds, amount, reason);
+            alert('포인트가 성공적으로 일괄 조정되었습니다.');
             // 전체 데이터를 다시 불러오는 대신, player 데이터만 갱신하여 최적화
             const playersData = await getPlayers();
             set({ players: playersData, isLoading: false });
         } catch (error) {
             console.error("포인트 조정 액션 오류:", error);
             alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
+            set({ isLoading: false });
+        }
+    },
+    batchAdjustPoints: async (playerIds, amount, reason) => {
+        if (playerIds.length === 0 || amount === 0 || !reason.trim()) {
+            alert('플레이어, 0이 아닌 포인트, 그리고 사유를 모두 입력해야 합니다.');
+            return;
+        }
+
+        const playerNames = playerIds.map(id => get().players.find(p => p.id === id)?.name).join(', ');
+        const actionText = amount > 0 ? '지급' : '차감';
+        const confirmationMessage = `${playerNames} 선수들에게 ${Math.abs(amount)} 포인트를 ${actionText}하시겠습니까?\n\n사유: ${reason}`;
+
+        if (!window.confirm(confirmationMessage)) {
+            return;
+        }
+
+        try {
+            set({ isLoading: true });
+            // firebase의 batchAdjustPlayerPoints 함수를 직접 호출하지 않습니다. (액션을 통해 호출)
+            await batchAdjustPlayerPoints(playerIds, amount, reason);
+            alert('포인트가 성공적으로 일괄 조정되었습니다.');
+            await get().fetchInitialData(); // 전체 데이터 다시 로드
+        } catch (error) {
+            console.error("포인트 일괄 조정 액션 오류:", error);
+            alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
+        } finally {
             set({ isLoading: false });
         }
     },

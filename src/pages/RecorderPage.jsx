@@ -136,11 +136,15 @@ function RecorderPage() {
     const [checkedStudents, setCheckedStudents] = useState(new Set());
     const currentUser = auth.currentUser;
 
+    // --- ▼▼▼ [핵심 수정] ▼▼▼ ---
+    // URL의 missionId가 바뀔 때마다 selectedMissionId 상태를 업데이트
     useEffect(() => {
+        console.log("현재 URL의 missionId:", missionId); // 👈 진단용 코드 추가
         if (missionId) {
             setSelectedMissionId(missionId);
         }
     }, [missionId]);
+    // --- ▲▲▲ [핵심 수정] ▲▲▲ ---
 
     const handleMissionSelect = (e) => {
         const newMissionId = e.target.value;
@@ -235,10 +239,8 @@ function RecorderPage() {
                                     />
                                     <label>{player.name}</label>
 
-                                    {/* ▼▼▼ [핵심 수정] 뱃지 표시 로직 추가 ▼▼▼ */}
                                     {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
                                     {status === 'approved' && <span className="status-badge approved">완료</span>}
-                                    {/* ▲▲▲ [핵심 수정] 여기까지 ▲▲▲ */}
                                 </StudentListItem>
                             );
                         })}

@@ -869,17 +869,36 @@ function RoleManager() {
 
 // PointManager 컴포넌트 추가
 function PointManager() {
-    const { players, adjustPoints } = useLeagueStore();
-    const [selectedPlayerId, setSelectedPlayerId] = useState('');
+    // [수정] 다중 선택을 위해 로직 변경
+    const { players, batchAdjustPoints } = useLeagueStore();
+    const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
     const [amount, setAmount] = useState(0);
     const [reason, setReason] = useState('');
 
+    const handlePlayerSelect = (playerId) => {
+        setSelectedPlayerIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(playerId)) {
+                newSet.delete(playerId);
+            } else {
+                newSet.add(playerId);
+            }
+            return newSet;
+        });
+    };
+
     const handleSubmit = () => {
-        adjustPoints(selectedPlayerId, Number(amount), reason.trim());
-        setSelectedPlayerId('');
+        batchAdjustPoints(Array.from(selectedPlayerIds), Number(amount), reason.trim());
+        setSelectedPlayerIds(new Set());
         setAmount(0);
         setReason('');
     };
+
+    const sortedPlayers = useMemo(() =>
+        // [수정] b와 a를 바꿔서 내림차순으로 정렬
+        [...players].sort((a, b) => a.name.localeCompare(b.name)),
+        [players]
+    );
 
     return (
         <Section>
@@ -887,19 +906,35 @@ function PointManager() {
             <p style={{ margin: '-0.5rem 0 1rem', fontSize: '0.9rem', color: '#666' }}>
                 부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다. (차감 시 음수 입력)
             </p>
-            <InputGroup>
-                <select value={selectedPlayerId} onChange={(e) => setSelectedPlayerId(e.target.value)} style={{ flex: 1, padding: '0.5rem' }}>
-                    <option value="">-- 플레이어 선택 --</option>
-                    {players
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map(player => (
-                            <option key={player.id} value={player.id}>
-                                {player.name} (현재: {player.points || 0}P)
-                            </option>
-                        ))
-                    }
-                </select>
-            </InputGroup>
+
+            {/* [수정] 플레이어 선택 UI를 체크박스 목록으로 변경 */}
+            <div style={{
+                display: 'grid', // 👈 [추가] Grid 레이아웃 적용
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', // 👈 [추가] 행렬 배치
+                gap: '0.5rem', // 👈 [추가] 아이템 간 간격
+                maxHeight: '200px',
+                overflowY: 'auto',
+                border: '1px solid #dee2e6',
+                borderRadius: '8px',
+                padding: '1rem',
+                backgroundColor: 'white',
+                marginBottom: '1rem'
+            }}>
+                {sortedPlayers.map(player => (
+                    <div key={player.id}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem' }}>
+                            <input
+                                type="checkbox"
+                                checked={selectedPlayerIds.has(player.id)}
+                                onChange={() => handlePlayerSelect(player.id)}
+                                style={{ width: '18px', height: '18px' }}
+                            />
+                            <span>{player.name} (현재: {player.points || 0}P)</span>
+                        </label>
+                    </div>
+                ))}
+            </div>
+
             <InputGroup>
                 <input
                     type="number"
@@ -912,17 +947,17 @@ function PointManager() {
                     type="text"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="조정 사유 (예: 부정행위 페널티)"
+                    placeholder="조정 사유 (예: 봉사활동 보상)"
                     style={{ flex: 1, padding: '0.5rem' }}
                 />
             </InputGroup>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <SaveButton
                     onClick={handleSubmit}
-                    disabled={!selectedPlayerId || Number(amount) === 0 || !reason.trim()}
+                    disabled={selectedPlayerIds.size === 0 || Number(amount) === 0 || !reason.trim()}
                     style={{ backgroundColor: '#dc3545' }}
                 >
-                    포인트 조정 실행
+                    {selectedPlayerIds.size}명에게 포인트 조정 실행
                 </SaveButton>
             </div>
         </Section>

@@ -222,6 +222,44 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
   console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
 }
 
+// --- ▼▼▼ [추가] 포인트 일괄 조정 함수 ▼▼▼ ---
+export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
+  const batch = writeBatch(db);
+
+  for (const playerId of playerIds) {
+    const playerRef = doc(db, "players", playerId);
+    const playerDoc = await getDoc(playerRef); // 알림과 기록을 위해 현재 데이터 조회
+
+    if (playerDoc.exists()) {
+      const playerData = playerDoc.data();
+      // 1. 포인트 업데이트 작업 추가
+      batch.update(playerRef, { points: increment(amount) });
+
+      // 2. 각 플레이어에게 알림 생성
+      const message = amount > 0 ? `+${amount}P가 지급되었습니다.` : `${amount}P가 차감되었습니다.`;
+      createNotification(
+        playerData.authUid,
+        `포인트가 지급되었습니다.`,
+        `${message} (사유: ${reason})`,
+        'point',
+        `/profile/${playerId}`
+      );
+
+      // 3. 각 플레이어의 포인트 변동 내역 기록
+      // addPointHistory는 batch에 포함할 수 없으므로 개별적으로 호출합니다.
+      await addPointHistory(
+        playerData.authUid,
+        playerData.name,
+        amount,
+        reason
+      );
+    }
+  }
+
+  // 4. 모아둔 모든 업데이트 작업을 한 번에 실행
+  await batch.commit();
+}
+
 // --- 사용자 및 선수 관리 ---
 export async function updateUserProfile(user) {
   const userRef = doc(db, 'users', user.uid);
