@@ -3,12 +3,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-// [수정] updatePlayerAvatar 함수 import
 import { auth, buyMultipleAvatarParts, updatePlayerAvatar } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-// --- Styled Components (기존과 동일) ---
+// --- Styled Components ---
 const ShopWrapper = styled.div`
   max-width: 1200px;
   margin: 2rem auto;
@@ -207,12 +206,11 @@ const PageButton = styled.button`
 `;
 const ActionButtonGroup = styled.div`
     display: flex;
-    flex-direction: column; // [수정] 세로 정렬로 변경
+    flex-direction: column;
     gap: 0.5rem;
     margin-top: 0.5rem;
 `;
 
-// [수정] 일반 버튼 스타일로 변경
 const ActionButton = styled.button`
     width: 100%;
     padding: 0.75rem;
@@ -227,7 +225,6 @@ const ActionButton = styled.button`
     &:hover { background-color: #5a6268; }
 `;
 
-// [추가] 구매 후 착용 버튼 스타일
 const WearButton = styled(ActionButton)`
     background-color: #ffc107;
     color: black;
@@ -236,6 +233,24 @@ const WearButton = styled(ActionButton)`
     }
 `;
 
+// [추가] 페이지 하단 나가기 버튼
+const ExitButton = styled.button`
+  display: block;
+  margin: 4rem auto 0;
+  padding: 0.8rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #5a6268;
+  }
+`;
 
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const ITEMS_PER_PAGE = 6;
@@ -247,7 +262,7 @@ function ShopPage() {
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [previewConfig, setPreviewConfig] = useState(null);
-  const [justPurchased, setJustPurchased] = useState(false); // [추가] 구매 직후 상태 관리
+  const [justPurchased, setJustPurchased] = useState(false);
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
@@ -295,7 +310,7 @@ function ShopPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-    setJustPurchased(false); // 탭 변경 시 구매 상태 초기화
+    setJustPurchased(false);
   }, [activeTab]);
 
   const { newItemsToBuy, totalCost } = useMemo(() => {
@@ -325,7 +340,7 @@ function ShopPage() {
         await buyMultipleAvatarParts(myPlayerData.id, newItemsToBuy);
         alert('구매를 완료했습니다!');
         await fetchInitialData();
-        setJustPurchased(true); // [수정] 구매 성공 시 상태 변경
+        setJustPurchased(true);
       } catch (error) {
         alert(`구매 실패: ${error.message}`);
       }
@@ -333,7 +348,7 @@ function ShopPage() {
   };
 
   const handlePreview = (part) => {
-    setJustPurchased(false); // [수정] 다른 아이템 클릭 시 구매 상태 초기화
+    setJustPurchased(false);
     setPreviewConfig(prev => {
       if (prev[part.category] === part.id) {
         const newConfig = { ...prev };
@@ -346,7 +361,6 @@ function ShopPage() {
 
   const handleResetPreview = () => setPreviewConfig(myPlayerData.avatarConfig);
 
-  // [추가] 구매한 아이템 착용 후 프로필로 이동하는 함수
   const handleWearPurchased = async () => {
     if (!myPlayerData) return alert("선수 정보를 찾을 수 없습니다.");
     try {
@@ -447,21 +461,19 @@ function ShopPage() {
               <BuyButton onClick={handlePurchasePreview} disabled={newItemsToBuy.length === 0 || !canAfford}>
                 {newItemsToBuy.length > 0 ? `새 아이템 ${newItemsToBuy.length}개 구매 (${totalCost}P)` : '구매할 새 아이템 없음'}
               </BuyButton>
-              <button onClick={handleResetPreview} style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+              <ActionButton onClick={handleResetPreview}>
                 전체 초기화
-              </button>
+              </ActionButton>
               <ActionButtonGroup>
-                {/* [수정] 구매 완료 시에만 '구입한 옷 착용' 버튼 렌더링 */}
                 {justPurchased && (
                   <WearButton onClick={handleWearPurchased}>
                     ✨ 구입한 옷 착용하기
                   </WearButton>
                 )}
-                {/* [수정] '아바타 편집' 버튼 삭제, '나가기' 버튼만 남김 */}
-                <ActionButton onClick={() => navigate(-1)}>나가기</ActionButton>
               </ActionButtonGroup>
             </PreviewPanel>
           </ContentWrapper>
+          <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
         </>
       )}
     </ShopWrapper>

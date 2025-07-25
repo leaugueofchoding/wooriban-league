@@ -76,13 +76,18 @@ function RecorderDashboardPage() {
     const currentUser = auth.currentUser;
     const navigate = useNavigate();
 
+    const myPlayerData = useMemo(() => {
+        if (!currentUser) return null;
+        return players.find(p => p.authUid === currentUser.uid);
+    }, [players, currentUser]);
+
     useEffect(() => {
         const submissionsRef = collection(db, "missionSubmissions");
         const q = query(submissionsRef, where("status", "==", "pending"));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const validSubmissions = submissions.filter(sub => 
+            const validSubmissions = submissions.filter(sub =>
                 missions.some(m => m.id === sub.missionId)
             );
             setPendingSubmissions(validSubmissions);
@@ -130,19 +135,30 @@ function RecorderDashboardPage() {
                             const student = players.find(p => p.id === sub.studentId);
                             const mission = missions.find(m => m.id === sub.missionId);
                             const isProcessing = processingIds.has(sub.id);
+                            const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
 
                             if (!mission) return null;
 
                             return (
                                 <ListItem key={sub.id}>
-                                    <span style={{flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {student?.name} - [{mission?.title}]
                                     </span>
-                                    <span style={{fontWeight: 'bold', color: '#007bff'}}>{mission?.reward}P</span>
-                                    <StyledButton onClick={() => handleAction('approve', sub)} style={{backgroundColor: '#28a745'}} disabled={isProcessing}>
+                                    <span style={{ fontWeight: 'bold', color: '#007bff' }}>{mission?.reward}P</span>
+                                    <StyledButton
+                                        onClick={() => handleAction('approve', sub)}
+                                        style={{ backgroundColor: '#28a745' }}
+                                        disabled={isProcessing || isMyOwnSubmission}
+                                        title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
+                                    >
                                         {isProcessing ? '처리중...' : '승인'}
                                     </StyledButton>
-                                    <StyledButton onClick={() => handleAction('reject', sub)} style={{backgroundColor: '#dc3545'}} disabled={isProcessing}>
+                                    <StyledButton
+                                        onClick={() => handleAction('reject', sub)}
+                                        style={{ backgroundColor: '#dc3545' }}
+                                        disabled={isProcessing || isMyOwnSubmission}
+                                        title={isMyOwnSubmission ? "자신의 미션은 거절할 수 없습니다." : ""}
+                                    >
                                         거절
                                     </StyledButton>
                                 </ListItem>
@@ -151,7 +167,7 @@ function RecorderDashboardPage() {
                     </List>
                 )}
             </Section>
-            <StyledButton onClick={() => navigate(-1)} style={{marginTop: '2rem'}}>
+            <StyledButton onClick={() => navigate(-1)} style={{ marginTop: '2rem', alignSelf: 'center' }}>
                 돌아가기
             </StyledButton>
         </Wrapper>

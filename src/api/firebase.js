@@ -686,13 +686,24 @@ export async function createClassGoal(goalData) {
   });
 }
 
+// [수정] 기부 내역(contributions)도 함께 불러오도록 수정
 export async function getActiveGoals() {
   const goalsRef = collection(db, "classGoals");
   const q = query(goalsRef, where("status", "==", "active"), orderBy("createdAt"));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const goals = [];
+  for (const goalDoc of querySnapshot.docs) {
+    const goalData = { id: goalDoc.id, ...goalDoc.data() };
+    const contributionsRef = collection(db, "classGoals", goalDoc.id, "contributions");
+    const contributionsSnap = await getDocs(contributionsRef);
+    goalData.contributions = contributionsSnap.docs.map(doc => doc.data());
+    goals.push(goalData);
+  }
+  return goals;
 }
 
+// [수정] 기부자 기록 추가 및 목표 달성 시 알림 기능 추가
 export async function donatePointsToGoal(playerId, goalId, amount) {
   if (amount <= 0) {
     throw new Error("기부할 포인트를 올바르게 입력해주세요.");
@@ -700,6 +711,7 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
 
   const playerRef = doc(db, "players", playerId);
   const goalRef = doc(db, "classGoals", goalId);
+  const contributionRef = doc(collection(db, "classGoals", goalId, "contributions"));
 
   await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
@@ -709,19 +721,58 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
     if (!goalDoc.exists()) throw new Error("존재하지 않는 목표입니다.");
 
     const playerData = playerDoc.data();
+    const goalData = goalDoc.data();
+
+    if (goalData.currentPoints >= goalData.targetPoints) {
+      throw new Error("이미 달성된 목표입니다.");
+    }
     if (playerData.points < amount) {
       throw new Error("포인트가 부족합니다.");
     }
 
+    // 포인트 차감 및 목표 포인트 증가
     transaction.update(playerRef, { points: increment(-amount) });
+    const newTotalPoints = goalData.currentPoints + amount;
     transaction.update(goalRef, { currentPoints: increment(amount) });
 
+    // 기부 내역 기록
+    transaction.set(contributionRef, {
+      playerId: playerId,
+      playerName: playerData.name,
+      amount: amount,
+      timestamp: serverTimestamp()
+    });
+
+    // 포인트 변동 내역 기록
     addPointHistory(
       playerData.authUid,
       playerData.name,
       -amount,
-      `'${goalDoc.data().title}' 목표에 기부`
+      `'${goalData.title}' 목표에 기부`
     );
+
+    // 목표 달성 확인 및 알림
+    if (newTotalPoints >= goalData.targetPoints) {
+      const allPlayers = await getPlayers();
+      allPlayers.forEach(p => {
+        if (p.authUid) {
+          createNotification(
+            p.authUid,
+            `🎉 목표 달성: ${goalData.title}`,
+            "우리 반 공동 목표를 달성했습니다! 모두 축하해주세요!",
+            'goal'
+          );
+        }
+      });
+    }
+  });
+}
+
+// [추가] 목표를 '완료' 상태로 변경하는 함수
+export async function completeClassGoal(goalId) {
+  const goalRef = doc(db, "classGoals", goalId);
+  await updateDoc(goalRef, {
+    status: "completed"
   });
 }
 

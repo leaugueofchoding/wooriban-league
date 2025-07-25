@@ -5,6 +5,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
+import { useNavigate } from 'react-router-dom'; // [추가]
 
 const HomePageWrapper = styled.div`
   max-width: 1000px;
@@ -12,12 +13,28 @@ const HomePageWrapper = styled.div`
   padding: 2rem;
 `;
 
-// [삭제] JoinLeagueButton 관련 코드 모두 삭제
+// [추가] 나가기 버튼 스타일
+const ExitButton = styled.button`
+  display: block;
+  margin: 2rem auto 0;
+  padding: 0.8rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #5a6268;
+  }
+`;
 
 function HomePage() {
-  const { matches, teams } = useLeagueStore(); // [수정] players, fetchInitialData, currentUser 등 불필요한 부분 삭제
-
-  // [삭제] isPlayerRegistered, handleJoinLeague 관련 로직 모두 삭제
+  const { matches, teams } = useLeagueStore();
+  const navigate = useNavigate(); // [추가]
 
   const standingsData = useMemo(() => {
     const completedMatches = matches.filter(m => m.status === '완료');
@@ -80,8 +97,9 @@ function HomePage() {
   return (
     <HomePageWrapper>
       <h1 style={{ textAlign: 'center' }}>우리반 리그 전체 순위</h1>
-      {/* [삭제] 리그 참가 버튼 렌더링 부분 삭제 */}
       <LeagueTable standings={standingsData} />
+      {/* [추가] 나가기 버튼 */}
+      <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
     </HomePageWrapper>
   );
 }

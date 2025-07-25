@@ -136,15 +136,31 @@ function RecorderPage() {
     const [checkedStudents, setCheckedStudents] = useState(new Set());
     const currentUser = auth.currentUser;
 
-    // --- ▼▼▼ [핵심 수정] ▼▼▼ ---
-    // URL의 missionId가 바뀔 때마다 selectedMissionId 상태를 업데이트
     useEffect(() => {
-        console.log("현재 URL의 missionId:", missionId); // 👈 진단용 코드 추가
         if (missionId) {
             setSelectedMissionId(missionId);
         }
     }, [missionId]);
-    // --- ▲▲▲ [핵심 수정] ▲▲▲ ---
+
+    const studentSubmissionStatus = useMemo(() => {
+        const statusMap = new Map();
+        missionSubmissions
+            .filter(sub => sub.missionId === selectedMissionId)
+            .forEach(sub => {
+                statusMap.set(sub.studentId, { status: sub.status, checkedBy: sub.checkedBy });
+            });
+        return statusMap;
+    }, [missionSubmissions, selectedMissionId]);
+
+    const sortedPlayers = useMemo(() => {
+        return [...players].sort((a, b) => {
+            const statusA = studentSubmissionStatus.get(a.id)?.status;
+            const statusB = studentSubmissionStatus.get(b.id)?.status;
+            if (statusA === 'pending' && statusB !== 'pending') return -1;
+            if (statusA !== 'pending' && statusB === 'pending') return 1;
+            return a.name.localeCompare(b.name);
+        });
+    }, [players, studentSubmissionStatus]);
 
     const handleMissionSelect = (e) => {
         const newMissionId = e.target.value;
@@ -167,6 +183,25 @@ function RecorderPage() {
         });
     };
 
+    // [추가] 전체 선택/해제 핸들러
+    const handleSelectAll = () => {
+        const eligiblePlayerIds = sortedPlayers
+            .filter(player => {
+                const submission = studentSubmissionStatus.get(player.id);
+                return submission?.status !== 'approved';
+            })
+            .map(player => player.id);
+
+        const allSelected = eligiblePlayerIds.length > 0 && eligiblePlayerIds.every(id => checkedStudents.has(id));
+
+        if (allSelected) {
+            setCheckedStudents(new Set());
+        } else {
+            setCheckedStudents(new Set(eligiblePlayerIds));
+        }
+    };
+
+
     const handleSubmit = async () => {
         const mission = missions.find(m => m.id === selectedMissionId);
         if (!mission || checkedStudents.size === 0) {
@@ -187,26 +222,6 @@ function RecorderPage() {
         }
     };
 
-    const studentSubmissionStatus = useMemo(() => {
-        const statusMap = new Map();
-        missionSubmissions
-            .filter(sub => sub.missionId === selectedMissionId)
-            .forEach(sub => {
-                statusMap.set(sub.studentId, sub.status);
-            });
-        return statusMap;
-    }, [missionSubmissions, selectedMissionId]);
-
-    const sortedPlayers = useMemo(() => {
-        return [...players].sort((a, b) => {
-            const statusA = studentSubmissionStatus.get(a.id);
-            const statusB = studentSubmissionStatus.get(b.id);
-            if (statusA === 'pending' && statusB !== 'pending') return -1;
-            if (statusA !== 'pending' && statusB === 'pending') return 1;
-            return a.name.localeCompare(b.name);
-        });
-    }, [players, studentSubmissionStatus]);
-
     return (
         <RecorderWrapper>
             <Title>기록원 미션 확인</Title>
@@ -221,9 +236,15 @@ function RecorderPage() {
 
             {selectedMissionId && (
                 <>
+                    {/* [추가] 전체 선택 버튼 */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                        <button onClick={handleSelectAll}>전체 선택/해제</button>
+                    </div>
                     <StudentList>
                         {sortedPlayers.map(player => {
-                            const status = studentSubmissionStatus.get(player.id);
+                            const submission = studentSubmissionStatus.get(player.id);
+                            const status = submission?.status;
+                            const approver = players.find(p => p.authUid === submission?.checkedBy);
 
                             return (
                                 <StudentListItem
@@ -240,7 +261,11 @@ function RecorderPage() {
                                     <label>{player.name}</label>
 
                                     {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
-                                    {status === 'approved' && <span className="status-badge approved">완료</span>}
+                                    {status === 'approved' && (
+                                        <span className="status-badge approved">
+                                            완료 {approver ? `(승인: ${approver.name})` : ''}
+                                        </span>
+                                    )}
                                 </StudentListItem>
                             );
                         })}

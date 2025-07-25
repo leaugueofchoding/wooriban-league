@@ -39,7 +39,7 @@ const MissionInfo = styled.div`
     flex-direction: column;
     align-items: flex-start;
     text-align: left;
-    flex-grow: 1; // [추가] 텍스트 영역이 남는 공간을 모두 차지하도록
+    flex-grow: 1;
 `;
 
 const MissionTitle = styled.h3`
@@ -53,7 +53,6 @@ const MissionReward = styled.div`
   color: #28a745;
 `;
 
-// [수정] 버튼 상태에 따라 다른 스타일을 적용하도록 수정
 const RequestButton = styled.button`
     padding: 0.6rem 1.2rem;
     font-size: 0.9rem;
@@ -65,11 +64,10 @@ const RequestButton = styled.button`
     transition: background-color 0.2s;
     white-space: nowrap;
 
-    /* 상태에 따른 배경색상 변경 */
     background-color: ${props => {
-    if (props.status === 'approved') return '#007bff'; // 완료: 파랑
-    if (props.status === 'pending') return '#6c757d'; // 대기중: 회색
-    return '#dc3545'; // 요청 전: 빨강
+    if (props.status === 'approved') return '#007bff';
+    if (props.status === 'pending') return '#6c757d';
+    return '#dc3545';
   }};
 
     &:hover:not(:disabled) {
@@ -111,12 +109,10 @@ function MissionsPage() {
   const navigate = useNavigate();
   const currentUser = auth.currentUser;
 
-  // [수정] 현재 로그인한 사용자의 플레이어 정보를 가져옵니다.
   const myPlayerData = useMemo(() => {
     if (!currentUser) return null;
     return players.find(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
-
 
   const mySubmissions = useMemo(() => {
     if (!myPlayerData) return {};
@@ -130,6 +126,8 @@ function MissionsPage() {
     return submissionsMap;
   }, [missionSubmissions, myPlayerData]);
 
+  // [수정] 미션 제출 가능 여부를 확인하는 변수
+  const canSubmitMission = myPlayerData && ['player', 'recorder'].includes(myPlayerData.role);
 
   return (
     <MissionsWrapper>
@@ -146,12 +144,12 @@ function MissionsPage() {
                   <MissionReward>💰 {mission.reward} P</MissionReward>
                 </MissionInfo>
 
-                {/* [수정] 일반 참가자(player)에게만 버튼이 보이도록 렌더링 조건 추가 */}
-                {myPlayerData && myPlayerData.role === 'player' && (
+                {/* [수정] 렌더링 조건을 canSubmitMission 변수로 변경 */}
+                {canSubmitMission && (
                   <RequestButton
                     onClick={() => submitMissionForApproval(mission.id)}
                     disabled={!!submissionStatus}
-                    status={submissionStatus} // [추가] 버튼에 현재 상태 전달
+                    status={submissionStatus}
                   >
                     {submissionStatus === 'pending' && '승인 대기중'}
                     {submissionStatus === 'approved' && '승인 완료!'}

@@ -3,13 +3,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-// --- ▼▼▼ [수정] auth 외 필요한 함수들을 firebase로부터 import 합니다 ▼▼▼ ---
 import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
-// --- ▲▲▲ [수정] 여기까지 ---
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
-import QuizWidget from '../components/QuizWidget'; // 퀴즈 위젯 import
+import QuizWidget from '../components/QuizWidget';
+import confetti from 'canvas-confetti'; // [추가] 폭죽 효과 import
 
 // --- Styled Components ---
 
@@ -37,7 +36,7 @@ const JoinLeagueButton = styled.button`
 
 const TopGrid = styled.div`
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1fr;
     gap: 1.5rem;
     margin-bottom: 2.5rem;
 `;
@@ -48,6 +47,19 @@ const Section = styled.section`
   background-color: #f9f9f9;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+
+  &.clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    &:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+  }
 `;
 
 const TitleWrapper = styled.div`
@@ -61,14 +73,6 @@ const TitleWrapper = styled.div`
 
 const Title = styled.h2`
   margin: 0;
-`;
-
-const ViewAllLink = styled(Link)`
-  font-size: 0.9rem;
-  font-weight: bold;
-  color: #007bff;
-  text-decoration: none;
-  &:hover { text-decoration: underline; }
 `;
 
 const MyInfoCard = styled.div`
@@ -122,32 +126,6 @@ const PointDisplay = styled.p`
   font-size: 1.2rem;
   font-weight: bold;
   color: #28a745;
-`;
-
-const ShortcutsPanel = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding: 1.5rem;
-    background-color: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-`;
-
-const ShortcutButton = styled(Link)`
-    display: block;
-    width: 100%;
-    padding: 1rem;
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: white;
-    background-color: ${props => props.color || '#007bff'};
-    border: none;
-    border-radius: 8px;
-    text-align: center;
-    text-decoration: none;
-    transition: opacity 0.2s;
-    &:hover { opacity: 0.85; }
 `;
 
 const MainGrid = styled.div`
@@ -243,6 +221,7 @@ const PointStatus = styled.p` text-align: right; font-weight: bold; margin-top: 
 const DonationArea = styled.div` margin-top: 1.5rem; display: flex; justify-content: center; align-items: center; gap: 1rem; `;
 const DonationInput = styled.input` width: 150px; padding: 0.75rem; border: 1px solid #ced4da; border-radius: 8px; font-size: 1rem; text-align: center; `;
 const DonationButton = styled.button` padding: 0.75rem 1.5rem; border: none; border-radius: 8px; background-color: #28a745; color: white; font-weight: bold; font-size: 1rem; cursor: pointer; &:disabled { background-color: #6c757d; }`;
+const ContributorInfo = styled.p` text-align: center; font-weight: bold; margin-top: 1.5rem; font-size: 1.1rem; color: #ff6f61;`;
 
 const ItemWidgetGrid = styled.div`
     display: grid;
@@ -298,12 +277,36 @@ function DashboardPage() {
     useEffect(() => {
         const fetchGoals = async () => {
             const goals = await getActiveGoals();
-            if (goals.length > 0) setActiveGoal(goals[0]);
+            if (goals.length > 0) {
+                const goal = goals[0];
+                setActiveGoal(goal);
+                // 목표 달성 시 폭죽 효과
+                if (goal.currentPoints >= goal.targetPoints) {
+                    confetti({ particleCount: 200, spread: 70, origin: { y: 0.6 } });
+                }
+            } else {
+                setActiveGoal(null);
+            }
         };
         if (myPlayerData) {
             fetchGoals();
         }
     }, [myPlayerData]);
+
+    const topContributor = useMemo(() => {
+        if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) {
+            return null;
+        }
+        const contributionsByName = activeGoal.contributions.reduce((acc, curr) => {
+            acc[curr.playerName] = (acc[curr.playerName] || 0) + curr.amount;
+            return acc;
+        }, {});
+
+        return Object.entries(contributionsByName).reduce((top, current) => {
+            return current[1] > top[1] ? current : top;
+        }, ["", 0]);
+
+    }, [activeGoal]);
 
     const myAvatarUrls = useMemo(() => {
         if (!myPlayerData?.avatarConfig || !useLeagueStore.getState().avatarParts.length) return [];
@@ -336,9 +339,8 @@ function DashboardPage() {
                 await donatePointsToGoal(myPlayerData.id, activeGoal.id, amount);
                 alert('포인트를 기부했습니다! 고맙습니다!');
                 setDonationAmount('');
-                const goals = await getActiveGoals();
-                setActiveGoal(goals[0]);
-                useLeagueStore.getState().fetchInitialData();
+                const goals = await getActiveGoals(); // 기부 후 목표 데이터 다시 불러오기
+                if (goals.length > 0) setActiveGoal(goals[0]);
             } catch (error) {
                 alert(`기부 실패: ${error.message}`);
             }
@@ -390,8 +392,9 @@ function DashboardPage() {
     }, [missionSubmissions, myPlayerData]);
 
     const recentMissions = useMemo(() => missions.slice(0, 2), [missions]);
-    const isRecorderOrAdmin = myPlayerData?.role === 'recorder' || myPlayerData?.role === 'admin';
-    const progressPercent = activeGoal ? (activeGoal.currentPoints / activeGoal.targetPoints) * 100 : 0;
+    const canSubmitMission = myPlayerData && ['player', 'recorder'].includes(myPlayerData.role);
+    const isGoalAchieved = activeGoal && activeGoal.currentPoints >= activeGoal.targetPoints;
+    const progressPercent = activeGoal ? Math.min((activeGoal.currentPoints / activeGoal.targetPoints) * 100, 100) : 0;
     const rankIcons = ["🥇", "🥈", "🥉"];
 
     return (
@@ -414,15 +417,11 @@ function DashboardPage() {
                             <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
                         </InfoText>
                     </MyInfoCard>
-                    <ShortcutsPanel>
-                        <ShortcutButton to="/shop" color="#28a745">🏪 상점 가기</ShortcutButton>
-                        <ShortcutButton to="/missions" color="#17a2b8">📜 미션 확인</ShortcutButton>
-                    </ShortcutsPanel>
                 </TopGrid>
             )}
 
             <MainGrid>
-                <Section style={{ margin: 0 }}>
+                <Section as={Link} to="/missions" className="clickable" style={{ margin: 0, display: 'block' }}>
                     <TitleWrapper>
                         <Title>📢 새로운 미션</Title>
                     </TitleWrapper>
@@ -430,14 +429,14 @@ function DashboardPage() {
                         recentMissions.map(mission => {
                             const submissionStatus = mySubmissions[mission.id];
                             return (
-                                <Card as={isRecorderOrAdmin ? Link : 'div'} to={`/recorder/${mission.id}`} key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <div style={{ flexGrow: 1 }}>
                                         <CardTitle>{mission.title}</CardTitle>
                                         <CardText>💰 {mission.reward} P</CardText>
                                     </div>
-                                    {myPlayerData && myPlayerData.role === 'player' && (
+                                    {canSubmitMission && (
                                         <RequestButton
-                                            onClick={(e) => { e.preventDefault(); submitMissionForApproval(mission.id); }}
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); submitMissionForApproval(mission.id); }}
                                             disabled={!!submissionStatus}
                                             status={submissionStatus}
                                         >
@@ -452,14 +451,14 @@ function DashboardPage() {
                     ) : (<p>현재 등록된 새로운 미션이 없습니다.</p>)}
                 </Section>
 
-                <Section style={{ margin: 0 }}>
+                <Section as={Link} to="/shop" className="clickable" style={{ margin: 0, display: 'block' }}>
                     <TitleWrapper>
                         <Title>⭐ 신규/세일 아이템</Title>
                     </TitleWrapper>
                     {shopHighlightItems.length > 0 ? (
                         <ItemWidgetGrid>
                             {shopHighlightItems.map(item => (
-                                <Card as={Link} to="/shop" key={item.id}>
+                                <Card key={item.id}>
                                     {item.isSale && <SaleBadge>SALE</SaleBadge>}
                                     <ItemImage src={item.src} $category={item.category} />
                                     <CardTitle style={{ textAlign: 'center' }}>{item.displayName || item.id}</CardTitle>
@@ -470,10 +469,9 @@ function DashboardPage() {
                     ) : (<p>현재 할인 중인 아이템이 없습니다.</p>)}
                 </Section>
 
-                <Section style={{ margin: 0 }}>
+                <Section as={Link} to="/league" className="clickable" style={{ margin: 0, display: 'block' }}>
                     <TitleWrapper>
                         <Title>🏆 실시간 리그 순위</Title>
-                        <ViewAllLink to="/league">리그 정보 보기</ViewAllLink>
                     </TitleWrapper>
                     {topRankedTeams.length > 0 ? (
                         topRankedTeams.map((team, index) => (
@@ -504,16 +502,21 @@ function DashboardPage() {
                             <GoalTitle>{activeGoal.title}</GoalTitle>
                             <ProgressBarContainer>
                                 <ProgressBar percent={progressPercent}>
-                                    {Math.floor(progressPercent)}%
+                                    {isGoalAchieved ? "목표 달성! 🎉" : `${Math.floor(progressPercent)}%`}
                                 </ProgressBar>
                             </ProgressBarContainer>
                             <PointStatus>
                                 {activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()} P
                             </PointStatus>
+                            {topContributor && (
+                                <ContributorInfo>
+                                    최고 기여자 👑: {topContributor[0]} ({topContributor[1].toLocaleString()}P)
+                                </ContributorInfo>
+                            )}
                             <DonationArea>
-                                <DonationInput type="number" value={donationAmount} onChange={e => setDonationAmount(e.target.value)} placeholder="기부할 포인트" />
-                                <DonationButton onClick={handleDonate} disabled={!myPlayerData || !donationAmount || Number(donationAmount) <= 0}>
-                                    기부하기
+                                <DonationInput type="number" value={donationAmount} onChange={e => setDonationAmount(e.target.value)} placeholder="기부할 포인트" disabled={isGoalAchieved} />
+                                <DonationButton onClick={handleDonate} disabled={!myPlayerData || !donationAmount || Number(donationAmount) <= 0 || isGoalAchieved}>
+                                    {isGoalAchieved ? "달성 완료!" : "기부하기"}
                                 </DonationButton>
                             </DonationArea>
                         </ThermometerWrapper>

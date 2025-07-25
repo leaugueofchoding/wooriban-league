@@ -22,7 +22,8 @@ import {
     rejectMissionSubmission, // 거절 함수 import
     linkPlayerToAuth,
     auth,
-    db // onSnapshot을 위해 db import
+    db, // onSnapshot을 위해 db import
+    completeClassGoal
 } from '../api/firebase.js';
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
@@ -470,16 +471,16 @@ function PendingMissionWidget() {
 }
 
 function GoalManager() {
-    const { fetchInitialData } = useLeagueStore();
     const [title, setTitle] = useState('');
     const [targetPoints, setTargetPoints] = useState(10000);
     const [activeGoals, setActiveGoals] = useState([]);
 
+    const fetchGoals = async () => {
+        const goals = await getActiveGoals();
+        setActiveGoals(goals);
+    };
+
     useEffect(() => {
-        const fetchGoals = async () => {
-            const goals = await getActiveGoals();
-            setActiveGoals(goals);
-        };
         fetchGoals();
     }, []);
 
@@ -492,25 +493,37 @@ function GoalManager() {
             alert('새로운 학급 목표가 설정되었습니다!');
             setTitle('');
             setTargetPoints(10000);
-            const goals = await getActiveGoals();
-            setActiveGoals(goals);
+            fetchGoals();
         } catch (error) {
             alert(`목표 생성 실패: ${error.message}`);
         }
     };
 
     const handleGoalDelete = async (goalId) => {
-        if (window.confirm("정말로 이 목표를 삭제하시겠습니까?")) {
+        if (window.confirm("정말로 이 목표를 삭제하시겠습니까? 기부 내역도 함께 사라집니다.")) {
             try {
                 await deleteClassGoal(goalId);
                 alert('목표가 삭제되었습니다.');
-                const goals = await getActiveGoals();
-                setActiveGoals(goals);
+                fetchGoals();
             } catch (error) {
                 alert(`삭제 실패: ${error.message}`);
             }
         }
     };
+
+    // [추가] 목표 완료 처리 핸들러
+    const handleGoalComplete = async (goalId) => {
+        if (window.confirm("이 목표를 '완료' 처리하여 대시보드에서 숨기시겠습니까?")) {
+            try {
+                await completeClassGoal(goalId);
+                alert('목표가 완료 처리되었습니다.');
+                fetchGoals();
+            } catch (error) {
+                alert(`완료 처리 실패: ${error.message}`);
+            }
+        }
+    };
+
 
     return (
         <FullWidthSection>
@@ -542,14 +555,25 @@ function GoalManager() {
                                     <div>
                                         <span>{goal.title}</span>
                                         <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
-                                            ({goal.currentPoints} / {goal.targetPoints} P)
+                                            ({goal.currentPoints.toLocaleString()} / {goal.targetPoints.toLocaleString()} P)
                                         </span>
                                     </div>
-                                    <SaveButton
-                                        onClick={() => handleGoalDelete(goal.id)}
-                                        style={{ backgroundColor: '#dc3545' }}>
-                                        삭제
-                                    </SaveButton>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        {/* [추가] 완료 처리 버튼 */}
+                                        <SaveButton
+                                            onClick={() => handleGoalComplete(goal.id)}
+                                            style={{ backgroundColor: '#28a745' }}
+                                            disabled={goal.currentPoints < goal.targetPoints}
+                                            title={goal.currentPoints < goal.targetPoints ? "아직 달성되지 않은 목표입니다." : ""}
+                                        >
+                                            완료 처리
+                                        </SaveButton>
+                                        <SaveButton
+                                            onClick={() => handleGoalDelete(goal.id)}
+                                            style={{ backgroundColor: '#dc3545' }}>
+                                            삭제
+                                        </SaveButton>
+                                    </div>
                                 </ListItem>
                             ))
                         ) : (
@@ -1085,6 +1109,20 @@ function PointManager() {
         });
     };
 
+    // [추가] 전체 선택/해제 핸들러
+    const handleSelectAll = () => {
+        const nonAdminPlayerIds = players.filter(p => p.role !== 'admin').map(p => p.id);
+
+        // 모든 학생이 이미 선택되었는지 확인
+        const allSelected = nonAdminPlayerIds.length > 0 && nonAdminPlayerIds.every(id => selectedPlayerIds.has(id));
+
+        if (allSelected) {
+            setSelectedPlayerIds(new Set()); // 전체 해제
+        } else {
+            setSelectedPlayerIds(new Set(nonAdminPlayerIds)); // 전체 선택 (관리자 제외)
+        }
+    };
+
     const handleSubmit = () => {
         batchAdjustPoints(Array.from(selectedPlayerIds), Number(amount), reason.trim());
         setSelectedPlayerIds(new Set());
@@ -1101,9 +1139,14 @@ function PointManager() {
         <FullWidthSection>
             <Section>
                 <SectionTitle>포인트 수동 조정 💰</SectionTitle>
-                <p style={{ margin: '-0.5rem 0 1rem', fontSize: '0.9rem', color: '#666' }}>
-                    부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다. (차감 시 음수 입력)
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>
+                        부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다.
+                    </p>
+                    {/* [추가] 전체 선택 버튼 */}
+                    <StyledButton onClick={handleSelectAll}>전체 선택/해제</StyledButton>
+                </div>
+
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -1116,19 +1159,31 @@ function PointManager() {
                     backgroundColor: 'white',
                     marginBottom: '1rem'
                 }}>
-                    {sortedPlayers.map(player => (
-                        <div key={player.id}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={selectedPlayerIds.has(player.id)}
-                                    onChange={() => handlePlayerSelect(player.id)}
-                                    style={{ width: '18px', height: '18px' }}
-                                />
-                                <span>{player.name} (현재: {player.points || 0}P)</span>
-                            </label>
-                        </div>
-                    ))}
+                    {sortedPlayers.map(player => {
+                        // 관리자는 목록에 표시되지만 비활성화 처리
+                        const isAdmin = player.role === 'admin';
+                        return (
+                            <div key={player.id} title={isAdmin ? "관리자는 선택할 수 없습니다." : ""}>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.5rem',
+                                    opacity: isAdmin ? 0.5 : 1,
+                                    cursor: isAdmin ? 'not-allowed' : 'pointer'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedPlayerIds.has(player.id)}
+                                        onChange={() => !isAdmin && handlePlayerSelect(player.id)}
+                                        style={{ width: '18px', height: '18px' }}
+                                        disabled={isAdmin}
+                                    />
+                                    <span>{player.name} (현재: {player.points || 0}P)</span>
+                                </label>
+                            </div>
+                        );
+                    })}
                 </div>
 
                 <InputGroup>
@@ -1136,8 +1191,8 @@ function PointManager() {
                         type="number"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
-                        placeholder="변경할 포인트"
-                        style={{ width: '150px', padding: '0.5rem' }}
+                        placeholder="변경할 포인트 (차감 시 음수)"
+                        style={{ width: '200px', padding: '0.5rem' }}
                     />
                     <input
                         type="text"
