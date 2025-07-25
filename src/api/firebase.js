@@ -482,15 +482,6 @@ export async function createPlayerFromUser(user) {
   await setDoc(playerRef, playerData);
 }
 
-// --- 퀴즈 관련 ---
-const getTodayDateString = () => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export async function getTodaysQuizHistory(studentId) {
   if (!studentId) return [];
   const todayStr = getTodayDateString();
@@ -747,7 +738,7 @@ export async function getNotificationsForUser(userId) {
 
 export async function markNotificationsAsRead(userId) {
   const notifsRef = collection(db, 'notifications');
-  const q = query(notifsRef, where('userId', '==', userId), where('isRead', '==', false)); // 👈 'npm' 삭제
+  const q = query(notifsRef, where('userId', '==', userId), where('isRead', '==', false));
   const querySnapshot = await getDocs(q);
 
   if (querySnapshot.empty) return;
@@ -757,4 +748,80 @@ export async function markNotificationsAsRead(userId) {
     batch.update(doc.ref, { isRead: true });
   });
   await batch.commit();
+}
+
+// --- ▼▼▼ [추가] 출석 체크 관련 함수 ▼▼▼ ---
+
+// YYYY-MM-DD 형식의 오늘 날짜 문자열을 반환하는 헬퍼 함수
+const getTodayDateString = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * 플레이어의 오늘 출석 보상 가능 여부를 확인합니다.
+ * @param {string} playerId - 확인할 플레이어의 ID
+ * @returns {Promise<boolean>} - 보상 수령 가능하면 true, 아니면 false
+ */
+export async function isAttendanceRewardAvailable(playerId) {
+  const playerRef = doc(db, "players", playerId);
+  const playerSnap = await getDoc(playerRef);
+
+  if (!playerSnap.exists()) {
+    console.error("출석 체크 대상 플레이어를 찾을 수 없습니다.");
+    return false;
+  }
+
+  const playerData = playerSnap.data();
+  const todayStr = getTodayDateString();
+
+  // 마지막 출석 날짜가 오늘과 같으면 보상 불가
+  if (playerData.lastAttendance === todayStr) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * 플레이어에게 출석 보상을 지급하고 마지막 출석 날짜를 업데이트합니다.
+ * @param {string} playerId - 보상을 지급할 플레이어의 ID
+ * @param {number} rewardAmount - 지급할 포인트
+ * @returns {Promise<void>}
+ */
+export async function grantAttendanceReward(playerId, rewardAmount) {
+  const isAvailable = await isAttendanceRewardAvailable(playerId);
+  if (!isAvailable) {
+    throw new Error("이미 오늘 출석 보상을 받았습니다.");
+  }
+
+  const playerRef = doc(db, "players", playerId);
+  const todayStr = getTodayDateString();
+
+  await updateDoc(playerRef, {
+    points: increment(rewardAmount),
+    lastAttendance: todayStr, // 마지막 출석일을 오늘 날짜로 기록
+  });
+
+  const playerDoc = await getDoc(playerRef);
+  const playerData = playerDoc.data();
+
+  // 포인트 변동 내역 기록
+  await addPointHistory(
+    playerData.authUid,
+    playerData.name,
+    rewardAmount,
+    "출석 체크 보상"
+  );
+
+  // 알림 생성
+  createNotification(
+    playerData.authUid,
+    "🎉 출석 체크 완료!",
+    `오늘의 출석 보상으로 ${rewardAmount}P를 획득했습니다.`,
+    'attendance'
+  );
 }

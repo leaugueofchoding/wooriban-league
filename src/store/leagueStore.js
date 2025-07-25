@@ -30,6 +30,8 @@ import {
     submitQuizAnswer as firebaseSubmitQuizAnswer,
     requestMissionApproval,
     batchAdjustPlayerPoints,
+    isAttendanceRewardAvailable, // 👈 [추가]
+    grantAttendanceReward, // 👈 [추가]
     db // [추가] db import
 } from '../api/firebase';
 // [추가] onSnapshot 등 필요한 함수 import
@@ -39,6 +41,7 @@ import allQuizzes from '../assets/missions.json';
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
+    showAttendanceModal: false, // 👈 [추가] 출석 모달 표시 여부 상태
     players: [],
     teams: [],
     matches: [],
@@ -516,5 +519,43 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) {
             console.error("점수 저장 오류:", error);
         }
+    },
+
+    checkAttendance: async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) return;
+
+        try {
+            const isAvailable = await isAttendanceRewardAvailable(myPlayerData.id);
+            if (isAvailable) {
+                set({ showAttendanceModal: true });
+            }
+        } catch (error) {
+            console.error("출석 체크 가능 여부 확인 중 오류:", error);
+        }
+    },
+
+    claimAttendanceReward: async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) return;
+
+        try {
+            const rewardAmount = 50; // 출석 보상 포인트
+            await grantAttendanceReward(myPlayerData.id, rewardAmount);
+            set({ showAttendanceModal: false }); // 보상 수령 후 모달 닫기
+            await get().fetchInitialData(); // 최신 정보로 업데이트
+        } catch (error) {
+            console.error("출석 보상 지급 중 오류:", error);
+            alert(error.message);
+        }
+    },
+
+    closeAttendanceModal: () => {
+        set({ showAttendanceModal: false });
     },
 }));
