@@ -47,7 +47,7 @@ export const useLeagueStore = create((set, get) => ({
     archivedMissions: [],
     missionSubmissions: [],
     currentSeason: null,
-    isLoading: true,
+    isLoading: false, // 👈 [수정] 초기값을 false로 변경
     leagueType: 'mixed',
     notifications: [],
     unreadNotificationCount: 0,
@@ -58,6 +58,7 @@ export const useLeagueStore = create((set, get) => ({
 
 
     // --- Actions ---
+    setLoading: (status) => set({ isLoading: status }), // 👈 [추가] setLoading 함수 추가
     setLeagueType: (type) => set({ leagueType: type }),
 
     updateLocalAvatarPartStatus: (partId, newStatus) => {
