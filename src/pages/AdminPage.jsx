@@ -1,3 +1,5 @@
+// src/pages/AdminPage.jsx
+
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
@@ -19,16 +21,17 @@ import {
     batchDeleteAvatarParts,
     deleteClassGoal,
     approveMissionsInBatch,
-    rejectMissionSubmission, // 거절 함수 import
+    rejectMissionSubmission,
     linkPlayerToAuth,
     auth,
-    db, // onSnapshot을 위해 db import
-    completeClassGoal
+    db,
+    completeClassGoal,
+    createNewSeason
 } from '../api/firebase.js';
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
 
-// --- Styled Components (디자인 부분) ---
+// --- Styled Components ---
 const AdminWrapper = styled.div`
   display: flex;
   gap: 2rem;
@@ -213,6 +216,23 @@ const MemberListItem = styled.div`
   align-items: center;
   padding: 0.25rem 0;
   font-size: 0.9rem;
+`;
+
+const CaptainButton = styled.button`
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 0.2rem;
+    line-height: 1;
+    opacity: ${props => (props.disabled ? 0.5 : 1)};
+    color: ${props => (props.$isCaptain ? '#007bff' : '#ced4da')};
+
+    &:hover:not(:disabled) {
+        transform: scale(1.2);
+        color: #0056b3;
+    }
 `;
 
 const TabContainer = styled.div`
@@ -1276,12 +1296,14 @@ function PlayerManager() {
 
 function LeagueManager() {
     const {
-        players, teams, matches, removePlayer,
+        players, teams, matches,
         addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
         autoAssignTeams, generateSchedule, batchCreateTeams,
         leagueType, setLeagueType,
-        currentSeason, startSeason, endSeason, updateSeason,
+        currentSeason, startSeason, endSeason, updateSeasonDetails,
+        createSeason, setTeamCaptain // setTeamCaptain 추가
     } = useLeagueStore();
+
     const isNotPreparing = currentSeason?.status !== 'preparing';
     const [newTeamName, setNewTeamName] = useState('');
     const [maleTeamCount, setMaleTeamCount] = useState(2);
@@ -1289,22 +1311,35 @@ function LeagueManager() {
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
     const [prize, setPrize] = useState(0);
+    const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
 
     useEffect(() => {
         if (currentSeason?.winningPrize) {
             setPrize(currentSeason.winningPrize);
+        } else {
+            setPrize(0);
         }
     }, [currentSeason]);
 
-    const handleSavePrize = async () => {
-        if (isNaN(prize) || prize < 0) {
-            return alert('보상 포인트는 숫자로 입력해주세요.');
+    const handleCreateSeason = async () => {
+        if (!newSeasonNameForCreate.trim()) return alert("새 시즌의 이름을 입력해주세요.");
+        if (window.confirm(`'${newSeasonNameForCreate}' 시즌을 새로 시작하시겠습니까?`)) {
+            try {
+                await createSeason(newSeasonNameForCreate);
+                setNewSeasonNameForCreate('');
+                alert('새로운 시즌이 생성되었습니다!');
+            } catch (error) {
+                alert(`시즌 생성에 실패했습니다: ${error.message}`);
+            }
         }
+    };
+
+    const handleSavePrize = async () => {
+        if (isNaN(prize) || prize < 0) return alert('보상 포인트는 숫자로 입력해주세요.');
         try {
-            await updateSeason(currentSeason.id, { winningPrize: Number(prize) });
+            await updateSeasonDetails(currentSeason.id, { winningPrize: Number(prize) });
             alert('우승 보상이 저장되었습니다!');
         } catch (error) {
-            console.error(error);
             alert('저장 중 오류가 발생했습니다.');
         }
     };
@@ -1354,6 +1389,20 @@ function LeagueManager() {
                                     {currentSeason.status === 'active' && <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>}
                                 </div>
                             </div>
+                            {currentSeason.status === 'completed' && (
+                                <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                                    <InputGroup>
+                                        <input
+                                            type="text"
+                                            value={newSeasonNameForCreate}
+                                            onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
+                                            placeholder="새 시즌 이름 입력"
+                                            style={{ flex: 1, padding: '0.5rem' }}
+                                        />
+                                        <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>새 시즌 준비하기</SaveButton>
+                                    </InputGroup>
+                                </div>
+                            )}
                             <InputGroup style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
                                 <label htmlFor="prize">우승팀 보상 포인트:</label>
                                 <ScoreInput
@@ -1402,12 +1451,27 @@ function LeagueManager() {
                                 <div style={{ flex: 1, marginRight: '1rem' }}>
                                     <strong>{team.teamName}</strong>
                                     <MemberList>
-                                        {team.members?.length > 0 ? team.members.map(memberId => (
-                                            <MemberListItem key={memberId}>
-                                                <PlayerProfile player={players.find(p => p.id === memberId)} />
-                                                <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
-                                            </MemberListItem>
-                                        )) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
+                                        {team.members?.length > 0 ? team.members.map(memberId => {
+                                            const member = players.find(p => p.id === memberId);
+                                            if (!member) return null;
+                                            const isCaptain = team.captainId === memberId;
+                                            return (
+                                                <MemberListItem key={memberId}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <CaptainButton
+                                                            onClick={() => setTeamCaptain(team.id, memberId)}
+                                                            disabled={isNotPreparing || isCaptain}
+                                                            $isCaptain={isCaptain}
+                                                            title={isNotPreparing ? "시즌 중에는 주장을 변경할 수 없습니다." : (isCaptain ? "현재 주장" : "주장으로 임명")}
+                                                        >
+                                                            Ⓒ
+                                                        </CaptainButton>
+                                                        <PlayerProfile player={member} />
+                                                    </div>
+                                                    <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
+                                                </MemberListItem>
+                                            )
+                                        }) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
                                     </MemberList>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
@@ -1415,7 +1479,7 @@ function LeagueManager() {
                                         <option value="">선수 선택</option>
                                         {unassignedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
-                                    <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>추가</StyledButton>
+                                    <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing || !selectedPlayer[team.id]} style={{ width: '100px' }}>추가</StyledButton>
                                     <StyledButton onClick={() => removeTeam(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>팀 삭제</StyledButton>
                                 </div>
                             </ListItem>
@@ -1486,9 +1550,9 @@ function AdminPage() {
     const handleMenuClick = (menu) => {
         setActiveMenu(menu);
         if (menu === 'mission') setActiveSubMenu('mission_dashboard');
-        else if (menu === 'student') setActiveSubMenu('role_manage'); // Sub menu for student is now logical parent
+        else if (menu === 'student') setActiveSubMenu('role_manage');
         else if (menu === 'shop') setActiveSubMenu('item_manage');
-        else if (menu === 'league') setActiveSubMenu('player_manage'); // Default to player management
+        else if (menu === 'league') setActiveSubMenu('league_manage');
     };
 
     return (

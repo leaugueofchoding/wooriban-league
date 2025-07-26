@@ -1,24 +1,49 @@
 // src/pages/HomePage.jsx
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react'; // [수정] useEffect 추가
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom'; // [수정] useLocation 추가
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
 
+// --- Styled Components (이전과 동일) ---
 const Wrapper = styled.div`
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 2rem auto;
   padding: 2rem;
 `;
 
 const Title = styled.h1`
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 `;
 
-const MainGrid = styled.div`
+const TabContainer = styled.nav`
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+`;
+
+const TabButton = styled.button`
+  padding: 0.8rem 1.5rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  background-color: ${props => (props.$active ? '#007bff' : '#fff')};
+  color: ${props => (props.$active ? 'white' : '#343a40')};
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    background-color: ${props => (props.$active ? '#0056b3' : '#e9ecef')};
+    transform: translateY(-2px);
+  }
+`;
+
+const ContentGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
@@ -26,10 +51,10 @@ const MainGrid = styled.div`
 `;
 
 const Section = styled.div`
-  background-color: #f9f9f9;
+  background-color: #f8f9fa;
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
 `;
 
 const SectionTitle = styled.h2`
@@ -47,9 +72,9 @@ const MatchList = styled.div`
 const MatchItem = styled.div`
   background-color: #fff;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border: 1px solid #dee2e6;
   cursor: pointer;
-  overflow: hidden; /* 아코디언 효과를 위해 추가 */
+  overflow: hidden;
 `;
 
 const MatchSummary = styled.div`
@@ -60,30 +85,63 @@ const MatchSummary = styled.div`
   padding: 1rem;
 `;
 
-const Team = styled.span`
+const Team = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   font-weight: bold;
+  flex: 1;
+`;
+
+const TeamEmblem = styled.img`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: #fff;
 `;
 
 const Score = styled.span`
   font-weight: bold;
+  font-size: 1.2rem;
   color: #007bff;
+  padding: 0 1rem;
 `;
 
 const VsText = styled.span`
   color: #6c757d;
+  font-weight: bold;
+  padding: 0 1rem;
 `;
 
 const LineupDetail = styled.div`
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-top: 1px solid #eee;
-  text-align: center;
-  /* 애니메이션 효과 */
-  max-height: ${props => (props.$isOpen ? '500px' : '0')};
+  padding: ${props => (props.$isOpen ? '1.5rem' : '0 1.5rem')};
+  background-color: #f1f3f5;
+  border-top: ${props => (props.$isOpen ? '1px solid #e9ecef' : 'none')};
+  max-height: ${props => (props.$isOpen ? '1000px' : '0')};
   opacity: ${props => (props.$isOpen ? '1' : '0')};
-  transition: max-height 0.4s ease-in-out, opacity 0.4s ease-in-out, padding 0.4s ease-in-out;
-  padding-top: ${props => (props.$isOpen ? '1rem' : '0')};
-  padding-bottom: ${props => (props.$isOpen ? '1rem' : '0')};
+  overflow: hidden;
+  transition: all 0.4s ease-in-out;
+`;
+
+const LineupGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+`;
+
+const TeamLineup = styled.div`
+  text-align: center;
+`;
+
+const PlayerList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin-top: 1rem;
+`;
+
+const PlayerItem = styled.li`
+  margin-bottom: 0.5rem;
 `;
 
 const ExitButton = styled.button`
@@ -101,37 +159,193 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
+// --- TeamInfoPage Components ---
+const TeamGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+`;
 
-function ScheduleItem({ match }) {
-  const { teams } = useLeagueStore();
-  const [isOpen, setIsOpen] = useState(false);
+const TeamCard = styled.div`
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  border: 2px solid transparent;
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    border-color: #007bff;
+  }
+`;
+
+const TeamCardEmblem = styled.img`
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: #e9ecef;
+  margin: 0 auto 1rem;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+`;
+
+const TeamCardName = styled.h2`
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+`;
+
+const TeamRecord = styled.p`
+  margin: 0;
+  font-size: 1.1rem;
+  color: #495057;
+  font-weight: 500;
+`;
+
+
+// --- Components ---
+
+function ScheduleItem({ match, isInitiallyOpen }) {
+  const { teams, players } = useLeagueStore();
+  const [isOpen, setIsOpen] = useState(isInitiallyOpen);
 
   const teamA = teams.find(t => t.id === match.teamA_id);
   const teamB = teams.find(t => t.id === match.teamB_id);
 
+  const teamAMembers = teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+  const teamBMembers = teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+
   return (
     <MatchItem onClick={() => setIsOpen(!isOpen)}>
       <MatchSummary>
-        <Team>{teamA?.teamName || 'N/A'}</Team>
+        <Team>
+          <TeamEmblem src={teamA?.emblemUrl || defaultEmblem} alt={teamA?.teamName} />
+          {teamA?.teamName || 'N/A'}
+        </Team>
         {match.status === '완료' ? (
           <Score>{match.teamA_score} : {match.teamB_score}</Score>
         ) : (
-          <VsText>vs</VsText>
+          <VsText>VS</VsText>
         )}
-        <Team>{teamB?.teamName || 'N/A'}</Team>
+        <Team style={{ justifyContent: 'flex-end' }}>
+          {teamB?.teamName || 'N/A'}
+          <TeamEmblem src={teamB?.emblemUrl || defaultEmblem} alt={teamB?.teamName} />
+        </Team>
       </MatchSummary>
       <LineupDetail $isOpen={isOpen}>
-        <p>라인업 정보가 없습니다.</p>
-        {/* 추후 이곳에 양 팀 선수 명단이 표시됩니다. */}
+        <LineupGrid>
+          <TeamLineup>
+            <h4>{teamA?.teamName} 라인업</h4>
+            <PlayerList>
+              {teamAMembers.map(p => <PlayerItem key={p.id}>{p.name}</PlayerItem>)}
+            </PlayerList>
+          </TeamLineup>
+          <TeamLineup>
+            <h4>{teamB?.teamName} 라인업</h4>
+            <PlayerList>
+              {teamBMembers.map(p => <PlayerItem key={p.id}>{p.name}</PlayerItem>)}
+            </PlayerList>
+          </TeamLineup>
+        </LineupGrid>
       </LineupDetail>
     </MatchItem>
   );
 }
 
+function LeagueInfoContent({ matches, teams, standingsData }) {
+  const sortedMatches = useMemo(() => {
+    return [...matches].sort((a, b) => {
+      if (a.status === '예정' && b.status === '완료') return -1;
+      if (a.status === '완료' && b.status === '예정') return 1;
+      return 0;
+    });
+  }, [matches]);
+
+  const nextMatchId = useMemo(() => {
+    const upcomingMatches = sortedMatches.filter(m => m.status === '예정');
+    return upcomingMatches.length > 0 ? upcomingMatches[0].id : null;
+  }, [sortedMatches]);
+
+  return (
+    <ContentGrid>
+      <Section>
+        <SectionTitle>경기 일정</SectionTitle>
+        <MatchList>
+          {sortedMatches.map(match => (
+            <ScheduleItem key={match.id} match={match} isInitiallyOpen={match.id === nextMatchId} />
+          ))}
+        </MatchList>
+      </Section>
+      <Section>
+        <SectionTitle>실시간 리그 순위</SectionTitle>
+        <LeagueTable standings={standingsData} />
+      </Section>
+    </ContentGrid>
+  );
+}
+
+function TeamInfoContent({ teams, matches, currentSeason }) {
+  const navigate = useNavigate();
+  const teamStats = useMemo(() => {
+    if (!currentSeason) return [];
+    const seasonTeams = teams.filter(team => team.seasonId === currentSeason.id);
+    const seasonMatches = matches.filter(match => match.seasonId === currentSeason.id && match.status === '완료');
+
+    return seasonTeams.map(team => {
+      const stats = { wins: 0, draws: 0, losses: 0 };
+      seasonMatches.forEach(match => {
+        if (match.teamA_id === team.id) {
+          if (match.teamA_score > match.teamB_score) stats.wins++;
+          else if (match.teamA_score < match.teamB_score) stats.losses++;
+          else stats.draws++;
+        } else if (match.teamB_id === team.id) {
+          if (match.teamB_score > match.teamA_score) stats.wins++;
+          else if (match.teamB_score < match.teamA_score) stats.losses++;
+          else stats.draws++;
+        }
+      });
+      return { ...team, ...stats };
+    });
+  }, [teams, matches, currentSeason]);
+
+  const handleCardClick = (teamId) => {
+    navigate(`/league/teams/${teamId}`);
+  };
+
+  return (
+    <Section>
+      <SectionTitle>팀 정보</SectionTitle>
+      <TeamGrid>
+        {teamStats.map(team => (
+          <TeamCard key={team.id} onClick={() => handleCardClick(team.id)}>
+            <TeamCardEmblem src={team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
+            <TeamCardName>{team.teamName}</TeamCardName>
+            <TeamRecord>{team.wins}승 {team.draws}무 {team.losses}패</TeamRecord>
+          </TeamCard>
+        ))}
+      </TeamGrid>
+    </Section>
+  )
+}
+
 
 function HomePage() {
-  const { matches, teams } = useLeagueStore();
+  const { matches, teams, currentSeason } = useLeagueStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState('leagueInfo');
+
+  useEffect(() => {
+    if (location.state?.defaultTab) {
+      setActiveTab(location.state.defaultTab);
+      // Clean up state to prevent it from persisting on re-renders
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   const standingsData = useMemo(() => {
     const completedMatches = matches.filter(m => m.status === '완료');
@@ -163,24 +377,31 @@ function HomePage() {
     return stats;
   }, [matches, teams]);
 
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'leagueInfo':
+        return <LeagueInfoContent matches={matches} teams={teams} standingsData={standingsData} />;
+      case 'teamInfo':
+        return <TeamInfoContent teams={teams} matches={matches} currentSeason={currentSeason} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <Wrapper>
       <Title>가가볼 리그 센터</Title>
-      <MainGrid>
-        <Section>
-          <SectionTitle>경기 일정</SectionTitle>
-          <MatchList>
-            {matches.map(match => (
-              <ScheduleItem key={match.id} match={match} />
-            ))}
-          </MatchList>
-        </Section>
-        <Section>
-          <SectionTitle>실시간 리그 순위</SectionTitle>
-          <LeagueTable standings={standingsData} />
-        </Section>
-      </MainGrid>
-      {/* 추후 팀 정보, 선수 랭킹 카드 추가될 위치 */}
+      <TabContainer>
+        <TabButton $active={activeTab === 'leagueInfo'} onClick={() => setActiveTab('leagueInfo')}>
+          {currentSeason?.seasonName || '리그 정보'}
+        </TabButton>
+        <TabButton $active={activeTab === 'teamInfo'} onClick={() => setActiveTab('teamInfo')}>
+          팀 정보 보기
+        </TabButton>
+      </TabContainer>
+
+      {renderContent()}
+
       <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
     </Wrapper>
   );

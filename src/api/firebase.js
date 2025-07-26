@@ -1,3 +1,5 @@
+// src/api/firebase.js
+
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth } from "firebase/auth";
@@ -163,12 +165,11 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
         `미션 승인 보너스 (${studentIds.length}건)`
       );
 
-      // [수정] 기록원에게 통합 알림 전송
       createNotification(
         recorderId,
         `✅ 미션 승인 완료`,
         `${studentIds.length}건의 미션을 확인하여 ${incentiveAmount}P를 획득했습니다.`,
-        'mission_reward' // 알림 종류를 구별하기 위한 type 변경
+        'mission_reward'
       );
     }
   }
@@ -176,7 +177,6 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   await batch.commit();
 }
 
-// [수정] 기록원 알림 링크 수정
 export async function requestMissionApproval(missionId, studentId, studentName) {
   const submissionsRef = collection(db, 'missionSubmissions');
   const missionRef = doc(db, 'missions', missionId);
@@ -220,24 +220,21 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
     if (user.authUid) {
       const link = user.role === 'recorder' ? '/recorder-dashboard' : '/admin';
 
-      // [수정] 알림 body에 missionTitle 추가
       createNotification(
         user.authUid,
         '미션 승인 요청',
         `[${missionTitle}] ${studentName} 학생이 완료를 요청했습니다.`,
-        'mission_request', // 알림 종류를 구별하기 위한 type 변경
+        'mission_request',
         link
       );
     }
   });
 }
 
-// --- ▼▼▼ [핵심 수정] 미션 거절 시 제출 기록을 삭제하도록 변경 ---
 export async function rejectMissionSubmission(submissionId, studentAuthUid, missionTitle) {
   const submissionRef = doc(db, 'missionSubmissions', submissionId);
-  await deleteDoc(submissionRef); // 문서를 업데이트하는 대신 삭제
+  await deleteDoc(submissionRef);
 
-  // 학생에게 거절 알림 보내기
   if (studentAuthUid) {
     createNotification(
       studentAuthUid,
@@ -251,22 +248,14 @@ export async function rejectMissionSubmission(submissionId, studentAuthUid, miss
 
 export async function deleteMission(missionId) {
   const batch = writeBatch(db);
-
-  // 1. 삭제할 미션과 관련된 모든 제출 기록(submissions)을 찾습니다.
   const submissionsRef = collection(db, "missionSubmissions");
   const q = query(submissionsRef, where("missionId", "==", missionId));
   const querySnapshot = await getDocs(q);
-
-  // 2. 찾은 모든 제출 기록을 삭제 배치에 추가합니다.
   querySnapshot.forEach((doc) => {
     batch.delete(doc.ref);
   });
-
-  // 3. 원래 미션 문서를 삭제 배치에 추가합니다.
   const missionRef = doc(db, 'missions', missionId);
   batch.delete(missionRef);
-
-  // 4. 모든 삭제 작업을 한 번에 실행합니다.
   await batch.commit();
 }
 
@@ -462,8 +451,28 @@ export async function deleteTeam(teamId) {
   await deleteDoc(doc(db, 'teams', teamId));
 }
 
+export async function uploadTeamEmblem(teamId, file) {
+  const storageRef = ref(storage, `team-emblems/${teamId}/${file.name}`);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+}
+
+export async function updateTeamInfo(teamId, newName, newEmblemUrl) {
+  const teamRef = doc(db, 'teams', teamId);
+  const updateData = { teamName: newName };
+  if (newEmblemUrl) {
+    updateData.emblemUrl = newEmblemUrl;
+  }
+  await updateDoc(teamRef, updateData);
+}
+
 export async function updateTeamMembers(teamId, newMembers) {
   await updateDoc(doc(db, 'teams', teamId), { members: newMembers });
+}
+
+export async function updateTeamCaptain(teamId, captainId) {
+  const teamRef = doc(db, 'teams', teamId);
+  await updateDoc(teamRef, { captainId: captainId });
 }
 
 export async function batchAddTeams(newTeamsData) {
@@ -538,6 +547,19 @@ export async function updateSeason(seasonId, dataToUpdate) {
   const seasonDoc = doc(db, 'seasons', seasonId);
   await updateDoc(seasonDoc, dataToUpdate);
 }
+
+export async function createNewSeason(seasonName) {
+  if (!seasonName || !seasonName.trim()) {
+    throw new Error("시즌 이름을 입력해야 합니다.");
+  }
+  await addDoc(collection(db, 'seasons'), {
+    seasonName: seasonName.trim(),
+    status: 'preparing',
+    createdAt: serverTimestamp(),
+    winningPrize: 0
+  });
+}
+
 
 export async function createPlayerFromUser(user) {
   const playerRef = doc(db, 'players', user.uid);
@@ -720,7 +742,6 @@ export async function createClassGoal(goalData) {
   });
 }
 
-// [수정] 기부 내역(contributions)도 함께 불러오도록 수정
 export async function getActiveGoals() {
   const goalsRef = collection(db, "classGoals");
   const q = query(goalsRef, where("status", "==", "active"), orderBy("createdAt"));
@@ -737,7 +758,6 @@ export async function getActiveGoals() {
   return goals;
 }
 
-// [수정] 기부자 기록 추가 및 목표 달성 시 알림 기능 추가
 export async function donatePointsToGoal(playerId, goalId, amount) {
   if (amount <= 0) {
     throw new Error("기부할 포인트를 올바르게 입력해주세요.");
@@ -764,12 +784,10 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
       throw new Error("포인트가 부족합니다.");
     }
 
-    // 포인트 차감 및 목표 포인트 증가
     transaction.update(playerRef, { points: increment(-amount) });
     const newTotalPoints = goalData.currentPoints + amount;
     transaction.update(goalRef, { currentPoints: increment(amount) });
 
-    // 기부 내역 기록
     transaction.set(contributionRef, {
       playerId: playerId,
       playerName: playerData.name,
@@ -777,7 +795,6 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
       timestamp: serverTimestamp()
     });
 
-    // 포인트 변동 내역 기록
     addPointHistory(
       playerData.authUid,
       playerData.name,
@@ -785,7 +802,6 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
       `'${goalData.title}' 목표에 기부`
     );
 
-    // 목표 달성 확인 및 알림
     if (newTotalPoints >= goalData.targetPoints) {
       const allPlayers = await getPlayers();
       allPlayers.forEach(p => {
@@ -802,7 +818,6 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
   });
 }
 
-// [추가] 목표를 '완료' 상태로 변경하는 함수
 export async function completeClassGoal(goalId) {
   const goalRef = doc(db, "classGoals", goalId);
   await updateDoc(goalRef, {
