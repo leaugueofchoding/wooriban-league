@@ -17,7 +17,8 @@ import ShopPage from './pages/ShopPage';
 import MissionsPage from './pages/MissionsPage';
 import RecorderPage from './pages/RecorderPage';
 import WinnerPage from './pages/WinnerPage';
-import RecorderDashboardPage from './pages/RecorderDashboardPage'; // [추가]
+import RecorderDashboardPage from './pages/RecorderDashboardPage';
+import PlayerStatsPage from './pages/PlayerStatsPage'; // [추가]
 
 // Common Components
 import Auth from './components/Auth';
@@ -119,9 +120,10 @@ function App() {
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
           <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
+          <Route path="/profile/:playerId/stats" element={<ProtectedRoute><PlayerStatsPage /></ProtectedRoute>} /> {/* [추가] */}
           <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} /> {/* [추가] */}
+          <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} />
           <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
           <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
         </Routes>

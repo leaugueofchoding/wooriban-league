@@ -9,7 +9,7 @@ import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
 
-// --- Styled Components (기존과 동일) ---
+// --- Styled Components ---
 const AvatarDisplay = styled.div`
   width: 150px;
   height: 150px;
@@ -43,7 +43,7 @@ const UserNameContainer = styled.div`
   justify-content: center;
   align-items: center;
   gap: 0.5rem;
-  min-height: 38px; /* 편집 <-> 보기 모드 전환 시 높이 변화 방지 */
+  min-height: 38px;
 `;
 const UserName = styled.h2`
   margin: 0;
@@ -78,7 +78,7 @@ const StyledLink = styled(Link)`
   font-weight: 500;
   text-decoration: none;
   color: #333;
-  background-color: white; // [추가] 배경색 통일
+  background-color: white;
   &:hover { background-color: #f0f0f0; }
 `;
 const Button = styled.button`
@@ -94,6 +94,22 @@ const Button = styled.button`
   font-size: inherit;
   &:hover { background-color: #f0f0f0; }
 `;
+
+const ExitButton = styled.button`
+  display: block;
+  margin: 3rem auto 0;
+  padding: 0.8rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  &:hover { background-color: #5a6268; }
+`;
+
 
 function ProfilePage() {
   const { players, avatarParts, fetchInitialData } = useLeagueStore();
@@ -220,9 +236,8 @@ function ProfilePage() {
       <ButtonGroup>
         {isMyProfile && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
         {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
-        {/* [추가] 상점 가기 버튼 */}
-        <StyledLink to="/shop" style={{ backgroundColor: '#17a2b8', color: 'white' }}>상점 가기</StyledLink>
-        <Button onClick={() => navigate(-1)}>나가기</Button>
+        <StyledLink to="/shop">상점 가기</StyledLink>
+        <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
       </ButtonGroup>
 
       <PointHistoryModal
@@ -230,6 +245,8 @@ function ProfilePage() {
         onClose={() => setIsHistoryModalOpen(false)}
         history={pointHistory}
       />
+
+      <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
     </ProfileWrapper>
   );
 }
