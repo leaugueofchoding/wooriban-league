@@ -1,10 +1,13 @@
 // src/pages/PlayerStatsPage.jsx
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { useParams, useNavigate } from 'react-router-dom';
+import { getPlayerSeasonStats } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
+
+// --- Styled Components ---
 
 const Wrapper = styled.div`
   max-width: 800px;
@@ -17,10 +20,44 @@ const Title = styled.h1`
   margin-bottom: 2.5rem;
 `;
 
+const TotalStatsGrid = styled.div`
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+`;
+
+const StatCard = styled.div`
+    background-color: #fff;
+    padding: 1.5rem;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+`;
+
+const StatValue = styled.p`
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin: 0 0 0.5rem 0;
+    color: ${props => props.color || '#343a40'};
+`;
+
+const StatLabel = styled.p`
+    margin: 0;
+    font-size: 1rem;
+    color: #6c757d;
+    font-weight: 500;
+`;
+
+const SectionTitle = styled.h2`
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+`;
+
 const SeasonList = styled.div`
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1rem;
 `;
 
 const SeasonCard = styled.div`
@@ -28,16 +65,18 @@ const SeasonCard = styled.div`
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     overflow: hidden;
+    border: 1px solid #dee2e6;
 `;
 
 const SeasonHeader = styled.div`
-    padding: 1.5rem;
+    padding: 1.25rem 1.5rem;
     cursor: pointer;
-    background-color: #e9ecef;
+    background-color: #fff;
     font-weight: bold;
     font-size: 1.3rem;
     display: flex;
     justify-content: space-between;
+    align-items: center;
 `;
 
 const SeasonContent = styled.div`
@@ -46,41 +85,31 @@ const SeasonContent = styled.div`
     opacity: ${props => props.$isOpen ? 1 : 0};
     overflow: hidden;
     transition: all 0.4s ease-in-out;
+    display: flex; /* [수정] flex 레이아웃으로 변경 */
+    gap: 2rem; /* [수정] 내부 요소 간 간격 추가 */
 `;
 
-const StatsGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+const SeasonStatsSummary = styled.div`
+    flex-basis: 200px; /* 고정 너비 */
+    flex-shrink: 0;
 `;
 
-const StatCard = styled.div`
-    background-color: #fff;
-    padding: 1rem;
-    border-radius: 8px;
-    text-align: center;
-`;
-
-const StatValue = styled.p`
-    font-size: 2rem;
-    font-weight: bold;
-    margin: 0 0 0.5rem 0;
-    color: ${props => props.color || '#343a40'};
-`;
-
-const StatLabel = styled.p`
-    margin: 0;
-    font-size: 0.9rem;
-    color: #6c757d;
+const SummaryItem = styled.div`
+    margin-bottom: 1rem;
+    & > h4 {
+        margin: 0 0 0.25rem 0;
+        font-size: 1rem;
+        color: #495057;
+    }
+    & > p {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: bold;
+    }
 `;
 
 const TeamInfo = styled.div`
-    margin-top: 1rem;
-`;
-
-const TeamName = styled.h3`
-    margin-bottom: 1rem;
+    flex-grow: 1; /* 남은 공간 모두 차지 */
 `;
 
 const TeammateGrid = styled.div`
@@ -123,19 +152,18 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
-function SeasonStatsCard({ season, playerStats }) {
-    const [isOpen, setIsOpen] = useState(true);
-    const { players, avatarParts } = useLeagueStore();
+// --- Components ---
 
-    const team = playerStats.team;
-    const stats = playerStats.stats;
+function SeasonStatsCard({ seasonData }) {
+    const { season, team, stats, rank } = seasonData;
+    const { players, avatarParts } = useLeagueStore();
+    const [isOpen, setIsOpen] = useState(false);
 
     const teammateAvatars = useMemo(() => {
         if (!team || !team.members) return [];
         return team.members.map(memberId => {
             const memberData = players.find(p => p.id === memberId);
-            if (!memberData) return { id: memberId, name: '알수없음', urls: [baseAvatar] };
-
+            if (!memberData) return null;
             const urls = [baseAvatar];
             if (memberData.avatarConfig) {
                 Object.values(memberData.avatarConfig).forEach(partId => {
@@ -144,41 +172,41 @@ function SeasonStatsCard({ season, playerStats }) {
                 });
             }
             return { id: memberId, name: memberData.name, urls };
-        });
+        }).filter(Boolean);
     }, [team, players, avatarParts]);
+
+    const seasonPoints = useMemo(() => {
+        return (stats.wins * 3) + (stats.draws * 1);
+    }, [stats]);
 
     return (
         <SeasonCard>
             <SeasonHeader onClick={() => setIsOpen(!isOpen)}>
-                <span>{season.seasonName}</span>
+                <span>{season.seasonName} (최종 {rank}위)</span>
                 <span>{isOpen ? '▲' : '▼'}</span>
             </SeasonHeader>
             <SeasonContent $isOpen={isOpen}>
-                <StatsGrid>
-                    <StatCard>
-                        <StatValue>{stats.played}</StatValue>
-                        <StatLabel>총 출전</StatLabel>
-                    </StatCard>
-                    <StatCard>
-                        <StatValue color="blue">{stats.wins}</StatValue>
-                        <StatLabel>팀 승리</StatLabel>
-                    </StatCard>
-                    <StatCard>
-                        <StatValue color="gray">{stats.draws}</StatValue>
-                        <StatLabel>팀 무승부</StatLabel>
-                    </StatCard>
-                    <StatCard>
-                        <StatValue color="red">{stats.losses}</StatValue>
-                        <StatLabel>팀 패배</StatLabel>
-                    </StatCard>
-                </StatsGrid>
+                <SeasonStatsSummary>
+                    <SummaryItem>
+                        <h4>최종 순위</h4>
+                        <p>{rank}위</p>
+                    </SummaryItem>
+                    <SummaryItem>
+                        <h4>시즌 성적 / 득점</h4>
+                        <p>{stats.wins}승 {stats.draws}무 {stats.losses}패 / {stats.goals}골</p>
+                    </SummaryItem>
+                    <SummaryItem>
+                        <h4>획득 상금</h4>
+                        <p>{seasonPoints} P</p>
+                    </SummaryItem>
+                </SeasonStatsSummary>
                 <TeamInfo>
-                    <TeamName>소속팀: {team ? team.teamName : '없음'}</TeamName>
+                    <h4>{team.teamName} 팀원</h4>
                     <TeammateGrid>
                         {teammateAvatars.map(mate => (
                             <TeammateCard key={mate.id}>
                                 <AvatarDisplay>
-                                    {mate.urls.map(url => <PartImage key={url} src={url} />)}
+                                    {mate.urls.map((url, index) => <PartImage key={`${url}-${index}`} src={url} />)}
                                 </AvatarDisplay>
                                 <span>{mate.name}</span>
                             </TeammateCard>
@@ -192,46 +220,40 @@ function SeasonStatsCard({ season, playerStats }) {
 
 
 function PlayerStatsPage() {
-    const { players, matches, teams, seasons } = useLeagueStore();
+    const { players } = useLeagueStore();
     const { playerId } = useParams();
     const navigate = useNavigate();
+    const [allSeasonStats, setAllSeasonStats] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const playerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
-    const allSeasonStats = useMemo(() => {
-        // [수정] seasons 배열이 비어있을 경우를 대비한 방어 코드
-        if (!playerData || !seasons || seasons.length === 0) return [];
+    useEffect(() => {
+        const fetchStats = async () => {
+            setLoading(true);
+            const stats = await getPlayerSeasonStats(playerId);
+            setAllSeasonStats(stats);
+            setLoading(false);
+        };
+        fetchStats();
+    }, [playerId]);
 
-        return seasons.map(season => {
-            const myTeam = teams.find(team => team.seasonId === season.id && team.members.includes(playerData.id));
-            if (!myTeam) return null;
+    const totalStats = useMemo(() => {
+        const totals = { championships: 0, wins: 0, played: 0, goals: 0 };
+        allSeasonStats.forEach(seasonData => {
+            totals.wins += seasonData.stats.wins;
+            totals.played += seasonData.stats.played;
+            totals.goals += seasonData.stats.goals;
+            if (seasonData.rank === 1) { // 1위면 우승으로 간주
+                totals.championships++;
+            }
+        });
+        return totals;
+    }, [allSeasonStats]);
 
-            const seasonMatches = matches.filter(match =>
-                match.seasonId === season.id &&
-                match.status === '완료' &&
-                (match.teamA_id === myTeam.id || match.teamB_id === myTeam.id)
-            );
-
-            let wins = 0, draws = 0, losses = 0;
-            seasonMatches.forEach(match => {
-                const isTeamA = match.teamA_id === myTeam.id;
-                const myScore = isTeamA ? match.teamA_score : match.teamB_score;
-                const opponentScore = isTeamA ? match.teamB_score : match.teamA_score;
-                if (myScore > opponentScore) wins++;
-                else if (myScore < opponentScore) losses++;
-                else draws++;
-            });
-
-            return {
-                season,
-                playerStats: {
-                    team: myTeam,
-                    stats: { played: seasonMatches.length, wins, draws, losses }
-                }
-            };
-        }).filter(Boolean);
-
-    }, [playerData, seasons, teams, matches]);
+    if (loading) {
+        return <Wrapper><Title>선수 기록을 불러오는 중...</Title></Wrapper>;
+    }
 
     if (!playerData) {
         return <Wrapper><Title>선수 정보를 찾을 수 없습니다.</Title></Wrapper>;
@@ -240,10 +262,30 @@ function PlayerStatsPage() {
     return (
         <Wrapper>
             <Title>{playerData.name} 선수의 리그 기록</Title>
+            <TotalStatsGrid>
+                <StatCard>
+                    <StatValue color="#ffc107">🏆 {totalStats.championships}</StatValue>
+                    <StatLabel>통산 우승</StatLabel>
+                </StatCard>
+                <StatCard>
+                    <StatValue color="#007bff">🏅 {totalStats.wins}</StatValue>
+                    <StatLabel>통산 승리</StatLabel>
+                </StatCard>
+                <StatCard>
+                    <StatValue color="#28a745">⚽ {totalStats.goals}</StatValue>
+                    <StatLabel>통산 득점</StatLabel>
+                </StatCard>
+                <StatCard>
+                    <StatValue>⚔️ {totalStats.played}</StatValue>
+                    <StatLabel>통산 출전</StatLabel>
+                </StatCard>
+            </TotalStatsGrid>
+
+            <SectionTitle>시즌별 기록</SectionTitle>
             <SeasonList>
                 {allSeasonStats.length > 0 ? (
-                    allSeasonStats.map(({ season, playerStats }) => (
-                        <SeasonStatsCard key={season.id} season={season} playerStats={playerStats} />
+                    allSeasonStats.map((seasonData) => (
+                        <SeasonStatsCard key={seasonData.season.id} seasonData={seasonData} />
                     ))
                 ) : (
                     <p>참가한 시즌 기록이 없습니다.</p>

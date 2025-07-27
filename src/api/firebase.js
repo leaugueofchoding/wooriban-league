@@ -504,13 +504,90 @@ export async function getMatches(seasonId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function updateMatchScores(matchId, scores) {
+export async function updateMatchScores(matchId, scores, scorers, recorderId) {
+  const batch = writeBatch(db);
   const matchRef = doc(db, 'matches', matchId);
-  await updateDoc(matchRef, {
+  const matchSnap = await getDoc(matchRef);
+
+  if (!matchSnap.exists()) {
+    throw new Error("경기를 찾을 수 없습니다.");
+  }
+  const matchData = matchSnap.data();
+
+  // 1. 경기 정보 업데이트
+  batch.update(matchRef, {
     teamA_score: scores.a,
     teamB_score: scores.b,
     status: '완료',
+    scorers: scorers || {}
   });
+
+  // 2. 기록원에게 보너스 지급 (10P)
+  if (recorderId) {
+    const playersRef = collection(db, 'players');
+    const q = query(playersRef, where("authUid", "==", recorderId), limit(1));
+    const recorderSnapshot = await getDocs(q);
+
+    if (!recorderSnapshot.empty) {
+      const recorderDoc = recorderSnapshot.docs[0];
+      const recorderData = recorderDoc.data();
+      batch.update(recorderDoc.ref, { points: increment(10) });
+      addPointHistory(recorderId, recorderData.name, 10, `경기 결과 기록 보너스`);
+      createNotification(recorderId, `+10P 획득`, `경기 결과를 기록하여 10P를 획득했습니다.`, 'point');
+    }
+  }
+
+  // 3. 승리팀/패배팀 수당 지급
+  const VICTORY_REWARD = 50;
+  const DEFEAT_REWARD = 15;
+  let winningTeamId = null;
+  let losingTeamId = null;
+
+  if (scores.a > scores.b) {
+    winningTeamId = matchData.teamA_id;
+    losingTeamId = matchData.teamB_id;
+  } else if (scores.b > scores.a) {
+    winningTeamId = matchData.teamB_id;
+    losingTeamId = matchData.teamA_id;
+  }
+
+  // 승리팀 보상 지급
+  if (winningTeamId) {
+    const teamSnap = await getDoc(doc(db, 'teams', winningTeamId));
+    if (teamSnap.exists()) {
+      const winningTeamData = teamSnap.data();
+      for (const memberId of winningTeamData.members) {
+        const playerRef = doc(db, 'players', memberId);
+        const playerSnap = await getDoc(playerRef);
+        if (playerSnap.exists()) {
+          const playerData = playerSnap.data();
+          batch.update(playerRef, { points: increment(VICTORY_REWARD) });
+          addPointHistory(playerData.authUid, playerData.name, VICTORY_REWARD, "가가볼 리그 승리 수당");
+          createNotification(playerData.authUid, `🎉 리그 승리! +${VICTORY_REWARD}P`, `'${winningTeamData.teamName}' 팀의 승리를 축하합니다!`, 'point');
+        }
+      }
+    }
+  }
+
+  // 패배팀 보상 지급
+  if (losingTeamId) {
+    const teamSnap = await getDoc(doc(db, 'teams', losingTeamId));
+    if (teamSnap.exists()) {
+      const losingTeamData = teamSnap.data();
+      for (const memberId of losingTeamData.members) {
+        const playerRef = doc(db, 'players', memberId);
+        const playerSnap = await getDoc(playerRef);
+        if (playerSnap.exists()) {
+          const playerData = playerSnap.data();
+          batch.update(playerRef, { points: increment(DEFEAT_REWARD) });
+          addPointHistory(playerData.authUid, playerData.name, DEFEAT_REWARD, "가가볼 리그 참가 수당");
+          createNotification(playerData.authUid, `+${DEFEAT_REWARD}P 획득`, `값진 경기에 대한 참가 수당이 지급되었습니다.`, 'point');
+        }
+      }
+    }
+  }
+
+  await batch.commit();
 }
 
 export async function deleteMatchesBySeason(seasonId) {
@@ -942,4 +1019,87 @@ export async function grantAttendanceReward(playerId, rewardAmount) {
     `오늘의 출석 보상으로 ${rewardAmount}P를 획득했습니다.`,
     'attendance'
   );
+}
+
+// [수정] 선수의 전체 시즌 기록(득점, 경기목록, 순위 포함)을 가져오는 함수
+export async function getPlayerSeasonStats(playerId) {
+  if (!playerId) return [];
+
+  // 1. 선수가 속했던 모든 팀 정보 조회
+  const teamsRef = collection(db, 'teams');
+  const teamsQuery = query(teamsRef, where('members', 'array-contains', playerId));
+  const teamSnapshots = await getDocs(teamsQuery);
+  const playerTeams = teamSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  if (playerTeams.length === 0) return [];
+
+  // 2. 각 시즌별로 경기 기록 집계
+  const statsBySeason = {};
+
+  for (const team of playerTeams) {
+    const seasonId = team.seasonId;
+    const seasonDoc = await getDoc(doc(db, 'seasons', seasonId));
+    if (!seasonDoc.exists()) continue;
+
+    // --- 전체 시즌 팀과 경기 데이터 가져오기 ---
+    const allTeamsInSeason = await getTeams(seasonId);
+    const allMatchesInSeason = await getMatches(seasonId);
+    const completedMatches = allMatchesInSeason.filter(m => m.status === '완료');
+
+    // --- 시즌 순위 계산 ---
+    let standings = allTeamsInSeason.map(t => ({
+      id: t.id, teamName: t.teamName, points: 0, goalDifference: 0, goalsFor: 0,
+    }));
+
+    completedMatches.forEach(match => {
+      const teamA = standings.find(t => t.id === match.teamA_id);
+      const teamB = standings.find(t => t.id === match.teamB_id);
+      if (!teamA || !teamB) return;
+      teamA.goalsFor += match.teamA_score;
+      teamB.goalsFor += match.teamB_score;
+      teamA.goalDifference += match.teamA_score - match.teamB_score;
+      teamB.goalDifference += match.teamB_score - match.teamA_score;
+      if (match.teamA_score > match.teamB_score) teamA.points += 3;
+      else if (match.teamB_score > match.teamA_score) teamB.points += 3;
+      else { teamA.points++; teamB.points++; }
+    });
+
+    standings.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+      return b.goalsFor - a.goalsFor;
+    });
+
+    const myRank = standings.findIndex(t => t.id === team.id) + 1;
+
+    // --- 선수 개인 기록 집계 ---
+    statsBySeason[seasonId] = {
+      season: { id: seasonId, ...seasonDoc.data() },
+      team: team,
+      rank: myRank, // 순위 정보 추가
+      stats: { wins: 0, draws: 0, losses: 0, played: 0, goals: 0 },
+      matches: []
+    };
+
+    const myMatches = completedMatches.filter(m => m.teamA_id === team.id || m.teamB_id === team.id);
+
+    myMatches.forEach(match => {
+      if (match.scorers && match.scorers[playerId]) {
+        statsBySeason[seasonId].stats.goals += match.scorers[playerId];
+      }
+      statsBySeason[seasonId].stats.played++;
+      statsBySeason[seasonId].matches.push(match);
+
+      const isTeamA = match.teamA_id === team.id;
+      const myScore = isTeamA ? match.teamA_score : match.teamB_score;
+      const opponentScore = isTeamA ? match.teamB_score : match.teamA_score;
+
+      if (myScore > opponentScore) statsBySeason[seasonId].stats.wins++;
+      else if (myScore < opponentScore) statsBySeason[seasonId].stats.losses++;
+      else statsBySeason[seasonId].stats.draws++;
+    });
+  }
+
+  // 3. 최신 시즌 순으로 정렬하여 반환
+  return Object.values(statsBySeason).sort((a, b) => b.season.createdAt.toMillis() - a.season.createdAt.toMillis());
 }

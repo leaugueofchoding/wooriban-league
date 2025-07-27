@@ -514,13 +514,19 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) { console.error("경기 일정 생성 오류:", error); }
     },
 
-    saveScores: async (matchId, scores) => {
+    saveScores: async (matchId, scores, scorers) => {
         try {
-            await updateMatchScores(matchId, scores);
+            const recorderId = auth.currentUser?.uid; // [추가] 현재 유저의 ID를 recorderId로 사용
+            if (!recorderId) {
+                alert("로그인 정보가 없습니다. 다시 로그인해주세요.");
+                return;
+            }
+            await updateMatchScores(matchId, scores, scorers, recorderId); // [수정] recorderId 전달
             const updatedMatches = await getMatches(get().currentSeason.id);
             set({ matches: updatedMatches });
         } catch (error) { console.error("점수 저장 오류:", error); }
     },
+
 
     checkAttendance: async () => {
         const user = auth.currentUser;

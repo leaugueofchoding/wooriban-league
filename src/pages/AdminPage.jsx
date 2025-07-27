@@ -276,13 +276,45 @@ const TabButton = styled.button`
 
 const MatchItem = styled.div`
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column; /* 세로 정렬로 변경 */
   padding: 1rem;
   margin-bottom: 1rem;
   background-color: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+`;
+
+const MatchSummary = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+`;
+
+const ScorerSection = styled.div`
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+`;
+
+// [수정] ScorerGrid와 TeamScorerList 스타일 추가
+const ScorerGrid = styled.div`
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+`;
+
+const TeamScorerList = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+`;
+
+const ScorerRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
 `;
 
 const ScoreInput = styled.input`
@@ -1237,27 +1269,91 @@ function PointManager() {
 }
 
 function MatchRow({ match }) {
-    const { teams, saveScores, currentSeason } = useLeagueStore();
+    const { players, teams, saveScores, currentSeason } = useLeagueStore();
     const [scoreA, setScoreA] = useState(match.teamA_score ?? '');
     const [scoreB, setScoreB] = useState(match.teamB_score ?? '');
+    const [showScorers, setShowScorers] = useState(false);
+    const [scorers, setScorers] = useState(match.scorers || {});
+
     const isSeasonActive = currentSeason?.status === 'active';
-    const getTeamName = (teamId) => teams.find(t => t.id === teamId)?.teamName || 'N/A';
+    const teamA = teams.find(t => t.id === match.teamA_id);
+    const teamB = teams.find(t => t.id === match.teamB_id);
+    const teamAMembers = teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+    const teamBMembers = teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+
+    const handleScorerChange = (playerId, goals) => {
+        const goalCount = Number(goals);
+        setScorers(prev => {
+            const newScorers = { ...prev };
+            if (goalCount > 0) {
+                newScorers[playerId] = goalCount;
+            } else {
+                delete newScorers[playerId];
+            }
+            return newScorers;
+        });
+    };
+
     const handleSave = () => {
         const scores = { a: Number(scoreA), b: Number(scoreB) };
         if (isNaN(scores.a) || isNaN(scores.b)) {
             return alert('점수를 숫자로 입력해주세요.');
         }
-        saveScores(match.id, scores);
+        saveScores(match.id, scores, scorers);
         alert('저장되었습니다!');
     };
+
     return (
         <MatchItem>
-            <TeamName>{getTeamName(match.teamA_id)}</TeamName>
-            <ScoreInput type="number" value={scoreA} onChange={(e) => setScoreA(e.target.value)} disabled={!isSeasonActive} />
-            <span>vs</span>
-            <ScoreInput type="number" value={scoreB} onChange={(e) => setScoreB(e.target.value)} disabled={!isSeasonActive} />
-            <TeamName>{getTeamName(match.teamB_id)}</TeamName>
-            <SaveButton onClick={handleSave} disabled={!isSeasonActive}>저장</SaveButton>
+            <MatchSummary>
+                <TeamName>{teamA?.teamName || 'N/A'}</TeamName>
+                <ScoreInput type="number" value={scoreA} onChange={(e) => setScoreA(e.target.value)} disabled={!isSeasonActive} />
+                <span>vs</span>
+                <ScoreInput type="number" value={scoreB} onChange={(e) => setScoreB(e.target.value)} disabled={!isSeasonActive} />
+                <TeamName>{teamB?.teamName || 'N/A'}</TeamName>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <SaveButton onClick={() => setShowScorers(s => !s)} disabled={!isSeasonActive}>득점</SaveButton>
+                    <SaveButton onClick={handleSave} disabled={!isSeasonActive}>저장</SaveButton>
+                </div>
+            </MatchSummary>
+            {showScorers && (
+                <ScorerSection>
+                    <ScorerGrid>
+                        <TeamScorerList>
+                            <strong>{teamA?.teamName}</strong>
+                            {teamAMembers.map(player => (
+                                <ScorerRow key={player.id}>
+                                    <span>{player.name}:</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={scorers[player.id] || ''}
+                                        onChange={(e) => handleScorerChange(player.id, e.target.value)}
+                                        style={{ width: '60px' }}
+                                    />
+                                    <span>골</span>
+                                </ScorerRow>
+                            ))}
+                        </TeamScorerList>
+                        <TeamScorerList>
+                            <strong>{teamB?.teamName}</strong>
+                            {teamBMembers.map(player => (
+                                <ScorerRow key={player.id}>
+                                    <span>{player.name}:</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={scorers[player.id] || ''}
+                                        onChange={(e) => handleScorerChange(player.id, e.target.value)}
+                                        style={{ width: '60px' }}
+                                    />
+                                    <span>골</span>
+                                </ScorerRow>
+                            ))}
+                        </TeamScorerList>
+                    </ScorerGrid>
+                </ScorerSection>
+            )}
         </MatchItem>
     );
 }
