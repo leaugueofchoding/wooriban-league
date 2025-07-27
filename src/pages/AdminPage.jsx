@@ -1406,14 +1406,17 @@ function LeagueManager() {
     const [femaleTeamCount, setFemaleTeamCount] = useState(2);
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
-    const [prize, setPrize] = useState(0);
+    // [수정] prize를 객체 형태로 변경
+    const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0 });
     const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
 
     useEffect(() => {
-        if (currentSeason?.winningPrize) {
-            setPrize(currentSeason.winningPrize);
-        } else {
-            setPrize(0);
+        if (currentSeason) {
+            setPrizes({
+                first: currentSeason.winningPrize || 0,
+                second: currentSeason.secondPlacePrize || 0,
+                third: currentSeason.thirdPlacePrize || 0,
+            });
         }
     }, [currentSeason]);
 
@@ -1430,13 +1433,20 @@ function LeagueManager() {
         }
     };
 
-    const handleSavePrize = async () => {
-        if (isNaN(prize) || prize < 0) return alert('보상 포인트는 숫자로 입력해주세요.');
+    const handlePrizesChange = (rank, value) => {
+        setPrizes(prev => ({ ...prev, [rank]: Number(value) || 0 }));
+    };
+
+    const handleSavePrizes = async () => {
         try {
-            await updateSeasonDetails(currentSeason.id, { winningPrize: Number(prize) });
-            alert('우승 보상이 저장되었습니다!');
+            await updateSeasonDetails(currentSeason.id, {
+                winningPrize: prizes.first,
+                secondPlacePrize: prizes.second,
+                thirdPlacePrize: prizes.third,
+            });
+            alert('순위별 보상이 저장되었습니다!');
         } catch (error) {
-            alert('저장 중 오류가 발생했습니다.');
+            alert('보상 저장 중 오류가 발생했습니다.');
         }
     };
 
@@ -1499,19 +1509,32 @@ function LeagueManager() {
                                     </InputGroup>
                                 </div>
                             )}
-                            <InputGroup style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-                                <label htmlFor="prize">우승팀 보상 포인트:</label>
-                                <ScoreInput
-                                    id="prize"
-                                    type="number"
-                                    value={prize}
-                                    onChange={(e) => setPrize(e.target.value)}
-                                    style={{ width: '100px' }}
-                                />
-                                <SaveButton onClick={handleSavePrize}>보상 저장</SaveButton>
-                            </InputGroup>
+                            <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                                <InputGroup style={{ justifyContent: 'space-between' }}>
+                                    <div>
+                                        <label>1위: <ScoreInput type="number" value={prizes.first} onChange={e => handlePrizesChange('first', e.target.value)} /></label>
+                                        <label>2위: <ScoreInput type="number" value={prizes.second} onChange={e => handlePrizesChange('second', e.target.value)} /></label>
+                                        <label>3위: <ScoreInput type="number" value={prizes.third} onChange={e => handlePrizesChange('third', e.target.value)} /></label>
+                                    </div>
+                                    <SaveButton onClick={handleSavePrizes}>보상 저장</SaveButton>
+                                </InputGroup>
+                            </div>
                         </>
-                    ) : <p>시즌 정보를 불러오는 중입니다...</p>}
+                    ) : (
+                        <div>
+                            <p>현재 진행중인 시즌이 없습니다. 새 시즌을 시작해주세요.</p>
+                            <InputGroup>
+                                <input
+                                    type="text"
+                                    value={newSeasonNameForCreate}
+                                    onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
+                                    placeholder="새 시즌 이름 입력 (예: 25-1 시즌)"
+                                    style={{ flex: 1, padding: '0.5rem' }}
+                                />
+                                <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>새 시즌 준비하기</SaveButton>
+                            </InputGroup>
+                        </div>
+                    )}
                 </Section>
             </FullWidthSection>
             <FullWidthSection>

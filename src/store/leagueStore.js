@@ -109,7 +109,7 @@ export const useLeagueStore = create((set, get) => ({
 
                 const myPlayerData = playersData.find(p => p.authUid === currentUser.uid);
                 if (myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role)) {
-                    get().subscribeToApprovalBonus(currentUser.uid);
+                    get().subscribeToRecorderBonus(currentUser.uid); // [수정] 함수 이름 변경
                 }
             }
 
@@ -271,7 +271,7 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
 
-    subscribeToApprovalBonus: (userId) => {
+    subscribeToRecorderBonus: (userId) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayTimestamp = Timestamp.fromDate(today);
@@ -280,18 +280,19 @@ export const useLeagueStore = create((set, get) => ({
         const q = query(
             historyRef,
             where('playerId', '==', userId),
-            where('reason', '>=', '미션 승인 보너스'),
-            where('reason', '<=', '미션 승인 보너스\uf8ff'),
+            where('reason', '>=', '보너스'),
+            where('reason', '<=', '보너스\uf8ff'),
             where('timestamp', '>=', todayTimestamp)
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             let totalBonus = 0;
+            // [수정] querySnapshot.forEach 내부의 if문 삭제
             querySnapshot.forEach(doc => {
                 totalBonus += doc.data().changeAmount;
             });
             set({ approvalBonus: totalBonus });
-        }, (error) => console.error("승인 보너스 실시간 수신 오류:", error));
+        }, (error) => console.error("기록원 보너스 실시간 수신 오류:", error));
 
         set(state => ({ listeners: { ...state.listeners, approvalBonus: unsubscribe } }));
     },
@@ -338,7 +339,6 @@ export const useLeagueStore = create((set, get) => ({
         return await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, correctAnswer);
     },
 
-    // --- Season & League Management ---
     createSeason: async (seasonName) => {
         await createNewSeason(seasonName);
         const seasonsData = await getSeasons();
@@ -356,28 +356,72 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) { console.error("시즌 시작 오류:", error); }
     },
 
-    updateSeasonDetails: async (seasonId, dataToUpdate) => {
-        try {
-            await updateSeason(seasonId, dataToUpdate);
-            // 현재 시즌 정보도 함께 업데이트
-            set(state => ({
-                currentSeason: { ...state.currentSeason, ...dataToUpdate }
-            }));
-        } catch (error) {
-            console.error("시즌 정보 업데이트 오류:", error);
-            throw error; // 오류 발생 시 상위로 전파
-        }
-    },
-
     endSeason: async () => {
         const season = get().currentSeason;
         if (!season || season.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
-        if (!confirm('시즌을 종료하시겠습니까?')) return;
+        if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
+
         try {
+            const { teams, matches, batchAdjustPoints } = get();
+            const completedMatches = matches.filter(m => m.status === '완료');
+            let stats = teams.map(team => ({
+                id: team.id, teamName: team.teamName, points: 0, goalDifference: 0, goalsFor: 0,
+            }));
+            completedMatches.forEach(match => {
+                const teamA = stats.find(t => t.id === match.teamA_id);
+                const teamB = stats.find(t => t.id === match.teamB_id);
+                if (!teamA || !teamB) return;
+                teamA.goalsFor += match.teamA_score;
+                teamB.goalsFor += match.teamB_score;
+                teamA.goalDifference += match.teamA_score - match.teamB_score;
+                teamB.goalDifference += match.teamB_score - match.teamA_score;
+                if (match.teamA_score > match.teamB_score) teamA.points += 3;
+                else if (match.teamB_score > match.teamA_score) teamB.points += 3;
+                else { teamA.points++; teamB.points++; }
+            });
+            stats.sort((a, b) => {
+                if (b.points !== a.points) return b.points - a.points;
+                if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+                return b.goalsFor - a.goalsFor;
+            });
+
+            const prizeConfig = [
+                { rank: 1, prize: season.winningPrize || 0, label: "우승" },
+                { rank: 2, prize: season.secondPlacePrize || 0, label: "준우승" },
+                { rank: 3, prize: season.thirdPlacePrize || 0, label: "3위" }
+            ];
+
+            for (const config of prizeConfig) {
+                if (stats.length >= config.rank && config.prize > 0) {
+                    const rankedTeamId = stats[config.rank - 1].id;
+                    const rankedTeam = teams.find(t => t.id === rankedTeamId);
+                    if (rankedTeam && rankedTeam.members.length > 0) {
+                        await batchAdjustPoints(rankedTeam.members, config.prize, `${season.seasonName} ${config.label} 보상`);
+                    }
+                }
+            }
+
             await updateSeason(season.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));
-            alert('시즌이 종료되었습니다.');
-        } catch (error) { console.error("시즌 종료 오류:", error); }
+            alert('시즌이 종료되고 순위별 보상이 지급되었습니다.');
+
+        } catch (error) {
+            console.error("시즌 종료 및 보상 지급 오류:", error);
+            alert("시즌 종료 중 오류가 발생했습니다.");
+        }
+    },
+
+    updateSeasonDetails: async (seasonId, dataToUpdate) => {
+        try {
+            await updateSeason(seasonId, dataToUpdate);
+            set(state => ({
+                seasons: state.seasons.map(s => s.id === seasonId ? { ...s, ...dataToUpdate } : s),
+                currentSeason: state.currentSeason?.id === seasonId ? { ...state.currentSeason, ...dataToUpdate } : state.currentSeason
+            }));
+        } catch (error) {
+            console.error("시즌 정보 업데이트 오류:", error);
+            throw error;
+        }
     },
 
     linkPlayer: async (playerId, authUid, role) => {
@@ -414,6 +458,20 @@ export const useLeagueStore = create((set, get) => ({
         set({ teams: updatedTeams });
     },
 
+    setTeamCaptain: async (teamId, captainId) => {
+        try {
+            await updateTeamCaptain(teamId, captainId);
+            const seasonId = get().currentSeason?.id;
+            if (seasonId) {
+                const updatedTeams = await getTeams(seasonId);
+                set({ teams: updatedTeams });
+            }
+            alert('주장이 임명되었습니다.');
+        } catch (error) {
+            alert('주장 임명 중 오류가 발생했습니다.');
+        }
+    },
+
     batchCreateTeams: async (maleCount, femaleCount) => {
         const seasonId = get().currentSeason?.id;
         if (!seasonId) return alert('현재 시즌 정보를 불러올 수 없습니다.');
@@ -446,22 +504,6 @@ export const useLeagueStore = create((set, get) => ({
         const seasonId = get().currentSeason?.id;
         const updatedTeams = await getTeams(seasonId);
         set({ teams: updatedTeams });
-    },
-
-    // [추가] 주장 임명 액션
-    setTeamCaptain: async (teamId, captainId) => {
-        try {
-            await updateTeamCaptain(teamId, captainId);
-            const seasonId = get().currentSeason?.id;
-            if (seasonId) {
-                const updatedTeams = await getTeams(seasonId);
-                set({ teams: updatedTeams });
-            }
-            alert('주장이 임명되었습니다.');
-        } catch (error) {
-            console.error("주장 임명 오류:", error);
-            alert('주장 임명 중 오류가 발생했습니다.');
-        }
     },
 
     autoAssignTeams: async () => {
@@ -516,17 +558,16 @@ export const useLeagueStore = create((set, get) => ({
 
     saveScores: async (matchId, scores, scorers) => {
         try {
-            const recorderId = auth.currentUser?.uid; // [추가] 현재 유저의 ID를 recorderId로 사용
+            const recorderId = auth.currentUser?.uid;
             if (!recorderId) {
                 alert("로그인 정보가 없습니다. 다시 로그인해주세요.");
                 return;
             }
-            await updateMatchScores(matchId, scores, scorers, recorderId); // [수정] recorderId 전달
+            await updateMatchScores(matchId, scores, scorers, recorderId);
             const updatedMatches = await getMatches(get().currentSeason.id);
             set({ matches: updatedMatches });
         } catch (error) { console.error("점수 저장 오류:", error); }
     },
-
 
     checkAttendance: async () => {
         const user = auth.currentUser;

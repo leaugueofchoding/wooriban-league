@@ -230,8 +230,8 @@ function Auth({ user }) {
                                 <NotificationList>
                                     {isRecorderOrAdmin && approvalBonus > 0 && (
                                         <BonusNotificationItem>
-                                            <h5>💰 오늘의 승인 보너스</h5>
-                                            <p>미션 승인 보너스로 총 {approvalBonus}P를 획득했습니다.</p>
+                                            <h5>💰 오늘의 기록 보너스</h5>
+                                            <p>미션 승인 및 경기 기록 보너스로 총 {approvalBonus}P를 획득했습니다.</p>
                                         </BonusNotificationItem>
                                     )}
 

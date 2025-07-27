@@ -85,12 +85,12 @@ const SeasonContent = styled.div`
     opacity: ${props => props.$isOpen ? 1 : 0};
     overflow: hidden;
     transition: all 0.4s ease-in-out;
-    display: flex; /* [수정] flex 레이아웃으로 변경 */
-    gap: 2rem; /* [수정] 내부 요소 간 간격 추가 */
+    display: flex;
+    gap: 2rem;
 `;
 
 const SeasonStatsSummary = styled.div`
-    flex-basis: 200px; /* 고정 너비 */
+    flex-basis: 200px;
     flex-shrink: 0;
 `;
 
@@ -109,7 +109,7 @@ const SummaryItem = styled.div`
 `;
 
 const TeamInfo = styled.div`
-    flex-grow: 1; /* 남은 공간 모두 차지 */
+    flex-grow: 1;
 `;
 
 const TeammateGrid = styled.div`
@@ -129,12 +129,52 @@ const AvatarDisplay = styled.div`
   background-color: #e9ecef;
   margin: 0 auto 0.5rem;
   position: relative;
-  overflow: hidden;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 `;
 
 const PartImage = styled.img`
   position: absolute; top: 0; left: 0;
   width: 100%; height: 100%; object-fit: contain;
+`;
+
+const BadgeContainer = styled.div`
+    margin-top: 0.25rem;
+    font-size: 1.1rem;
+    height: 22px; /* 뱃지가 없을 때도 높이 유지 */
+`;
+
+const MatchHistoryList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid #dee2e6;
+  padding-top: 1.5rem;
+`;
+
+const MatchHistoryItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: #fff;
+  border-radius: 6px;
+  font-size: 0.9rem;
+`;
+
+const MatchResult = styled.span`
+    font-weight: bold;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    color: white;
+    width: 2.5rem;
+    text-align: center;
+    background-color: ${props => {
+        if (props.result === 'W') return '#28a745';
+        if (props.result === 'L') return '#dc3545';
+        return '#6c757d';
+    }};
 `;
 
 const ExitButton = styled.button`
@@ -155,8 +195,9 @@ const ExitButton = styled.button`
 // --- Components ---
 
 function SeasonStatsCard({ seasonData }) {
-    const { season, team, stats, rank } = seasonData;
-    const { players, avatarParts } = useLeagueStore();
+    const { season, team, stats, rank, isTopScorer } = seasonData;
+    const { players, avatarParts, teams } = useLeagueStore();
+    const { playerId } = useParams();
     const [isOpen, setIsOpen] = useState(false);
 
     const teammateAvatars = useMemo(() => {
@@ -176,7 +217,9 @@ function SeasonStatsCard({ seasonData }) {
     }, [team, players, avatarParts]);
 
     const seasonPoints = useMemo(() => {
-        return (stats.wins * 3) + (stats.draws * 1);
+        const VICTORY_REWARD = 50;
+        const PARTICIPATION_REWARD = 15;
+        return (stats.wins * VICTORY_REWARD) + ((stats.draws + stats.losses) * PARTICIPATION_REWARD);
     }, [stats]);
 
     return (
@@ -196,7 +239,7 @@ function SeasonStatsCard({ seasonData }) {
                         <p>{stats.wins}승 {stats.draws}무 {stats.losses}패 / {stats.goals}골</p>
                     </SummaryItem>
                     <SummaryItem>
-                        <h4>획득 상금</h4>
+                        <h4>획득 포인트</h4>
                         <p>{seasonPoints} P</p>
                     </SummaryItem>
                 </SeasonStatsSummary>
@@ -209,6 +252,10 @@ function SeasonStatsCard({ seasonData }) {
                                     {mate.urls.map((url, index) => <PartImage key={`${url}-${index}`} src={url} />)}
                                 </AvatarDisplay>
                                 <span>{mate.name}</span>
+                                <BadgeContainer>
+                                    {team.captainId === mate.id && <span title="주장">Ⓒ </span>}
+                                    {isTopScorer && playerId === mate.id && <span title="득점왕">⚽</span>}
+                                </BadgeContainer>
                             </TeammateCard>
                         ))}
                     </TeammateGrid>
@@ -244,7 +291,7 @@ function PlayerStatsPage() {
             totals.wins += seasonData.stats.wins;
             totals.played += seasonData.stats.played;
             totals.goals += seasonData.stats.goals;
-            if (seasonData.rank === 1) { // 1위면 우승으로 간주
+            if (seasonData.rank === 1) {
                 totals.championships++;
             }
         });
@@ -272,12 +319,12 @@ function PlayerStatsPage() {
                     <StatLabel>통산 승리</StatLabel>
                 </StatCard>
                 <StatCard>
-                    <StatValue color="#28a745">⚽ {totalStats.goals}</StatValue>
-                    <StatLabel>통산 득점</StatLabel>
-                </StatCard>
-                <StatCard>
                     <StatValue>⚔️ {totalStats.played}</StatValue>
                     <StatLabel>통산 출전</StatLabel>
+                </StatCard>
+                <StatCard>
+                    <StatValue color="#28a745">⚽ {totalStats.goals}</StatValue>
+                    <StatLabel>통산 득점</StatLabel>
                 </StatCard>
             </TotalStatsGrid>
 
