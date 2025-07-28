@@ -1,6 +1,6 @@
 // src/pages/AdminPage.jsx
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
@@ -27,10 +27,9 @@ import {
     db,
     completeClassGoal,
     createNewSeason,
-    getAllSuggestions, // [추가]
-    replyToSuggestion  // [추가]
+    replyToSuggestion
 } from '../api/firebase.js';
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
 
 // --- Styled Components ---
@@ -205,46 +204,133 @@ const ListItem = styled.li`
   }
 `;
 
-// ▼▼▼ 이 코드를 추가해주세요! ▼▼▼
-const SuggestionItem = styled.div`
-  padding: 1.5rem;
+const ChatLayout = styled.div`
+  display: flex;
+  height: 70vh;
   background-color: #fff;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  margin-bottom: 1rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  overflow: hidden;
 `;
-const MessageHeader = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #eee;
+
+const StudentListPanel = styled.div`
+  width: 250px;
+  flex-shrink: 0;
+  border-right: 1px solid #dee2e6;
+  overflow-y: auto;
 `;
-const StudentInfo = styled.span`
-    font-weight: bold;
-`;
-const Timestamp = styled.span`
-  font-size: 0.8rem;
-  color: #6c757d;
-`;
-const MessageContent = styled.p`
+
+const StudentListItem = styled.div`
+  padding: 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f3f5;
+  background-color: ${props => props.$active ? '#e9ecef' : 'transparent'};
+  
+  &:hover {
+    background-color: #f8f9fa;
+  }
+
+  p {
     margin: 0;
-    white-space: pre-wrap; /* 줄바꿈 유지 */
+    font-weight: bold;
+  }
+
+  small {
+    color: #6c757d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+  }
 `;
-const ReplyContainer = styled.div`
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px dashed #ccc;
+
+const ChatPanel = styled.div`
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
 `;
+
+const ChatHeader = styled.div`
+  padding: 1rem;
+  font-weight: bold;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #dee2e6;
+  text-align: center;
+`;
+
+const MessageArea = styled.div`
+  flex-grow: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+`;
+
+const MessageBubble = styled.div`
+  max-width: 70%;
+  padding: 0.75rem 1rem;
+  border-radius: 18px;
+  margin-bottom: 1rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+
+  &.student {
+    background-color: #fff;
+    color: #343a40;
+    align-self: flex-start;
+    border: 1px solid #e9ecef;
+    border-bottom-left-radius: 4px;
+  }
+
+  &.admin {
+    background-color: #007bff;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+`;
+
+const Timestamp = styled.span`
+  font-size: 0.75rem;
+  color: #6c757d;
+  display: block;
+  margin-top: 0.5rem;
+  text-align: ${props => props.$align || 'left'};
+`;
+
+const InputArea = styled.div`
+  display: flex;
+  padding: 1rem;
+  border-top: 1px solid #dee2e6;
+  background-color: #f8f9fa;
+`;
+
 const TextArea = styled.textarea`
-  width: 100%;
-  height: 80px;
-  padding: 0.5rem;
+  flex-grow: 1;
+  padding: 0.75rem;
   border: 1px solid #ced4da;
-  border-radius: 4px;
-  resize: vertical;
-  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  resize: none;
+  font-family: inherit;
+  height: 48px;
+`;
+
+const SubmitButton = styled.button`
+  padding: 0 1.5rem;
+  margin-left: 1rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #007bff;
+  color: white;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+
+  &:disabled {
+    background-color: #6c757d;
+  }
 `;
 
 const MemberList = styled.div`
@@ -341,7 +427,6 @@ const ScorerSection = styled.div`
     border-top: 1px solid #eee;
 `;
 
-// [수정] ScorerGrid와 TeamScorerList 스타일 추가
 const ScorerGrid = styled.div`
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -361,7 +446,6 @@ const ScorerRow = styled.div`
     margin-bottom: 0.5rem;
 `;
 
-// ▼▼▼ 이 코드를 추가해주세요! ▼▼▼
 const ScoreInput = styled.input`
   width: 60px;
   text-align: center;
@@ -422,8 +506,6 @@ const VsText = styled.span`
   color: #343a40;
   margin: 0 1rem; /* 양 옆에 간격을 줍니다 */
 `;
-// ▲▲▲ 여기까지 추가해주세요 ▲▲▲
-
 
 const SaveButton = styled.button`
   padding: 0.5rem 1rem;
@@ -540,7 +622,6 @@ function PendingMissionWidget() {
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // 삭제된 미션의 제출 기록은 필터링
             const validSubmissions = submissions.filter(sub =>
                 missions.some(m => m.id === sub.missionId)
             );
@@ -569,14 +650,11 @@ function PendingMissionWidget() {
             if (action === 'approve') {
                 await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, mission.reward);
             } else if (action === 'reject') {
-                await rejectMissionSubmission(submission.id, student.authUid, mission.title);
+                await rejectSubmission(submission.id, student.authUid, mission.title);
             }
-            // onSnapshot이 자동으로 목록을 갱신하므로 fetchInitialData 호출 불필요
         } catch (error) {
             console.error(`미션 ${action} 오류:`, error);
             alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
-        } finally {
-            // onSnapshot으로 인해 목록이 갱신되므로, processingIds에서 수동으로 제거할 필요가 없음
         }
     };
 
@@ -592,7 +670,7 @@ function PendingMissionWidget() {
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
 
-                        if (!mission) return null; // 삭제된 미션은 렌더링하지 않음
+                        if (!mission) return null;
 
                         return (
                             <ListItem key={sub.id}>
@@ -616,36 +694,73 @@ function PendingMissionWidget() {
 }
 
 function SuggestionManager() {
-    const [suggestions, setSuggestions] = useState([]);
-    const [replies, setReplies] = useState({});
+    const { players } = useLeagueStore();
+    const [allSuggestions, setAllSuggestions] = useState([]);
+    const [selectedStudentId, setSelectedStudentId] = useState(null);
+    const [replyContent, setReplyContent] = useState('');
     const [isLoading, setIsLoading] = useState(true);
-
-    const fetchSuggestions = async () => {
-        setIsLoading(true);
-        const allSuggestions = await getAllSuggestions();
-        setSuggestions(allSuggestions);
-        setIsLoading(false);
-    };
+    const messageAreaRef = useRef(null);
 
     useEffect(() => {
-        fetchSuggestions();
+        const q = query(collection(db, "suggestions"), orderBy("createdAt", "desc"));
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const suggestionsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAllSuggestions(suggestionsData);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
     }, []);
 
-    const handleReplyChange = (id, text) => {
-        setReplies(prev => ({ ...prev, [id]: text }));
-    };
-
-    const handleReplySubmit = async (id) => {
-        const replyContent = replies[id];
-        if (!replyContent || !replyContent.trim()) {
-            return alert('답글 내용을 입력해주세요.');
+    useEffect(() => {
+        if (messageAreaRef.current) {
+            messageAreaRef.current.scrollTop = messageAreaRef.current.scrollHeight;
         }
+    }, [selectedStudentId, allSuggestions]);
+
+    const studentThreads = useMemo(() => {
+        const threads = allSuggestions.reduce((acc, msg) => {
+            if (!acc[msg.studentId]) {
+                acc[msg.studentId] = {
+                    studentName: msg.studentName,
+                    lastMessage: msg.message,
+                    lastTimestamp: msg.createdAt,
+                    messages: []
+                };
+            }
+            acc[msg.studentId].messages.push(msg);
+            if (msg.createdAt > acc[msg.studentId].lastTimestamp) {
+                acc[msg.studentId].lastMessage = msg.message;
+                acc[msg.studentId].lastTimestamp = msg.createdAt;
+            }
+            return acc;
+        }, {});
+
+        return Object.entries(threads)
+            .sort(([, a], [, b]) => b.lastTimestamp.toMillis() - a.lastTimestamp.toMillis())
+            .map(([studentId, data]) => ({ studentId, ...data }));
+    }, [allSuggestions]);
+
+    const selectedThreadMessages = useMemo(() => {
+        if (!selectedStudentId) return [];
+        const thread = studentThreads.find(t => t.studentId === selectedStudentId);
+        return thread ? [...thread.messages].sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis()) : [];
+    }, [selectedStudentId, studentThreads]);
+
+    const handleReplySubmit = async () => {
+        if (!replyContent.trim() || !selectedStudentId) return;
+        const lastMessage = selectedThreadMessages[selectedThreadMessages.length - 1];
+        const student = players.find(p => p.id === selectedStudentId);
+
+        if (!lastMessage || !student) {
+            alert("답변을 보낼 대상 정보를 찾을 수 없습니다.");
+            return;
+        }
+
         try {
-            await replyToSuggestion(id, replyContent);
-            alert('답글이 성공적으로 등록되었습니다.');
-            fetchSuggestions(); // 목록 새로고침
+            await replyToSuggestion(lastMessage.id, replyContent, student.authUid);
+            setReplyContent('');
         } catch (error) {
-            alert(`답글 등록 실패: ${error.message}`);
+            alert(`답변 전송 실패: ${error.message}`);
         }
     };
 
@@ -657,37 +772,64 @@ function SuggestionManager() {
     return (
         <FullWidthSection>
             <Section>
-                <SectionTitle>건의사항 확인 및 답변</SectionTitle>
-                {isLoading ? <p>로딩 중...</p> : suggestions.map(item => (
-                    <SuggestionItem key={item.id}>
-                        <MessageHeader>
-                            <StudentInfo>{item.studentName} 학생</StudentInfo>
-                            <Timestamp>{formatDate(item.createdAt)}</Timestamp>
-                        </MessageHeader>
-                        <MessageContent>{item.message}</MessageContent>
-
-                        <ReplyContainer>
-                            {item.reply ? (
-                                <>
-                                    <strong>👑 관리자 답변:</strong>
-                                    <MessageContent>{item.reply}</MessageContent>
-                                    <Timestamp>{formatDate(item.repliedAt)}</Timestamp>
-                                </>
-                            ) : (
-                                <>
+                <SectionTitle>학생 메시지 확인 및 답변</SectionTitle>
+                <ChatLayout>
+                    <StudentListPanel>
+                        {isLoading ? <p style={{ padding: '1rem' }}>로딩 중...</p> :
+                            studentThreads.map(thread => (
+                                <StudentListItem
+                                    key={thread.studentId}
+                                    $active={selectedStudentId === thread.studentId}
+                                    onClick={() => setSelectedStudentId(thread.studentId)}
+                                >
+                                    <p>{thread.studentName}</p>
+                                    <small>{thread.lastMessage}</small>
+                                </StudentListItem>
+                            ))
+                        }
+                    </StudentListPanel>
+                    <ChatPanel>
+                        {selectedStudentId ? (
+                            <>
+                                <ChatHeader>{studentThreads.find(t => t.studentId === selectedStudentId)?.studentName} 학생과의 대화</ChatHeader>
+                                <MessageArea ref={messageAreaRef}>
+                                    {selectedThreadMessages.map(item => (
+                                        <React.Fragment key={item.id}>
+                                            <MessageBubble className="student">
+                                                {item.message}
+                                                <Timestamp>{formatDate(item.createdAt)}</Timestamp>
+                                            </MessageBubble>
+                                            {item.reply && (
+                                                <MessageBubble className="admin">
+                                                    {item.reply}
+                                                    <Timestamp $align="right">{formatDate(item.repliedAt)}</Timestamp>
+                                                </MessageBubble>
+                                            )}
+                                        </React.Fragment>
+                                    ))}
+                                </MessageArea>
+                                <InputArea>
                                     <TextArea
-                                        placeholder="답글을 입력하세요..."
-                                        value={replies[item.id] || ''}
-                                        onChange={(e) => handleReplyChange(item.id, e.target.value)}
+                                        value={replyContent}
+                                        onChange={(e) => setReplyContent(e.target.value)}
+                                        placeholder="답변을 입력하세요..."
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleReplySubmit();
+                                            }
+                                        }}
                                     />
-                                    <StyledButton onClick={() => handleReplySubmit(item.id)} style={{ alignSelf: 'flex-end' }}>
-                                        답글 달기
-                                    </StyledButton>
-                                </>
-                            )}
-                        </ReplyContainer>
-                    </SuggestionItem>
-                ))}
+                                    <SubmitButton onClick={handleReplySubmit} disabled={!replyContent.trim()}>전송</SubmitButton>
+                                </InputArea>
+                            </>
+                        ) : (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#6c757d' }}>
+                                <p>왼쪽에서 학생을 선택하여 대화를 시작하세요.</p>
+                            </div>
+                        )}
+                    </ChatPanel>
+                </ChatLayout>
             </Section>
         </FullWidthSection>
     );
@@ -734,7 +876,6 @@ function GoalManager() {
         }
     };
 
-    // [추가] 목표 완료 처리 핸들러
     const handleGoalComplete = async (goalId) => {
         if (window.confirm("이 목표를 '완료' 처리하여 대시보드에서 숨기시겠습니까?")) {
             try {
@@ -782,7 +923,6 @@ function GoalManager() {
                                         </span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        {/* [추가] 완료 처리 버튼 */}
                                         <SaveButton
                                             onClick={() => handleGoalComplete(goal.id)}
                                             style={{ backgroundColor: '#28a745' }}
@@ -1106,7 +1246,6 @@ function AvatarPartManager() {
             <Section>
                 <SectionTitle>아바타 아이템 관리 🎨</SectionTitle>
 
-                {/* 파일 업로드 UI */}
                 <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
                     <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
                     <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
@@ -1119,7 +1258,6 @@ function AvatarPartManager() {
                     </SaveButton>
                 </InputGroup>
 
-                {/* 일괄 작업 버튼 UI */}
                 <InputGroup style={{ justifyContent: 'flex-start' }}>
                     <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                         {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
@@ -1132,7 +1270,6 @@ function AvatarPartManager() {
                     </SaveButton>
                 </InputGroup>
 
-                {/* 세일 모드 UI */}
                 {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <SaveButton onClick={handleSelectAll}>전체 선택/해제</SaveButton>
@@ -1332,17 +1469,14 @@ function PointManager() {
         });
     };
 
-    // [추가] 전체 선택/해제 핸들러
     const handleSelectAll = () => {
         const nonAdminPlayerIds = players.filter(p => p.role !== 'admin').map(p => p.id);
-
-        // 모든 학생이 이미 선택되었는지 확인
         const allSelected = nonAdminPlayerIds.length > 0 && nonAdminPlayerIds.every(id => selectedPlayerIds.has(id));
 
         if (allSelected) {
-            setSelectedPlayerIds(new Set()); // 전체 해제
+            setSelectedPlayerIds(new Set());
         } else {
-            setSelectedPlayerIds(new Set(nonAdminPlayerIds)); // 전체 선택 (관리자 제외)
+            setSelectedPlayerIds(new Set(nonAdminPlayerIds));
         }
     };
 
@@ -1366,7 +1500,6 @@ function PointManager() {
                     <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>
                         부정행위 페널티 부여 또는 특별 보상 지급 시 사용합니다.
                     </p>
-                    {/* [추가] 전체 선택 버튼 */}
                     <StyledButton onClick={handleSelectAll}>전체 선택/해제</StyledButton>
                 </div>
 
@@ -1383,7 +1516,6 @@ function PointManager() {
                     marginBottom: '1rem'
                 }}>
                     {sortedPlayers.map(player => {
-                        // 관리자는 목록에 표시되지만 비활성화 처리
                         const isAdmin = player.role === 'admin';
                         return (
                             <div key={player.id} title={isAdmin ? "관리자는 선택할 수 없습니다." : ""}>
@@ -1461,7 +1593,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     const [showScorers, setShowScorers] = useState(isInitiallyOpen);
     const [scorers, setScorers] = useState(match.scorers || {});
 
-    // [추가] 자책골 상태 관리
     const [ownGoals, setOwnGoals] = useState({ A: 0, B: 0 });
 
     const isSeasonActive = currentSeason?.status === 'active';
@@ -1474,10 +1605,8 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
         const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
         const currentGoals = scorers[playerId] || 0;
 
-        // 룰 1: 0골 상태에서 '-' 버튼 클릭 방지
         if (amount === -1 && currentGoals === 0) return;
 
-        // 룰 2: 상대팀 점수가 0점이면 '+' 버튼 클릭 방지
         if (amount === 1) {
             if (playerTeam === 'A' && scoreB === 0) return;
             if (playerTeam === 'B' && scoreA === 0) return;
@@ -1501,7 +1630,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
         }
     };
 
-    // [추가] 자책골 핸들러
     const handleOwnGoalChange = (team, amount) => {
         const currentOwnGoals = ownGoals[team];
 
@@ -1522,7 +1650,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     };
 
     const handleSave = () => {
-        // 참고: 현재 saveScores 함수는 자책골을 저장하지 않습니다. 추후 leagueStore 수정이 필요합니다.
         saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
         alert('저장되었습니다!');
         onSave(match.id);
@@ -1564,7 +1691,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
                                     </ScoreControl>
                                 </ScorerRow>
                             ))}
-                            {/* ▼▼▼ [추가] A팀 자책골 UI ▼▼▼ */}
                             <ScorerRow>
                                 <span style={{ color: 'red' }}>자책:</span>
                                 <ScoreControl>
@@ -1587,7 +1713,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
                                     </ScoreControl>
                                 </ScorerRow>
                             ))}
-                            {/* ▼▼▼ [추가] B팀 자책골 UI ▼▼▼ */}
                             <ScorerRow>
                                 <span style={{ color: 'red' }}>자책:</span>
                                 <ScoreControl>
@@ -1606,7 +1731,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
 }
 
 function PlayerManager() {
-    // [수정] togglePlayerStatus 추가
     const { players, currentSeason, togglePlayerStatus } = useLeagueStore();
     const [showInactive, setShowInactive] = useState(false);
     const isNotPreparing = currentSeason?.status !== 'preparing';
@@ -1635,7 +1759,6 @@ function PlayerManager() {
                                     <Link to={`/profile/${player.id}`}>
                                         <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
                                     </Link>
-                                    {/* ▼▼▼ [수정] 삭제 버튼을 비활성화 버튼으로 변경 ▼▼▼ */}
                                     <StyledButton
                                         onClick={() => togglePlayerStatus(player.id, player.status)}
                                         disabled={isNotPreparing && !isInactive}
@@ -1671,10 +1794,9 @@ function LeagueManager() {
     const [femaleTeamCount, setFemaleTeamCount] = useState(2);
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
-    const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0, topScorer: 0 }); // [수정] topScorer 추가
+    const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0, topScorer: 0 });
     const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
 
-    // ▼▼▼ [추가] 아코디언 상태 관리를 위한 state ▼▼▼
     const [openedMatchId, setOpenedMatchId] = useState(null);
 
     const unassignedPlayers = useMemo(() => {
@@ -1683,11 +1805,9 @@ function LeagueManager() {
     }, [players, teams]);
 
     const filteredMatches = useMemo(() => {
-        // [수정] 'completed'를 '완료'로 변경하여 필터링 오류 수정
         return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
     }, [matches, activeTab]);
 
-    // ▼▼▼ [추가] 첫 번째 '입력 대기' 경기를 자동으로 열기 위한 로직 ▼▼▼
     useEffect(() => {
         const pendingMatches = matches.filter(m => m.status !== '완료');
         if (pendingMatches.length > 0) {
@@ -1703,17 +1823,15 @@ function LeagueManager() {
                 first: currentSeason.winningPrize || 0,
                 second: currentSeason.secondPlacePrize || 0,
                 third: currentSeason.thirdPlacePrize || 0,
-                topScorer: currentSeason.topScorerPrize || 0, // [추가]
+                topScorer: currentSeason.topScorerPrize || 0,
             });
         }
     }, [currentSeason]);
 
-    // ▼▼▼ [추가] 저장 후 다음 경기를 여는 핸들러 ▼▼▼
     const handleSaveAndOpenNext = (savedMatchId) => {
         const pendingMatches = matches.filter(m => m.status !== '완료');
         const currentIndex = pendingMatches.findIndex(m => m.id === savedMatchId);
 
-        // 다음 경기가 있으면 그 경기의 ID를, 없으면 null을 설정
         const nextMatch = pendingMatches[currentIndex + 1];
         setOpenedMatchId(nextMatch ? nextMatch.id : null);
     };
@@ -1731,7 +1849,6 @@ function LeagueManager() {
         }
     };
 
-    // ... (handlePrizesChange, handleSavePrizes 등 기존 핸들러 함수들은 그대로 유지) ...
     const handlePrizesChange = (rank, value) => {
         setPrizes(prev => ({ ...prev, [rank]: Number(value) || 0 }));
     };
@@ -1742,7 +1859,7 @@ function LeagueManager() {
                 winningPrize: prizes.first,
                 secondPlacePrize: prizes.second,
                 thirdPlacePrize: prizes.third,
-                topScorerPrize: prizes.topScorer, // [추가]
+                topScorerPrize: prizes.topScorer,
             });
             alert('순위별 보상이 저장되었습니다!');
         } catch (error) {
@@ -1807,7 +1924,6 @@ function LeagueManager() {
                                         <label>1위: <ScoreInput type="number" value={prizes.first} onChange={e => handlePrizesChange('first', e.target.value)} /></label>
                                         <label>2위: <ScoreInput type="number" value={prizes.second} onChange={e => handlePrizesChange('second', e.target.value)} /></label>
                                         <label>3위: <ScoreInput type="number" value={prizes.third} onChange={e => handlePrizesChange('third', e.target.value)} /></label>
-                                        {/* [추가] 득점왕 보상 입력 필드 */}
                                         <label style={{ marginLeft: '1rem' }}>득점왕: <ScoreInput type="number" value={prizes.topScorer} onChange={e => handlePrizesChange('topScorer', e.target.value)} /></label>
                                     </div>
                                     <SaveButton onClick={handleSavePrizes}>보상 저장</SaveButton>
@@ -1918,7 +2034,6 @@ function LeagueManager() {
                             <MatchRow
                                 key={match.id}
                                 match={match}
-                                // ▼▼▼ [추가] props 전달 ▼▼▼
                                 isInitiallyOpen={openedMatchId === match.id}
                                 onSave={handleSaveAndOpenNext}
                             />
@@ -1932,8 +2047,8 @@ function LeagueManager() {
 
 
 function AdminPage() {
-    const [activeMenu, setActiveMenu] = useState('mission');
-    const [activeSubMenu, setActiveSubMenu] = useState('mission_dashboard');
+    const [activeMenu, setActiveMenu] = useState('suggestion');
+    const [activeSubMenu, setActiveSubMenu] = useState('');
 
     const renderContent = () => {
         if (activeMenu === 'mission') {
@@ -1947,20 +2062,8 @@ function AdminPage() {
                 </>
             );
         }
-        // ▼▼▼ [추가] 건의사항 탭 렌더링 ▼▼▼
         if (activeMenu === 'suggestion') {
             return <SuggestionManager />;
-        }
-        if (activeMenu === 'student') {
-            return (
-                <>
-                    <GridContainer>
-                        <PendingMissionWidget />
-                        <MissionManager />
-                    </GridContainer>
-                    <GoalManager />
-                </>
-            );
         }
         if (activeMenu === 'student') {
             return (
@@ -1980,7 +2083,7 @@ function AdminPage() {
                 default: return <PlayerManager />;
             }
         }
-        return <PendingMissionWidget />;
+        return <SuggestionManager />;
     };
 
     const handleMenuClick = (menu) => {
@@ -1989,6 +2092,7 @@ function AdminPage() {
         else if (menu === 'student') setActiveSubMenu('role_manage');
         else if (menu === 'shop') setActiveSubMenu('item_manage');
         else if (menu === 'league') setActiveSubMenu('league_manage');
+        else setActiveSubMenu('');
     };
 
     return (
@@ -1999,10 +2103,7 @@ function AdminPage() {
                         <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
                     </NavItem>
                     <NavItem>
-                        <NavButton $active={activeMenu === 'suggestion'} onClick={() => handleMenuClick('suggestion')}>건의사항 확인</NavButton>
-                    </NavItem>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
+                        <NavButton $active={activeMenu === 'suggestion'} onClick={() => handleMenuClick('suggestion')}>학생 메시지</NavButton>
                     </NavItem>
                     <NavItem>
                         <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
