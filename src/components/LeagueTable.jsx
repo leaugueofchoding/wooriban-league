@@ -43,7 +43,6 @@ const Emblem = styled.img`
 function LeagueTable({ standings }) {
     return (
         <TableWrapper>
-            <h2>리그 순위</h2>
             <Table>
                 <thead>
                     <tr>

@@ -11,26 +11,40 @@ import { useNavigate } from 'react-router-dom';
 const ShopWrapper = styled.div`
   max-width: 1200px;
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 1rem; // [수정] 모바일 패딩
 `;
 const Title = styled.h1`
   text-align: center;
   margin-bottom: 2rem;
   font-size: 2.5rem;
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    font-size: 2rem;
+  }
 `;
 const ContentWrapper = styled.div`
   display: flex;
   gap: 2rem;
   align-items: flex-start;
+  // [추가] 모바일 반응형
+  @media (max-width: 992px) {
+    flex-direction: column;
+  }
 `;
 const ItemContainer = styled.div`
   flex: 3;
+  width: 100%; // [추가] 모바일 레이아웃
 `;
 const ItemGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
   min-height: 450px;
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
 `;
 const PreviewPanel = styled.div`
   flex: 2;
@@ -40,6 +54,12 @@ const PreviewPanel = styled.div`
   border-radius: 8px;
   background-color: #f8f9fa;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  width: 100%; // [추가] 모바일 레이아웃
+
+  // [추가] 모바일 반응형
+  @media (max-width: 992px) {
+    position: static;
+  }
 `;
 const AvatarCanvas = styled.div`
   width: 250px;
@@ -51,6 +71,12 @@ const AvatarCanvas = styled.div`
   border: 4px solid #fff;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   overflow: hidden;
+
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    width: 200px;
+    height: 200px;
+  }
 `;
 const PartImage = styled.img`
   position: absolute;
@@ -115,11 +141,9 @@ const FinalPrice = styled.span`
 `;
 const getBackgroundPosition = (category) => {
   switch (category) {
-    case 'bottom': return 'center 90%';
+    case 'bottom': return 'center 75%';
     case 'shoes': return 'center 100%';
-    case 'hair':  return 'center 0%';
-    case 'eyes': case 'nose': case 'mouth': return 'center 25%';
-    case 'top':
+    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
     default: return 'center 55%';
   }
 };
@@ -133,6 +157,11 @@ const ItemImage = styled.div`
   background-repeat: no-repeat;
   background-color: #e9ecef;
   background-position: ${props => getBackgroundPosition(props.$category)};
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    width: 80px;
+    height: 80px;
+  }
 `;
 const BuyButton = styled.button`
   width: 100%;
@@ -152,6 +181,7 @@ const TabContainer = styled.div`
   display: flex;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
+  justify-content: center; // [추가]
 `;
 const TabButton = styled.button`
   padding: 0.75rem 1rem;
@@ -161,6 +191,11 @@ const TabButton = styled.button`
   background-color: ${props => props.$active ? '#007bff' : 'white'};
   color: ${props => props.$active ? 'white' : 'black'};
   cursor: pointer;
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    font-size: 0.9rem;
+    padding: 0.6rem 0.8rem;
+  }
 `;
 const LoginPrompt = styled.div`
   text-align: center;
@@ -256,7 +291,6 @@ const ExitButton = styled.button`
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const ITEMS_PER_PAGE = 6;
 
-// ▼▼▼ [추가] 카테고리 영문 -> 한글 변환 함수 ▼▼▼
 const translateCategory = (category) => {
   const categoryMap = {
     'all': '전체',
@@ -301,7 +335,6 @@ function ShopPage() {
       }
       return acc;
     }, new Set());
-    // ▼▼▼ [수정] 정렬 순서 지정 ▼▼▼
     const sorted = Array.from(categories).sort((a, b) => {
       const order = ['hair', 'face', 'eyes', 'nose', 'mouth', 'top', 'bottom', 'shoes', 'accessory'];
       return order.indexOf(a) - order.indexOf(b);
@@ -404,7 +437,7 @@ function ShopPage() {
       acc[part.category].push(part);
       return acc;
     }, {});
-    const RENDER_ORDER = ['accessory', 'shoes', 'top', 'bottom',  'hair', 'face', 'eyes', 'nose', 'mouth' ];
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
     const urls = [];
     RENDER_ORDER.forEach(category => {
       const partId = previewConfig[category];
@@ -431,7 +464,6 @@ function ShopPage() {
               <TabContainer>
                 {partCategories.map(category => (
                   <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
-                    {/* ▼▼▼ [수정] 한글 변환 함수 적용 ▼▼▼ */}
                     {translateCategory(category)}
                   </TabButton>
                 ))}

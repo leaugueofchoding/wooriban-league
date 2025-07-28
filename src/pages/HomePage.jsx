@@ -1,28 +1,33 @@
 // src/pages/HomePage.jsx
 
-import React, { useState, useMemo, useEffect } from 'react'; // [수정] useEffect 추가
+import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useNavigate, useLocation } from 'react-router-dom'; // [수정] useLocation 추가
+import { useNavigate, useLocation } from 'react-router-dom';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
 
-// --- Styled Components (이전과 동일) ---
+// --- Styled Components ---
 const Wrapper = styled.div`
   max-width: 1400px;
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 1rem; // [수정] 모바일 대응 패딩
 `;
 
 const Title = styled.h1`
   text-align: center;
   margin-bottom: 2rem;
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    font-size: 2rem;
+  }
 `;
 
 const TabContainer = styled.nav`
   display: flex;
   gap: 0.5rem;
   margin-bottom: 2rem;
+  justify-content: center; // [추가] 모바일 뷰에서 가운데 정렬
 `;
 
 const TabButton = styled.button`
@@ -41,6 +46,12 @@ const TabButton = styled.button`
     background-color: ${props => (props.$active ? '#0056b3' : '#e9ecef')};
     transform: translateY(-2px);
   }
+
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+  }
 `;
 
 const ContentGrid = styled.div`
@@ -48,6 +59,11 @@ const ContentGrid = styled.div`
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
   align-items: flex-start;
+
+  // [추가] 모바일 반응형
+  @media (max-width: 992px) { // 태블릿 사이즈부터 1열로 변경
+    grid-template-columns: 1fr;
+  }
 `;
 
 const Section = styled.div`
@@ -91,6 +107,10 @@ const Team = styled.div`
   gap: 0.75rem;
   font-weight: bold;
   flex: 1;
+  // [추가] 이름이 길 경우 대비
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const TeamEmblem = styled.img`
@@ -99,6 +119,7 @@ const TeamEmblem = styled.img`
   border-radius: 50%;
   object-fit: cover;
   background-color: #fff;
+  flex-shrink: 0; // [추가] 엠블럼 찌그러짐 방지
 `;
 
 const Score = styled.span`
@@ -128,6 +149,11 @@ const LineupGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
+  
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    gap: 1rem;
+  }
 `;
 
 const TeamLineup = styled.div`
@@ -224,7 +250,7 @@ function ScheduleItem({ match, isInitiallyOpen }) {
       <MatchSummary>
         <Team>
           <TeamEmblem src={teamA?.emblemUrl || defaultEmblem} alt={teamA?.teamName} />
-          {teamA?.teamName || 'N/A'}
+          <span>{teamA?.teamName || 'N/A'}</span>
         </Team>
         {match.status === '완료' ? (
           <Score>{match.teamA_score} : {match.teamB_score}</Score>
@@ -232,7 +258,7 @@ function ScheduleItem({ match, isInitiallyOpen }) {
           <VsText>VS</VsText>
         )}
         <Team style={{ justifyContent: 'flex-end' }}>
-          {teamB?.teamName || 'N/A'}
+          <span>{teamB?.teamName || 'N/A'}</span>
           <TeamEmblem src={teamB?.emblemUrl || defaultEmblem} alt={teamB?.teamName} />
         </Team>
       </MatchSummary>
@@ -256,7 +282,7 @@ function ScheduleItem({ match, isInitiallyOpen }) {
   );
 }
 
-function LeagueInfoContent({ matches, teams, standingsData }) {
+function LeagueInfoContent({ matches, standingsData }) {
   const sortedMatches = useMemo(() => {
     return [...matches].sort((a, b) => {
       if (a.status === '예정' && b.status === '완료') return -1;
@@ -380,7 +406,7 @@ function HomePage() {
   const renderContent = () => {
     switch (activeTab) {
       case 'leagueInfo':
-        return <LeagueInfoContent matches={matches} teams={teams} standingsData={standingsData} />;
+        return <LeagueInfoContent matches={matches} standingsData={standingsData} />;
       case 'teamInfo':
         return <TeamInfoContent teams={teams} matches={matches} currentSeason={currentSeason} />;
       default:
