@@ -65,10 +65,11 @@ const RequestButton = styled.button`
     white-space: nowrap;
 
     background-color: ${props => {
-    if (props.status === 'approved') return '#007bff';
-    if (props.status === 'pending') return '#6c757d';
+    if (props.$status === 'approved') return '#007bff';
+    if (props.$status === 'pending') return '#6c757d';
     return '#dc3545';
   }};
+
 
     &:hover:not(:disabled) {
         background-color: ${props => {
@@ -149,7 +150,7 @@ function MissionsPage() {
                   <RequestButton
                     onClick={() => submitMissionForApproval(mission.id)}
                     disabled={!!submissionStatus}
-                    status={submissionStatus}
+                    $status={submissionStatus}
                   >
                     {submissionStatus === 'pending' && '승인 대기중'}
                     {submissionStatus === 'approved' && '승인 완료!'}

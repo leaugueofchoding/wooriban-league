@@ -58,7 +58,7 @@ const RemainingQuizCount = styled.p`
 `;
 
 function QuizWidget() {
-    // --- ▼▼▼ [수정] 무한 루프 방지를 위해 스토어 selector 분리 ▼▼▼ ---
+    // ▼▼▼ [수정] 무한 루프를 유발하던 스토어 호출 방식을 원래대로 되돌렸습니다. ▼▼▼
     const currentUser = auth.currentUser;
     const myPlayerData = useLeagueStore(state =>
         currentUser ? state.players.find(p => p.authUid === currentUser.uid) : null
@@ -67,39 +67,37 @@ function QuizWidget() {
     const fetchDailyQuiz = useLeagueStore(state => state.fetchDailyQuiz);
     const submitQuizAnswer = useLeagueStore(state => state.submitQuizAnswer);
     const quizHistory = useLeagueStore(state => state.quizHistory);
-    // --- ▲▲▲ [수정] 여기까지 ---
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const [userAnswer, setUserAnswer] = useState('');
     const [feedback, setFeedback] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        if (myPlayerData?.id && !dailyQuiz) {
+        if (myPlayerData?.id) {
             fetchDailyQuiz(myPlayerData.id);
         }
-    }, [myPlayerData?.id, fetchDailyQuiz, dailyQuiz]);
+    }, [myPlayerData?.id, fetchDailyQuiz]);
 
     const handleSubmit = async () => {
         if (!userAnswer.trim() || !dailyQuiz) return;
 
         setIsSubmitting(true);
+        const currentQuizAnswer = dailyQuiz.answer;
         const isCorrect = await submitQuizAnswer(dailyQuiz.id, userAnswer);
 
         if (isCorrect) {
             setFeedback('정답입니다! 30P를 획득했습니다.');
         } else {
-            setFeedback(`오답입니다. 정답은 '${dailyQuiz.answer}' 입니다.`);
+            setFeedback(`오답입니다. 정답은 '${currentQuizAnswer}' 입니다.`);
         }
 
         setUserAnswer('');
-        // 피드백을 보여준 후 잠시 뒤에 다음 문제로 넘어갑니다.
+
         setTimeout(() => {
-            if (myPlayerData?.id) {
-                setFeedback('');
-                fetchDailyQuiz(myPlayerData.id);
-                setIsSubmitting(false);
-            }
-        }, 2000); // 2초 후에 다음 문제로
+            setFeedback('');
+            setIsSubmitting(false);
+        }, 2000);
     };
 
     if (!myPlayerData) {

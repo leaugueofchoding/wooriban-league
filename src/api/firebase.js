@@ -803,14 +803,12 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
   }
 }
 
-export async function updatePlayerName(playerId, newName) {
-  if (!newName || newName.trim().length === 0) {
+export async function updatePlayerProfile(playerId, profileData) {
+  if (profileData.name && profileData.name.trim().length === 0) {
     throw new Error("이름을 비워둘 수 없습니다.");
   }
   const playerRef = doc(db, "players", playerId);
-  await updateDoc(playerRef, {
-    name: newName.trim(),
-  });
+  await updateDoc(playerRef, profileData);
 }
 
 // --- 학급 공동 목표 ---

@@ -63,8 +63,9 @@ export const useLeagueStore = create((set, get) => ({
         missionSubmissions: null,
         approvalBonus: null,
     },
-    dailyQuiz: null,
-    quizHistory: [],
+    dailyQuiz: null, // 현재 풀어야 할 퀴즈
+    dailyQuizSet: { date: null, quizzes: [] }, // 오늘 풀어야 할 5개의 퀴즈 묶음
+    quizHistory: [], // 오늘 푼 퀴즈 기록
     currentUser: null,
     pointAdjustmentNotification: null, // [추가]
 
@@ -322,29 +323,53 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     fetchDailyQuiz: async (studentId) => {
+        const todayStr = new Date().toLocaleDateString('ko-KR');
+
+        // ▼▼▼ [수정] localStorage에서 오늘의 퀴즈 목록을 불러옵니다 ▼▼▼
+        const storedQuizSet = JSON.parse(localStorage.getItem('dailyQuizSet'));
+        let todaysQuizzes = [];
+
+        // 저장된 퀴즈가 있고, 날짜가 오늘과 같으면 그대로 사용
+        if (storedQuizSet && storedQuizSet.date === todayStr) {
+            todaysQuizzes = storedQuizSet.quizzes;
+        } else {
+            // 날짜가 다르거나 저장된 퀴즈가 없으면 새로 5개를 생성
+            const allQuizList = Object.values(allQuizzes).flat();
+            const shuffled = allQuizList.sort(() => 0.5 - Math.random());
+            todaysQuizzes = shuffled.slice(0, 5);
+            // 새로 만든 퀴즈 목록을 localStorage에 저장
+            localStorage.setItem('dailyQuizSet', JSON.stringify({ date: todayStr, quizzes: todaysQuizzes }));
+        }
+
+        set({ dailyQuizSet: { date: todayStr, quizzes: todaysQuizzes } });
+
         const todaysHistory = await getTodaysQuizHistory(studentId);
         set({ quizHistory: todaysHistory });
+
         if (todaysHistory.length >= 5) {
             set({ dailyQuiz: null });
             return;
         }
-        const solvedQuizIds = todaysHistory.map(h => h.quizId);
-        const allQuizList = Object.values(allQuizzes).flat();
-        const availableQuizzes = allQuizList.filter(q => !solvedQuizIds.includes(q.id));
-        if (availableQuizzes.length === 0) {
-            set({ dailyQuiz: null });
-            return;
-        }
-        const randomQuiz = availableQuizzes[Math.floor(Math.random() * availableQuizzes.length)];
-        set({ dailyQuiz: randomQuiz });
+
+        const nextQuiz = todaysQuizzes.find(quiz => !todaysHistory.some(h => h.quizId === quiz.id));
+        set({ dailyQuiz: nextQuiz || null });
     },
 
     submitQuizAnswer: async (quizId, userAnswer) => {
         const myPlayerData = get().players.find(p => p.authUid === auth.currentUser?.uid);
         if (!myPlayerData) return false;
-        const correctAnswer = get().dailyQuiz.answer;
-        return await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, correctAnswer);
+
+        const { dailyQuiz } = get();
+        if (!dailyQuiz) return false;
+
+        const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
+
+        // 답변 제출 후, 다음 퀴즈를 불러오기 위해 fetchDailyQuiz 다시 호출
+        await get().fetchDailyQuiz(myPlayerData.id);
+
+        return isCorrect; // 정답 여부 반환
     },
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     createSeason: async (seasonName) => {
         await createNewSeason(seasonName);
@@ -542,23 +567,39 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     autoAssignTeams: async () => {
-        if (!confirm('팀원을 자동 배정하시겠습니까?')) return;
+        if (!confirm('팀원을 자동 배정하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
         const { players, teams, currentSeason } = get();
         if (players.length === 0 || teams.length === 0) return alert('선수와 팀이 모두 필요합니다.');
+
         try {
-            const shuffledPlayers = [...players].sort(() => 0.5 - Math.random());
+            // ▼▼▼ [수정] 성비 균등 배정 로직 ▼▼▼
+            const malePlayers = players.filter(p => p.gender === '남').sort(() => 0.5 - Math.random());
+            const femalePlayers = players.filter(p => p.gender === '여').sort(() => 0.5 - Math.random());
+            const unassignedPlayers = players.filter(p => !p.gender || (p.gender !== '남' && p.gender !== '여')).sort(() => 0.5 - Math.random());
+
             const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null }));
-            shuffledPlayers.forEach((player, index) => {
+
+            // 남자, 여자, 미지정 순서로 순환하며 배정
+            [...malePlayers, ...femalePlayers, ...unassignedPlayers].forEach((player, index) => {
                 teamUpdates[index % teams.length].members.push(player.id);
             });
+
+            // 각 팀의 첫 번째 멤버를 임시 주장으로 임명
             teamUpdates.forEach(update => {
-                if (update.members.length > 0) update.captainId = update.members[0];
+                if (update.members.length > 0) {
+                    update.captainId = update.members[0];
+                }
             });
+            // ▲▲▲ 여기까지 수정 ▲▲▲
+
             await batchUpdateTeams(teamUpdates);
             const updatedTeams = await getTeams(currentSeason.id);
             set({ teams: updatedTeams });
-            alert('자동 배정이 완료되었습니다.');
-        } catch (error) { console.error("자동 배정 중 오류 발생:", error); }
+            alert('성비 균등 자동 배정이 완료되었습니다.');
+        } catch (error) {
+            console.error("자동 배정 중 오류 발생:", error);
+            alert("자동 배정 중 오류가 발생했습니다.");
+        }
     },
 
     generateSchedule: async () => {

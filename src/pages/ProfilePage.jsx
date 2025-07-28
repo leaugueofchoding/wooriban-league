@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, updatePlayerName } from '../api/firebase.js';
+import { auth, db, updatePlayerProfile } from '../api/firebase.js'; // [수정] updatePlayerProfile import
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
@@ -40,10 +40,16 @@ const ProfileWrapper = styled.div`
 `;
 const UserNameContainer = styled.div`
   display: flex;
+  flex-direction: column; // [수정] 세로 정렬
   justify-content: center;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem; // [수정] 간격 조정
   min-height: 38px;
+`;
+const NameEditor = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 `;
 const UserName = styled.h2`
   margin: 0;
@@ -110,6 +116,41 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
+const GenderSelector = styled.div`
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+`;
+
+const GenderLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 1.1rem;
+  
+  input[type="radio"] {
+    display: none;
+  }
+
+  input[type="radio"] + span {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    border: 2px solid #dee2e6;
+    transition: all 0.2s ease-in-out;
+  }
+
+  input[type="radio"]:checked + span {
+    color: white;
+    border-color: transparent;
+  }
+  input[type="radio"][value="남"]:checked + span {
+    background-color: #007bff;
+  }
+  input[type="radio"][value="여"]:checked + span {
+    background-color: #dc3545;
+  }
+`;
 
 function ProfilePage() {
   const { players, avatarParts, fetchInitialData } = useLeagueStore();
@@ -119,13 +160,9 @@ function ProfilePage() {
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [pointHistory, setPointHistory] = useState([]);
-  const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditing, setIsEditing] = useState(false); // [수정] isEditingName -> isEditing
   const [newName, setNewName] = useState('');
-
-  // ▼▼▼ [수정] 현재 로그인한 유저의 플레이어 데이터를 가져옴 ▼▼▼
-  const loggedInPlayerData = useMemo(() => {
-    return players.find(p => p.authUid === currentUser?.uid);
-  }, [players, currentUser]);
+  const [selectedGender, setSelectedGender] = useState('');
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
@@ -135,49 +172,34 @@ function ProfilePage() {
   useEffect(() => {
     if (playerData) {
       setNewName(playerData.name);
+      setSelectedGender(playerData.gender || '');
     }
   }, [playerData]);
 
   const selectedPartUrls = useMemo(() => {
-    if (!playerData || !playerData.avatarConfig || !avatarParts.length) {
-      return [];
-    }
-    const partCategories = avatarParts.reduce((acc, part) => {
+    if (!playerData || !playerData.avatarConfig || !avatarParts.length) return [];
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+    const partsByCategory = avatarParts.reduce((acc, part) => {
       if (!acc[part.category]) acc[part.category] = [];
       acc[part.category].push(part);
       return acc;
     }, {});
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
-    const urls = [];
-    Object.entries(playerData.avatarConfig).forEach(([category, partId]) => {
-      const part = partCategories[category]?.find(p => p.id === partId);
-      if (part) urls.push(part.src);
+    const urls = [baseAvatar];
+    RENDER_ORDER.forEach(category => {
+      const partId = playerData.avatarConfig[category];
+      if (partId) {
+        const part = partsByCategory[category]?.find(p => p.id === partId);
+        if (part) urls.push(part.src);
+      }
     });
-    // RENDER_ORDER에 따라 정렬하여 반환
-    return urls.sort((a, b) => {
-      const partA = avatarParts.find(p => p.src === a);
-      const partB = avatarParts.find(p => p.src === b);
-      return RENDER_ORDER.indexOf(partA?.category) - RENDER_ORDER.indexOf(partB?.category);
-    });
+    return urls;
   }, [playerData, avatarParts]);
 
   const fetchPointHistory = async () => {
-    if (!playerData || !playerData.authUid) {
-      console.error("플레이어 정보를 찾을 수 없거나 authUid가 없습니다.");
-      return;
-    }
-    try {
-      const historyQuery = query(
-        collection(db, 'point_history'),
-        where('playerId', '==', playerData.authUid),
-        orderBy('timestamp', 'desc')
-      );
-      const querySnapshot = await getDocs(historyQuery);
-      const history = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPointHistory(history);
-    } catch (error) {
-      console.error("포인트 내역 로딩 실패:", error);
-    }
+    if (!playerData || !playerData.authUid) return;
+    const historyQuery = query(collection(db, 'point_history'), where('playerId', '==', playerData.authUid), orderBy('timestamp', 'desc'));
+    const querySnapshot = await getDocs(historyQuery);
+    setPointHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
   const handleOpenModal = () => {
@@ -185,17 +207,21 @@ function ProfilePage() {
     setIsHistoryModalOpen(true);
   };
 
-  const handleSaveName = async () => {
-    if (!newName.trim()) {
-      return alert('이름을 입력해주세요.');
-    }
+  // ▼▼▼ [수정] 이름과 성별을 함께 저장하는 핸들러 ▼▼▼
+  const handleSaveProfile = async () => {
+    if (!newName.trim()) return alert('이름을 입력해주세요.');
+    if (!selectedGender) return alert('성별을 선택해주세요.');
+
     try {
-      await updatePlayerName(playerData.id, newName);
-      alert('이름이 변경되었습니다.');
-      setIsEditingName(false);
-      fetchInitialData();
+      await updatePlayerProfile(playerData.id, {
+        name: newName.trim(),
+        gender: selectedGender,
+      });
+      alert('프로필이 저장되었습니다.');
+      setIsEditing(false);
+      await fetchInitialData();
     } catch (error) {
-      alert(`이름 변경 실패: ${error.message}`);
+      alert(`프로필 저장 실패: ${error.message}`);
     }
   };
 
@@ -203,7 +229,6 @@ function ProfilePage() {
     return (
       <ProfileWrapper>
         <h2>선수 정보를 찾을 수 없습니다.</h2>
-        <p>리그에 참가 신청을 했거나, 올바른 프로필 주소인지 확인해주세요.</p>
         <ButtonGroup>
           <StyledLink to="/">홈으로 돌아가기</StyledLink>
         </ButtonGroup>
@@ -212,36 +237,48 @@ function ProfilePage() {
   }
 
   const isMyProfile = playerData.authUid === currentUser?.uid;
-  // ▼▼▼ [추가] 관리자 여부 확인 ▼▼▼
-  const isAdmin = loggedInPlayerData?.role === 'admin';
-
+  const loggedInPlayer = useLeagueStore(state => state.players.find(p => p.authUid === currentUser?.uid));
+  const isAdmin = loggedInPlayer?.role === 'admin';
 
   return (
     <ProfileWrapper>
       <AvatarDisplay>
-        <PartImage src={baseAvatar} alt="기본 아바타" />
         {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
       </AvatarDisplay>
 
       <UserNameContainer>
-        {isEditingName ? (
+        {isEditing ? (
           <>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              style={{ fontSize: '1.5rem', fontWeight: 'bold', textAlign: 'center', width: '200px', padding: '0.25rem' }}
-            />
-            <Button onClick={handleSaveName} style={{ backgroundColor: '#28a745', color: 'white' }}>저장</Button>
-            <Button onClick={() => setIsEditingName(false)} style={{ backgroundColor: '#6c757d', color: 'white' }}>취소</Button>
+            <NameEditor>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                style={{ fontSize: '1.5rem', fontWeight: 'bold', textAlign: 'center', width: '200px', padding: '0.25rem' }}
+              />
+            </NameEditor>
+            <GenderSelector>
+              <GenderLabel>
+                <input type="radio" name="gender" value="남" checked={selectedGender === '남'} onChange={(e) => setSelectedGender(e.target.value)} />
+                <span>남자</span>
+              </GenderLabel>
+              <GenderLabel>
+                <input type="radio" name="gender" value="여" checked={selectedGender === '여'} onChange={(e) => setSelectedGender(e.target.value)} />
+                <span>여자</span>
+              </GenderLabel>
+            </GenderSelector>
+            <div>
+              <Button onClick={handleSaveProfile} style={{ backgroundColor: '#28a745', color: 'white' }}>저장</Button>
+              <Button onClick={() => setIsEditing(false)} style={{ backgroundColor: '#6c757d', color: 'white', marginLeft: '0.5rem' }}>취소</Button>
+            </div>
           </>
         ) : (
-          <>
+          <NameEditor>
             <UserName>{playerData.name}</UserName>
             {isMyProfile && (
-              <Button onClick={() => setIsEditingName(true)} style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}>✏️</Button>
+              <Button onClick={() => setIsEditing(true)} style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}>✏️</Button>
             )}
-          </>
+          </NameEditor>
         )}
       </UserNameContainer>
 
@@ -249,7 +286,6 @@ function ProfilePage() {
       <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
 
       <ButtonGroup>
-        {/* ▼▼▼ [수정] isMyProfile 또는 isAdmin일 때 버튼 표시 ▼▼▼ */}
         {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
         {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
         <StyledLink to="/shop">상점 가기</StyledLink>

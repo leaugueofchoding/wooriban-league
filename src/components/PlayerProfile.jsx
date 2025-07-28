@@ -37,6 +37,7 @@ function PlayerProfile({ player }) {
 
     return (
         <ProfileWrapper>
+            {/* ▼▼▼ [수정] 이름 옆에 성별 표시 추가 ▼▼▼ */}
             <span>{player.name} <strong>({player.gender || '미지정'})</strong></span>
             <StarWrapper>
                 {getStars(player.wins)}

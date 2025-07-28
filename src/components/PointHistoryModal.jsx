@@ -86,42 +86,42 @@ const CloseButton = styled.button`
 
 
 const PointHistoryModal = ({ isOpen, onClose, history }) => {
-    if (!isOpen) return null;
+  if (!isOpen) return null;
 
-    const formatDate = (timestamp) => {
-        if (!timestamp?.seconds) return '날짜 없음';
-        const date = timestamp.toDate();
-        return date.toLocaleDateString('ko-KR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-    };
+  const formatDate = (timestamp) => {
+    if (!timestamp?.seconds) return '날짜 없음';
+    const date = timestamp.toDate();
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  };
 
-    return (
-        <ModalBackground onClick={onClose}>
-            <ModalContainer onClick={e => e.stopPropagation()}>
-                <ModalTitle>포인트 변동 내역 🪙</ModalTitle>
-                <HistoryList>
-                    {history.length > 0 ? (
-                        history.map(item => (
-                            <HistoryItem key={item.id}>
-                                <Timestamp>{formatDate(item.timestamp)}</Timestamp>
-                                <Reason>{item.reason}</Reason>
-                                {/* 👇 [수정됨] isPositive -> $isPositive 로 변경 */}
-                                <PointChange $isPositive={item.changeAmount > 0}>
-                                    {item.changeAmount > 0 ? `+${item.changeAmount}` : item.changeAmount} P
-                                </PointChange>
-                            </HistoryItem>
-                        ))
-                    ) : (
-                        <p style={{ textAlign: 'center', padding: '2rem 0' }}>포인트 변동 내역이 없습니다.</p>
-                    )}
-                </HistoryList>
-                <CloseButton onClick={onClose}>닫기</CloseButton>
-            </ModalContainer>
-        </ModalBackground>
-    );
+  return (
+    <ModalBackground onClick={onClose}>
+      <ModalContainer onClick={e => e.stopPropagation()}>
+        <ModalTitle>포인트 변동 내역 🪙</ModalTitle>
+        <HistoryList>
+          {history.length > 0 ? (
+            history.map(item => (
+              <HistoryItem key={item.id}>
+                <Timestamp>{formatDate(item.timestamp)}</Timestamp>
+                <Reason>{item.reason}</Reason>
+                {/* 👇 [수정됨] isPositive -> $isPositive 로 변경 */}
+                <PointChange $isPositive={item.changeAmount > 0}>
+                  {item.changeAmount > 0 ? `+${item.changeAmount}` : item.changeAmount} P
+                </PointChange>
+              </HistoryItem>
+            ))
+          ) : (
+            <p style={{ textAlign: 'center', padding: '2rem 0' }}>포인트 변동 내역이 없습니다.</p>
+          )}
+        </HistoryList>
+        <CloseButton onClick={onClose}>닫기</CloseButton>
+      </ModalContainer>
+    </ModalBackground>
+  );
 };
 
 export default PointHistoryModal;
