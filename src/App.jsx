@@ -20,6 +20,8 @@ import WinnerPage from './pages/WinnerPage';
 import RecorderDashboardPage from './pages/RecorderDashboardPage';
 import PlayerStatsPage from './pages/PlayerStatsPage';
 import TeamDetailPage from './pages/TeamDetailPage';
+import SuggestionPage from './pages/SuggestionPage'; // [추가]
+
 
 // Common Components
 import Auth from './components/Auth';
@@ -153,6 +155,8 @@ function App() {
             <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} />
             <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
             <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
+            <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
+
           </Routes>
         </MainContent>
         <Footer /> {/* [추가] Footer 컴포넌트 렌더링 */}

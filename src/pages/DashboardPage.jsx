@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 const DashboardWrapper = styled.div`
   max-width: 1000px;
   margin: 2rem auto;
-  padding: 1rem; // [수정] 모바일 대응을 위해 패딩 조정
+  padding: 1rem;
 `;
 
 const JoinLeagueButton = styled.button`
@@ -42,25 +42,28 @@ const TopGrid = styled.div`
 `;
 
 const Section = styled.section`
-  margin-bottom: 2.5rem;
   padding: 1.5rem;
   background-color: #f9f9f9;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  text-decoration: none;
-  color: inherit;
   display: flex;
   flex-direction: column;
+  height: 100%;
+`;
 
-  &.clickable {
-    cursor: pointer;
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    &:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
+const ClickableSection = styled(Link)`
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  height: 100%;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   }
 `;
+
 
 const TitleWrapper = styled.div`
   display: flex;
@@ -78,25 +81,53 @@ const Title = styled.h2`
 const MyInfoCard = styled.div`
   display: flex;
   align-items: center;
+  justify-content: space-between; /* [수정] 버튼을 오른쪽으로 보내기 위한 정렬 */
   gap: 1.5rem;
   padding: 1.5rem;
   background-color: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  cursor: pointer;
   transition: all 0.2s ease-in-out;
-  &:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-  }
+`;
 
-  // [추가] 모바일 반응형
-  @media (max-width: 768px) {
-    flex-direction: column;
-    text-align: center;
-    gap: 1rem;
+const ProfileLink = styled(Link)`
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  text-decoration: none;
+  color: inherit;
+  flex-grow: 1;
+
+  &:hover {
+    /* Optional: add hover effect for profile part */
   }
 `;
+
+const SuggestionButton = styled(Link)`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: bold;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s ease-in-out;
+
+    & > span:first-child {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    &:hover {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+    }
+`;
+
 
 const AvatarDisplay = styled.div`
   width: 80px;
@@ -119,12 +150,6 @@ const PartImage = styled.img`
 
 const InfoText = styled.div`
   text-align: left;
-  flex-grow: 1;
-
-  // [추가] 모바일 반응형
-  @media (max-width: 768px) {
-    text-align: center;
-  }
 `;
 
 const WelcomeMessage = styled.p`
@@ -146,7 +171,6 @@ const MainGrid = styled.div`
   gap: 1.5rem;
   margin-bottom: 2.5rem;
 
-  // [추가] 모바일 반응형
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
@@ -233,7 +257,7 @@ const Emblem = styled.img`
 const ThermometerWrapper = styled.div` width: 100%; `;
 const GoalTitle = styled.h3` text-align: center; font-size: 1.5rem; margin-bottom: 1rem; `;
 const ProgressBarContainer = styled.div` width: 100%; height: 40px; background-color: #e9ecef; border-radius: 20px; overflow: hidden; border: 2px solid #fff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);`;
-const ProgressBar = styled.div` width: ${props => props.percent}%; height: 100%; background: linear-gradient(90deg, #ffc107, #fd7e14); transition: width 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 1rem; `;
+const ProgressBar = styled.div` width: ${props => props.$percent}%; height: 100%; background: linear-gradient(90deg, #ffc107, #fd7e14); transition: width 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 1rem; `;
 const PointStatus = styled.p` text-align: right; font-weight: bold; margin-top: 0.5rem; color: #495057; `;
 const DonationArea = styled.div` 
   margin-top: 1.5rem; 
@@ -242,7 +266,6 @@ const DonationArea = styled.div`
   align-items: center; 
   gap: 1rem; 
 
-  // [추가] 모바일 반응형
   @media (max-width: 768px) {
     flex-direction: column;
   }
@@ -287,15 +310,15 @@ const RequestButton = styled.button`
     margin-left: auto;
 
     background-color: ${props => {
-        if (props.status === 'approved') return '#007bff';
-        if (props.status === 'pending') return '#6c757d';
+        if (props.$status === 'approved') return '#007bff';
+        if (props.$status === 'pending') return '#6c757d';
         return '#dc3545';
     }};
 
     &:hover:not(:disabled) {
         background-color: ${props => {
-        if (props.status === 'approved') return '#0056b3';
-        if (props.status === 'pending') return '#5a6268';
+        if (props.$status === 'approved') return '#0056b3';
+        if (props.$status === 'pending') return '#5a6268';
         return '#c82333';
     }};
     }
@@ -338,31 +361,23 @@ function DashboardPage() {
     }, [myPlayerData]);
 
     const topContributor = useMemo(() => {
-        if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) {
-            return null;
-        }
+        if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) return null;
         const contributionsByName = activeGoal.contributions.reduce((acc, curr) => {
             acc[curr.playerName] = (acc[curr.playerName] || 0) + curr.amount;
             return acc;
         }, {});
-
-        return Object.entries(contributionsByName).reduce((top, current) => {
-            return current[1] > top[1] ? current : top;
-        }, ["", 0]);
-
+        return Object.entries(contributionsByName).reduce((top, current) => current[1] > top[1] ? current : top, ["", 0]);
     }, [activeGoal]);
 
     const myAvatarUrls = useMemo(() => {
         const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
         if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
-
         const urls = [baseAvatar];
         const partCategories = avatarParts.reduce((acc, part) => {
             if (!acc[part.category]) acc[part.category] = [];
             acc[part.category].push(part);
             return acc;
         }, {});
-
         RENDER_ORDER.forEach(category => {
             const partId = myPlayerData.avatarConfig[category];
             if (partId) {
@@ -378,7 +393,6 @@ function DashboardPage() {
         const amount = Number(donationAmount);
         if (amount <= 0) return alert('기부할 포인트를 올바르게 입력해주세요.');
         if (myPlayerData.points < amount) return alert('포인트가 부족합니다.');
-
         if (window.confirm(`${amount}P를 '${activeGoal.title}' 목표에 기부하시겠습니까?`)) {
             try {
                 await donatePointsToGoal(myPlayerData.id, activeGoal.id, amount);
@@ -395,8 +409,7 @@ function DashboardPage() {
     const shopHighlightItems = useMemo(() => {
         const saleItems = avatarParts.filter(part => {
             const now = new Date();
-            const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate();
-            return isCurrentlyOnSale && part.status !== 'hidden';
+            return part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate() && part.status !== 'hidden';
         });
         return saleItems.slice(0, 2);
     }, [avatarParts]);
@@ -427,11 +440,9 @@ function DashboardPage() {
     const mySubmissions = useMemo(() => {
         if (!myPlayerData) return {};
         const submissionsMap = {};
-        missionSubmissions
-            .filter(sub => sub.studentId === myPlayerData.id)
-            .forEach(sub => {
-                submissionsMap[sub.missionId] = sub.status;
-            });
+        missionSubmissions.filter(sub => sub.studentId === myPlayerData.id).forEach(sub => {
+            submissionsMap[sub.missionId] = sub.status;
+        });
         return submissionsMap;
     }, [missionSubmissions, myPlayerData]);
 
@@ -451,100 +462,102 @@ function DashboardPage() {
 
             {myPlayerData && (
                 <TopGrid>
-                    <MyInfoCard onClick={() => navigate(`/profile`)}>
-                        <AvatarDisplay>
-                            {myAvatarUrls.map(src => <PartImage key={src} src={src} />)}
-                        </AvatarDisplay>
-                        <InfoText>
-                            <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
-                            <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
-                        </InfoText>
+                    <MyInfoCard>
+                        <ProfileLink to={`/profile`}>
+                            <AvatarDisplay>
+                                {myAvatarUrls.map(src => <PartImage key={src} src={src} />)}
+                            </AvatarDisplay>
+                            <InfoText>
+                                <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
+                                <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
+                            </InfoText>
+                        </ProfileLink>
+                        <SuggestionButton to="/suggestions">
+                            <span>💌</span>
+                            <span>선생님께<br></br>메시지 보내기</span>
+                        </SuggestionButton>
                     </MyInfoCard>
                 </TopGrid>
             )}
 
             <MainGrid>
-                <Section as={Link} to="/missions" className="clickable" style={{ margin: 0, display: 'block' }}>
-                    <TitleWrapper>
-                        <Title>📢 새로운 미션</Title>
-                    </TitleWrapper>
-                    {recentMissions.length > 0 ? (
-                        recentMissions.map(mission => {
-                            const submissionStatus = mySubmissions[mission.id];
-                            return (
-                                <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <div style={{ flexGrow: 1 }}>
-                                        <CardTitle>{mission.title}</CardTitle>
-                                        <CardText>💰 {mission.reward} P</CardText>
-                                    </div>
-                                    {canSubmitMission && (
-                                        <RequestButton
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); submitMissionForApproval(mission.id); }}
-                                            disabled={!!submissionStatus}
-                                            status={submissionStatus}
-                                        >
-                                            {submissionStatus === 'pending' && '승인 대기중'}
-                                            {submissionStatus === 'approved' && '완료!'}
-                                            {!submissionStatus && '다 했어요!'}
-                                        </RequestButton>
-                                    )}
-                                </Card>
-                            )
-                        })
-                    ) : (<p>현재 등록된 새로운 미션이 없습니다.</p>)}
-                </Section>
+                <ClickableSection to="/missions">
+                    <Section>
+                        <TitleWrapper><Title>📢 새로운 미션</Title></TitleWrapper>
+                        {recentMissions.length > 0 ? (
+                            recentMissions.map(mission => {
+                                const submissionStatus = mySubmissions[mission.id];
+                                return (
+                                    <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <div style={{ flexGrow: 1 }}>
+                                            <CardTitle>{mission.title}</CardTitle>
+                                            <CardText>💰 {mission.reward} P</CardText>
+                                        </div>
+                                        {canSubmitMission && (
+                                            <RequestButton
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); submitMissionForApproval(mission.id); }}
+                                                disabled={!!submissionStatus}
+                                                $status={submissionStatus}
+                                            >
+                                                {submissionStatus === 'pending' && '승인 대기중'}
+                                                {submissionStatus === 'approved' && '완료!'}
+                                                {!submissionStatus && '다 했어요!'}
+                                            </RequestButton>
+                                        )}
+                                    </Card>
+                                )
+                            })
+                        ) : (<p>현재 등록된 새로운 미션이 없습니다.</p>)}
+                    </Section>
+                </ClickableSection>
 
-                <Section as={Link} to="/shop" className="clickable" style={{ margin: 0, display: 'block' }}>
-                    <TitleWrapper>
-                        <Title>⭐ 신규/세일 아이템</Title>
-                    </TitleWrapper>
-                    {shopHighlightItems.length > 0 ? (
-                        <ItemWidgetGrid>
-                            {shopHighlightItems.map(item => (
-                                <Card key={item.id}>
-                                    {item.isSale && <SaleBadge>SALE</SaleBadge>}
-                                    <ItemImage src={item.src} $category={item.category} />
-                                    <CardTitle style={{ textAlign: 'center' }}>{item.displayName || item.id}</CardTitle>
-                                    <CardText style={{ textAlign: 'center', color: '#dc3545' }}>💰 {item.salePrice} P</CardText>
-                                </Card>
-                            ))}
-                        </ItemWidgetGrid>
-                    ) : (<p>현재 할인 중인 아이템이 없습니다.</p>)}
-                </Section>
+                <ClickableSection to="/shop">
+                    <Section>
+                        <TitleWrapper><Title>⭐ 신규/세일 아이템</Title></TitleWrapper>
+                        {shopHighlightItems.length > 0 ? (
+                            <ItemWidgetGrid>
+                                {shopHighlightItems.map(item => (
+                                    <Card key={item.id}>
+                                        {item.isSale && <SaleBadge>SALE</SaleBadge>}
+                                        <ItemImage src={item.src} $category={item.category} />
+                                        <CardTitle style={{ textAlign: 'center' }}>{item.displayName || item.id}</CardTitle>
+                                        <CardText style={{ textAlign: 'center', color: '#dc3545' }}>💰 {item.salePrice} P</CardText>
+                                    </Card>
+                                ))}
+                            </ItemWidgetGrid>
+                        ) : (<p>현재 할인 중인 아이템이 없습니다.</p>)}
+                    </Section>
+                </ClickableSection>
 
-                <Section as={Link} to="/league" className="clickable" style={{ margin: 0, display: 'block' }}>
-                    <TitleWrapper>
-                        <Title>🏆 실시간 리그 순위</Title>
-                    </TitleWrapper>
-                    {topRankedTeams.length > 0 ? (
-                        topRankedTeams.map((team, index) => (
-                            <RankItem key={team.id}>
-                                <Rank>{rankIcons[index] || `${index + 1}위`}</Rank>
-                                <Emblem src={team.emblemUrl} alt={`${team.teamName} 엠블럼`} />
-                                <span>{team.teamName} ({team.points}점)</span>
-                            </RankItem>
-                        ))
-                    ) : (<p>아직 리그 순위가 없습니다.</p>)}
-                </Section>
+                <ClickableSection to="/league">
+                    <Section>
+                        <TitleWrapper><Title>🏆 실시간 리그 순위</Title></TitleWrapper>
+                        {topRankedTeams.length > 0 ? (
+                            topRankedTeams.map((team, index) => (
+                                <RankItem key={team.id}>
+                                    <Rank>{rankIcons[index] || `${index + 1}위`}</Rank>
+                                    <Emblem src={team.emblemUrl} alt={`${team.teamName} 엠블럼`} />
+                                    <span>{team.teamName} ({team.points}점)</span>
+                                </RankItem>
+                            ))
+                        ) : (<p>아직 리그 순위가 없습니다.</p>)}
+                    </Section>
+                </ClickableSection>
 
-                <Section style={{ margin: 0 }}>
-                    <TitleWrapper>
-                        <Title>🧠 오늘의 퀴즈</Title>
-                    </TitleWrapper>
+                <Section>
+                    <TitleWrapper><Title>🧠 오늘의 퀴즈</Title></TitleWrapper>
                     <QuizWidget />
                 </Section>
             </MainGrid>
 
             {myPlayerData && (
-                <Section>
-                    <TitleWrapper>
-                        <Title>🔥 우리 반 공동 목표! 🔥</Title>
-                    </TitleWrapper>
+                <Section style={{ marginBottom: 0 }}>
+                    <TitleWrapper><Title>🔥 우리 반 공동 목표! 🔥</Title></TitleWrapper>
                     {activeGoal ? (
                         <ThermometerWrapper>
                             <GoalTitle>{activeGoal.title}</GoalTitle>
                             <ProgressBarContainer>
-                                <ProgressBar percent={progressPercent}>
+                                <ProgressBar $percent={progressPercent}>
                                     {isGoalAchieved ? "목표 달성! 🎉" : `${Math.floor(progressPercent)}%`}
                                 </ProgressBar>
                             </ProgressBarContainer>

@@ -26,7 +26,9 @@ import {
     auth,
     db,
     completeClassGoal,
-    createNewSeason
+    createNewSeason,
+    getAllSuggestions, // [추가]
+    replyToSuggestion  // [추가]
 } from '../api/firebase.js';
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
@@ -201,6 +203,48 @@ const ListItem = styled.li`
   &:last-child {
     border-bottom: none;
   }
+`;
+
+// ▼▼▼ 이 코드를 추가해주세요! ▼▼▼
+const SuggestionItem = styled.div`
+  padding: 1.5rem;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  margin-bottom: 1rem;
+`;
+const MessageHeader = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+`;
+const StudentInfo = styled.span`
+    font-weight: bold;
+`;
+const Timestamp = styled.span`
+  font-size: 0.8rem;
+  color: #6c757d;
+`;
+const MessageContent = styled.p`
+    margin: 0;
+    white-space: pre-wrap; /* 줄바꿈 유지 */
+`;
+const ReplyContainer = styled.div`
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px dashed #ccc;
+`;
+const TextArea = styled.textarea`
+  width: 100%;
+  height: 80px;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  resize: vertical;
+  margin-bottom: 0.5rem;
 `;
 
 const MemberList = styled.div`
@@ -568,6 +612,84 @@ function PendingMissionWidget() {
                 </List>
             )}
         </Section>
+    );
+}
+
+function SuggestionManager() {
+    const [suggestions, setSuggestions] = useState([]);
+    const [replies, setReplies] = useState({});
+    const [isLoading, setIsLoading] = useState(true);
+
+    const fetchSuggestions = async () => {
+        setIsLoading(true);
+        const allSuggestions = await getAllSuggestions();
+        setSuggestions(allSuggestions);
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        fetchSuggestions();
+    }, []);
+
+    const handleReplyChange = (id, text) => {
+        setReplies(prev => ({ ...prev, [id]: text }));
+    };
+
+    const handleReplySubmit = async (id) => {
+        const replyContent = replies[id];
+        if (!replyContent || !replyContent.trim()) {
+            return alert('답글 내용을 입력해주세요.');
+        }
+        try {
+            await replyToSuggestion(id, replyContent);
+            alert('답글이 성공적으로 등록되었습니다.');
+            fetchSuggestions(); // 목록 새로고침
+        } catch (error) {
+            alert(`답글 등록 실패: ${error.message}`);
+        }
+    };
+
+    const formatDate = (timestamp) => {
+        if (!timestamp?.toDate) return '';
+        return timestamp.toDate().toLocaleString('ko-KR');
+    };
+
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>건의사항 확인 및 답변</SectionTitle>
+                {isLoading ? <p>로딩 중...</p> : suggestions.map(item => (
+                    <SuggestionItem key={item.id}>
+                        <MessageHeader>
+                            <StudentInfo>{item.studentName} 학생</StudentInfo>
+                            <Timestamp>{formatDate(item.createdAt)}</Timestamp>
+                        </MessageHeader>
+                        <MessageContent>{item.message}</MessageContent>
+
+                        <ReplyContainer>
+                            {item.reply ? (
+                                <>
+                                    <strong>👑 관리자 답변:</strong>
+                                    <MessageContent>{item.reply}</MessageContent>
+                                    <Timestamp>{formatDate(item.repliedAt)}</Timestamp>
+                                </>
+                            ) : (
+                                <>
+                                    <TextArea
+                                        placeholder="답글을 입력하세요..."
+                                        value={replies[item.id] || ''}
+                                        onChange={(e) => handleReplyChange(item.id, e.target.value)}
+                                    />
+                                    <StyledButton onClick={() => handleReplySubmit(item.id)} style={{ alignSelf: 'flex-end' }}>
+                                        답글 달기
+                                    </StyledButton>
+                                </>
+                            )}
+                        </ReplyContainer>
+                    </SuggestionItem>
+                ))}
+            </Section>
+        </FullWidthSection>
     );
 }
 
@@ -1484,30 +1606,48 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
 }
 
 function PlayerManager() {
-    const { players, removePlayer, currentSeason } = useLeagueStore();
+    // [수정] togglePlayerStatus 추가
+    const { players, currentSeason, togglePlayerStatus } = useLeagueStore();
+    const [showInactive, setShowInactive] = useState(false);
     const isNotPreparing = currentSeason?.status !== 'preparing';
 
-    const sortedPlayers = useMemo(() =>
-        [...players].sort((a, b) => a.name.localeCompare(b.name)),
-        [players]
-    );
+    const sortedPlayers = useMemo(() => {
+        const filteredPlayers = players.filter(p => showInactive || p.status !== 'inactive');
+        return filteredPlayers.sort((a, b) => a.name.localeCompare(b.name));
+    }, [players, showInactive]);
 
     return (
         <FullWidthSection>
             <Section>
                 <SectionTitle>선수 관리</SectionTitle>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                    <StyledButton onClick={() => setShowInactive(prev => !prev)}>
+                        {showInactive ? '활성 선수만 보기' : '비활성 선수 보기'}
+                    </StyledButton>
+                </div>
                 <List>
-                    {sortedPlayers.map(player => (
-                        <ListItem key={player.id} style={{ gridTemplateColumns: '1fr auto' }}>
-                            <PlayerProfile player={player} />
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <Link to={`/profile/${player.id}`}>
-                                    <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
-                                </Link>
-                                <StyledButton onClick={() => removePlayer(player.id)} disabled={isNotPreparing}>삭제</StyledButton>
-                            </div>
-                        </ListItem>
-                    ))}
+                    {sortedPlayers.map(player => {
+                        const isInactive = player.status === 'inactive';
+                        return (
+                            <ListItem key={player.id} style={{ gridTemplateColumns: '1fr auto', backgroundColor: isInactive ? '#f1f3f5' : 'transparent' }}>
+                                <PlayerProfile player={player} />
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <Link to={`/profile/${player.id}`}>
+                                        <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
+                                    </Link>
+                                    {/* ▼▼▼ [수정] 삭제 버튼을 비활성화 버튼으로 변경 ▼▼▼ */}
+                                    <StyledButton
+                                        onClick={() => togglePlayerStatus(player.id, player.status)}
+                                        disabled={isNotPreparing && !isInactive}
+                                        title={isNotPreparing && !isInactive ? "시즌 중에는 선수를 비활성화할 수 없습니다." : ""}
+                                        style={{ backgroundColor: isInactive ? '#28a745' : '#dc3545' }}
+                                    >
+                                        {isInactive ? '활성화' : '비활성화'}
+                                    </StyledButton>
+                                </div>
+                            </ListItem>
+                        );
+                    })}
                 </List>
             </Section>
         </FullWidthSection>
@@ -1807,6 +1947,21 @@ function AdminPage() {
                 </>
             );
         }
+        // ▼▼▼ [추가] 건의사항 탭 렌더링 ▼▼▼
+        if (activeMenu === 'suggestion') {
+            return <SuggestionManager />;
+        }
+        if (activeMenu === 'student') {
+            return (
+                <>
+                    <GridContainer>
+                        <PendingMissionWidget />
+                        <MissionManager />
+                    </GridContainer>
+                    <GoalManager />
+                </>
+            );
+        }
         if (activeMenu === 'student') {
             return (
                 <>
@@ -1842,6 +1997,12 @@ function AdminPage() {
                 <NavList>
                     <NavItem>
                         <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
+                    </NavItem>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'suggestion'} onClick={() => handleMenuClick('suggestion')}>건의사항 확인</NavButton>
+                    </NavItem>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
                     </NavItem>
                     <NavItem>
                         <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>

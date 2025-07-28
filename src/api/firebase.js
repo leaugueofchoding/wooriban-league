@@ -301,16 +301,24 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
       const playerData = playerDoc.data();
       batch.update(playerRef, { points: increment(amount) });
 
-      const message = amount > 0 ? `+${amount}P가 지급되었습니다.` : `${amount}P가 차감되었습니다.`;
-      const title = amount > 0 ? '🎉 포인트 획득!' : '❗ 포인트 차감';
+      // [수정] 알림 제목을 보상 내용에 맞게 동적으로 변경
+      let notificationTitle = `+${amount}P 획득!`;
+      if (reason.includes('우승')) {
+        notificationTitle = `🏆 리그 우승! +${amount}P`;
+      } else if (reason.includes('준우승')) {
+        notificationTitle = `🥈 리그 준우승! +${amount}P`;
+      } else if (reason.includes('3위')) {
+        notificationTitle = `🥉 리그 3위! +${amount}P`;
+      } else if (reason.includes('득점왕')) {
+        notificationTitle = `⚽ 득점왕! +${amount}P`;
+      }
 
       createNotification(
         playerData.authUid,
-        title,
-        `${message} (사유: ${reason})`,
+        notificationTitle, // 수정된 알림 제목 적용
+        `'${reason}' 보상으로 ${amount}P를 획득했습니다.`,
         'point',
-        `/profile/${playerId}`,
-        { amount, reason } // [추가] 상세 데이터를 함께 전송
+        `/profile/${playerId}`
       );
 
       await addPointHistory(
@@ -360,6 +368,70 @@ export async function getPlayers() {
 
 export async function deletePlayer(playerId) {
   await deleteDoc(doc(db, 'players', playerId));
+}
+
+export async function updatePlayerStatus(playerId, status) {
+  const playerRef = doc(db, "players", playerId);
+  await updateDoc(playerRef, { status });
+}
+
+export async function submitSuggestion(suggestionData) {
+  const { studentId, studentName, isCard, message } = suggestionData;
+  if (!message.trim()) {
+    throw new Error("메시지 내용을 입력해야 합니다.");
+  }
+  await addDoc(collection(db, "suggestions"), {
+    studentId,
+    studentName,
+    isCard, // 카드 메시지 여부 (true/false)
+    message,
+    status: "pending", // 'pending'(확인전), 'replied'(답변완료)
+    createdAt: serverTimestamp(),
+    reply: null,
+    repliedAt: null,
+  });
+}
+
+// 특정 학생의 건의사항 목록을 불러오는 함수
+export async function getSuggestionsForStudent(studentId) {
+  if (!studentId) return [];
+  const q = query(
+    collection(db, "suggestions"),
+    where("studentId", "==", studentId),
+    orderBy("createdAt", "desc")
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+// 관리자가 모든 건의사항 목록을 불러오는 함수
+export async function getAllSuggestions() {
+  const q = query(collection(db, "suggestions"), orderBy("createdAt", "desc"));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function replyToSuggestion(suggestionId, replyContent, studentAuthUid) { // [수정] studentAuthUid 파라미터 추가
+  if (!replyContent.trim()) {
+    throw new Error("답글 내용을 입력해야 합니다.");
+  }
+  const suggestionRef = doc(db, "suggestions", suggestionId);
+  await updateDoc(suggestionRef, {
+    reply: replyContent,
+    status: "replied",
+    repliedAt: serverTimestamp(),
+  });
+
+  // [추가] 학생에게 답글 알림 보내기
+  if (studentAuthUid) {
+    createNotification(
+      studentAuthUid,
+      "💌 선생님의 답변이 도착했습니다.",
+      "내가 보낸 메시지를 확인해보세요!",
+      "suggestion",
+      "/suggestions"
+    );
+  }
 }
 
 export async function uploadAvatarPart(file, category) {
@@ -811,6 +883,7 @@ export async function updatePlayerProfile(playerId, profileData) {
   await updateDoc(playerRef, profileData);
 }
 
+
 // --- 학급 공동 목표 ---
 export async function createClassGoal(goalData) {
   await addDoc(collection(db, "classGoals"), {
@@ -928,9 +1001,9 @@ export async function batchDeleteAvatarParts(partsToDelete) {
 }
 
 // --- 알림 관련 ---
-export async function createNotification(userId, title, body, type, link = null, data = null) {
+export async function createNotification(userId, title, body, type, link = null) {
   if (!userId) return;
-  const notificationData = {
+  await addDoc(collection(db, 'notifications'), {
     userId,
     title,
     body,
@@ -938,13 +1011,8 @@ export async function createNotification(userId, title, body, type, link = null,
     link,
     isRead: false,
     createdAt: serverTimestamp(),
-  };
-  if (data) {
-    notificationData.data = data; // 데이터 필드가 있으면 추가
-  }
-  await addDoc(collection(db, 'notifications'), notificationData);
+  });
 }
-
 
 export async function getNotificationsForUser(userId) {
   if (!userId) return [];

@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getPlayerSeasonStats } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 
@@ -141,40 +141,7 @@ const PartImage = styled.img`
 const BadgeContainer = styled.div`
     margin-top: 0.25rem;
     font-size: 1.1rem;
-    height: 22px; /* 뱃지가 없을 때도 높이 유지 */
-`;
-
-const MatchHistoryList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-  border-top: 1px solid #dee2e6;
-  padding-top: 1.5rem;
-`;
-
-const MatchHistoryItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem;
-  background-color: #fff;
-  border-radius: 6px;
-  font-size: 0.9rem;
-`;
-
-const MatchResult = styled.span`
-    font-weight: bold;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    color: white;
-    width: 2.5rem;
-    text-align: center;
-    background-color: ${props => {
-        if (props.result === 'W') return '#28a745';
-        if (props.result === 'L') return '#dc3545';
-        return '#6c757d';
-    }};
+    height: 22px; 
 `;
 
 const ExitButton = styled.button`
@@ -192,19 +159,72 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
-// --- Components ---
+const TabContainer = styled.div`
+  display: flex;
+  margin-top: 3rem;
+  border-bottom: 2px solid #dee2e6;
+`;
+
+const TabButton = styled.button`
+  padding: 0.75rem 1.5rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: ${props => props.$active ? '#007bff' : '#6c757d'};
+  border-bottom: ${props => props.$active ? '3px solid #007bff' : '3px solid transparent'};
+  margin-bottom: -2px;
+`;
+
+const PlayerRankingSection = styled.div`
+    margin-top: 1.5rem;
+`;
+
+const PlayerRankItem = styled(Link)`
+    display: grid;
+    grid-template-columns: 40px 1fr 80px 80px 80px;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid #eee;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 0.2s;
+
+    &:hover {
+        background-color: #f8f9fa;
+    }
+`;
+
+const RankHeader = styled.div`
+    display: grid;
+    grid-template-columns: 40px 1fr 80px 80px 80px;
+    padding: 0.5rem 0.75rem;
+    font-weight: bold;
+    color: #495057;
+    border-top: 2px solid #343a40;
+    border-bottom: 1px solid #dee2e6;
+`;
+
+const HeaderCell = styled.div`
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    &:first-child { text-align: left; }
+`;
+
 
 function SeasonStatsCard({ seasonData }) {
-    const { season, team, stats, rank, isTopScorer } = seasonData;
-    const { players, avatarParts, teams } = useLeagueStore();
+    const { players, avatarParts } = useLeagueStore();
     const { playerId } = useParams();
     const [isOpen, setIsOpen] = useState(false);
 
     const teammateAvatars = useMemo(() => {
-        if (!team || !team.members) return [];
-        return team.members.map(memberId => {
+        if (!seasonData.team || !seasonData.team.members) return [];
+        return seasonData.team.members.map(memberId => {
             const memberData = players.find(p => p.id === memberId);
             if (!memberData) return null;
+
             const urls = [baseAvatar];
             if (memberData.avatarConfig) {
                 Object.values(memberData.avatarConfig).forEach(partId => {
@@ -214,37 +234,32 @@ function SeasonStatsCard({ seasonData }) {
             }
             return { id: memberId, name: memberData.name, urls };
         }).filter(Boolean);
-    }, [team, players, avatarParts]);
+    }, [seasonData.team, players, avatarParts]);
 
     const seasonPoints = useMemo(() => {
         const VICTORY_REWARD = 50;
         const PARTICIPATION_REWARD = 15;
-        return (stats.wins * VICTORY_REWARD) + ((stats.draws + stats.losses) * PARTICIPATION_REWARD);
-    }, [stats]);
+        return (seasonData.stats.wins * VICTORY_REWARD) + ((seasonData.stats.draws + seasonData.stats.losses) * PARTICIPATION_REWARD);
+    }, [seasonData.stats]);
+
+    // [추가] 시즌 상태에 따라 '최종' 또는 '현재' 텍스트 결정
+    const rankText = seasonData.season.status === 'completed' ? '최종' : '현재';
 
     return (
         <SeasonCard>
             <SeasonHeader onClick={() => setIsOpen(!isOpen)}>
-                <span>{season.seasonName} (최종 {rank}위)</span>
+                {/* ▼▼▼ [수정] rankText 변수 적용 ▼▼▼ */}
+                <span>{seasonData.season.seasonName} ({rankText} {seasonData.rank}위)</span>
                 <span>{isOpen ? '▲' : '▼'}</span>
             </SeasonHeader>
             <SeasonContent $isOpen={isOpen}>
                 <SeasonStatsSummary>
-                    <SummaryItem>
-                        <h4>최종 순위</h4>
-                        <p>{rank}위</p>
-                    </SummaryItem>
-                    <SummaryItem>
-                        <h4>시즌 성적 / 득점</h4>
-                        <p>{stats.wins}승 {stats.draws}무 {stats.losses}패 / {stats.goals}골</p>
-                    </SummaryItem>
-                    <SummaryItem>
-                        <h4>획득 포인트</h4>
-                        <p>{seasonPoints} P</p>
-                    </SummaryItem>
+                    <SummaryItem><h4>{rankText} 순위</h4><p>{seasonData.rank}위</p></SummaryItem>
+                    <SummaryItem><h4>시즌 성적 / 득점</h4><p>{seasonData.stats.wins}승 {seasonData.stats.draws}무 {seasonData.stats.losses}패 / {seasonData.stats.goals}골</p></SummaryItem>
+                    <SummaryItem><h4>획득 포인트</h4><p>{seasonPoints} P</p></SummaryItem>
                 </SeasonStatsSummary>
                 <TeamInfo>
-                    <h4>{team.teamName} 팀원</h4>
+                    <h4>{seasonData.team.teamName} 팀원</h4>
                     <TeammateGrid>
                         {teammateAvatars.map(mate => (
                             <TeammateCard key={mate.id}>
@@ -253,8 +268,8 @@ function SeasonStatsCard({ seasonData }) {
                                 </AvatarDisplay>
                                 <span>{mate.name}</span>
                                 <BadgeContainer>
-                                    {team.captainId === mate.id && <span title="주장">Ⓒ </span>}
-                                    {isTopScorer && playerId === mate.id && <span title="득점왕">⚽</span>}
+                                    {seasonData.team.captainId === mate.id && <span title="주장">Ⓒ </span>}
+                                    {seasonData.isTopScorer && playerId === mate.id && <span title="득점왕">⚽</span>}
                                 </BadgeContainer>
                             </TeammateCard>
                         ))}
@@ -265,79 +280,123 @@ function SeasonStatsCard({ seasonData }) {
     );
 }
 
-
 function PlayerStatsPage() {
     const { players } = useLeagueStore();
     const { playerId } = useParams();
     const navigate = useNavigate();
     const [allSeasonStats, setAllSeasonStats] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [allPlayerTotals, setAllPlayerTotals] = useState([]);
+    const [activeTab, setActiveTab] = useState('seasons'); // [수정] 기본 탭 변경
+    const [sortConfig, setSortConfig] = useState({ key: 'championships', direction: 'desc' });
 
     const playerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
     useEffect(() => {
-        const fetchStats = async () => {
+        const fetchAllStats = async () => {
             setLoading(true);
-            const stats = await getPlayerSeasonStats(playerId);
-            setAllSeasonStats(stats);
+            const allPlayerStatsPromises = players.map(p => getPlayerSeasonStats(p.id));
+            const allStatsResults = await Promise.all(allPlayerStatsPromises);
+
+            const totals = allStatsResults.map((playerSeasons, index) => {
+                const player = players[index];
+                const playerTotals = { championships: 0, wins: 0, played: 0, goals: 0 };
+                playerSeasons.forEach(seasonData => {
+                    playerTotals.wins += seasonData.stats.wins;
+                    playerTotals.played += seasonData.stats.played;
+                    playerTotals.goals += seasonData.stats.goals;
+                    if (seasonData.rank === 1) playerTotals.championships++;
+                });
+                return { ...player, ...playerTotals };
+            });
+
+            setAllPlayerTotals(totals);
+            const myStats = allStatsResults[players.findIndex(p => p.id === playerId)] || [];
+            setAllSeasonStats(myStats);
             setLoading(false);
         };
-        fetchStats();
-    }, [playerId]);
+        if (players.length > 0) fetchAllStats();
+    }, [players, playerId]);
 
-    const totalStats = useMemo(() => {
-        const totals = { championships: 0, wins: 0, played: 0, goals: 0 };
-        allSeasonStats.forEach(seasonData => {
-            totals.wins += seasonData.stats.wins;
-            totals.played += seasonData.stats.played;
-            totals.goals += seasonData.stats.goals;
-            if (seasonData.rank === 1) {
-                totals.championships++;
-            }
+    const sortedPlayers = useMemo(() => {
+        return [...allPlayerTotals].sort((a, b) => {
+            if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
+
+            if (b.championships !== a.championships) return b.championships - a.championships;
+            if (b.wins !== a.wins) return b.wins - a.wins;
+            return b.goals - a.goals;
         });
-        return totals;
-    }, [allSeasonStats]);
+    }, [allPlayerTotals, sortConfig]);
 
-    if (loading) {
-        return <Wrapper><Title>선수 기록을 불러오는 중...</Title></Wrapper>;
-    }
+    const handleSort = (key) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
 
-    if (!playerData) {
-        return <Wrapper><Title>선수 정보를 찾을 수 없습니다.</Title></Wrapper>;
-    }
+    const myTotalStats = useMemo(() => {
+        return allPlayerTotals.find(p => p.id === playerId) || { championships: 0, wins: 0, played: 0, goals: 0 };
+    }, [allPlayerTotals, playerId]);
+
+    if (loading) return <Wrapper><Title>선수 기록을 불러오는 중...</Title></Wrapper>;
+    if (!playerData) return <Wrapper><Title>선수 정보를 찾을 수 없습니다.</Title></Wrapper>;
+
+    const getSortIndicator = (key) => {
+        if (sortConfig.key !== key) return '';
+        return sortConfig.direction === 'desc' ? ' ▼' : ' ▲';
+    };
 
     return (
         <Wrapper>
             <Title>{playerData.name} 선수의 리그 기록</Title>
             <TotalStatsGrid>
-                <StatCard>
-                    <StatValue color="#ffc107">🏆 {totalStats.championships}</StatValue>
-                    <StatLabel>통산 우승</StatLabel>
-                </StatCard>
-                <StatCard>
-                    <StatValue color="#007bff">🏅 {totalStats.wins}</StatValue>
-                    <StatLabel>통산 승리</StatLabel>
-                </StatCard>
-                <StatCard>
-                    <StatValue>⚔️ {totalStats.played}</StatValue>
-                    <StatLabel>통산 출전</StatLabel>
-                </StatCard>
-                <StatCard>
-                    <StatValue color="#28a745">⚽ {totalStats.goals}</StatValue>
-                    <StatLabel>통산 득점</StatLabel>
-                </StatCard>
+                <StatCard><StatValue color="#ffc107">🏆 {myTotalStats.championships}</StatValue><StatLabel>통산 우승</StatLabel></StatCard>
+                <StatCard><StatValue color="#007bff">🏅 {myTotalStats.wins}</StatValue><StatLabel>통산 승리</StatLabel></StatCard>
+                <StatCard><StatValue>⚔️ {myTotalStats.played}</StatValue><StatLabel>통산 출전</StatLabel></StatCard>
+                <StatCard><StatValue color="#28a745">⚽ {myTotalStats.goals}</StatValue><StatLabel>통산 득점</StatLabel></StatCard>
             </TotalStatsGrid>
 
-            <SectionTitle>시즌별 기록</SectionTitle>
-            <SeasonList>
-                {allSeasonStats.length > 0 ? (
-                    allSeasonStats.map((seasonData) => (
-                        <SeasonStatsCard key={seasonData.season.id} seasonData={seasonData} />
-                    ))
-                ) : (
-                    <p>참가한 시즌 기록이 없습니다.</p>
-                )}
-            </SeasonList>
+            {/* ▼▼▼ [수정] 탭 좌우 위치 변경 ▼▼▼ */}
+            <TabContainer>
+                <TabButton $active={activeTab === 'seasons'} onClick={() => setActiveTab('seasons')}>시즌별 기록</TabButton>
+                <TabButton $active={activeTab === 'ranking'} onClick={() => setActiveTab('ranking')}>전체 선수 랭킹</TabButton>
+            </TabContainer>
+
+            {activeTab === 'ranking' && (
+                <PlayerRankingSection>
+                    <RankHeader>
+                        <HeaderCell>순위</HeaderCell>
+                        <HeaderCell style={{ textAlign: 'left' }}>선수</HeaderCell>
+                        <HeaderCell onClick={() => handleSort('championships')}>우승{getSortIndicator('championships')}</HeaderCell>
+                        <HeaderCell onClick={() => handleSort('wins')}>승리{getSortIndicator('wins')}</HeaderCell>
+                        <HeaderCell onClick={() => handleSort('goals')}>득점{getSortIndicator('goals')}</HeaderCell>
+                    </RankHeader>
+                    {sortedPlayers.map((p, index) => (
+                        <PlayerRankItem key={p.id} to={`/profile/${p.id}`}>
+                            <span>{index + 1}</span>
+                            <span>{p.name}</span>
+                            <span style={{ textAlign: 'center' }}>{p.championships}</span>
+                            <span style={{ textAlign: 'center' }}>{p.wins}</span>
+                            <span style={{ textAlign: 'center' }}>{p.goals}</span>
+                        </PlayerRankItem>
+                    ))}
+                </PlayerRankingSection>
+            )}
+
+            {activeTab === 'seasons' && (
+                <SeasonList style={{ marginTop: '1.5rem' }}>
+                    {allSeasonStats.length > 0 ? (
+                        allSeasonStats.map((seasonData) => (
+                            <SeasonStatsCard key={seasonData.season.id} seasonData={seasonData} />
+                        ))
+                    ) : (
+                        <p>참가한 시즌 기록이 없습니다.</p>
+                    )}
+                </SeasonList>
+            )}
+
             <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
         </Wrapper>
     );

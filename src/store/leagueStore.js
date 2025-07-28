@@ -33,6 +33,7 @@ import {
     isAttendanceRewardAvailable,
     grantAttendanceReward,
     db,
+    updatePlayerStatus,
     createNewSeason
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
@@ -499,6 +500,26 @@ export const useLeagueStore = create((set, get) => ({
         await deletePlayer(playerId);
         const players = await getPlayers();
         set({ players });
+    },
+
+    togglePlayerStatus: async (playerId, currentStatus) => {
+        const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
+        const actionText = newStatus === 'inactive' ? '비활성화' : '활성화';
+        if (!confirm(`이 선수를 ${actionText} 상태로 변경하시겠습니까?`)) return;
+
+        try {
+            await updatePlayerStatus(playerId, newStatus);
+            // 상태를 로컬에서도 즉시 업데이트하여 빠른 UI 반응을 유도
+            set(state => ({
+                players: state.players.map(p =>
+                    p.id === playerId ? { ...p, status: newStatus } : p
+                )
+            }));
+            alert(`선수가 ${actionText} 처리되었습니다.`);
+        } catch (error) {
+            console.error("선수 상태 변경 오류:", error);
+            alert("상태 변경 중 오류가 발생했습니다.");
+        }
     },
 
     addNewTeam: async (teamName) => {
