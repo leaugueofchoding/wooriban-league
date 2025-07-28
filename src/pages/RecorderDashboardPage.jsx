@@ -108,14 +108,13 @@ const TeamName = styled.span`
   text-align: center;
 `;
 
-const ScoreInput = styled.input`
-  width: 60px;
-  text-align: center;
-  margin: 0 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+const VsText = styled.span`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #343a40;
+  margin: 0 1rem; /* 양 옆에 간격을 줍니다 */
 `;
+// ▲▲▲ 여기까지 추가해주세요 ▲▲▲
 
 const SaveButton = styled.button`
   padding: 0.5rem 1rem;
@@ -151,45 +150,148 @@ const ScorerRow = styled.div`
     margin-bottom: 0.5rem;
 `;
 
-function MatchRow({ match }) {
+const ScoreControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const ScoreButton = styled.button`
+  width: 32px;
+  height: 32px;
+  border: 1px solid #ced4da;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #495057;
+  cursor: pointer;
+  background-color: #f8f9fa;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  border-radius: 6px;
+
+  &:hover {
+    background-color: #e9ecef;
+  }
+  &:disabled {
+    background-color: #e9ecef;
+    color: #adb5bd;
+    cursor: not-allowed;
+  }
+`;
+
+const ScoreDisplay = styled.span`
+  font-size: 2rem;
+  font-weight: bold;
+  width: 40px;
+  text-align: center;
+`;
+
+function MatchRow({ match, isInitiallyOpen, onSave }) {
     const { players, teams, saveScores, currentSeason } = useLeagueStore();
-    const [scoreA, setScoreA] = useState(match.teamA_score ?? '');
-    const [scoreB, setScoreB] = useState(match.teamB_score ?? '');
-    const [showScorers, setShowScorers] = useState(false);
+
+    const teamA = useMemo(() => teams.find(t => t.id === match.teamA_id), [teams, match.teamA_id]);
+    const teamB = useMemo(() => teams.find(t => t.id === match.teamB_id), [teams, match.teamB_id]);
+
+    const teamAMembers = useMemo(() => {
+        const members = teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+        return members;
+    }, [teamA, players]);
+
+    const teamBMembers = useMemo(() => {
+        const members = teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+        return members;
+    }, [teamB, players]);
+
+    const initialScore = useMemo(() => {
+        if (typeof match.teamA_score === 'number' && typeof match.teamB_score === 'number') {
+            return { a: match.teamA_score, b: match.teamB_score };
+        }
+        const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
+        return { a: maxMembers, b: maxMembers };
+    }, [match, teamAMembers, teamBMembers]);
+
+    const [scoreA, setScoreA] = useState(initialScore.a);
+    const [scoreB, setScoreB] = useState(initialScore.b);
+    const [showScorers, setShowScorers] = useState(isInitiallyOpen);
     const [scorers, setScorers] = useState(match.scorers || {});
+    const [ownGoals, setOwnGoals] = useState({ A: 0, B: 0 });
 
     const isSeasonActive = currentSeason?.status === 'active';
-    const teamA = teams.find(t => t.id === match.teamA_id);
-    const teamB = teams.find(t => t.id === match.teamB_id);
-    const teamAMembers = teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
-    const teamBMembers = teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
 
-    const handleScorerChange = (playerId, goals) => {
-        const goalCount = Number(goals);
+    useEffect(() => {
+        setShowScorers(isInitiallyOpen);
+    }, [isInitiallyOpen]);
+
+    const handleScorerChange = (playerId, amount) => {
+        const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
+        const currentGoals = scorers[playerId] || 0;
+
+        if (amount === -1 && currentGoals === 0) return;
+        if (amount === 1) {
+            if (playerTeam === 'A' && scoreB === 0) return;
+            if (playerTeam === 'B' && scoreA === 0) return;
+        }
+
         setScorers(prev => {
+            const newGoals = Math.max(0, currentGoals + amount);
             const newScorers = { ...prev };
-            if (goalCount > 0) newScorers[playerId] = goalCount;
-            else delete newScorers[playerId];
+            if (newGoals > 0) {
+                newScorers[playerId] = newGoals;
+            } else {
+                delete newScorers[playerId];
+            }
             return newScorers;
         });
+
+        if (playerTeam === 'A') {
+            setScoreB(s => Math.max(0, s - amount));
+        } else {
+            setScoreA(s => Math.max(0, s - amount));
+        }
+    };
+
+    const handleOwnGoalChange = (team, amount) => {
+        const currentOwnGoals = ownGoals[team];
+
+        if (amount === -1 && currentOwnGoals === 0) return;
+
+        if (team === 'A') {
+            if (amount === 1 && scoreA === 0) return;
+            setScoreA(s => Math.max(0, s - amount));
+        } else {
+            if (amount === 1 && scoreB === 0) return;
+            setScoreB(s => Math.max(0, s - amount));
+        }
+
+        setOwnGoals(prev => ({
+            ...prev,
+            [team]: Math.max(0, currentOwnGoals + amount)
+        }));
     };
 
     const handleSave = () => {
-        const scores = { a: Number(scoreA), b: Number(scoreB) };
-        if (isNaN(scores.a) || isNaN(scores.b)) {
-            return alert('점수를 숫자로 입력해주세요.');
-        }
-        saveScores(match.id, scores, scorers);
+        saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
         alert('저장되었습니다!');
+        onSave(match.id);
     };
 
     return (
         <MatchItem>
             <MatchSummary>
                 <TeamName>{teamA?.teamName || 'N/A'}</TeamName>
-                <ScoreInput type="number" value={scoreA} onChange={(e) => setScoreA(e.target.value)} disabled={!isSeasonActive} />
-                <span>vs</span>
-                <ScoreInput type="number" value={scoreB} onChange={(e) => setScoreB(e.target.value)} disabled={!isSeasonActive} />
+                <ScoreControl>
+                    <ScoreButton onClick={() => setScoreA(s => Math.max(0, s - 1))} disabled={!isSeasonActive}>-</ScoreButton>
+                    <ScoreDisplay>{scoreA}</ScoreDisplay>
+                    <ScoreButton onClick={() => setScoreA(s => s + 1)} disabled={!isSeasonActive}>+</ScoreButton>
+                </ScoreControl>
+                <VsText>vs</VsText>
+                <ScoreControl>
+                    <ScoreButton onClick={() => setScoreB(s => Math.max(0, s - 1))} disabled={!isSeasonActive}>-</ScoreButton>
+                    <ScoreDisplay>{scoreB}</ScoreDisplay>
+                    <ScoreButton onClick={() => setScoreB(s => s + 1)} disabled={!isSeasonActive}>+</ScoreButton>
+                </ScoreControl>
                 <TeamName>{teamB?.teamName || 'N/A'}</TeamName>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <SaveButton onClick={() => setShowScorers(s => !s)} disabled={!isSeasonActive}>득점</SaveButton>
@@ -200,36 +302,48 @@ function MatchRow({ match }) {
                 <ScorerSection>
                     <ScorerGrid>
                         <TeamScorerList>
-                            <strong>{teamA?.teamName}</strong>
                             {teamAMembers.map(player => (
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={scorers[player.id] || ''}
-                                        onChange={(e) => handleScorerChange(player.id, e.target.value)}
-                                        style={{ width: '60px' }}
-                                    />
-                                    <span>골</span>
+                                    <ScoreControl>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, -1)}>-</ScoreButton>
+                                        <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, 1)}>+</ScoreButton>
+                                        <span>골</span>
+                                    </ScoreControl>
                                 </ScorerRow>
                             ))}
+                            <ScorerRow>
+                                <span style={{ color: 'red' }}>자책:</span>
+                                <ScoreControl>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('A', -1)}>-</ScoreButton>
+                                    <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{ownGoals.A}</ScoreDisplay>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('A', 1)}>+</ScoreButton>
+                                    <span>골</span>
+                                </ScoreControl>
+                            </ScorerRow>
                         </TeamScorerList>
                         <TeamScorerList>
-                            <strong>{teamB?.teamName}</strong>
                             {teamBMembers.map(player => (
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={scorers[player.id] || ''}
-                                        onChange={(e) => handleScorerChange(player.id, e.target.value)}
-                                        style={{ width: '60px' }}
-                                    />
-                                    <span>골</span>
+                                    <ScoreControl>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, -1)}>-</ScoreButton>
+                                        <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, 1)}>+</ScoreButton>
+                                        <span>골</span>
+                                    </ScoreControl>
                                 </ScorerRow>
                             ))}
+                            <ScorerRow>
+                                <span style={{ color: 'red' }}>자책:</span>
+                                <ScoreControl>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('B', -1)}>-</ScoreButton>
+                                    <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{ownGoals.B}</ScoreDisplay>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('B', 1)}>+</ScoreButton>
+                                    <span>골</span>
+                                </ScoreControl>
+                            </ScorerRow>
                         </TeamScorerList>
                     </ScorerGrid>
                 </ScorerSection>
@@ -244,6 +358,7 @@ function RecorderDashboardPage() {
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
     const [activeTab, setActiveTab] = useState('pending');
+    const [openedMatchId, setOpenedMatchId] = useState(null);
     const currentUser = auth.currentUser;
     const navigate = useNavigate();
 
@@ -253,8 +368,17 @@ function RecorderDashboardPage() {
     }, [players, currentUser]);
 
     const filteredMatches = useMemo(() => {
-        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === 'completed'));
+        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
     }, [matches, activeTab]);
+
+    useEffect(() => {
+        const pendingMatches = matches.filter(m => m.status !== '완료');
+        if (pendingMatches.length > 0) {
+            setOpenedMatchId(pendingMatches[0].id);
+        } else {
+            setOpenedMatchId(null);
+        }
+    }, [matches]);
 
     useEffect(() => {
         const submissionsRef = collection(db, "missionSubmissions");
@@ -296,6 +420,14 @@ function RecorderDashboardPage() {
             console.error(`미션 ${action} 오류:`, error);
             alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
         }
+    };
+
+    const handleSaveAndOpenNext = (savedMatchId) => {
+        const pendingMatches = matches.filter(m => m.status !== '완료');
+        const currentIndex = pendingMatches.findIndex(m => m.id === savedMatchId);
+
+        const nextMatch = pendingMatches[currentIndex + 1];
+        setOpenedMatchId(nextMatch ? nextMatch.id : null);
     };
 
     return (
@@ -350,7 +482,14 @@ function RecorderDashboardPage() {
                     <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
                 </TabContainer>
                 {filteredMatches.length > 0 ? (
-                    filteredMatches.map(match => <MatchRow key={match.id} match={match} />)
+                    filteredMatches.map(match =>
+                        <MatchRow
+                            key={match.id}
+                            match={match}
+                            isInitiallyOpen={openedMatchId === match.id}
+                            onSave={handleSaveAndOpenNext}
+                        />
+                    )
                 ) : <p>해당 목록에 경기가 없습니다.</p>}
             </Section>
 

@@ -317,6 +317,7 @@ const ScorerRow = styled.div`
     margin-bottom: 0.5rem;
 `;
 
+// ▼▼▼ 이 코드를 추가해주세요! ▼▼▼
 const ScoreInput = styled.input`
   width: 60px;
   text-align: center;
@@ -326,11 +327,59 @@ const ScoreInput = styled.input`
   border-radius: 4px;
 `;
 
+const ScoreControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const ScoreButton = styled.button`
+  width: 32px;
+  height: 32px;
+  border: 1px solid #ced4da;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #495057;
+  cursor: pointer;
+  background-color: #f8f9fa;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  border-radius: 6px;
+
+  &:hover {
+    background-color: #e9ecef;
+  }
+  &:disabled {
+    background-color: #e9ecef;
+    color: #adb5bd;
+    cursor: not-allowed;
+  }
+`;
+
+const ScoreDisplay = styled.span`
+  font-size: 2rem;
+  font-weight: bold;
+  width: 40px;
+  text-align: center;
+`;
+
+
 const TeamName = styled.span`
   font-weight: bold;
   min-width: 100px;
   text-align: center;
 `;
+
+const VsText = styled.span`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #343a40;
+  margin: 0 1rem; /* 양 옆에 간격을 줍니다 */
+`;
+// ▲▲▲ 여기까지 추가해주세요 ▲▲▲
+
 
 const SaveButton = styled.button`
   padding: 0.5rem 1rem;
@@ -1268,51 +1317,113 @@ function PointManager() {
     );
 }
 
-function MatchRow({ match }) {
+function MatchRow({ match, isInitiallyOpen, onSave }) {
     const { players, teams, saveScores, currentSeason } = useLeagueStore();
-    const [scoreA, setScoreA] = useState(match.teamA_score ?? '');
-    const [scoreB, setScoreB] = useState(match.teamB_score ?? '');
-    const [showScorers, setShowScorers] = useState(false);
+
+    const teamA = useMemo(() => teams.find(t => t.id === match.teamA_id), [teams, match.teamA_id]);
+    const teamB = useMemo(() => teams.find(t => t.id === match.teamB_id), [teams, match.teamB_id]);
+
+    const teamAMembers = useMemo(() => teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamA, players]);
+    const teamBMembers = useMemo(() => teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamB, players]);
+
+    const initialScore = useMemo(() => {
+        if (typeof match.teamA_score === 'number' && typeof match.teamB_score === 'number') {
+            return { a: match.teamA_score, b: match.teamB_score };
+        }
+        const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
+        return { a: maxMembers, b: maxMembers };
+    }, [match, teamAMembers, teamBMembers]);
+
+    const [scoreA, setScoreA] = useState(initialScore.a);
+    const [scoreB, setScoreB] = useState(initialScore.b);
+    const [showScorers, setShowScorers] = useState(isInitiallyOpen);
     const [scorers, setScorers] = useState(match.scorers || {});
 
-    const isSeasonActive = currentSeason?.status === 'active';
-    const teamA = teams.find(t => t.id === match.teamA_id);
-    const teamB = teams.find(t => t.id === match.teamB_id);
-    const teamAMembers = teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
-    const teamBMembers = teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+    // [추가] 자책골 상태 관리
+    const [ownGoals, setOwnGoals] = useState({ A: 0, B: 0 });
 
-    const handleScorerChange = (playerId, goals) => {
-        const goalCount = Number(goals);
+    const isSeasonActive = currentSeason?.status === 'active';
+
+    useEffect(() => {
+        setShowScorers(isInitiallyOpen);
+    }, [isInitiallyOpen]);
+
+    const handleScorerChange = (playerId, amount) => {
+        const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
+        const currentGoals = scorers[playerId] || 0;
+
+        // 룰 1: 0골 상태에서 '-' 버튼 클릭 방지
+        if (amount === -1 && currentGoals === 0) return;
+
+        // 룰 2: 상대팀 점수가 0점이면 '+' 버튼 클릭 방지
+        if (amount === 1) {
+            if (playerTeam === 'A' && scoreB === 0) return;
+            if (playerTeam === 'B' && scoreA === 0) return;
+        }
+
         setScorers(prev => {
+            const newGoals = Math.max(0, currentGoals + amount);
             const newScorers = { ...prev };
-            if (goalCount > 0) {
-                newScorers[playerId] = goalCount;
+            if (newGoals > 0) {
+                newScorers[playerId] = newGoals;
             } else {
                 delete newScorers[playerId];
             }
             return newScorers;
         });
+
+        if (playerTeam === 'A') {
+            setScoreB(s => Math.max(0, s - amount));
+        } else {
+            setScoreA(s => Math.max(0, s - amount));
+        }
+    };
+
+    // [추가] 자책골 핸들러
+    const handleOwnGoalChange = (team, amount) => {
+        const currentOwnGoals = ownGoals[team];
+
+        if (amount === -1 && currentOwnGoals === 0) return;
+
+        if (team === 'A') {
+            if (amount === 1 && scoreA === 0) return;
+            setScoreA(s => Math.max(0, s - amount));
+        } else {
+            if (amount === 1 && scoreB === 0) return;
+            setScoreB(s => Math.max(0, s - amount));
+        }
+
+        setOwnGoals(prev => ({
+            ...prev,
+            [team]: Math.max(0, currentOwnGoals + amount)
+        }));
     };
 
     const handleSave = () => {
-        const scores = { a: Number(scoreA), b: Number(scoreB) };
-        if (isNaN(scores.a) || isNaN(scores.b)) {
-            return alert('점수를 숫자로 입력해주세요.');
-        }
-        saveScores(match.id, scores, scorers);
+        // 참고: 현재 saveScores 함수는 자책골을 저장하지 않습니다. 추후 leagueStore 수정이 필요합니다.
+        saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
         alert('저장되었습니다!');
+        onSave(match.id);
     };
 
     return (
         <MatchItem>
             <MatchSummary>
                 <TeamName>{teamA?.teamName || 'N/A'}</TeamName>
-                <ScoreInput type="number" value={scoreA} onChange={(e) => setScoreA(e.target.value)} disabled={!isSeasonActive} />
-                <span>vs</span>
-                <ScoreInput type="number" value={scoreB} onChange={(e) => setScoreB(e.target.value)} disabled={!isSeasonActive} />
+                <ScoreControl>
+                    <ScoreButton onClick={() => setScoreA(s => Math.max(0, s - 1))} disabled={!isSeasonActive}>-</ScoreButton>
+                    <ScoreDisplay>{scoreA}</ScoreDisplay>
+                    <ScoreButton onClick={() => setScoreA(s => s + 1)} disabled={!isSeasonActive}>+</ScoreButton>
+                </ScoreControl>
+                <VsText>vs</VsText>
+                <ScoreControl>
+                    <ScoreButton onClick={() => setScoreB(s => Math.max(0, s - 1))} disabled={!isSeasonActive}>-</ScoreButton>
+                    <ScoreDisplay>{scoreB}</ScoreDisplay>
+                    <ScoreButton onClick={() => setScoreB(s => s + 1)} disabled={!isSeasonActive}>+</ScoreButton>
+                </ScoreControl>
                 <TeamName>{teamB?.teamName || 'N/A'}</TeamName>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <SaveButton onClick={() => setShowScorers(s => !s)} disabled={!isSeasonActive}>득점</SaveButton>
+                    <SaveButton onClick={() => setShowScorers(s => !s)} disabled={!isSeasonActive}>명단</SaveButton>
                     <SaveButton onClick={handleSave} disabled={!isSeasonActive}>저장</SaveButton>
                 </div>
             </MatchSummary>
@@ -1320,36 +1431,50 @@ function MatchRow({ match }) {
                 <ScorerSection>
                     <ScorerGrid>
                         <TeamScorerList>
-                            <strong>{teamA?.teamName}</strong>
                             {teamAMembers.map(player => (
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={scorers[player.id] || ''}
-                                        onChange={(e) => handleScorerChange(player.id, e.target.value)}
-                                        style={{ width: '60px' }}
-                                    />
-                                    <span>골</span>
+                                    <ScoreControl>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, -1)}>-</ScoreButton>
+                                        <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, 1)}>+</ScoreButton>
+                                        <span>골</span>
+                                    </ScoreControl>
                                 </ScorerRow>
                             ))}
+                            {/* ▼▼▼ [추가] A팀 자책골 UI ▼▼▼ */}
+                            <ScorerRow>
+                                <span style={{ color: 'red' }}>자책:</span>
+                                <ScoreControl>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('A', -1)}>-</ScoreButton>
+                                    <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{ownGoals.A}</ScoreDisplay>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('A', 1)}>+</ScoreButton>
+                                    <span>골</span>
+                                </ScoreControl>
+                            </ScorerRow>
                         </TeamScorerList>
                         <TeamScorerList>
-                            <strong>{teamB?.teamName}</strong>
                             {teamBMembers.map(player => (
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={scorers[player.id] || ''}
-                                        onChange={(e) => handleScorerChange(player.id, e.target.value)}
-                                        style={{ width: '60px' }}
-                                    />
-                                    <span>골</span>
+                                    <ScoreControl>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, -1)}>-</ScoreButton>
+                                        <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
+                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, 1)}>+</ScoreButton>
+                                        <span>골</span>
+                                    </ScoreControl>
                                 </ScorerRow>
                             ))}
+                            {/* ▼▼▼ [추가] B팀 자책골 UI ▼▼▼ */}
+                            <ScorerRow>
+                                <span style={{ color: 'red' }}>자책:</span>
+                                <ScoreControl>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('B', -1)}>-</ScoreButton>
+                                    <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{ownGoals.B}</ScoreDisplay>
+                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('B', 1)}>+</ScoreButton>
+                                    <span>골</span>
+                                </ScoreControl>
+                            </ScorerRow>
                         </TeamScorerList>
                     </ScorerGrid>
                 </ScorerSection>
@@ -1397,7 +1522,7 @@ function LeagueManager() {
         autoAssignTeams, generateSchedule, batchCreateTeams,
         leagueType, setLeagueType,
         currentSeason, startSeason, endSeason, updateSeasonDetails,
-        createSeason, setTeamCaptain // setTeamCaptain 추가
+        createSeason, setTeamCaptain
     } = useLeagueStore();
 
     const isNotPreparing = currentSeason?.status !== 'preparing';
@@ -1406,9 +1531,31 @@ function LeagueManager() {
     const [femaleTeamCount, setFemaleTeamCount] = useState(2);
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
-    // [수정] prize를 객체 형태로 변경
     const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0 });
     const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
+
+    // ▼▼▼ [추가] 아코디언 상태 관리를 위한 state ▼▼▼
+    const [openedMatchId, setOpenedMatchId] = useState(null);
+
+    const unassignedPlayers = useMemo(() => {
+        const assignedPlayerIds = teams.flatMap(team => team.members);
+        return players.filter(player => !assignedPlayerIds.includes(player.id));
+    }, [players, teams]);
+
+    const filteredMatches = useMemo(() => {
+        // [수정] 'completed'를 '완료'로 변경하여 필터링 오류 수정
+        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
+    }, [matches, activeTab]);
+
+    // ▼▼▼ [추가] 첫 번째 '입력 대기' 경기를 자동으로 열기 위한 로직 ▼▼▼
+    useEffect(() => {
+        const pendingMatches = matches.filter(m => m.status !== '완료');
+        if (pendingMatches.length > 0) {
+            setOpenedMatchId(pendingMatches[0].id);
+        } else {
+            setOpenedMatchId(null);
+        }
+    }, [matches]);
 
     useEffect(() => {
         if (currentSeason) {
@@ -1419,6 +1566,16 @@ function LeagueManager() {
             });
         }
     }, [currentSeason]);
+
+    // ▼▼▼ [추가] 저장 후 다음 경기를 여는 핸들러 ▼▼▼
+    const handleSaveAndOpenNext = (savedMatchId) => {
+        const pendingMatches = matches.filter(m => m.status !== '완료');
+        const currentIndex = pendingMatches.findIndex(m => m.id === savedMatchId);
+
+        // 다음 경기가 있으면 그 경기의 ID를, 없으면 null을 설정
+        const nextMatch = pendingMatches[currentIndex + 1];
+        setOpenedMatchId(nextMatch ? nextMatch.id : null);
+    };
 
     const handleCreateSeason = async () => {
         if (!newSeasonNameForCreate.trim()) return alert("새 시즌의 이름을 입력해주세요.");
@@ -1433,6 +1590,7 @@ function LeagueManager() {
         }
     };
 
+    // ... (handlePrizesChange, handleSavePrizes 등 기존 핸들러 함수들은 그대로 유지) ...
     const handlePrizesChange = (rank, value) => {
         setPrizes(prev => ({ ...prev, [rank]: Number(value) || 0 }));
     };
@@ -1450,15 +1608,6 @@ function LeagueManager() {
         }
     };
 
-    const unassignedPlayers = useMemo(() => {
-        const assignedPlayerIds = teams.flatMap(team => team.members);
-        return players.filter(player => !assignedPlayerIds.includes(player.id));
-    }, [players, teams]);
-
-    const filteredMatches = useMemo(() => {
-        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === 'completed'));
-    }, [matches, activeTab]);
-
     const handlePlayerSelect = (teamId, playerId) => {
         setSelectedPlayer(prev => ({ ...prev, [teamId]: playerId }));
     };
@@ -1475,6 +1624,7 @@ function LeagueManager() {
     const handleBatchCreateTeams = () => {
         batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount));
     };
+
 
     return (
         <>
@@ -1620,7 +1770,15 @@ function LeagueManager() {
                         <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
                     </TabContainer>
                     {filteredMatches.length > 0 ? (
-                        filteredMatches.map(match => <MatchRow key={match.id} match={match} />)
+                        filteredMatches.map(match => (
+                            <MatchRow
+                                key={match.id}
+                                match={match}
+                                // ▼▼▼ [추가] props 전달 ▼▼▼
+                                isInitiallyOpen={openedMatchId === match.id}
+                                onSave={handleSaveAndOpenNext}
+                            />
+                        ))
                     ) : <p>해당 목록에 경기가 없습니다.</p>}
                 </Section>
             </FullWidthSection>
