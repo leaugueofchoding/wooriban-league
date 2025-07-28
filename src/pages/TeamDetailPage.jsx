@@ -204,11 +204,37 @@ function TeamDetailPage() {
 
     const teamData = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
     const isCaptain = useMemo(() => currentUser && teamData && teamData.captainId === players.find(p => p.authUid === currentUser.uid)?.id, [currentUser, teamData, players]);
-    const isPreseason = useMemo(() => currentSeason?.status === 'preparing', [currentSeason]);
+
+    // ▼▼▼ [수정] 시즌이 'completed'가 아닐 때만 수정 가능하도록 변경 ▼▼▼
+    const canEditTeam = useMemo(() => currentSeason?.status !== 'completed', [currentSeason]);
 
     const teamMembers = useMemo(() => {
-        return teamData?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
-    }, [teamData, players]);
+        if (!teamData?.members) return [];
+        return teamData.members.map(id => {
+            const player = players.find(p => p.id === id);
+            if (!player) return null;
+
+            const urls = [baseAvatar];
+            if (player.avatarConfig) {
+                // 아바타 파츠 렌더링 순서 보장
+                const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+                const partsByCategory = avatarParts.reduce((acc, part) => {
+                    if (!acc[part.category]) acc[part.category] = [];
+                    acc[part.category].push(part);
+                    return acc;
+                }, {});
+
+                RENDER_ORDER.forEach(category => {
+                    const partId = player.avatarConfig[category];
+                    if (partId) {
+                        const part = partsByCategory[category]?.find(p => p.id === partId);
+                        if (part) urls.push(part.src);
+                    }
+                });
+            }
+            return { ...player, avatarUrls: urls };
+        }).filter(Boolean);
+    }, [teamData, players, avatarParts]);
 
     const { teamStats, teamMatches } = useMemo(() => {
         if (!teamData || !currentSeason) return { teamStats: { wins: 0, draws: 0, losses: 0 }, teamMatches: [] };
@@ -238,7 +264,7 @@ function TeamDetailPage() {
         if (!newTeamName.trim()) return alert('팀 이름을 입력해주세요.');
         setIsSaving(true);
         try {
-            let emblemUrl = null;
+            let emblemUrl = teamData.emblemUrl; // 기존 엠블럼 URL 유지
             if (newEmblemFile) {
                 emblemUrl = await uploadTeamEmblem(teamId, newEmblemFile);
             }
@@ -275,7 +301,8 @@ function TeamDetailPage() {
                 <TeamInfo>
                     <TeamNameContainer>
                         <TeamName>{teamData.teamName}</TeamName>
-                        {isCaptain && isPreseason && !isEditing && (
+                        {/* ▼▼▼ [수정] isCaptain && canEditTeam 조건으로 변경 ▼▼▼ */}
+                        {isCaptain && canEditTeam && !isEditing && (
                             <EditButton onClick={handleEditClick}>팀 정보 수정</EditButton>
                         )}
                     </TeamNameContainer>
@@ -308,8 +335,9 @@ function TeamDetailPage() {
                         {teamMembers.map(player => (
                             <MemberCard key={player.id}>
                                 <AvatarDisplay>
-                                    <PartImage src={baseAvatar} />
-                                    {/* Avatar rendering logic can be enhanced here */}
+                                    {player.avatarUrls.map((url, index) => (
+                                        <PartImage key={`${url}-${index}`} src={url} alt={`player-avatar-part-${index}`} />
+                                    ))}
                                 </AvatarDisplay>
                                 <PlayerName>{player.name}</PlayerName>
                                 {teamData.captainId === player.id && <CaptainBadge>Ⓒ</CaptainBadge>}

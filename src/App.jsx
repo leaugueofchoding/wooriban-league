@@ -19,12 +19,24 @@ import RecorderPage from './pages/RecorderPage';
 import WinnerPage from './pages/WinnerPage';
 import RecorderDashboardPage from './pages/RecorderDashboardPage';
 import PlayerStatsPage from './pages/PlayerStatsPage';
-// import TeamInfoPage from './pages/TeamInfoPage'; // [수정] 사용하지 않는 import 문 제거
 import TeamDetailPage from './pages/TeamDetailPage';
 
 // Common Components
 import Auth from './components/Auth';
 import AttendanceModal from './components/AttendanceModal';
+import Footer from './components/Footer'; // [추가] Footer 컴포넌트 import
+
+// ▼▼▼ [추가] 전체 앱 레이아웃을 위한 Wrapper ▼▼▼
+const AppWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+`;
+
+const MainContent = styled.main`
+  flex-grow: 1;
+`;
+
 
 // AccessDenied, ProtectedRoute 컴포넌트는 기존과 동일
 const AccessDeniedWrapper = styled.div`
@@ -110,35 +122,39 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Auth user={auth.currentUser} />
-      <AttendanceModal />
-      <div className="main-content">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/access-denied" element={<AccessDenied />} />
+      {/* ▼▼▼ [수정] AppWrapper로 전체 구조 변경 ▼▼▼ */}
+      <AppWrapper>
+        <Auth user={auth.currentUser} />
+        <AttendanceModal />
+        <MainContent>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/access-denied" element={<AccessDenied />} />
 
-          {/* 가가볼 리그 관련 라우트 */}
-          <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-          <Route path="/league/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
+            {/* 가가볼 리그 관련 라우트 */}
+            <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+            <Route path="/league/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
 
 
-          <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
-          <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-          <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
+            <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
+            <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+            <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
 
-          {/* 프로필 관련 라우트 */}
-          <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
-          <Route path="/profile/:playerId/stats" element={<ProtectedRoute><PlayerStatsPage /></ProtectedRoute>} />
-          <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            {/* 프로필 관련 라우트 */}
+            <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
+            <Route path="/profile/:playerId/stats" element={<ProtectedRoute><PlayerStatsPage /></ProtectedRoute>} />
+            <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
-          {/* 기록원 관련 라우트 */}
-          <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} />
-          <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
-          <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
-        </Routes>
-      </div>
+            {/* 기록원 관련 라우트 */}
+            <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} />
+            <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
+            <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
+          </Routes>
+        </MainContent>
+        <Footer /> {/* [추가] Footer 컴포넌트 렌더링 */}
+      </AppWrapper>
     </BrowserRouter>
   );
 }

@@ -122,6 +122,11 @@ function ProfilePage() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState('');
 
+  // ▼▼▼ [수정] 현재 로그인한 유저의 플레이어 데이터를 가져옴 ▼▼▼
+  const loggedInPlayerData = useMemo(() => {
+    return players.find(p => p.authUid === currentUser?.uid);
+  }, [players, currentUser]);
+
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
@@ -143,10 +148,17 @@ function ProfilePage() {
       return acc;
     }, {});
     const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
-    return Object.entries(playerData.avatarConfig).map(([category, partId]) => {
+    const urls = [];
+    Object.entries(playerData.avatarConfig).forEach(([category, partId]) => {
       const part = partCategories[category]?.find(p => p.id === partId);
-      return part?.src;
-    }).filter(Boolean);
+      if (part) urls.push(part.src);
+    });
+    // RENDER_ORDER에 따라 정렬하여 반환
+    return urls.sort((a, b) => {
+      const partA = avatarParts.find(p => p.src === a);
+      const partB = avatarParts.find(p => p.src === b);
+      return RENDER_ORDER.indexOf(partA?.category) - RENDER_ORDER.indexOf(partB?.category);
+    });
   }, [playerData, avatarParts]);
 
   const fetchPointHistory = async () => {
@@ -200,6 +212,9 @@ function ProfilePage() {
   }
 
   const isMyProfile = playerData.authUid === currentUser?.uid;
+  // ▼▼▼ [추가] 관리자 여부 확인 ▼▼▼
+  const isAdmin = loggedInPlayerData?.role === 'admin';
+
 
   return (
     <ProfileWrapper>
@@ -231,10 +246,11 @@ function ProfilePage() {
       </UserNameContainer>
 
       {playerData.role && <UserRole>{playerData.role}</UserRole>}
-      <PointDisplay>💰 {playerData.points || 0} P</PointDisplay>
+      <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
 
       <ButtonGroup>
-        {isMyProfile && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
+        {/* ▼▼▼ [수정] isMyProfile 또는 isAdmin일 때 버튼 표시 ▼▼▼ */}
+        {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
         {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
         <StyledLink to="/shop">상점 가기</StyledLink>
         <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>

@@ -115,9 +115,11 @@ const FinalPrice = styled.span`
 `;
 const getBackgroundPosition = (category) => {
   switch (category) {
-    case 'bottom': return 'center 75%';
+    case 'bottom': return 'center 90%';
     case 'shoes': return 'center 100%';
-    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+    case 'hair':  return 'center 0%';
+    case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+    case 'top':
     default: return 'center 55%';
   }
 };
@@ -233,7 +235,6 @@ const WearButton = styled(ActionButton)`
     }
 `;
 
-// [추가] 페이지 하단 나가기 버튼
 const ExitButton = styled.button`
   display: block;
   margin: 4rem auto 0;
@@ -254,6 +255,23 @@ const ExitButton = styled.button`
 
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const ITEMS_PER_PAGE = 6;
+
+// ▼▼▼ [추가] 카테고리 영문 -> 한글 변환 함수 ▼▼▼
+const translateCategory = (category) => {
+  const categoryMap = {
+    'all': '전체',
+    'hair': '헤어',
+    'top': '상의',
+    'bottom': '하의',
+    'shoes': '신발',
+    'face': '얼굴',
+    'eyes': '눈',
+    'nose': '코',
+    'mouth': '입',
+    'accessory': '액세서리'
+  };
+  return categoryMap[category] || category;
+};
 
 function ShopPage() {
   const { players, avatarParts, fetchInitialData } = useLeagueStore();
@@ -283,7 +301,12 @@ function ShopPage() {
       }
       return acc;
     }, new Set());
-    return ['all', ...Array.from(categories).sort()];
+    // ▼▼▼ [수정] 정렬 순서 지정 ▼▼▼
+    const sorted = Array.from(categories).sort((a, b) => {
+      const order = ['hair', 'face', 'eyes', 'nose', 'mouth', 'top', 'bottom', 'shoes', 'accessory'];
+      return order.indexOf(a) - order.indexOf(b);
+    });
+    return ['all', ...sorted];
   }, [avatarParts]);
 
   const itemsForSale = useMemo(() => {
@@ -381,7 +404,7 @@ function ShopPage() {
       acc[part.category].push(part);
       return acc;
     }, {});
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+    const RENDER_ORDER = ['accessory', 'shoes', 'top', 'bottom',  'hair', 'face', 'eyes', 'nose', 'mouth' ];
     const urls = [];
     RENDER_ORDER.forEach(category => {
       const partId = previewConfig[category];
@@ -408,7 +431,8 @@ function ShopPage() {
               <TabContainer>
                 {partCategories.map(category => (
                   <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
-                    {category === 'all' ? '전체' : category}
+                    {/* ▼▼▼ [수정] 한글 변환 함수 적용 ▼▼▼ */}
+                    {translateCategory(category)}
                   </TabButton>
                 ))}
               </TabContainer>

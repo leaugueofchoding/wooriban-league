@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 const DashboardWrapper = styled.div`
   max-width: 1000px;
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 1rem; // [수정] 모바일 대응을 위해 패딩 조정
 `;
 
 const JoinLeagueButton = styled.button`
@@ -89,6 +89,13 @@ const MyInfoCard = styled.div`
     transform: translateY(-5px);
     box-shadow: 0 6px 16px rgba(0,0,0,0.12);
   }
+
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
 `;
 
 const AvatarDisplay = styled.div`
@@ -113,6 +120,11 @@ const PartImage = styled.img`
 const InfoText = styled.div`
   text-align: left;
   flex-grow: 1;
+
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    text-align: center;
+  }
 `;
 
 const WelcomeMessage = styled.p`
@@ -133,6 +145,11 @@ const MainGrid = styled.div`
   grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
   margin-bottom: 2.5rem;
+
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const Card = styled.div`
@@ -218,9 +235,37 @@ const GoalTitle = styled.h3` text-align: center; font-size: 1.5rem; margin-botto
 const ProgressBarContainer = styled.div` width: 100%; height: 40px; background-color: #e9ecef; border-radius: 20px; overflow: hidden; border: 2px solid #fff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);`;
 const ProgressBar = styled.div` width: ${props => props.percent}%; height: 100%; background: linear-gradient(90deg, #ffc107, #fd7e14); transition: width 0.5s ease-in-out; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 1rem; `;
 const PointStatus = styled.p` text-align: right; font-weight: bold; margin-top: 0.5rem; color: #495057; `;
-const DonationArea = styled.div` margin-top: 1.5rem; display: flex; justify-content: center; align-items: center; gap: 1rem; `;
-const DonationInput = styled.input` width: 150px; padding: 0.75rem; border: 1px solid #ced4da; border-radius: 8px; font-size: 1rem; text-align: center; `;
-const DonationButton = styled.button` padding: 0.75rem 1.5rem; border: none; border-radius: 8px; background-color: #28a745; color: white; font-weight: bold; font-size: 1rem; cursor: pointer; &:disabled { background-color: #6c757d; }`;
+const DonationArea = styled.div` 
+  margin-top: 1.5rem; 
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  gap: 1rem; 
+
+  // [추가] 모바일 반응형
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
+`;
+const DonationInput = styled.input` 
+  width: 150px; 
+  padding: 0.75rem; 
+  border: 1px solid #ced4da; 
+  border-radius: 8px; 
+  font-size: 1rem; 
+  text-align: center; 
+`;
+const DonationButton = styled.button` 
+  padding: 0.75rem 1.5rem; 
+  border: none; 
+  border-radius: 8px; 
+  background-color: #28a745; 
+  color: white; 
+  font-weight: bold; 
+  font-size: 1rem; 
+  cursor: pointer; 
+  &:disabled { background-color: #6c757d; }
+`;
 const ContributorInfo = styled.p` text-align: center; font-weight: bold; margin-top: 1.5rem; font-size: 1.1rem; color: #ff6f61;`;
 
 const ItemWidgetGrid = styled.div`
@@ -263,7 +308,7 @@ const RequestButton = styled.button`
 
 
 function DashboardPage() {
-    const { players, missions, matches, teams, registerAsPlayer, submitMissionForApproval, missionSubmissions } = useLeagueStore();
+    const { players, missions, matches, teams, registerAsPlayer, submitMissionForApproval, missionSubmissions, avatarParts } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
@@ -308,24 +353,25 @@ function DashboardPage() {
     }, [activeGoal]);
 
     const myAvatarUrls = useMemo(() => {
-        if (!myPlayerData?.avatarConfig || !useLeagueStore.getState().avatarParts.length) return [];
-        const avatarParts = useLeagueStore.getState().avatarParts;
-        const partsByCategory = avatarParts.reduce((acc, part) => {
+        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+        if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
+
+        const urls = [baseAvatar];
+        const partCategories = avatarParts.reduce((acc, part) => {
             if (!acc[part.category]) acc[part.category] = [];
             acc[part.category].push(part);
             return acc;
         }, {});
-        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
-        const urls = [];
+
         RENDER_ORDER.forEach(category => {
             const partId = myPlayerData.avatarConfig[category];
             if (partId) {
-                const part = partsByCategory[category]?.find(p => p.id === partId);
+                const part = partCategories[category]?.find(p => p.id === partId);
                 if (part) urls.push(part.src);
             }
         });
         return urls;
-    }, [myPlayerData]);
+    }, [myPlayerData, avatarParts]);
 
     const handleDonate = async () => {
         if (!myPlayerData) return alert('플레이어 정보를 불러올 수 없습니다.');
@@ -347,14 +393,13 @@ function DashboardPage() {
     };
 
     const shopHighlightItems = useMemo(() => {
-        const avatarParts = useLeagueStore.getState().avatarParts;
         const saleItems = avatarParts.filter(part => {
             const now = new Date();
             const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate();
             return isCurrentlyOnSale && part.status !== 'hidden';
         });
         return saleItems.slice(0, 2);
-    }, []);
+    }, [avatarParts]);
 
     const topRankedTeams = useMemo(() => {
         const completedMatches = matches.filter(m => m.status === '완료');
@@ -408,7 +453,6 @@ function DashboardPage() {
                 <TopGrid>
                     <MyInfoCard onClick={() => navigate(`/profile`)}>
                         <AvatarDisplay>
-                            <PartImage src={baseAvatar} alt="기본 아바타" />
                             {myAvatarUrls.map(src => <PartImage key={src} src={src} />)}
                         </AvatarDisplay>
                         <InfoText>
