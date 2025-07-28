@@ -363,14 +363,17 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) { console.error("시즌 시작 오류:", error); }
     },
 
+
     endSeason: async () => {
         const season = get().currentSeason;
         if (!season || season.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
         if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
 
         try {
-            const { teams, matches, batchAdjustPoints } = get();
+            const { teams, matches, players, batchAdjustPoints } = get();
             const completedMatches = matches.filter(m => m.status === '완료');
+
+            // --- 1. 순위 계산 ---
             let stats = teams.map(team => ({
                 id: team.id, teamName: team.teamName, points: 0, goalDifference: 0, goalsFor: 0,
             }));
@@ -392,6 +395,7 @@ export const useLeagueStore = create((set, get) => ({
                 return b.goalsFor - a.goalsFor;
             });
 
+            // --- 2. 순위별 보상 지급 ---
             const prizeConfig = [
                 { rank: 1, prize: season.winningPrize || 0, label: "우승" },
                 { rank: 2, prize: season.secondPlacePrize || 0, label: "준우승" },
@@ -407,6 +411,30 @@ export const useLeagueStore = create((set, get) => ({
                     }
                 }
             }
+
+            // ▼▼▼ [추가] 3. 득점왕 계산 및 보상 지급 로직 ▼▼▼
+            const topScorerPrize = season.topScorerPrize || 0;
+            if (topScorerPrize > 0) {
+                const scorerPoints = {};
+                completedMatches.forEach(match => {
+                    if (match.scorers) {
+                        Object.entries(match.scorers).forEach(([playerId, goals]) => {
+                            scorerPoints[playerId] = (scorerPoints[playerId] || 0) + goals;
+                        });
+                    }
+                });
+
+                const maxGoals = Math.max(0, ...Object.values(scorerPoints));
+
+                if (maxGoals > 0) {
+                    const topScorers = Object.keys(scorerPoints).filter(playerId => scorerPoints[playerId] === maxGoals);
+                    if (topScorers.length > 0) {
+                        await batchAdjustPoints(topScorers, topScorerPrize, `${season.seasonName} 득점왕 보상`);
+                    }
+                }
+            }
+            // ▲▲▲ 여기까지 추가 ▲▲▲
+
 
             await updateSeason(season.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));

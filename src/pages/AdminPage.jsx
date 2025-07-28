@@ -1531,7 +1531,7 @@ function LeagueManager() {
     const [femaleTeamCount, setFemaleTeamCount] = useState(2);
     const [activeTab, setActiveTab] = useState('pending');
     const [selectedPlayer, setSelectedPlayer] = useState({});
-    const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0 });
+    const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0, topScorer: 0 }); // [수정] topScorer 추가
     const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
 
     // ▼▼▼ [추가] 아코디언 상태 관리를 위한 state ▼▼▼
@@ -1563,6 +1563,7 @@ function LeagueManager() {
                 first: currentSeason.winningPrize || 0,
                 second: currentSeason.secondPlacePrize || 0,
                 third: currentSeason.thirdPlacePrize || 0,
+                topScorer: currentSeason.topScorerPrize || 0, // [추가]
             });
         }
     }, [currentSeason]);
@@ -1601,6 +1602,7 @@ function LeagueManager() {
                 winningPrize: prizes.first,
                 secondPlacePrize: prizes.second,
                 thirdPlacePrize: prizes.third,
+                topScorerPrize: prizes.topScorer, // [추가]
             });
             alert('순위별 보상이 저장되었습니다!');
         } catch (error) {
@@ -1665,6 +1667,8 @@ function LeagueManager() {
                                         <label>1위: <ScoreInput type="number" value={prizes.first} onChange={e => handlePrizesChange('first', e.target.value)} /></label>
                                         <label>2위: <ScoreInput type="number" value={prizes.second} onChange={e => handlePrizesChange('second', e.target.value)} /></label>
                                         <label>3위: <ScoreInput type="number" value={prizes.third} onChange={e => handlePrizesChange('third', e.target.value)} /></label>
+                                        {/* [추가] 득점왕 보상 입력 필드 */}
+                                        <label style={{ marginLeft: '1rem' }}>득점왕: <ScoreInput type="number" value={prizes.topScorer} onChange={e => handlePrizesChange('topScorer', e.target.value)} /></label>
                                     </div>
                                     <SaveButton onClick={handleSavePrizes}>보상 저장</SaveButton>
                                 </InputGroup>
