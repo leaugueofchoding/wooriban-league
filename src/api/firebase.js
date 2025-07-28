@@ -302,12 +302,15 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
       batch.update(playerRef, { points: increment(amount) });
 
       const message = amount > 0 ? `+${amount}P가 지급되었습니다.` : `${amount}P가 차감되었습니다.`;
+      const title = amount > 0 ? '🎉 포인트 획득!' : '❗ 포인트 차감';
+
       createNotification(
         playerData.authUid,
-        `포인트가 지급되었습니다.`,
+        title,
         `${message} (사유: ${reason})`,
         'point',
-        `/profile/${playerId}`
+        `/profile/${playerId}`,
+        { amount, reason } // [추가] 상세 데이터를 함께 전송
       );
 
       await addPointHistory(
@@ -927,9 +930,9 @@ export async function batchDeleteAvatarParts(partsToDelete) {
 }
 
 // --- 알림 관련 ---
-export async function createNotification(userId, title, body, type, link = null) {
+export async function createNotification(userId, title, body, type, link = null, data = null) {
   if (!userId) return;
-  await addDoc(collection(db, 'notifications'), {
+  const notificationData = {
     userId,
     title,
     body,
@@ -937,8 +940,13 @@ export async function createNotification(userId, title, body, type, link = null)
     link,
     isRead: false,
     createdAt: serverTimestamp(),
-  });
+  };
+  if (data) {
+    notificationData.data = data; // 데이터 필드가 있으면 추가
+  }
+  await addDoc(collection(db, 'notifications'), notificationData);
 }
+
 
 export async function getNotificationsForUser(userId) {
   if (!userId) return [];

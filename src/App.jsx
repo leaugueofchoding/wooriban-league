@@ -24,6 +24,7 @@ import TeamDetailPage from './pages/TeamDetailPage';
 // Common Components
 import Auth from './components/Auth';
 import AttendanceModal from './components/AttendanceModal';
+import PointAdjustmentModal from './components/PointAdjustmentModal'; // [추가]
 import Footer from './components/Footer'; // [추가] Footer 컴포넌트 import
 
 // ▼▼▼ [추가] 전체 앱 레이아웃을 위한 Wrapper ▼▼▼
@@ -126,6 +127,7 @@ function App() {
       <AppWrapper>
         <Auth user={auth.currentUser} />
         <AttendanceModal />
+        <PointAdjustmentModal /> {/* [추가] */}
         <MainContent>
           <Routes>
             <Route path="/" element={<DashboardPage />} />

@@ -66,6 +66,7 @@ export const useLeagueStore = create((set, get) => ({
     dailyQuiz: null,
     quizHistory: [],
     currentUser: null,
+    pointAdjustmentNotification: null, // [추가]
 
 
     // --- Actions ---
@@ -266,11 +267,17 @@ export const useLeagueStore = create((set, get) => ({
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const notifications = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const unreadCount = notifications.filter(n => !n.isRead).length;
+
+            // [추가] 포인트 조정 알림 감지 및 모달 상태 업데이트
+            const latestPointNotification = notifications.find(n => n.type === 'point' && !n.isRead && n.data);
+            if (latestPointNotification) {
+                set({ pointAdjustmentNotification: latestPointNotification });
+            }
+
             set({ notifications, unreadNotificationCount: unreadCount });
         }, (error) => console.error("알림 실시간 수신 오류:", error));
         set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
-
     subscribeToRecorderBonus: (userId) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -601,5 +608,9 @@ export const useLeagueStore = create((set, get) => ({
 
     closeAttendanceModal: () => {
         set({ showAttendanceModal: false });
+    },
+
+    clearPointAdjustmentNotification: () => {
+        set({ pointAdjustmentNotification: null });
     },
 }));
