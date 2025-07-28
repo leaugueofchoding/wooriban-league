@@ -144,9 +144,14 @@ const CaptainBadge = styled.span`
     color: #007bff;
 `;
 
+const ButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 3rem;
+`;
+
 const ExitButton = styled.button`
-  display: block;
-  margin: 3rem auto 0;
   padding: 0.8rem 2.5rem;
   font-size: 1.1rem;
   font-weight: bold;
@@ -205,7 +210,6 @@ function TeamDetailPage() {
     const teamData = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
     const isCaptain = useMemo(() => currentUser && teamData && teamData.captainId === players.find(p => p.authUid === currentUser.uid)?.id, [currentUser, teamData, players]);
 
-    // ▼▼▼ [수정] 시즌이 'completed'가 아닐 때만 수정 가능하도록 변경 ▼▼▼
     const canEditTeam = useMemo(() => currentSeason?.status !== 'completed', [currentSeason]);
 
     const teamMembers = useMemo(() => {
@@ -216,7 +220,6 @@ function TeamDetailPage() {
 
             const urls = [baseAvatar];
             if (player.avatarConfig) {
-                // 아바타 파츠 렌더링 순서 보장
                 const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
                 const partsByCategory = avatarParts.reduce((acc, part) => {
                     if (!acc[part.category]) acc[part.category] = [];
@@ -264,7 +267,7 @@ function TeamDetailPage() {
         if (!newTeamName.trim()) return alert('팀 이름을 입력해주세요.');
         setIsSaving(true);
         try {
-            let emblemUrl = teamData.emblemUrl; // 기존 엠블럼 URL 유지
+            let emblemUrl = teamData.emblemUrl;
             if (newEmblemFile) {
                 emblemUrl = await uploadTeamEmblem(teamId, newEmblemFile);
             }
@@ -301,7 +304,6 @@ function TeamDetailPage() {
                 <TeamInfo>
                     <TeamNameContainer>
                         <TeamName>{teamData.teamName}</TeamName>
-                        {/* ▼▼▼ [수정] isCaptain && canEditTeam 조건으로 변경 ▼▼▼ */}
                         {isCaptain && canEditTeam && !isEditing && (
                             <EditButton onClick={handleEditClick}>팀 정보 수정</EditButton>
                         )}
@@ -375,7 +377,10 @@ function TeamDetailPage() {
                 </Section>
             </ContentGrid>
 
-            <ExitButton onClick={handleGoBack}>팀 목록으로</ExitButton>
+            <ButtonContainer>
+                <ExitButton onClick={handleGoBack}>팀 목록으로</ExitButton>
+                <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
+            </ButtonContainer>
         </Wrapper>
     );
 }

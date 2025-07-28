@@ -3,9 +3,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom'; // Link 추가
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
+import { auth } from '../api/firebase'; // auth 추가
 
 // --- Styled Components ---
 const Wrapper = styled.div`
@@ -28,6 +29,7 @@ const TabContainer = styled.nav`
   gap: 0.5rem;
   margin-bottom: 2rem;
   justify-content: center; // [추가] 모바일 뷰에서 가운데 정렬
+  flex-wrap: wrap; // [추가] 버튼이 많아질 경우 줄바꿈
 `;
 
 const TabButton = styled.button`
@@ -360,15 +362,21 @@ function TeamInfoContent({ teams, matches, currentSeason }) {
 
 
 function HomePage() {
-  const { matches, teams, currentSeason } = useLeagueStore();
+  const { matches, teams, currentSeason, players } = useLeagueStore(); // players 추가
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('leagueInfo');
+  const currentUser = auth.currentUser; // currentUser 추가
+
+  // 현재 로그인한 플레이어 정보 찾기
+  const myPlayerData = useMemo(() => {
+    if (!currentUser) return null;
+    return players.find(p => p.authUid === currentUser.uid);
+  }, [players, currentUser]);
 
   useEffect(() => {
     if (location.state?.defaultTab) {
       setActiveTab(location.state.defaultTab);
-      // Clean up state to prevent it from persisting on re-renders
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location, navigate]);
@@ -424,11 +432,18 @@ function HomePage() {
         <TabButton $active={activeTab === 'teamInfo'} onClick={() => setActiveTab('teamInfo')}>
           팀 정보 보기
         </TabButton>
+        {/* ▼▼▼ [추가] 선수 기록 페이지 이동 버튼 ▼▼▼ */}
+        {myPlayerData && (
+          <TabButton onClick={() => navigate(`/profile/${myPlayerData.id}/stats`)}>
+            선수 기록
+          </TabButton>
+        )}
       </TabContainer>
 
       {renderContent()}
 
-      <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
+      {/* ▼▼▼ [수정] 버튼 텍스트 및 onClick 핸들러 변경 ▼▼▼ */}
+      <ExitButton onClick={() => navigate('/')}>홈 화면으로</ExitButton>
     </Wrapper>
   );
 }

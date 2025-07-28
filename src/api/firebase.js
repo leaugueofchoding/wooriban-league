@@ -606,8 +606,8 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
     if (!recorderSnapshot.empty) {
       const recorderDoc = recorderSnapshot.docs[0];
       const recorderData = recorderDoc.data();
-      batch.update(recorderDoc.ref, { points: increment(10) });
-      addPointHistory(recorderId, recorderData.name, 10, `보너스 (경기 결과 기록)` // [수정] "보너스"로 시작하도록 변경
+      batch.update(recorderDoc.ref, { points: increment(30) });
+      addPointHistory(recorderId, recorderData.name, 30, `보너스 (경기 결과 기록)` // [수정] "보너스"로 시작하도록 변경
       );
       // [삭제] 개별 알림 생성 코드 제거
     }

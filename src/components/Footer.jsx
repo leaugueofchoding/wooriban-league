@@ -12,23 +12,29 @@ const FooterWrapper = styled.footer`
   background-color: #f8f9fa;
   border-top: 1px solid #dee2e6;
   margin-top: auto; /* 푸터를 항상 아래에 위치시킴 */
+  cursor: pointer; /* 클릭 가능하도록 커서 변경 */
+
+  &:hover {
+    background-color: #e9ecef;
+  }
 `;
 
 const VersionInfo = styled.p`
   margin: 0;
 `;
 
-function Footer() {
-    const version = "v4.1"; // 현재 앱 버전
-    const lastUpdate = "2024-07-26"; // 마지막 업데이트 날짜
+// [수정] onClick 핸들러를 props로 받도록 변경
+function Footer({ onVersionClick }) {
+  const version = "v4.final"; // 현재 앱 버전
+  const lastUpdate = "2024-07-26"; // 마지막 업데이트 날짜
 
-    return (
-        <FooterWrapper>
-            <VersionInfo>
-                Wooriban League {version} | Last Updated: {lastUpdate}
-            </VersionInfo>
-        </FooterWrapper>
-    );
+  return (
+    <FooterWrapper onClick={onVersionClick}>
+      <VersionInfo>
+        Wooriban League {version} | Last Updated: {lastUpdate}
+      </VersionInfo>
+    </FooterWrapper>
+  );
 }
 
 export default Footer;

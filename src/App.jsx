@@ -20,14 +20,15 @@ import WinnerPage from './pages/WinnerPage';
 import RecorderDashboardPage from './pages/RecorderDashboardPage';
 import PlayerStatsPage from './pages/PlayerStatsPage';
 import TeamDetailPage from './pages/TeamDetailPage';
-import SuggestionPage from './pages/SuggestionPage'; // [추가]
+import SuggestionPage from './pages/SuggestionPage';
 
 
 // Common Components
 import Auth from './components/Auth';
 import AttendanceModal from './components/AttendanceModal';
-import PointAdjustmentModal from './components/PointAdjustmentModal'; // [추가]
-import Footer from './components/Footer'; // [추가] Footer 컴포넌트 import
+import PointAdjustmentModal from './components/PointAdjustmentModal';
+import Footer from './components/Footer';
+import PatchNoteModal from './components/PatchNoteModal'; // [추가]
 
 // ▼▼▼ [추가] 전체 앱 레이아웃을 위한 Wrapper ▼▼▼
 const AppWrapper = styled.div`
@@ -100,6 +101,7 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   const { isLoading, setLoading, fetchInitialData, cleanupListeners, checkAttendance } = useLeagueStore();
   const [authChecked, setAuthChecked] = useState(false);
+  const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false); // [추가]
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -129,7 +131,8 @@ function App() {
       <AppWrapper>
         <Auth user={auth.currentUser} />
         <AttendanceModal />
-        <PointAdjustmentModal /> {/* [추가] */}
+        <PointAdjustmentModal />
+        <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} /> {/* [추가] */}
         <MainContent>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
@@ -159,7 +162,7 @@ function App() {
 
           </Routes>
         </MainContent>
-        <Footer /> {/* [추가] Footer 컴포넌트 렌더링 */}
+        <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} /> {/* [수정] */}
       </AppWrapper>
     </BrowserRouter>
   );

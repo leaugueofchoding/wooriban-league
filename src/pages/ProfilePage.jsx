@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, updatePlayerProfile } from '../api/firebase.js'; // [수정] updatePlayerProfile import
+import { auth, db, updatePlayerProfile } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
@@ -40,10 +40,10 @@ const ProfileWrapper = styled.div`
 `;
 const UserNameContainer = styled.div`
   display: flex;
-  flex-direction: column; // [수정] 세로 정렬
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 1rem; // [수정] 간격 조정
+  gap: 1rem;
   min-height: 38px;
 `;
 const NameEditor = styled.div`
@@ -72,10 +72,18 @@ const PointDisplay = styled.div`
 const ButtonGroup = styled.div`
   margin-top: 2rem;
   display: flex;
+  flex-direction: column; /* 세로 정렬로 변경 */
+  align-items: center; /* 가운데 정렬 */
+  gap: 0.75rem; /* 줄 간격 */
+`;
+
+const ButtonRow = styled.div`
+  display: flex;
   justify-content: center;
   gap: 1rem;
   flex-wrap: wrap;
 `;
+
 const StyledLink = styled(Link)`
   padding: 0.6em 1.2em;
   border: 1px solid #ccc;
@@ -153,14 +161,14 @@ const GenderLabel = styled.label`
 `;
 
 function ProfilePage() {
-  const { players, avatarParts, fetchInitialData } = useLeagueStore();
+  const { players, avatarParts, fetchInitialData, teams, currentSeason } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [pointHistory, setPointHistory] = useState([]);
-  const [isEditing, setIsEditing] = useState(false); // [수정] isEditingName -> isEditing
+  const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedGender, setSelectedGender] = useState('');
 
@@ -168,6 +176,11 @@ function ProfilePage() {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
+
+  const myTeam = useMemo(() => {
+    if (!playerData || !currentSeason) return null;
+    return teams.find(team => team.seasonId === currentSeason.id && team.members.includes(playerData.id));
+  }, [teams, playerData, currentSeason]);
 
   useEffect(() => {
     if (playerData) {
@@ -207,7 +220,6 @@ function ProfilePage() {
     setIsHistoryModalOpen(true);
   };
 
-  // ▼▼▼ [수정] 이름과 성별을 함께 저장하는 핸들러 ▼▼▼
   const handleSaveProfile = async () => {
     if (!newName.trim()) return alert('이름을 입력해주세요.');
     if (!selectedGender) return alert('성별을 선택해주세요.');
@@ -286,10 +298,15 @@ function ProfilePage() {
       <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
 
       <ButtonGroup>
-        {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
-        {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
-        <StyledLink to="/shop">상점 가기</StyledLink>
-        <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
+        <ButtonRow>
+          {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
+          {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
+          <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>
+        </ButtonRow>
+        <ButtonRow>
+          {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
+          <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
+        </ButtonRow>
       </ButtonGroup>
 
       <PointHistoryModal

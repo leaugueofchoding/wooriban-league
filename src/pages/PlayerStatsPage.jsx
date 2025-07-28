@@ -144,9 +144,14 @@ const BadgeContainer = styled.div`
     height: 22px; 
 `;
 
+const ButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 3rem;
+`;
+
 const ExitButton = styled.button`
-  display: block;
-  margin: 3rem auto 0;
   padding: 0.8rem 2.5rem;
   font-size: 1.1rem;
   font-weight: bold;
@@ -242,13 +247,11 @@ function SeasonStatsCard({ seasonData }) {
         return (seasonData.stats.wins * VICTORY_REWARD) + ((seasonData.stats.draws + seasonData.stats.losses) * PARTICIPATION_REWARD);
     }, [seasonData.stats]);
 
-    // [추가] 시즌 상태에 따라 '최종' 또는 '현재' 텍스트 결정
     const rankText = seasonData.season.status === 'completed' ? '최종' : '현재';
 
     return (
         <SeasonCard>
             <SeasonHeader onClick={() => setIsOpen(!isOpen)}>
-                {/* ▼▼▼ [수정] rankText 변수 적용 ▼▼▼ */}
                 <span>{seasonData.season.seasonName} ({rankText} {seasonData.rank}위)</span>
                 <span>{isOpen ? '▲' : '▼'}</span>
             </SeasonHeader>
@@ -287,7 +290,7 @@ function PlayerStatsPage() {
     const [allSeasonStats, setAllSeasonStats] = useState([]);
     const [loading, setLoading] = useState(true);
     const [allPlayerTotals, setAllPlayerTotals] = useState([]);
-    const [activeTab, setActiveTab] = useState('seasons'); // [수정] 기본 탭 변경
+    const [activeTab, setActiveTab] = useState('seasons');
     const [sortConfig, setSortConfig] = useState({ key: 'championships', direction: 'desc' });
 
     const playerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
@@ -358,7 +361,6 @@ function PlayerStatsPage() {
                 <StatCard><StatValue color="#28a745">⚽ {myTotalStats.goals}</StatValue><StatLabel>통산 득점</StatLabel></StatCard>
             </TotalStatsGrid>
 
-            {/* ▼▼▼ [수정] 탭 좌우 위치 변경 ▼▼▼ */}
             <TabContainer>
                 <TabButton $active={activeTab === 'seasons'} onClick={() => setActiveTab('seasons')}>시즌별 기록</TabButton>
                 <TabButton $active={activeTab === 'ranking'} onClick={() => setActiveTab('ranking')}>전체 선수 랭킹</TabButton>
@@ -397,7 +399,10 @@ function PlayerStatsPage() {
                 </SeasonList>
             )}
 
-            <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
+            <ButtonContainer>
+                <ExitButton onClick={() => navigate('/')}>홈 화면으로</ExitButton>
+                <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
+            </ButtonContainer>
         </Wrapper>
     );
 }
