@@ -390,6 +390,23 @@ export async function submitSuggestion(suggestionData) {
     reply: null,
     repliedAt: null,
   });
+
+  // [추가] 관리자 및 기록원에게 알림 전송
+  const playersRef = collection(db, 'players');
+  const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
+  const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
+  adminRecorderSnapshot.forEach(userDoc => {
+    const user = userDoc.data();
+    if (user.authUid) {
+      createNotification(
+        user.authUid,
+        '💌 새로운 메시지',
+        `${studentName} 학생에게서 새로운 메시지가 도착했습니다.`,
+        'suggestion_admin', // 알림 타입 변경
+        '/admin' // 관리자 페이지로 링크
+      );
+    }
+  });
 }
 
 // 특정 학생의 건의사항 목록을 불러오는 함수
@@ -411,13 +428,21 @@ export async function getAllSuggestions() {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function replyToSuggestion(suggestionId, replyContent, studentAuthUid) { // [수정] studentAuthUid 파라미터 추가
+export async function replyToSuggestion(suggestionId, replyContent, studentAuthUid) {
   if (!replyContent.trim()) {
     throw new Error("답글 내용을 입력해야 합니다.");
   }
   const suggestionRef = doc(db, "suggestions", suggestionId);
+
+  // [수정] 단일 답글을 대화 배열에 추가하는 방식으로 변경
+  const replyData = {
+    content: replyContent,
+    sender: 'admin',
+    createdAt: serverTimestamp()
+  };
+
   await updateDoc(suggestionRef, {
-    reply: replyContent,
+    conversation: arrayUnion(replyData), // conversation 필드에 배열로 추가
     status: "replied",
     repliedAt: serverTimestamp(),
   });
