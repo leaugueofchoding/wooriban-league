@@ -29,6 +29,7 @@ import {
     getTodaysQuizHistory,
     submitQuizAnswer as firebaseSubmitQuizAnswer,
     requestMissionApproval,
+    uploadMissionSubmissionFile,
     batchAdjustPlayerPoints,
     isAttendanceRewardAvailable,
     grantAttendanceReward,
@@ -39,6 +40,7 @@ import {
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
+import defaultEmblem from '../assets/default-emblem.png'; // <-- 이 코드를 추가했습니다.
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
@@ -204,17 +206,32 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    submitMissionForApproval: async (missionId) => {
+    submitMissionForApproval: async (missionId, submissionData) => {
         const { players } = get();
         const user = auth.currentUser;
-        if (!user) return alert('로그인이 필요합니다.');
+        if (!user) throw new Error('로그인이 필요합니다.');
+
         const myPlayerData = players.find(p => p.authUid === user.uid);
-        if (!myPlayerData) return alert('선수 정보를 찾을 수 없습니다.');
+        if (!myPlayerData) throw new Error('선수 정보를 찾을 수 없습니다.');
+
+        const dataToSend = {};
+        if (submissionData.text) {
+            dataToSend.text = submissionData.text;
+        }
+        if (submissionData.photo) {
+            // 사진이 있으면 업로드하고 URL을 받아서 저장
+            const photoUrl = await uploadMissionSubmissionFile(missionId, myPlayerData.id, submissionData.photo);
+            dataToSend.photoUrl = photoUrl;
+        }
+
         try {
-            await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name);
-            alert('미션 완료를 요청했습니다. 기록원이 확인할 때까지 잠시 기다려주세요!');
+            await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name, dataToSend);
+            // 성공 후 UI 업데이트를 위해 submission 데이터를 다시 불러올 수 있음
+            const submissionsData = await getMissionSubmissions();
+            set({ missionSubmissions: submissionsData });
         } catch (error) {
-            alert(error.message);
+            // 에러를 다시 throw하여 컴포넌트에서 잡을 수 있게 함
+            throw error;
         }
     },
 
@@ -624,33 +641,101 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     generateSchedule: async () => {
-        if (!confirm('경기 일정을 새로 생성하시겠습니까?')) return;
+        if (!confirm('경기 일정을 새로 생성하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
         const { teams, leagueType, currentSeason } = get();
         if (!currentSeason) return alert('현재 시즌 정보가 없습니다.');
         if (teams.length < 2) return alert('최소 2팀이 필요합니다.');
+
         let matchesToCreate = [];
-        const createRoundRobin = (teamList) => {
+
+        const createRoundRobinSchedule = (teamList) => {
             const schedule = [];
-            for (let i = 0; i < teamList.length; i++) {
-                for (let j = i + 1; j < teamList.length; j++) {
-                    schedule.push({ seasonId: currentSeason.id, teamA_id: teamList[i].id, teamB_id: teamList[j].id, teamA_score: null, teamB_score: null, status: '예정' });
-                }
+            if (teamList.length < 2) return schedule;
+
+            const localTeams = [...teamList];
+            // 팀 수가 홀수면 'BYE' 팀 추가
+            if (localTeams.length % 2 !== 0) {
+                localTeams.push({ id: 'BYE', teamName: 'BYE' });
             }
-            return schedule;
+
+            const numTeams = localTeams.length;
+            const numRounds = numTeams - 1;
+            const half = numTeams / 2;
+
+            const teamIndexes = localTeams.map((_, i) => i);
+            const rounds = [];
+
+            for (let round = 0; round < numRounds; round++) {
+                const roundMatches = [];
+                for (let i = 0; i < half; i++) {
+                    const team1Index = teamIndexes[i];
+                    const team2Index = teamIndexes[numTeams - 1 - i];
+                    if (localTeams[team1Index].id !== 'BYE' && localTeams[team2Index].id !== 'BYE') {
+                        roundMatches.push({
+                            teamA_id: localTeams[team1Index].id,
+                            teamB_id: localTeams[team2Index].id,
+                        });
+                    }
+                }
+                rounds.push(roundMatches);
+
+                // Rotate teams for the next round
+                const lastTeamIndex = teamIndexes.pop();
+                teamIndexes.splice(1, 0, lastTeamIndex);
+            }
+
+            // 홈 & 어웨이 생성
+            const homeAndAway = [];
+            rounds.forEach(round => {
+                round.forEach(match => {
+                    homeAndAway.push({ ...match }); // 1차전
+                    homeAndAway.push({ teamA_id: match.teamB_id, teamB_id: match.teamA_id }); // 2차전 (홈/어웨이 스왑)
+                });
+            });
+
+            // Fisher-Yates shuffle 알고리즘으로 경기 순서 섞기
+            for (let i = homeAndAway.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [homeAndAway[i], homeAndAway[j]] = [homeAndAway[j], homeAndAway[i]];
+            }
+
+            return homeAndAway.map(match => ({
+                ...match,
+                seasonId: currentSeason.id,
+                teamA_score: null,
+                teamB_score: null,
+                status: '예정'
+            }));
         };
+
         if (leagueType === 'separated') {
-            matchesToCreate = [...createRoundRobin(teams.filter(t => t.gender === '남')), ...createRoundRobin(teams.filter(t => t.gender === '여'))];
+            const maleTeams = teams.filter(t => t.gender === '남');
+            const femaleTeams = teams.filter(t => t.gender === '여');
+            const maleMatches = createRoundRobinSchedule(maleTeams);
+            const femaleMatches = createRoundRobinSchedule(femaleTeams);
+
+            // 남녀 경기 교차 배정
+            let i = 0, j = 0;
+            while (i < maleMatches.length || j < femaleMatches.length) {
+                if (i < maleMatches.length) matchesToCreate.push(maleMatches[i++]);
+                if (j < femaleMatches.length) matchesToCreate.push(femaleMatches[j++]);
+            }
         } else {
-            matchesToCreate = createRoundRobin(teams);
+            matchesToCreate = createRoundRobinSchedule(teams);
         }
-        if (matchesToCreate.length === 0) return alert('생성할 경기가 없습니다.');
+
+        if (matchesToCreate.length === 0) return alert('생성할 경기가 없습니다. 팀 구성을 확인해주세요.');
+
         try {
             await deleteMatchesBySeason(currentSeason.id);
             await batchAddMatches(matchesToCreate);
             const updatedMatches = await getMatches(currentSeason.id);
             set({ matches: updatedMatches });
-            alert('경기 일정이 성공적으로 생성되었습니다.');
-        } catch (error) { console.error("경기 일정 생성 오류:", error); }
+            alert('새로운 경기 일정이 성공적으로 생성되었습니다.');
+        } catch (error) {
+            console.error("경기 일정 생성 오류:", error);
+            alert(`경기 일정 생성 중 오류가 발생했습니다: ${error.message}`);
+        }
     },
 
     saveScores: async (matchId, scores, scorers) => {
@@ -703,4 +788,55 @@ export const useLeagueStore = create((set, get) => ({
     clearPointAdjustmentNotification: () => {
         set({ pointAdjustmentNotification: null });
     },
+
+    // --- Selectors ---
+    standingsData: () => {
+        const { teams, matches } = get();
+        if (!teams || teams.length === 0) return [];
+
+        const completedMatches = matches.filter(m => m.status === '완료');
+        let stats = teams.map(team => ({
+            id: team.id, teamName: team.teamName, emblemUrl: team.emblemUrl || defaultEmblem,
+            played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
+        }));
+
+        completedMatches.forEach(match => {
+            const teamA = stats.find(t => t.id === match.teamA_id);
+            const teamB = stats.find(t => t.id === match.teamB_id);
+            if (!teamA || !teamB) return;
+            teamA.played++; teamB.played++;
+            teamA.goalsFor += match.teamA_score; teamA.goalsAgainst += match.teamB_score;
+            teamB.goalsFor += match.teamB_score; teamB.goalsAgainst += match.teamA_score;
+            if (match.teamA_score > match.teamB_score) {
+                teamA.wins++; teamA.points += 3; teamB.losses++;
+            } else if (match.teamB_score > match.teamA_score) {
+                teamB.wins++; teamB.points += 3; teamA.losses++;
+            } else {
+                teamA.draws++; teamB.draws++; teamA.points += 1; teamB.points += 1;
+            }
+        });
+
+        stats.forEach(team => { team.goalDifference = team.goalsFor - team.goalsAgainst; });
+
+        stats.sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+            return b.goalsFor - a.goalsFor;
+        });
+
+        // 공동 순위 로직 적용
+        let rank = 1;
+        for (let i = 0; i < stats.length; i++) {
+            if (i > 0 && (
+                stats[i].points !== stats[i - 1].points ||
+                stats[i].goalDifference !== stats[i - 1].goalDifference ||
+                stats[i].goalsFor !== stats[i - 1].goalsFor
+            )) {
+                rank = i + 1;
+            }
+            stats[i].rank = rank;
+        }
+
+        return stats;
+    }
 }));

@@ -608,12 +608,38 @@ const PageButton = styled.button`
   }
 `;
 
+const SubmissionDetails = styled.div`
+    padding: ${props => props.$isOpen ? '1rem' : '0 1rem'};
+    max-height: ${props => props.$isOpen ? '1000px' : '0'};
+    opacity: ${props => props.$isOpen ? 1 : 0};
+    overflow: hidden;
+    transition: all 0.4s ease-in-out;
+    border-top: ${props => props.$isOpen ? '1px solid #f0f0f0' : 'none'};
+    margin-top: ${props => props.$isOpen ? '1rem' : '0'};
+
+    p {
+        background-color: #e9ecef;
+        padding: 1rem;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        margin-top: 0;
+    }
+    
+    img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+    }
+`;
+
 // --- Components ---
 
 function PendingMissionWidget() {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
+    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null); // <-- 이 부분이 추가되었습니다.
     const currentUser = auth.currentUser;
 
     useEffect(() => {
@@ -669,21 +695,33 @@ function PendingMissionWidget() {
                         const student = players.find(p => p.id === sub.studentId);
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
+                        const isOpen = expandedSubmissionId === sub.id; // <-- 이제 이 변수가 정상적으로 선언됩니다.
+                        const hasContent = sub.text || sub.photoUrl;
 
                         if (!mission) return null;
 
                         return (
-                            <ListItem key={sub.id}>
-                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {student?.name} - [{mission?.title}]
-                                </span>
-                                <span style={{ fontWeight: 'bold', color: '#007bff' }}>{mission?.reward}P</span>
-                                <StyledButton onClick={() => handleAction('approve', sub)} style={{ backgroundColor: '#28a745' }} disabled={isProcessing}>
-                                    {isProcessing ? '처리중...' : '승인'}
-                                </StyledButton>
-                                <StyledButton onClick={() => handleAction('reject', sub)} style={{ backgroundColor: '#dc3545' }} disabled={isProcessing}>
-                                    거절
-                                </StyledButton>
+                            <ListItem key={sub.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', width: '100%', cursor: hasContent ? 'pointer' : 'default' }} onClick={() => hasContent && setExpandedSubmissionId(prev => prev === sub.id ? null : sub.id)}>
+                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {student?.name} - [{mission?.title}]
+                                        {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
+                                        {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
+                                    </span>
+                                    <span style={{ fontWeight: 'bold', color: '#007bff', margin: '0 1rem' }}>{mission?.reward}P</span>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <StyledButton onClick={(e) => { e.stopPropagation(); handleAction('approve', sub); }} style={{ backgroundColor: '#28a745' }} disabled={isProcessing}>
+                                            {isProcessing ? '처리중...' : '승인'}
+                                        </StyledButton>
+                                        <StyledButton onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }} style={{ backgroundColor: '#dc3545' }} disabled={isProcessing}>
+                                            거절
+                                        </StyledButton>
+                                    </div>
+                                </div>
+                                <SubmissionDetails $isOpen={isOpen}>
+                                    {sub.text && <p>{sub.text}</p>}
+                                    {sub.photoUrl && <img src={sub.photoUrl} alt="제출된 사진" />}
+                                </SubmissionDetails>
                             </ListItem>
                         )
                     })}
@@ -983,18 +1021,30 @@ function MissionManager() {
 
     const [title, setTitle] = useState('');
     const [reward, setReward] = useState(100);
-    const [submissionType, setSubmissionType] = useState('simple'); // [추가] 미션 종류 상태
+    const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
     const [showArchived, setShowArchived] = useState(false);
+
+    const handleSubmissionTypeChange = (type) => {
+        setSubmissionTypes(prev => ({ ...prev, [type]: !prev[type] }));
+    };
 
     const handleCreateMission = async () => {
         if (!title.trim() || !reward) {
             return alert('미션 이름과 보상 포인트를 모두 입력해주세요.');
         }
+        // 글/사진 중 하나도 선택하지 않으면 기본(simple) 타입으로 간주
+        const selectedTypes = Object.entries(submissionTypes)
+            .filter(([, isSelected]) => isSelected)
+            .map(([type]) => type);
+
+        const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
+
         try {
-            await createMission({ title, reward: Number(reward) });
+            await createMission({ title, reward: Number(reward), submissionType: typeToSend });
             alert('새로운 미션이 등록되었습니다!');
             setTitle('');
-            setReward(50);
+            setReward(100);
+            setSubmissionTypes({ text: false, photo: false }); // 상태 초기화
             await fetchInitialData();
         } catch (error) {
             console.error("미션 생성 오류:", error);
@@ -1021,6 +1071,22 @@ function MissionManager() {
                     onChange={(e) => setReward(e.target.value)}
                     style={{ width: '80px' }}
                 />
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <label>
+                        <input
+                            type="checkbox"
+                            checked={submissionTypes.text}
+                            onChange={() => handleSubmissionTypeChange('text')}
+                        /> 글
+                    </label>
+                    <label>
+                        <input
+                            type="checkbox"
+                            checked={submissionTypes.photo}
+                            onChange={() => handleSubmissionTypeChange('photo')}
+                        /> 사진
+                    </label>
+                </div>
                 <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
             </InputGroup>
 

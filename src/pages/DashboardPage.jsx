@@ -487,6 +487,21 @@ function DashboardPage() {
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {
                                 const submissionStatus = mySubmissions[mission.id];
+                                const submissionType = mission.submissionType || ['simple'];
+                                const isSimpleMission = submissionType.includes('simple') && submissionType.length === 1;
+
+                                const handleButtonClick = (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (isSimpleMission) {
+                                        // 단순 미션은 바로 승인 요청
+                                        submitMissionForApproval(mission.id, {});
+                                    } else {
+                                        // 글/사진 미션은 제출 페이지로 이동
+                                        navigate('/missions');
+                                    }
+                                };
+
                                 return (
                                     <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         <div style={{ flexGrow: 1 }}>
@@ -495,13 +510,13 @@ function DashboardPage() {
                                         </div>
                                         {canSubmitMission && (
                                             <RequestButton
-                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); submitMissionForApproval(mission.id); }}
+                                                onClick={handleButtonClick}
                                                 disabled={!!submissionStatus}
                                                 $status={submissionStatus}
                                             >
                                                 {submissionStatus === 'pending' && '승인 대기중'}
                                                 {submissionStatus === 'approved' && '완료!'}
-                                                {!submissionStatus && '다 했어요!'}
+                                                {!submissionStatus && (isSimpleMission ? '다 했어요!' : '다 했어요!')}
                                             </RequestButton>
                                         )}
                                     </Card>

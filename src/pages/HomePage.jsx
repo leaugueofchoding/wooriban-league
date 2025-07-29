@@ -3,10 +3,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useNavigate, useLocation, Link } from 'react-router-dom'; // Link 추가
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
-import { auth } from '../api/firebase'; // auth 추가
+import { auth } from '../api/firebase';
 
 // --- Styled Components ---
 const Wrapper = styled.div`
@@ -362,13 +362,12 @@ function TeamInfoContent({ teams, matches, currentSeason }) {
 
 
 function HomePage() {
-  const { matches, teams, currentSeason, players } = useLeagueStore(); // players 추가
+  const { matches, teams, currentSeason, players, standingsData } = useLeagueStore(); // standingsData selector 직접 사용
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('leagueInfo');
-  const currentUser = auth.currentUser; // currentUser 추가
+  const currentUser = auth.currentUser;
 
-  // 현재 로그인한 플레이어 정보 찾기
   const myPlayerData = useMemo(() => {
     if (!currentUser) return null;
     return players.find(p => p.authUid === currentUser.uid);
@@ -381,40 +380,15 @@ function HomePage() {
     }
   }, [location, navigate]);
 
-  const standingsData = useMemo(() => {
-    const completedMatches = matches.filter(m => m.status === '완료');
-    let stats = teams.map(team => ({
-      id: team.id, teamName: team.teamName, emblemUrl: team.emblemUrl || defaultEmblem,
-      played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
-    }));
-    completedMatches.forEach(match => {
-      const teamA = stats.find(t => t.id === match.teamA_id);
-      const teamB = stats.find(t => t.id === match.teamB_id);
-      if (!teamA || !teamB) return;
-      teamA.played++; teamB.played++;
-      teamA.goalsFor += match.teamA_score; teamA.goalsAgainst += match.teamB_score;
-      teamB.goalsFor += match.teamB_score; teamB.goalsAgainst += match.teamA_score;
-      if (match.teamA_score > match.teamB_score) {
-        teamA.wins++; teamA.points += 3; teamB.losses++;
-      } else if (match.teamB_score > match.teamA_score) {
-        teamB.wins++; teamB.points += 3; teamA.losses++;
-      } else {
-        teamA.draws++; teamB.draws++; teamA.points += 1; teamB.points += 1;
-      }
-    });
-    stats.forEach(team => { team.goalDifference = team.goalsFor - team.goalsAgainst; });
-    stats.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
-      return b.goalsFor - a.goalsFor;
-    });
-    return stats;
-  }, [matches, teams]);
+  // ▼▼▼ [수정] 기존 순위 계산 로직 제거 ▼▼▼
+  // const standingsData = useMemo(() => { ... });
+  const finalStandingsData = standingsData(); // 스토어에서 계산된 순위 데이터를 가져옴
 
   const renderContent = () => {
     switch (activeTab) {
       case 'leagueInfo':
-        return <LeagueInfoContent matches={matches} standingsData={standingsData} />;
+        // ▼▼▼ [수정] 스토어에서 가져온 데이터를 props로 전달 ▼▼▼
+        return <LeagueInfoContent matches={matches} standingsData={finalStandingsData} />;
       case 'teamInfo':
         return <TeamInfoContent teams={teams} matches={matches} currentSeason={currentSeason} />;
       default:
@@ -432,7 +406,6 @@ function HomePage() {
         <TabButton $active={activeTab === 'teamInfo'} onClick={() => setActiveTab('teamInfo')}>
           팀 정보 보기
         </TabButton>
-        {/* ▼▼▼ [추가] 선수 기록 페이지 이동 버튼 ▼▼▼ */}
         {myPlayerData && (
           <TabButton onClick={() => navigate(`/profile/${myPlayerData.id}/stats`)}>
             선수 기록
@@ -442,7 +415,6 @@ function HomePage() {
 
       {renderContent()}
 
-      {/* ▼▼▼ [수정] 버튼 텍스트 및 onClick 핸들러 변경 ▼▼▼ */}
       <ExitButton onClick={() => navigate('/')}>홈 화면으로</ExitButton>
     </Wrapper>
   );

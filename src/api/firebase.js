@@ -177,7 +177,13 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   await batch.commit();
 }
 
-export async function requestMissionApproval(missionId, studentId, studentName) {
+export async function uploadMissionSubmissionFile(missionId, studentId, file) {
+  const storageRef = ref(storage, `mission-submissions/${missionId}/${studentId}/${file.name}`);
+  const uploadResult = await uploadBytes(storageRef, file);
+  return await getDownloadURL(uploadResult.ref);
+}
+
+export async function requestMissionApproval(missionId, studentId, studentName, submissionData = {}) {
   const submissionsRef = collection(db, 'missionSubmissions');
   const missionRef = doc(db, 'missions', missionId);
   const q = query(
@@ -206,6 +212,7 @@ export async function requestMissionApproval(missionId, studentId, studentName) 
     status: 'pending',
     requestedAt: serverTimestamp(),
     checkedBy: null,
+    ...submissionData // 글(text), 사진(photoUrl) 데이터 추가
   });
 
   const missionSnap = await getDoc(missionRef);

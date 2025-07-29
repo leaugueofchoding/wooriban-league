@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, approveMissionsInBatch, rejectMissionSubmission } from '../api/firebase.js';
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+// orderBy를 import 목록에 추가했습니다.
+import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 
 const Wrapper = styled.div`
@@ -188,6 +189,32 @@ const ScoreDisplay = styled.span`
   text-align: center;
 `;
 
+const SubmissionDetails = styled.div`
+    padding: ${props => props.$isOpen ? '1rem' : '0 1rem'};
+    max-height: ${props => props.$isOpen ? '1000px' : '0'};
+    opacity: ${props => props.$isOpen ? 1 : 0};
+    overflow: hidden;
+    transition: all 0.4s ease-in-out;
+    border-top: ${props => props.$isOpen ? '1px solid #f0f0f0' : 'none'};
+    margin-top: ${props => props.$isOpen ? '1rem' : '0'};
+
+    p {
+        background-color: #e9ecef;
+        padding: 1rem;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        margin-top: 0;
+    }
+
+    img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+    }
+`;
+
+
 function MatchRow({ match, isInitiallyOpen, onSave }) {
     const { players, teams, saveScores, currentSeason } = useLeagueStore();
 
@@ -359,6 +386,7 @@ function RecorderDashboardPage() {
     const [processingIds, setProcessingIds] = useState(new Set());
     const [activeTab, setActiveTab] = useState('pending');
     const [openedMatchId, setOpenedMatchId] = useState(null);
+    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
     const navigate = useNavigate();
 
@@ -382,7 +410,8 @@ function RecorderDashboardPage() {
 
     useEffect(() => {
         const submissionsRef = collection(db, "missionSubmissions");
-        const q = query(submissionsRef, where("status", "==", "pending"));
+        // orderBy를 import했으므로 정상적으로 작동합니다.
+        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -443,31 +472,44 @@ function RecorderDashboardPage() {
                             const mission = missions.find(m => m.id === sub.missionId);
                             const isProcessing = processingIds.has(sub.id);
                             const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
+                            const isOpen = expandedSubmissionId === sub.id;
 
                             if (!mission) return null;
 
+                            const hasContent = sub.text || sub.photoUrl;
+
                             return (
-                                <ListItem key={sub.id}>
-                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {student?.name} - [{mission?.title}]
-                                    </span>
-                                    <span style={{ fontWeight: 'bold', color: '#007bff' }}>{mission?.reward}P</span>
-                                    <StyledButton
-                                        onClick={() => handleAction('approve', sub)}
-                                        style={{ backgroundColor: '#28a745' }}
-                                        disabled={isProcessing || isMyOwnSubmission}
-                                        title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
-                                    >
-                                        {isProcessing ? '처리중...' : '승인'}
-                                    </StyledButton>
-                                    <StyledButton
-                                        onClick={() => handleAction('reject', sub)}
-                                        style={{ backgroundColor: '#dc3545' }}
-                                        disabled={isProcessing || isMyOwnSubmission}
-                                        title={isMyOwnSubmission ? "자신의 미션은 거절할 수 없습니다." : ""}
-                                    >
-                                        거절
-                                    </StyledButton>
+                                <ListItem key={sub.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', width: '100%', cursor: hasContent ? 'pointer' : 'default' }} onClick={() => hasContent && setExpandedSubmissionId(prev => prev === sub.id ? null : sub.id)}>
+                                        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {student?.name} - [{mission?.title}]
+                                            {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
+                                            {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
+                                        </span>
+                                        <span style={{ fontWeight: 'bold', color: '#007bff', margin: '0 1rem' }}>{mission?.reward}P</span>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <StyledButton
+                                                onClick={(e) => { e.stopPropagation(); handleAction('approve', sub); }}
+                                                style={{ backgroundColor: '#28a745' }}
+                                                disabled={isProcessing || isMyOwnSubmission}
+                                                title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
+                                            >
+                                                {isProcessing ? '처리중...' : '승인'}
+                                            </StyledButton>
+                                            <StyledButton
+                                                onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
+                                                style={{ backgroundColor: '#dc3545' }}
+                                                disabled={isProcessing || isMyOwnSubmission}
+                                                title={isMyOwnSubmission ? "자신의 미션은 거절할 수 없습니다." : ""}
+                                            >
+                                                거절
+                                            </StyledButton>
+                                        </div>
+                                    </div>
+                                    <SubmissionDetails $isOpen={isOpen}>
+                                        {sub.text && <p>{sub.text}</p>}
+                                        {sub.photoUrl && <img src={sub.photoUrl} alt="제출된 사진" />}
+                                    </SubmissionDetails>
                                 </ListItem>
                             )
                         })}
@@ -493,7 +535,7 @@ function RecorderDashboardPage() {
                 ) : <p>해당 목록에 경기가 없습니다.</p>}
             </Section>
 
-            <StyledButton onClick={() => navigate(-1)} style={{ marginTop: '2rem', alignSelf: 'center' }}>
+            <StyledButton onClick={() => navigate(-1)} style={{ marginTop: '2rem', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}>
                 돌아가기
             </StyledButton>
         </Wrapper>

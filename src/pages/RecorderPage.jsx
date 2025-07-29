@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, approveMissionsInBatch } from '../api/firebase';
+import { auth } from '../api/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
 
 const RecorderWrapper = styled.div`
@@ -36,58 +36,77 @@ const StudentList = styled.ul`
 `;
 
 const StudentListItem = styled.li`
-  display: flex;
-  align-items: center;
-  padding: 1rem;
   background-color: #fff;
   border-radius: 8px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem; /* 간격 증가 */
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   transition: all 0.2s ease-in-out;
-  cursor: pointer;
-
+  
   &.pending {
-    background-color: #fffbe6;
     border-left: 5px solid #ffc107;
   }
   
   &.approved {
     background-color: #e9ecef;
-    opacity: 0.6;
-    cursor: not-allowed;
-    
-    &:hover {
-        background-color: #e9ecef;
-    }
-  }
-
-  &:not(.approved):hover {
-    background-color: #f8f9fa;
-  }
-
-  input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-    margin-right: 1rem;
-    pointer-events: none;
-  }
-
-  label {
-      flex-grow: 1;
-  }
-
-  .status-badge {
-    font-size: 0.8rem;
-    font-weight: bold;
-    padding: 4px 8px;
-    border-radius: 12px;
-    margin-left: auto;
-    color: white;
-
-    &.pending { background-color: #ffc107; color: black; }
-    &.approved { background-color: #28a745; }
+    opacity: 0.7;
   }
 `;
+
+const StudentSummary = styled.div`
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    cursor: pointer;
+
+    input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        margin-right: 1rem;
+        pointer-events: none; /* 클릭은 부모 요소에서 처리 */
+    }
+
+    label {
+        flex-grow: 1;
+        pointer-events: none;
+    }
+
+    .status-badge {
+        font-size: 0.8rem;
+        font-weight: bold;
+        padding: 4px 8px;
+        border-radius: 12px;
+        margin-left: auto;
+        color: white;
+
+        &.pending { background-color: #ffc107; color: black; }
+        &.approved { background-color: #28a745; }
+    }
+`;
+
+const SubmissionDetails = styled.div`
+    padding: ${props => props.$isOpen ? '1rem' : '0 1rem'};
+    max-height: ${props => props.$isOpen ? '1000px' : '0'};
+    opacity: ${props => props.$isOpen ? 1 : 0};
+    overflow: hidden;
+    transition: all 0.4s ease-in-out;
+    border-top: ${props => props.$isOpen ? '1px solid #f0f0f0' : 'none'};
+
+    p {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        margin-top: 0;
+    }
+    
+    img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+    }
+`;
+
 
 const SubmitButton = styled.button`
   width: 100%;
@@ -134,6 +153,7 @@ function RecorderPage() {
 
     const [selectedMissionId, setSelectedMissionId] = useState(missionId || '');
     const [checkedStudents, setCheckedStudents] = useState(new Set());
+    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null); // 펼쳐진 항목 ID
     const currentUser = auth.currentUser;
 
     useEffect(() => {
@@ -147,7 +167,7 @@ function RecorderPage() {
         missionSubmissions
             .filter(sub => sub.missionId === selectedMissionId)
             .forEach(sub => {
-                statusMap.set(sub.studentId, { status: sub.status, checkedBy: sub.checkedBy });
+                statusMap.set(sub.studentId, sub); // submission 객체 전체를 저장
             });
         return statusMap;
     }, [missionSubmissions, selectedMissionId]);
@@ -166,12 +186,14 @@ function RecorderPage() {
         const newMissionId = e.target.value;
         setSelectedMissionId(newMissionId);
         setCheckedStudents(new Set());
+        setExpandedSubmissionId(null);
         navigate(`/recorder/${newMissionId}`);
     };
 
     const handleStudentClick = (studentId, status) => {
         if (status === 'approved') return;
 
+        // 체크박스 토글
         setCheckedStudents(prev => {
             const newSet = new Set(prev);
             if (newSet.has(studentId)) {
@@ -183,13 +205,14 @@ function RecorderPage() {
         });
     };
 
-    // [추가] 전체 선택/해제 핸들러
+    const handleRowClick = (studentId, status) => {
+        if (status !== 'pending') return;
+        setExpandedSubmissionId(prev => (prev === studentId ? null : studentId));
+    };
+
     const handleSelectAll = () => {
         const eligiblePlayerIds = sortedPlayers
-            .filter(player => {
-                const submission = studentSubmissionStatus.get(player.id);
-                return submission?.status !== 'approved';
-            })
+            .filter(player => studentSubmissionStatus.get(player.id)?.status !== 'approved')
             .map(player => player.id);
 
         const allSelected = eligiblePlayerIds.length > 0 && eligiblePlayerIds.every(id => checkedStudents.has(id));
@@ -236,7 +259,6 @@ function RecorderPage() {
 
             {selectedMissionId && (
                 <>
-                    {/* [추가] 전체 선택 버튼 */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
                         <button onClick={handleSelectAll}>전체 선택/해제</button>
                     </div>
@@ -245,26 +267,37 @@ function RecorderPage() {
                             const submission = studentSubmissionStatus.get(player.id);
                             const status = submission?.status;
                             const approver = players.find(p => p.authUid === submission?.checkedBy);
+                            const isOpen = expandedSubmissionId === player.id;
 
                             return (
                                 <StudentListItem
                                     key={player.id}
                                     className={status}
-                                    onClick={() => handleStudentClick(player.id, status)}
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={checkedStudents.has(player.id)}
-                                        readOnly
-                                        disabled={status === 'approved'}
-                                    />
-                                    <label>{player.name}</label>
-
-                                    {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
-                                    {status === 'approved' && (
-                                        <span className="status-badge approved">
-                                            완료 {approver ? `(승인: ${approver.name})` : ''}
-                                        </span>
+                                    <StudentSummary onClick={() => handleRowClick(player.id, status)}>
+                                        <input
+                                            type="checkbox"
+                                            checked={checkedStudents.has(player.id)}
+                                            onChange={() => handleStudentClick(player.id, status)}
+                                            onClick={(e) => {
+                                                e.stopPropagation(); // 부모 클릭 방지
+                                                handleStudentClick(player.id, status);
+                                            }}
+                                            disabled={status === 'approved'}
+                                        />
+                                        <label>{player.name}</label>
+                                        {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
+                                        {status === 'approved' && (
+                                            <span className="status-badge approved">
+                                                완료 {approver ? `(승인: ${approver.name})` : ''}
+                                            </span>
+                                        )}
+                                    </StudentSummary>
+                                    {submission && (
+                                        <SubmissionDetails $isOpen={isOpen}>
+                                            {submission.text && <p>{submission.text}</p>}
+                                            {submission.photoUrl && <img src={submission.photoUrl} alt="제출된 사진" />}
+                                        </SubmissionDetails>
                                     )}
                                 </StudentListItem>
                             );
