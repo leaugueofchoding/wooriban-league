@@ -293,7 +293,7 @@ const MessageBubble = styled.div`
 
 const Timestamp = styled.span`
   font-size: 0.75rem;
-  color: #6c757d;
+  color: #a9a9a9;
   display: block;
   margin-top: 0.5rem;
   text-align: ${props => props.$align || 'left'};
@@ -406,7 +406,7 @@ const TabButton = styled.button`
 
 const MatchItem = styled.div`
   display: flex;
-  flex-direction: column; /* 세로 정렬로 변경 */
+  flex-direction: column;
   padding: 1rem;
   margin-bottom: 1rem;
   background-color: #fff;
@@ -504,7 +504,7 @@ const VsText = styled.span`
   font-size: 1.5rem;
   font-weight: 700;
   color: #343a40;
-  margin: 0 1rem; /* 양 옆에 간격을 줍니다 */
+  margin: 0 1rem;
 `;
 
 const SaveButton = styled.button`
@@ -611,7 +611,7 @@ const PageButton = styled.button`
 // --- Components ---
 
 function PendingMissionWidget() {
-    const { players, missions, fetchInitialData } = useLeagueStore();
+    const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
     const currentUser = auth.currentUser;
@@ -650,7 +650,7 @@ function PendingMissionWidget() {
             if (action === 'approve') {
                 await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, mission.reward);
             } else if (action === 'reject') {
-                await rejectSubmission(submission.id, student.authUid, mission.title);
+                await rejectMissionSubmission(submission.id, student.authUid, mission.title);
             }
         } catch (error) {
             console.error(`미션 ${action} 오류:`, error);
@@ -721,43 +721,64 @@ function SuggestionManager() {
         const threads = allSuggestions.reduce((acc, msg) => {
             if (!acc[msg.studentId]) {
                 acc[msg.studentId] = {
+                    studentId: msg.studentId,
                     studentName: msg.studentName,
-                    lastMessage: msg.message,
-                    lastTimestamp: msg.createdAt,
-                    messages: []
+                    messages: [],
+                    lastMessageAt: msg.lastMessageAt || msg.createdAt,
                 };
             }
             acc[msg.studentId].messages.push(msg);
-            if (msg.createdAt > acc[msg.studentId].lastTimestamp) {
-                acc[msg.studentId].lastMessage = msg.message;
-                acc[msg.studentId].lastTimestamp = msg.createdAt;
+            const messageTime = msg.lastMessageAt || msg.createdAt;
+            if (messageTime > acc[msg.studentId].lastMessageAt) {
+                acc[msg.studentId].lastMessageAt = messageTime;
             }
             return acc;
         }, {});
 
-        return Object.entries(threads)
-            .sort(([, a], [, b]) => b.lastTimestamp.toMillis() - a.lastTimestamp.toMillis())
-            .map(([studentId, data]) => ({ studentId, ...data }));
+        return Object.values(threads).sort((a, b) => b.lastMessageAt.toMillis() - a.lastMessageAt.toMillis());
     }, [allSuggestions]);
 
     const selectedThreadMessages = useMemo(() => {
         if (!selectedStudentId) return [];
         const thread = studentThreads.find(t => t.studentId === selectedStudentId);
-        return thread ? [...thread.messages].sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis()) : [];
+        if (!thread) return [];
+
+        return thread.messages.flatMap(item => {
+            if (item.conversation) {
+                return item.conversation;
+            }
+            const oldConversation = [];
+            if (item.message) {
+                oldConversation.push({ sender: 'student', content: item.message, createdAt: item.createdAt });
+            }
+            if (item.reply) {
+                oldConversation.push({ sender: 'admin', content: item.reply, createdAt: item.repliedAt });
+            }
+            return oldConversation;
+        }).sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
+
     }, [selectedStudentId, studentThreads]);
 
     const handleReplySubmit = async () => {
         if (!replyContent.trim() || !selectedStudentId) return;
-        const lastMessage = selectedThreadMessages[selectedThreadMessages.length - 1];
+
+        const thread = studentThreads.find(s => s.studentId === selectedStudentId);
         const student = players.find(p => p.id === selectedStudentId);
 
-        if (!lastMessage || !student) {
+        // [수정] lastMessageAt 또는 createdAt을 안전하게 비교하여 최신 메시지 문서를 찾습니다.
+        const lastMessageDoc = thread.messages.sort((a, b) => {
+            const timeA = a.lastMessageAt || a.createdAt;
+            const timeB = b.lastMessageAt || b.createdAt;
+            return timeB.toMillis() - timeA.toMillis();
+        })[0];
+
+        if (!lastMessageDoc || !student) {
             alert("답변을 보낼 대상 정보를 찾을 수 없습니다.");
             return;
         }
 
         try {
-            await replyToSuggestion(lastMessage.id, replyContent, student.authUid);
+            await replyToSuggestion(lastMessageDoc.id, replyContent, student.authUid);
             setReplyContent('');
         } catch (error) {
             alert(`답변 전송 실패: ${error.message}`);
@@ -765,8 +786,9 @@ function SuggestionManager() {
     };
 
     const formatDate = (timestamp) => {
-        if (!timestamp?.toDate) return '';
-        return timestamp.toDate().toLocaleString('ko-KR');
+        // [수정] timestamp가 null이거나 toDate가 없는 경우를 안전하게 처리
+        if (!timestamp || typeof timestamp.toDate !== 'function') return '';
+        return timestamp.toDate().toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     };
 
     return (
@@ -776,16 +798,20 @@ function SuggestionManager() {
                 <ChatLayout>
                     <StudentListPanel>
                         {isLoading ? <p style={{ padding: '1rem' }}>로딩 중...</p> :
-                            studentThreads.map(thread => (
-                                <StudentListItem
-                                    key={thread.studentId}
-                                    $active={selectedStudentId === thread.studentId}
-                                    onClick={() => setSelectedStudentId(thread.studentId)}
-                                >
-                                    <p>{thread.studentName}</p>
-                                    <small>{thread.lastMessage}</small>
-                                </StudentListItem>
-                            ))
+                            studentThreads.map(thread => {
+                                const lastMessage = thread.messages[thread.messages.length - 1];
+                                const lastContent = lastMessage?.conversation ? lastMessage.conversation[lastMessage.conversation.length - 1]?.content : lastMessage?.message;
+                                return (
+                                    <StudentListItem
+                                        key={thread.studentId}
+                                        $active={selectedStudentId === thread.studentId}
+                                        onClick={() => setSelectedStudentId(thread.studentId)}
+                                    >
+                                        <p>{thread.studentName}</p>
+                                        <small>{lastContent}</small>
+                                    </StudentListItem>
+                                )
+                            })
                         }
                     </StudentListPanel>
                     <ChatPanel>
@@ -793,19 +819,13 @@ function SuggestionManager() {
                             <>
                                 <ChatHeader>{studentThreads.find(t => t.studentId === selectedStudentId)?.studentName} 학생과의 대화</ChatHeader>
                                 <MessageArea ref={messageAreaRef}>
-                                    {selectedThreadMessages.map(item => (
-                                        <React.Fragment key={item.id}>
-                                            <MessageBubble className="student">
-                                                {item.message}
-                                                <Timestamp>{formatDate(item.createdAt)}</Timestamp>
-                                            </MessageBubble>
-                                            {item.reply && (
-                                                <MessageBubble className="admin">
-                                                    {item.reply}
-                                                    <Timestamp $align="right">{formatDate(item.repliedAt)}</Timestamp>
-                                                </MessageBubble>
-                                            )}
-                                        </React.Fragment>
+                                    {selectedThreadMessages.map((message, index) => (
+                                        <MessageBubble key={index} className={message.sender}>
+                                            {message.content}
+                                            <Timestamp $align={message.sender === 'admin' ? 'right' : 'left'}>
+                                                {formatDate(message.createdAt)}
+                                            </Timestamp>
+                                        </MessageBubble>
                                     ))}
                                 </MessageArea>
                                 <InputArea>
@@ -834,6 +854,7 @@ function SuggestionManager() {
         </FullWidthSection>
     );
 }
+
 
 function GoalManager() {
     const [title, setTitle] = useState('');
@@ -962,6 +983,7 @@ function MissionManager() {
 
     const [title, setTitle] = useState('');
     const [reward, setReward] = useState(100);
+    const [submissionType, setSubmissionType] = useState('simple'); // [추가] 미션 종류 상태
     const [showArchived, setShowArchived] = useState(false);
 
     const handleCreateMission = async () => {
@@ -2067,10 +2089,10 @@ function AdminPage() {
         }
         if (activeMenu === 'student') {
             return (
-                <>
+                <GridContainer>
                     <PointManager />
                     <RoleManager />
-                </>
+                </GridContainer>
             )
         }
         if (activeMenu === 'shop') {
@@ -2088,11 +2110,13 @@ function AdminPage() {
 
     const handleMenuClick = (menu) => {
         setActiveMenu(menu);
-        if (menu === 'mission') setActiveSubMenu('mission_dashboard');
-        else if (menu === 'student') setActiveSubMenu('role_manage');
-        else if (menu === 'shop') setActiveSubMenu('item_manage');
-        else if (menu === 'league') setActiveSubMenu('league_manage');
-        else setActiveSubMenu('');
+        if (menu === 'league') {
+            if (activeMenu !== 'league') {
+                setActiveSubMenu('league_manage');
+            }
+        } else {
+            setActiveSubMenu('');
+        }
     };
 
     return (

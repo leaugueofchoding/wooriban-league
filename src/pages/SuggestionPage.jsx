@@ -27,7 +27,7 @@ const ChatContainer = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 60vh; /* Adjust height as needed */
+  height: 60vh;
 `;
 
 const MessageArea = styled.div`
@@ -65,7 +65,7 @@ const MessageBubble = styled.div`
 
 const Timestamp = styled.span`
   font-size: 0.75rem;
-  color: #6c757d;
+  color: #a9a9a9;
   display: block;
   margin-top: 0.5rem;
   text-align: ${props => props.$align || 'left'};
@@ -132,7 +132,7 @@ function SuggestionPage() {
         const q = query(
             collection(db, "suggestions"),
             where("studentId", "==", myPlayerData.id),
-            orderBy("createdAt", "asc") // [수정] 시간 순으로 정렬
+            orderBy("createdAt", "asc")
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -144,7 +144,6 @@ function SuggestionPage() {
         return () => unsubscribe();
     }, [myPlayerData]);
 
-    // [추가] 새 메시지가 오면 스크롤을 맨 아래로 이동
     useEffect(() => {
         if (messageAreaRef.current) {
             messageAreaRef.current.scrollTop = messageAreaRef.current.scrollHeight;
@@ -160,7 +159,6 @@ function SuggestionPage() {
             await submitSuggestion({
                 studentId: myPlayerData.id,
                 studentName: myPlayerData.name,
-                isCard: false,
                 message: content,
             });
             setContent('');
@@ -173,10 +171,33 @@ function SuggestionPage() {
         if (!timestamp?.toDate) return '';
         const date = timestamp.toDate();
         return date.toLocaleString('ko-KR', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit',
         });
     };
+
+    const flattenedConversation = useMemo(() => {
+        return history.flatMap(item => {
+            if (item.conversation) {
+                return item.conversation;
+            }
+            const oldConversation = [];
+            if (item.message) {
+                oldConversation.push({
+                    sender: 'student',
+                    content: item.message,
+                    createdAt: item.createdAt
+                });
+            }
+            if (item.reply) {
+                oldConversation.push({
+                    sender: 'admin',
+                    content: item.reply,
+                    createdAt: item.repliedAt
+                });
+            }
+            return oldConversation;
+        });
+    }, [history]);
 
     return (
         <Wrapper>
@@ -184,20 +205,14 @@ function SuggestionPage() {
             <ChatContainer>
                 <MessageArea ref={messageAreaRef}>
                     {isLoading ? <p>메시지를 불러오는 중...</p> : (
-                        history.length === 0 ? <p style={{ textAlign: 'center', color: '#6c757d' }}>아직 나눈 대화가 없습니다.</p> : (
-                            history.map(item => (
-                                <React.Fragment key={item.id}>
-                                    <MessageBubble className="student">
-                                        {item.message}
-                                        <Timestamp $align="right">{formatDate(item.createdAt)}</Timestamp>
-                                    </MessageBubble>
-                                    {item.reply && (
-                                        <MessageBubble className="admin">
-                                            {item.reply}
-                                            <Timestamp>{formatDate(item.repliedAt)}</Timestamp>
-                                        </MessageBubble>
-                                    )}
-                                </React.Fragment>
+                        flattenedConversation.length === 0 ? <p style={{ textAlign: 'center', color: '#6c757d' }}>아직 나눈 대화가 없습니다.</p> : (
+                            flattenedConversation.map((message, index) => (
+                                <MessageBubble key={index} className={message.sender}>
+                                    {message.content}
+                                    <Timestamp $align={message.sender === 'student' ? 'right' : 'left'}>
+                                        {formatDate(message.createdAt)}
+                                    </Timestamp>
+                                </MessageBubble>
                             ))
                         )
                     )}

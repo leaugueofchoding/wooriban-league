@@ -376,19 +376,25 @@ export async function updatePlayerStatus(playerId, status) {
 }
 
 export async function submitSuggestion(suggestionData) {
-  const { studentId, studentName, isCard, message } = suggestionData;
+  const { studentId, studentName, message } = suggestionData;
   if (!message.trim()) {
     throw new Error("메시지 내용을 입력해야 합니다.");
   }
+  const now = new Date(); // [수정] 클라이언트의 현재 시간을 사용
   await addDoc(collection(db, "suggestions"), {
     studentId,
     studentName,
-    isCard, // 카드 메시지 여부 (true/false)
     message,
-    status: "pending", // 'pending'(확인전), 'replied'(답변완료)
-    createdAt: serverTimestamp(),
-    reply: null,
-    repliedAt: null,
+    conversation: [
+      {
+        sender: 'student',
+        content: message,
+        createdAt: now // [수정] serverTimestamp() 대신 Date 객체 사용
+      }
+    ],
+    status: "pending",
+    createdAt: now,
+    lastMessageAt: now,
   });
 
   // [추가] 관리자 및 기록원에게 알림 전송
@@ -402,8 +408,8 @@ export async function submitSuggestion(suggestionData) {
         user.authUid,
         '💌 새로운 메시지',
         `${studentName} 학생에게서 새로운 메시지가 도착했습니다.`,
-        'suggestion_admin', // 알림 타입 변경
-        '/admin' // 관리자 페이지로 링크
+        'suggestion_admin',
+        '/admin'
       );
     }
   });
@@ -438,16 +444,16 @@ export async function replyToSuggestion(suggestionId, replyContent, studentAuthU
   const replyData = {
     content: replyContent,
     sender: 'admin',
-    createdAt: serverTimestamp()
+    createdAt: new Date() // serverTimestamp()를 new Date()로 변경
   };
 
   await updateDoc(suggestionRef, {
     conversation: arrayUnion(replyData), // conversation 필드에 배열로 추가
     status: "replied",
-    repliedAt: serverTimestamp(),
+    lastMessageAt: serverTimestamp(), // 마지막 메시지 시간 갱신
   });
 
-  // [추가] 학생에게 답글 알림 보내기
+  // 학생에게 답글 알림 보내기
   if (studentAuthUid) {
     createNotification(
       studentAuthUid,

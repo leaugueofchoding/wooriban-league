@@ -687,7 +687,7 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) return;
         try {
-            const rewardAmount = 50;
+            const rewardAmount = 100;
             await grantAttendanceReward(myPlayerData.id, rewardAmount);
             set({ showAttendanceModal: false });
         } catch (error) {
