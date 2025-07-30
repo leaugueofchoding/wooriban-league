@@ -9,7 +9,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import {
     uploadAvatarPart,
-    batchUpdateAvatarPartPrices,
+    batchUpdateAvatarPartDetails,
     createMission,
     updateAvatarPartStatus,
     batchUpdateSaleInfo,
@@ -1143,6 +1143,7 @@ function AvatarPartManager() {
     const [isUploading, setIsUploading] = useState(false);
     const [prices, setPrices] = useState({});
     const [displayNames, setDisplayNames] = useState({});
+    const [slots, setSlots] = useState({}); // <-- 이 부분을 추가해주세요.
     const [isSaleMode, setIsSaleMode] = useState(false);
     const [isSaleDayMode, setIsSaleDayMode] = useState(false);
     const [checkedItems, setCheckedItems] = useState(new Set());
@@ -1175,12 +1176,17 @@ function AvatarPartManager() {
     useEffect(() => {
         const initialPrices = {};
         const initialDisplayNames = {};
+        const initialSlots = {}; // slots 초기화 로직 추가
         avatarParts.forEach(part => {
             initialPrices[part.id] = part.price || 0;
             initialDisplayNames[part.id] = part.displayName || '';
+            if (part.category === 'accessory') {
+                initialSlots[part.id] = part.slot || 'face'; // 기본값을 'face'로 설정
+            }
         });
         setPrices(initialPrices);
         setDisplayNames(initialDisplayNames);
+        setSlots(initialSlots); // slots state 업데이트
     }, [avatarParts]);
 
     useEffect(() => {
@@ -1197,6 +1203,7 @@ function AvatarPartManager() {
 
     const handlePriceChange = (partId, value) => setPrices(prev => ({ ...prev, [partId]: value }));
     const handleFileChange = (e) => setFiles(Array.from(e.target.files));
+    const handleSlotChange = (partId, value) => setSlots(prev => ({ ...prev, [partId]: value })); // <-- 이 부분을 추가해주세요.
     const handleCheckboxChange = (partId) => {
         setCheckedItems(prev => {
             const newSet = new Set(prev);
@@ -1224,16 +1231,32 @@ function AvatarPartManager() {
         }
     };
 
-    const handleSaveAllPrices = async () => {
-        if (!window.confirm("현재 탭의 모든 아이템 가격을 저장하시겠습니까?")) return;
+    const handleSaveAllChanges = async () => {
+        const confirmMessage = activeTab === 'accessory'
+            ? "현재 탭의 모든 아이템 가격과 착용 부위를 저장하시겠습니까?"
+            : "현재 탭의 모든 아이템 가격을 저장하시겠습니까?";
+
+        if (!window.confirm(confirmMessage)) return;
+
         try {
-            const updates = Object.entries(prices)
+            const priceUpdates = Object.entries(prices)
                 .filter(([id]) => partCategories[activeTab]?.some(part => part.id === id))
                 .map(([id, price]) => ({ id, price: Number(price) }));
-            await batchUpdateAvatarPartPrices(updates);
-            alert('가격이 성공적으로 저장되었습니다.');
+
+            const slotUpdates = activeTab === 'accessory'
+                ? Object.entries(slots)
+                    .filter(([id]) => partCategories[activeTab]?.some(part => part.id === id))
+                    .map(([id, slot]) => ({ id, slot }))
+                : [];
+
+            await batchUpdateAvatarPartDetails(priceUpdates, slotUpdates);
+
+            alert('변경사항이 성공적으로 저장되었습니다.');
             await fetchInitialData();
-        } catch (error) { alert('가격 저장 중 오류가 발생했습니다.'); }
+        } catch (error) {
+            console.error("저장 오류:", error);
+            alert('저장 중 오류가 발생했습니다.');
+        }
     };
 
     const handleUpload = async () => {
@@ -1439,6 +1462,21 @@ function AvatarPartManager() {
                                 )}
                                 <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: 0 }} />
 
+                                {/* ▼▼▼ 액세서리 탭일 때만 착용 부위 선택 UI를 보여줍니다. ▼▼▼ */}
+                                {activeTab === 'accessory' && (
+                                    <select
+                                        value={slots[part.id] || 'face'}
+                                        onChange={(e) => handleSlotChange(part.id, e.target.value)}
+                                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                                    >
+                                        <option value="face">얼굴</option>
+                                        <option value="hand">손</option>
+                                        <option value="waist">허리</option>
+                                        <option value="back">등</option>
+                                        <option value="etc">기타</option>
+                                    </select>
+                                )}
+
                                 {isCurrentlyOnSale && (<div style={{ width: '100%', textAlign: 'center', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px', borderRadius: '4px', fontSize: '0.8em', color: 'red' }}>
                                     <p style={{ margin: 0, fontWeight: 'bold' }}>{part.salePrice}P ({part.originalPrice ? Math.round(100 - (part.salePrice / part.originalPrice * 100)) : ''}%)</p>
                                     <p style={{ margin: 0 }}>~{part.saleEndDate.toDate().toLocaleDateString()}</p>
@@ -1472,7 +1510,9 @@ function AvatarPartManager() {
                 </PaginationContainer>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                    <SaveButton onClick={handleSaveAllPrices}>{activeTab} 탭 전체 가격 저장</SaveButton>
+                    <SaveButton onClick={handleSaveAllChanges}>
+                        {activeTab === 'accessory' ? `${activeTab} 탭 전체 변경사항 저장` : `${activeTab} 탭 전체 가격 저장`}
+                    </SaveButton>
                 </div>
             </Section>
         </FullWidthSection>

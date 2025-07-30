@@ -512,6 +512,26 @@ export async function batchUpdateAvatarPartPrices(updates) {
   await batch.commit();
 }
 
+// ▼▼▼ [신규] 가격과 착용 부위(slot)를 함께 저장하는 함수 ▼▼▼
+export async function batchUpdateAvatarPartDetails(priceUpdates, slotUpdates) {
+  const batch = writeBatch(db);
+
+  priceUpdates.forEach(item => {
+    const partRef = doc(db, 'avatarParts', item.id);
+    batch.update(partRef, { price: item.price });
+  });
+
+  // slotUpdates가 있을 경우에만 실행
+  if (slotUpdates && slotUpdates.length > 0) {
+    slotUpdates.forEach(item => {
+      const partRef = doc(db, 'avatarParts', item.id);
+      batch.update(partRef, { slot: item.slot });
+    });
+  }
+
+  await batch.commit();
+}
+
 export async function batchUpdateSaleInfo(partIds, salePercent, startDate, endDate) {
   const batch = writeBatch(db);
 

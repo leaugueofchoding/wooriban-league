@@ -172,19 +172,36 @@ function AvatarEditPage() {
     /**
      * 파츠 선택 및 해제 로직
      */
-    const handlePartSelect = (category, partId) => {
+    const handlePartSelect = (part) => {
         setAvatarConfig(prev => {
-            // 이미 선택된 파츠를 다시 클릭하면 해제(undefined로 설정)
-            if (prev[category] === partId) {
-                const newConfig = { ...prev };
-                delete newConfig[category]; // 해당 카테고리 키를 제거
-                return newConfig;
+            const { category, id, slot } = part;
+            // 깊은 복사를 통해 예상치 못한 오류 방지
+            const newConfig = JSON.parse(JSON.stringify(prev));
+
+            if (category !== 'accessory') {
+                // 액세서리가 아닌 파츠 (헤어, 상의 등) 로직
+                if (prev[category] === id) {
+                    delete newConfig[category]; // 다시 클릭하면 해제
+                } else {
+                    newConfig[category] = id; // 다른 파츠 선택 시 교체
+                }
+            } else {
+                // 액세서리 파츠 로직
+                if (!newConfig.accessories) {
+                    newConfig.accessories = {}; // accessories 객체가 없으면 생성
+                }
+
+                const currentPartInSlot = newConfig.accessories[slot];
+
+                if (currentPartInSlot === id) {
+                    // 같은 부위에 착용한 아이템을 다시 클릭하면 해제
+                    delete newConfig.accessories[slot];
+                } else {
+                    // 다른 아이템을 클릭하면 해당 부위에 새로 착용 (교체)
+                    newConfig.accessories[slot] = id;
+                }
             }
-            // 다른 파츠를 선택하면 교체
-            return {
-                ...prev,
-                [category]: partId
-            };
+            return newConfig;
         });
     };
 
@@ -202,11 +219,29 @@ function AvatarEditPage() {
     };
 
     const selectedPartUrls = useMemo(() => {
-        return Object.entries(avatarConfig).map(([category, partId]) => {
-            const part = partCategories[category]?.find(p => p.id === partId);
-            return part?.src;
-        }).filter(Boolean);
-    }, [avatarConfig, partCategories]);
+        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
+        const config = avatarConfig || {};
+        const urls = [];
+
+        // 1. 기본 파츠 렌더링
+        RENDER_ORDER.forEach(category => {
+            const partId = config[category];
+            if (partId) {
+                const part = avatarParts.find(p => p.id === partId);
+                if (part) urls.push(part.src);
+            }
+        });
+
+        // 2. 액세서리 파츠 렌더링 (위에 겹쳐서)
+        if (config.accessories) {
+            Object.values(config.accessories).forEach(partId => {
+                const part = avatarParts.find(p => p.id === partId);
+                if (part) urls.push(part.src);
+            });
+        }
+
+        return urls;
+    }, [avatarConfig, avatarParts]);
 
     return (
         <EditWrapper>
@@ -232,11 +267,15 @@ function AvatarEditPage() {
 
                 <PartGrid>
                     {partCategories[activeTab]?.map(part => (
-                        <div key={part.id} onClick={() => handlePartSelect(activeTab, part.id)}>
+                        <div key={part.id} onClick={() => handlePartSelect(part)}>
                             <Thumbnail
                                 src={part.src}
                                 alt={part.id}
-                                className={avatarConfig[activeTab] === part.id ? 'selected' : ''}
+                                className={
+                                    activeTab === 'accessory'
+                                        ? (avatarConfig.accessories && avatarConfig.accessories[part.slot] === part.id ? 'selected' : '')
+                                        : (avatarConfig[activeTab] === part.id ? 'selected' : '')
+                                }
                             />
                         </div>
                     ))}

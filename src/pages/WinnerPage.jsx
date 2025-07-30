@@ -75,21 +75,28 @@ function PlayerAvatar({ player }) {
     const { avatarParts } = useLeagueStore();
 
     const sortedPartUrls = useMemo(() => {
-        if (!player?.avatarConfig || !avatarParts.length) return [];
-        const partCategories = avatarParts.reduce((acc, part) => {
-            if (!acc[part.category]) acc[part.category] = [];
-            acc[part.category].push(part);
-            return acc;
-        }, {});
-        const urls = [];
+        if (!player?.avatarConfig || !avatarParts.length) return [baseAvatar];
+
+        const urls = [baseAvatar];
+        const config = player.avatarConfig;
+
         RENDER_ORDER.forEach(category => {
-            const partId = player.avatarConfig[category];
+            const partId = config[category];
             if (partId) {
-                const part = partCategories[category]?.find(p => p.id === partId);
+                const part = avatarParts.find(p => p.id === partId);
                 if (part) urls.push(part.src);
             }
         });
-        return urls;
+
+        if (config.accessories) {
+            Object.values(config.accessories).forEach(partId => {
+                const part = avatarParts.find(p => p.id === partId);
+                if (part) urls.push(part.src);
+            });
+        }
+
+        // baseAvatar가 중복 추가될 수 있으므로 Set으로 중복 제거 후 배열로 변환
+        return Array.from(new Set(urls));
     }, [player, avatarParts]);
 
     return (

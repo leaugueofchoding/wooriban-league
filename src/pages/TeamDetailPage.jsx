@@ -218,23 +218,25 @@ function TeamDetailPage() {
             const player = players.find(p => p.id === id);
             if (!player) return null;
 
+            const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const urls = [baseAvatar];
-            if (player.avatarConfig) {
-                const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
-                const partsByCategory = avatarParts.reduce((acc, part) => {
-                    if (!acc[part.category]) acc[part.category] = [];
-                    acc[part.category].push(part);
-                    return acc;
-                }, {});
+            const config = player.avatarConfig || {};
 
-                RENDER_ORDER.forEach(category => {
-                    const partId = player.avatarConfig[category];
-                    if (partId) {
-                        const part = partsByCategory[category]?.find(p => p.id === partId);
-                        if (part) urls.push(part.src);
-                    }
+            RENDER_ORDER.forEach(category => {
+                const partId = config[category];
+                if (partId) {
+                    const part = avatarParts.find(p => p.id === partId);
+                    if (part) urls.push(part.src);
+                }
+            });
+
+            if (config.accessories) {
+                Object.values(config.accessories).forEach(partId => {
+                    const part = avatarParts.find(p => p.id === partId);
+                    if (part) urls.push(part.src);
                 });
             }
+
             return { ...player, avatarUrls: urls };
         }).filter(Boolean);
     }, [teamData, players, avatarParts]);

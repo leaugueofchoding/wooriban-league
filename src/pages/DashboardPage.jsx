@@ -370,21 +370,29 @@ function DashboardPage() {
     }, [activeGoal]);
 
     const myAvatarUrls = useMemo(() => {
-        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
+        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
         if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
+
         const urls = [baseAvatar];
-        const partCategories = avatarParts.reduce((acc, part) => {
-            if (!acc[part.category]) acc[part.category] = [];
-            acc[part.category].push(part);
-            return acc;
-        }, {});
+        const config = myPlayerData.avatarConfig;
+
+        // 1. 기본 파츠 렌더링
         RENDER_ORDER.forEach(category => {
-            const partId = myPlayerData.avatarConfig[category];
+            const partId = config[category];
             if (partId) {
-                const part = partCategories[category]?.find(p => p.id === partId);
+                const part = avatarParts.find(p => p.id === partId);
                 if (part) urls.push(part.src);
             }
         });
+
+        // 2. 액세서리 파츠 렌더링
+        if (config.accessories) {
+            Object.values(config.accessories).forEach(partId => {
+                const part = avatarParts.find(p => p.id === partId);
+                if (part) urls.push(part.src);
+            });
+        }
+
         return urls;
     }, [myPlayerData, avatarParts]);
 
