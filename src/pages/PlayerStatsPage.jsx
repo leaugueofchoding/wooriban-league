@@ -224,22 +224,36 @@ function SeasonStatsCard({ seasonData }) {
     const { playerId } = useParams();
     const [isOpen, setIsOpen] = useState(false);
 
+    // ▼▼▼ [수정] 액세서리 중복 착용을 지원하는 렌더링 로직으로 교체 ▼▼▼
     const teammateAvatars = useMemo(() => {
         if (!seasonData.team || !seasonData.team.members) return [];
         return seasonData.team.members.map(memberId => {
             const memberData = players.find(p => p.id === memberId);
             if (!memberData) return null;
 
+            const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const urls = [baseAvatar];
-            if (memberData.avatarConfig) {
-                Object.values(memberData.avatarConfig).forEach(partId => {
+            const config = memberData.avatarConfig || {};
+
+            RENDER_ORDER.forEach(category => {
+                const partId = config[category];
+                if (partId) {
+                    const part = avatarParts.find(p => p.id === partId);
+                    if (part) urls.push(part.src);
+                }
+            });
+
+            if (config.accessories) {
+                Object.values(config.accessories).forEach(partId => {
                     const part = avatarParts.find(p => p.id === partId);
                     if (part) urls.push(part.src);
                 });
             }
-            return { id: memberId, name: memberData.name, urls };
+
+            return { id: memberId, name: memberData.name, urls: Array.from(new Set(urls)) };
         }).filter(Boolean);
     }, [seasonData.team, players, avatarParts]);
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const seasonPoints = useMemo(() => {
         const VICTORY_REWARD = 50;

@@ -1,6 +1,6 @@
 // src/components/Auth.jsx
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { auth, updateUserProfile } from '../api/firebase.js';
@@ -136,7 +136,6 @@ const NotificationItem = styled.div`
     }
 `;
 
-// [추가] 보너스 알림 전용 스타일
 const BonusNotificationItem = styled(NotificationItem)`
     background-color: #e7f5ff;
     border-bottom: 2px solid #bce0fd;
@@ -147,6 +146,23 @@ function Auth({ user }) {
     const { players, notifications, unreadNotificationCount, markAsRead, approvalBonus } = useLeagueStore();
     const navigate = useNavigate();
     const [showNotifications, setShowNotifications] = useState(false);
+    const notificationRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+                setShowNotifications(false);
+            }
+        };
+
+        if (showNotifications) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showNotifications]);
 
     const myPlayerData = useMemo(() => {
         if (!user) return null;
@@ -155,7 +171,6 @@ function Auth({ user }) {
 
     const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
 
-    // [수정] 알림 그룹핑 및 최신 알림 우선 정렬 로직
     const groupedNotifications = useMemo(() => {
         if (!notifications) return [];
 
@@ -164,12 +179,12 @@ function Auth({ user }) {
 
         notifications.forEach(notif => {
             if (notif.type === 'mission_request') {
-                const missionTitle = notif.body.split(']')[0] + ']'; // "[미션 이름]" 추출
+                const missionTitle = notif.body.split(']')[0] + ']';
                 if (!missionRequests.hasOwnProperty(missionTitle)) {
-                    missionRequests[`${missionTitle}`] = { count: 0, link: notif.link, latestCreatedAt: notif.createdAt };
+                    missionRequests[missionTitle] = { count: 0, link: notif.link, latestCreatedAt: notif.createdAt };
                 }
-                missionRequests[`${missionTitle}`].count += 1;
-                missionRequests[`${missionTitle}`].latestCreatedAt = notif.createdAt > missionRequests[`${missionTitle}`].latestCreatedAt ? notif.createdAt : missionRequests[`${missionTitle}`].latestCreatedAt;
+                missionRequests[missionTitle].count += 1;
+                missionRequests[missionTitle].latestCreatedAt = notif.createdAt > missionRequests[missionTitle].latestCreatedAt ? notif.createdAt : missionRequests[missionTitle].latestCreatedAt;
             } else if (notif.type === 'mission_reward' && isRecorderOrAdmin) {
                 // 기록원의 보상 알림은 별도 처리하므로 목록에서 제외
             }
@@ -184,14 +199,13 @@ function Auth({ user }) {
             title: `승인 요청 (${data.count}건)`,
             body: `${title} 미션의 승인 요청이 ${data.count}건 있습니다.`,
             link: data.link,
-            createdAt: data.latestCreatedAt // 최신 요청 시간으로 정렬
+            createdAt: data.latestCreatedAt
         }));
 
         const sortedNotifications = [...requestSummaries, ...otherNotifications].sort((a, b) => {
-            // createdAt이 정의되지 않은 경우를 대비하여 처리
             const dateA = a.createdAt ? a.createdAt.toMillis() : 0;
             const dateB = b.createdAt ? b.createdAt.toMillis() : 0;
-            return dateB - dateA; // 내림차순 정렬 (최신이 위로)
+            return dateB - dateA;
         });
 
         return sortedNotifications;
@@ -210,7 +224,9 @@ function Auth({ user }) {
 
     const handleNotificationClick = () => {
         setShowNotifications(prev => !prev);
-        if (unreadNotificationCount > 0) markAsRead();
+        if (!showNotifications && unreadNotificationCount > 0) {
+            markAsRead();
+        }
     }
 
     return (
@@ -221,7 +237,7 @@ function Auth({ user }) {
                         <IconLink to="/">🏠</IconLink>
                         {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
                         {myPlayerData?.role === 'recorder' && <IconLink to="/recorder-dashboard">📋</IconLink>}
-                        <NotificationContainer>
+                        <NotificationContainer ref={notificationRef}>
                             <IconButton onClick={handleNotificationClick}>
                                 🔔
                                 {unreadNotificationCount > 0 && <NotificationBadge />}

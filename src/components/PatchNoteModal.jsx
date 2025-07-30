@@ -89,6 +89,15 @@ const PatchNoteModal = ({ isOpen, onClose }) => {
             <ModalContainer onClick={e => e.stopPropagation()}>
                 <ModalTitle>🚀 우리반 리그 패치 노트</ModalTitle>
                 <ContentArea>
+                    {/* ▼▼▼ [추가] 최신 업데이트 내역 ▼▼▼ */}
+                    <VersionHeader>v4.1 (2025-07-30)</VersionHeader>
+                    <ChangeList>
+                        <li>🚀 **[기능개선]** 리그 홈 실시간 업데이트: 경기 결과 저장 시, 순위표와 경기 일정이 애니메이션과 함께 즉시 갱신됩니다.</li>
+                        <li>🚀 **[기능개선]** 알림창 UX 개선: 알림창 외부를 클릭해도 창이 닫히도록 수정되었습니다.</li>
+                        <li>✅ **[버그수정]** 아바타 렌더링 오류 수정: 선수 기록 페이지 등에서 여러 개의 액세서리를 착용한 아바타가 정상적으로 표시되도록 수정했습니다.</li>
+                    </ChangeList>
+                    {/* ▲▲▲ 여기까지 추가 ▲▲▲ */}
+
                     <VersionHeader>v4.final (2024-07-26)</VersionHeader>
                     <ChangeList>
                         <li>✅ **[버그수정]** 선수 비활성화 기능 추가 (데이터 보존)</li>
