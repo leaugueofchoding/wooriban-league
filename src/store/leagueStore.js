@@ -40,7 +40,7 @@ import {
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
-import defaultEmblem from '../assets/default-emblem.png'; // <-- 이 코드를 추가했습니다.
+import defaultEmblem from '../assets/default-emblem.png';
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
@@ -65,12 +65,13 @@ export const useLeagueStore = create((set, get) => ({
         playerData: null,
         missionSubmissions: null,
         approvalBonus: null,
+        matches: null,
     },
-    dailyQuiz: null, // 현재 풀어야 할 퀴즈
-    dailyQuizSet: { date: null, quizzes: [] }, // 오늘 풀어야 할 5개의 퀴즈 묶음
-    quizHistory: [], // 오늘 푼 퀴즈 기록
+    dailyQuiz: null,
+    dailyQuizSet: { date: null, quizzes: [] },
+    quizHistory: [],
     currentUser: null,
-    pointAdjustmentNotification: null, // [추가]
+    pointAdjustmentNotification: null,
 
 
     // --- Actions ---
@@ -114,7 +115,7 @@ export const useLeagueStore = create((set, get) => ({
 
                 const myPlayerData = playersData.find(p => p.authUid === currentUser.uid);
                 if (myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role)) {
-                    get().subscribeToRecorderBonus(currentUser.uid); // [수정] 함수 이름 변경
+                    get().subscribeToRecorderBonus(currentUser.uid);
                 }
             }
 
@@ -127,13 +128,14 @@ export const useLeagueStore = create((set, get) => ({
                 });
             }
 
+            get().subscribeToMatches(activeSeason.id);
+
             const [
-                playersData, teamsData, matchesData, usersData,
+                playersData, teamsData, usersData,
                 avatarPartsData, activeMissionsData, archivedMissionsData, submissionsData
             ] = await Promise.all([
                 get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(),
                 getTeams(activeSeason.id),
-                getMatches(activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
                 getMissions('active'),
@@ -142,7 +144,7 @@ export const useLeagueStore = create((set, get) => ({
             ]);
 
             set({
-                players: playersData, teams: teamsData, matches: matchesData, users: usersData,
+                players: playersData, teams: teamsData, users: usersData,
                 avatarParts: avatarPartsData, missions: activeMissionsData,
                 archivedMissions: archivedMissionsData, missionSubmissions: submissionsData,
                 currentSeason: activeSeason, isLoading: false,
@@ -151,6 +153,16 @@ export const useLeagueStore = create((set, get) => ({
             console.error("데이터 로딩 오류:", error);
             set({ isLoading: false });
         }
+    },
+
+    subscribeToMatches: (seasonId) => {
+        const matchesRef = collection(db, 'matches');
+        const q = query(matchesRef, where("seasonId", "==", seasonId));
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const matchesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            set({ matches: matchesData });
+        }, (error) => console.error("경기 데이터 실시간 수신 오류:", error));
+        set(state => ({ listeners: { ...state.listeners, matches: unsubscribe } }));
     },
 
     archiveMission: async (missionId) => {
@@ -219,22 +231,20 @@ export const useLeagueStore = create((set, get) => ({
             dataToSend.text = submissionData.text;
         }
         if (submissionData.photo) {
-            // 사진이 있으면 업로드하고 URL을 받아서 저장
             const photoUrl = await uploadMissionSubmissionFile(missionId, myPlayerData.id, submissionData.photo);
             dataToSend.photoUrl = photoUrl;
         }
 
         try {
             await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name, dataToSend);
-            // 성공 후 UI 업데이트를 위해 submission 데이터를 다시 불러올 수 있음
             const submissionsData = await getMissionSubmissions();
             set({ missionSubmissions: submissionsData });
         } catch (error) {
-            // 에러를 다시 throw하여 컴포넌트에서 잡을 수 있게 함
             throw error;
         }
     },
 
+    // ▼▼▼ [수정] 문법 오류가 발생했던 부분 ▼▼▼
     batchAdjustPoints: async (playerIds, amount, reason) => {
         const playerNames = playerIds.map(id => get().players.find(p => p.id === id)?.name).join(', ');
         const actionText = amount > 0 ? '지급' : '차감';
@@ -249,6 +259,7 @@ export const useLeagueStore = create((set, get) => ({
             alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
         }
     },
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     subscribeToPlayerData: (userId) => {
         const playerDocRef = doc(db, 'players', userId);
@@ -287,7 +298,6 @@ export const useLeagueStore = create((set, get) => ({
             const notifications = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const unreadCount = notifications.filter(n => !n.isRead).length;
 
-            // [추가] 포인트 조정 알림 감지 및 모달 상태 업데이트
             const latestPointNotification = notifications.find(n => n.type === 'point' && !n.isRead && n.data);
             if (latestPointNotification) {
                 set({ pointAdjustmentNotification: latestPointNotification });
@@ -313,7 +323,6 @@ export const useLeagueStore = create((set, get) => ({
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             let totalBonus = 0;
-            // [수정] querySnapshot.forEach 내부의 if문 삭제
             querySnapshot.forEach(doc => {
                 totalBonus += doc.data().changeAmount;
             });
@@ -329,7 +338,7 @@ export const useLeagueStore = create((set, get) => ({
             if (unsubscribe) unsubscribe();
         });
         set({
-            listeners: { notifications: null, playerData: null, missionSubmissions: null, approvalBonus: null },
+            listeners: { notifications: null, playerData: null, missionSubmissions: null, approvalBonus: null, matches: null },
             approvalBonus: 0
         });
     },
@@ -342,20 +351,15 @@ export const useLeagueStore = create((set, get) => ({
 
     fetchDailyQuiz: async (studentId) => {
         const todayStr = new Date().toLocaleDateString('ko-KR');
-
-        // ▼▼▼ [수정] localStorage에서 오늘의 퀴즈 목록을 불러옵니다 ▼▼▼
         const storedQuizSet = JSON.parse(localStorage.getItem('dailyQuizSet'));
         let todaysQuizzes = [];
 
-        // 저장된 퀴즈가 있고, 날짜가 오늘과 같으면 그대로 사용
         if (storedQuizSet && storedQuizSet.date === todayStr) {
             todaysQuizzes = storedQuizSet.quizzes;
         } else {
-            // 날짜가 다르거나 저장된 퀴즈가 없으면 새로 5개를 생성
             const allQuizList = Object.values(allQuizzes).flat();
             const shuffled = allQuizList.sort(() => 0.5 - Math.random());
             todaysQuizzes = shuffled.slice(0, 5);
-            // 새로 만든 퀴즈 목록을 localStorage에 저장
             localStorage.setItem('dailyQuizSet', JSON.stringify({ date: todayStr, quizzes: todaysQuizzes }));
         }
 
@@ -382,12 +386,10 @@ export const useLeagueStore = create((set, get) => ({
 
         const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
 
-        // 답변 제출 후, 다음 퀴즈를 불러오기 위해 fetchDailyQuiz 다시 호출
         await get().fetchDailyQuiz(myPlayerData.id);
 
-        return isCorrect; // 정답 여부 반환
+        return isCorrect;
     },
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     createSeason: async (seasonName) => {
         await createNewSeason(seasonName);
@@ -416,7 +418,6 @@ export const useLeagueStore = create((set, get) => ({
             const { teams, matches, players, batchAdjustPoints } = get();
             const completedMatches = matches.filter(m => m.status === '완료');
 
-            // --- 1. 순위 계산 ---
             let stats = teams.map(team => ({
                 id: team.id, teamName: team.teamName, points: 0, goalDifference: 0, goalsFor: 0,
             }));
@@ -438,7 +439,6 @@ export const useLeagueStore = create((set, get) => ({
                 return b.goalsFor - a.goalsFor;
             });
 
-            // --- 2. 순위별 보상 지급 ---
             const prizeConfig = [
                 { rank: 1, prize: season.winningPrize || 0, label: "우승" },
                 { rank: 2, prize: season.secondPlacePrize || 0, label: "준우승" },
@@ -455,7 +455,6 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
-            // ▼▼▼ [추가] 3. 득점왕 계산 및 보상 지급 로직 ▼▼▼
             const topScorerPrize = season.topScorerPrize || 0;
             if (topScorerPrize > 0) {
                 const scorerPoints = {};
@@ -476,7 +475,6 @@ export const useLeagueStore = create((set, get) => ({
                     }
                 }
             }
-            // ▲▲▲ 여기까지 추가 ▲▲▲
 
 
             await updateSeason(season.id, { status: 'completed' });
@@ -521,12 +519,11 @@ export const useLeagueStore = create((set, get) => ({
 
     togglePlayerStatus: async (playerId, currentStatus) => {
         const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
-        const actionText = newStatus === 'inactive' ? '비활성화' : '활성화';
+        const actionText = newStatus === 'inactive' ? '활성화' : '비활성화';
         if (!confirm(`이 선수를 ${actionText} 상태로 변경하시겠습니까?`)) return;
 
         try {
             await updatePlayerStatus(playerId, newStatus);
-            // 상태를 로컬에서도 즉시 업데이트하여 빠른 UI 반응을 유도
             set(state => ({
                 players: state.players.map(p =>
                     p.id === playerId ? { ...p, status: newStatus } : p
@@ -610,25 +607,21 @@ export const useLeagueStore = create((set, get) => ({
         if (players.length === 0 || teams.length === 0) return alert('선수와 팀이 모두 필요합니다.');
 
         try {
-            // ▼▼▼ [수정] 성비 균등 배정 로직 ▼▼▼
             const malePlayers = players.filter(p => p.gender === '남').sort(() => 0.5 - Math.random());
             const femalePlayers = players.filter(p => p.gender === '여').sort(() => 0.5 - Math.random());
             const unassignedPlayers = players.filter(p => !p.gender || (p.gender !== '남' && p.gender !== '여')).sort(() => 0.5 - Math.random());
 
             const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null }));
 
-            // 남자, 여자, 미지정 순서로 순환하며 배정
             [...malePlayers, ...femalePlayers, ...unassignedPlayers].forEach((player, index) => {
                 teamUpdates[index % teams.length].members.push(player.id);
             });
 
-            // 각 팀의 첫 번째 멤버를 임시 주장으로 임명
             teamUpdates.forEach(update => {
                 if (update.members.length > 0) {
                     update.captainId = update.members[0];
                 }
             });
-            // ▲▲▲ 여기까지 수정 ▲▲▲
 
             await batchUpdateTeams(teamUpdates);
             const updatedTeams = await getTeams(currentSeason.id);
@@ -653,7 +646,6 @@ export const useLeagueStore = create((set, get) => ({
             if (teamList.length < 2) return schedule;
 
             const localTeams = [...teamList];
-            // 팀 수가 홀수면 'BYE' 팀 추가
             if (localTeams.length % 2 !== 0) {
                 localTeams.push({ id: 'BYE', teamName: 'BYE' });
             }
@@ -679,21 +671,18 @@ export const useLeagueStore = create((set, get) => ({
                 }
                 rounds.push(roundMatches);
 
-                // Rotate teams for the next round
                 const lastTeamIndex = teamIndexes.pop();
                 teamIndexes.splice(1, 0, lastTeamIndex);
             }
 
-            // 홈 & 어웨이 생성
             const homeAndAway = [];
             rounds.forEach(round => {
                 round.forEach(match => {
-                    homeAndAway.push({ ...match }); // 1차전
-                    homeAndAway.push({ teamA_id: match.teamB_id, teamB_id: match.teamA_id }); // 2차전 (홈/어웨이 스왑)
+                    homeAndAway.push({ ...match });
+                    homeAndAway.push({ teamA_id: match.teamB_id, teamB_id: match.teamA_id });
                 });
             });
 
-            // Fisher-Yates shuffle 알고리즘으로 경기 순서 섞기
             for (let i = homeAndAway.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [homeAndAway[i], homeAndAway[j]] = [homeAndAway[j], homeAndAway[i]];
@@ -712,9 +701,8 @@ export const useLeagueStore = create((set, get) => ({
             const maleTeams = teams.filter(t => t.gender === '남');
             const femaleTeams = teams.filter(t => t.gender === '여');
             const maleMatches = createRoundRobinSchedule(maleTeams);
-            const femaleMatches = createRoundRobinSchedule(femaleTeams);
+            const femaleMatches = createRoundRobinSchedule(femaleMatches);
 
-            // 남녀 경기 교차 배정
             let i = 0, j = 0;
             while (i < maleMatches.length || j < femaleMatches.length) {
                 if (i < maleMatches.length) matchesToCreate.push(maleMatches[i++]);
@@ -746,8 +734,6 @@ export const useLeagueStore = create((set, get) => ({
                 return;
             }
             await updateMatchScores(matchId, scores, scorers, recorderId);
-            const updatedMatches = await getMatches(get().currentSeason.id);
-            set({ matches: updatedMatches });
         } catch (error) { console.error("점수 저장 오류:", error); }
     },
 
@@ -824,7 +810,6 @@ export const useLeagueStore = create((set, get) => ({
             return b.goalsFor - a.goalsFor;
         });
 
-        // 공동 순위 로직 적용
         let rank = 1;
         for (let i = 0; i < stats.length; i++) {
             if (i > 0 && (

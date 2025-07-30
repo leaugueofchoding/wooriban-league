@@ -241,6 +241,11 @@ function ScheduleItem({ match, isInitiallyOpen }) {
   const { teams, players } = useLeagueStore();
   const [isOpen, setIsOpen] = useState(isInitiallyOpen);
 
+  // isInitiallyOpen prop이 변경될 때 isOpen 상태를 동기화합니다.
+  useEffect(() => {
+    setIsOpen(isInitiallyOpen);
+  }, [isInitiallyOpen]);
+
   const teamA = teams.find(t => t.id === match.teamA_id);
   const teamB = teams.find(t => t.id === match.teamB_id);
 
@@ -287,15 +292,15 @@ function ScheduleItem({ match, isInitiallyOpen }) {
 function LeagueInfoContent({ matches, standingsData }) {
   const sortedMatches = useMemo(() => {
     return [...matches].sort((a, b) => {
-      if (a.status === '예정' && b.status === '완료') return -1;
-      if (a.status === '완료' && b.status === '예정') return 1;
-      return 0;
+      if (a.status === '예정' && b.status !== '예정') return -1;
+      if (a.status !== '예정' && b.status === '예정') return 1;
+      return 0; // createdAt 필드가 있다면 추후 정렬 기준 추가
     });
   }, [matches]);
 
   const nextMatchId = useMemo(() => {
-    const upcomingMatches = sortedMatches.filter(m => m.status === '예정');
-    return upcomingMatches.length > 0 ? upcomingMatches[0].id : null;
+    const upcomingMatch = sortedMatches.find(m => m.status === '예정');
+    return upcomingMatch ? upcomingMatch.id : null;
   }, [sortedMatches]);
 
   return (
@@ -362,7 +367,7 @@ function TeamInfoContent({ teams, matches, currentSeason }) {
 
 
 function HomePage() {
-  const { matches, teams, currentSeason, players, standingsData } = useLeagueStore(); // standingsData selector 직접 사용
+  const { matches, teams, currentSeason, players, standingsData } = useLeagueStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('leagueInfo');
@@ -380,14 +385,11 @@ function HomePage() {
     }
   }, [location, navigate]);
 
-  // ▼▼▼ [수정] 기존 순위 계산 로직 제거 ▼▼▼
-  // const standingsData = useMemo(() => { ... });
-  const finalStandingsData = standingsData(); // 스토어에서 계산된 순위 데이터를 가져옴
+  const finalStandingsData = standingsData();
 
   const renderContent = () => {
     switch (activeTab) {
       case 'leagueInfo':
-        // ▼▼▼ [수정] 스토어에서 가져온 데이터를 props로 전달 ▼▼▼
         return <LeagueInfoContent matches={matches} standingsData={finalStandingsData} />;
       case 'teamInfo':
         return <TeamInfoContent teams={teams} matches={matches} currentSeason={currentSeason} />;
