@@ -1,6 +1,6 @@
 // src/pages/MissionsPage.jsx
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth } from '../api/firebase';
@@ -31,6 +31,8 @@ const MissionCard = styled.div`
   display: flex;
   flex-direction: column; /* 세로 정렬로 변경 */
   gap: 1rem;
+  /* [추가] 반려된 미션 테두리 스타일 */
+  border-left: 5px solid ${props => props.$status === 'rejected' ? '#dc3545' : 'transparent'};
 `;
 
 const MissionHeader = styled.div`
@@ -108,19 +110,23 @@ const RequestButton = styled.button`
     cursor: pointer;
     transition: background-color 0.2s;
     white-space: nowrap;
-    margin-left: 1rem; /* MissionInfo와의 간격 */
+    margin-left: 1rem;
 
     background-color: ${props => {
     if (props.$status === 'approved') return '#007bff';
     if (props.$status === 'pending') return '#6c757d';
+    if (props.$status === 'rejected') return '#ffc107'; // 반려됨 버튼 색상
     return '#dc3545';
   }};
+
+    color: ${props => (props.$status === 'rejected' ? 'black' : 'white')};
 
 
     &:hover:not(:disabled) {
         background-color: ${props => {
     if (props.$status === 'approved') return '#0056b3';
     if (props.$status === 'pending') return '#5a6268';
+    if (props.$status === 'rejected') return '#e0a800';
     return '#c82333';
   }};
     }
@@ -174,6 +180,29 @@ const SubmissionDetails = styled.div`
     }
 `;
 
+const FilterContainer = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 1rem;
+`;
+
+const ToggleButton = styled.button`
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    cursor: pointer;
+    background-color: ${props => props.$active ? '#6c757d' : '#fff'};
+    color: ${props => props.$active ? '#fff' : '#495057'};
+    transition: all 0.2s ease-in-out;
+
+    &:hover {
+        background-color: #e9ecef;
+    }
+`;
+
 function SubmissionDetailsView({ submission, isOpen }) {
   if (!submission || (!submission.text && !submission.photoUrl)) {
     return null;
@@ -195,17 +224,26 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const submission = mySubmissions[mission.id];
   const submissionStatus = submission?.status;
+
+  // [추가] 반려 상태일 때, 기존 제출 내용을 불러오도록 useEffect 추가
+  useEffect(() => {
+    if (submissionStatus === 'rejected' && submission) {
+      setSubmissionContent({
+        text: submission.text || '',
+        photo: null // 사진은 다시 선택해야 함
+      });
+    }
+  }, [submissionStatus, submission]);
+
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
   const hasViewableContent = submission && (submission.text || submission.photoUrl);
 
-  // [수정] 이전 미션 '제출' 여부 확인 로직
   const isPrerequisiteSubmitted = useMemo(() => {
     if (!mission.prerequisiteMissionId) {
-      return true; // 선행 미션이 없으면 통과
+      return true;
     }
     const prerequisiteSubmission = mySubmissions[mission.prerequisiteMissionId];
-    // 'pending' 또는 'approved' 상태, 즉 제출 기록이 있으면 통과
     return !!prerequisiteSubmission;
   }, [mission.prerequisiteMissionId, mySubmissions]);
 
@@ -218,11 +256,10 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting || !!submissionStatus) return;
+    if (isSubmitting || submissionStatus === 'pending' || submissionStatus === 'approved') return;
 
-    // [수정] 이전 미션 미제출 시 제출 방지
     if (!isPrerequisiteSubmitted) {
-      alert("이전 미션을 먼저 제출해야 합니다.");
+      alert("이전 미션을 먼저 제출하고 [다했어요] 버튼을 누르세요.");
       return;
     }
 
@@ -244,6 +281,9 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     try {
       await submitMissionForApproval(mission.id, submissionContent);
       alert('미션 완료를 성공적으로 요청했습니다!');
+      if (submissionStatus === 'rejected') {
+        setSubmissionContent({ text: '', photo: null }); // 재제출 후 초기화
+      }
     } catch (error) {
       alert(`요청 실패: ${error.message}`);
     } finally {
@@ -270,19 +310,17 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     }
 
     const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || (isSubmissionRequired && !submissionContent.text.trim() && !submissionContent.photo);
-
-    // [수정] 안내 문구 변경
     const buttonTitle = !isPrerequisiteSubmitted ? "이전 미션을 먼저 제출해야 합니다." : "";
 
     return (
-      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} title={buttonTitle}>
-        {isSubmitting ? '요청 중...' : '다 했어요!'}
+      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} title={buttonTitle} $status={submissionStatus}>
+        {isSubmitting ? '요청 중...' : (submissionStatus === 'rejected' ? '다시 제출하기' : '다 했어요!')}
       </RequestButton>
     );
   };
 
   return (
-    <MissionCard>
+    <MissionCard $status={submissionStatus}>
       <MissionHeader>
         <MissionInfo>
           <MissionTitle>{mission.title}</MissionTitle>
@@ -291,7 +329,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
         {renderButton()}
       </MissionHeader>
 
-      {canSubmitMission && isSubmissionRequired && !submissionStatus && (
+      {/* [수정] 반려 상태일 때도 제출 영역이 보이도록 조건 변경 */}
+      {canSubmitMission && isSubmissionRequired && (submissionStatus === 'rejected' || !submissionStatus) && (
         <SubmissionArea>
           {submissionType.includes('text') && (
             <TextArea
@@ -326,11 +365,11 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 }
 
 
-
 function MissionsPage() {
   const { players, missions, missionSubmissions } = useLeagueStore();
   const navigate = useNavigate();
   const currentUser = auth.currentUser;
+  const [hideCompleted, setHideCompleted] = useState(true);
 
   const myPlayerData = useMemo(() => {
     if (!currentUser) return null;
@@ -347,14 +386,28 @@ function MissionsPage() {
       }, {});
   }, [missionSubmissions, myPlayerData]);
 
+  const filteredMissions = useMemo(() => {
+    if (hideCompleted) {
+      return missions.filter(mission => mySubmissionsMap[mission.id]?.status !== 'approved');
+    }
+    return missions;
+  }, [missions, mySubmissionsMap, hideCompleted]);
+
   const canSubmitMission = myPlayerData && ['player', 'recorder'].includes(myPlayerData.role);
 
   return (
     <MissionsWrapper>
       <Title>오늘의 미션</Title>
+
+      <FilterContainer>
+        <ToggleButton onClick={() => setHideCompleted(prev => !prev)} $active={!hideCompleted}>
+          {hideCompleted ? '미션 모두 보기' : '완료 미션 숨기기'}
+        </ToggleButton>
+      </FilterContainer>
+
       <MissionList>
-        {missions.length > 0 ? (
-          missions.map(mission => (
+        {filteredMissions.length > 0 ? (
+          filteredMissions.map(mission => (
             <MissionItem
               key={mission.id}
               mission={mission}
@@ -364,7 +417,7 @@ function MissionsPage() {
             />
           ))
         ) : (
-          <p style={{ textAlign: 'center' }}>현재 진행 중인 미션이 없습니다.</p>
+          <p style={{ textAlign: 'center' }}>{hideCompleted ? "남아있는 미션이 없습니다! 👍" : "현재 진행 중인 미션이 없습니다."}</p>
         )}
       </MissionList>
 

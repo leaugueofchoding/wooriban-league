@@ -81,7 +81,7 @@ const Title = styled.h2`
 const MyInfoCard = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between; /* [수정] 버튼을 오른쪽으로 보내기 위한 정렬 */
+  justify-content: space-between;
   gap: 1.5rem;
   padding: 1.5rem;
   background-color: #fff;
@@ -369,7 +369,6 @@ function DashboardPage() {
         return Object.entries(contributionsByName).reduce((top, current) => current[1] > top[1] ? current : top, ["", 0]);
     }, [activeGoal]);
 
-    // ▼▼▼ [수정] 액세서리 중복 착용을 지원하는 렌더링 로직으로 교체 ▼▼▼
     const myAvatarUrls = useMemo(() => {
         if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
 
@@ -394,7 +393,6 @@ function DashboardPage() {
 
         return Array.from(new Set(urls));
     }, [myPlayerData, avatarParts]);
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const handleDonate = async () => {
         if (!myPlayerData) return alert('플레이어 정보를 불러올 수 없습니다.');
@@ -454,6 +452,11 @@ function DashboardPage() {
         return submissionsMap;
     }, [missionSubmissions, myPlayerData]);
 
+    // [추가] 미완료 미션 개수 계산
+    const uncompletedMissionsCount = useMemo(() => {
+        return missions.filter(mission => mySubmissions[mission.id] !== 'approved').length;
+    }, [missions, mySubmissions]);
+
     const recentMissions = useMemo(() => missions.slice(0, 2), [missions]);
     const canSubmitMission = myPlayerData && ['player', 'recorder'].includes(myPlayerData.role);
     const isGoalAchieved = activeGoal && activeGoal.currentPoints >= activeGoal.targetPoints;
@@ -491,7 +494,8 @@ function DashboardPage() {
             <MainGrid>
                 <ClickableSection to="/missions">
                     <Section>
-                        <TitleWrapper><Title>📢 새로운 미션</Title></TitleWrapper>
+                        {/* [수정] 제목에 미완료 미션 개수 표시 */}
+                        <TitleWrapper><Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title></TitleWrapper>
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {
                                 const submissionStatus = mySubmissions[mission.id];

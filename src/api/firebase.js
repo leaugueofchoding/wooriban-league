@@ -225,7 +225,7 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
   adminRecorderSnapshot.forEach(userDoc => {
     const user = userDoc.data();
     if (user.authUid) {
-      const link = user.role === 'recorder' ? '/recorder-dashboard' : '/admin';
+      const link = user.role === 'recorder' ? '/recorder-dashboard' : '/admin/mission';
 
       createNotification(
         user.authUid,
@@ -240,7 +240,10 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
 
 export async function rejectMissionSubmission(submissionId, studentAuthUid, missionTitle) {
   const submissionRef = doc(db, 'missionSubmissions', submissionId);
-  await deleteDoc(submissionRef);
+  // [수정] 문서를 삭제하는 대신, 상태를 'rejected'로 업데이트합니다.
+  await updateDoc(submissionRef, {
+    status: 'rejected'
+  });
 
   if (studentAuthUid) {
     createNotification(

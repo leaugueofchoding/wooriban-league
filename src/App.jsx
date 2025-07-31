@@ -146,7 +146,7 @@ function App() {
             <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
             <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-            <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
+            <Route path="/admin/:tab" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />            <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
 
             {/* 프로필 관련 라우트 */}
             <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />

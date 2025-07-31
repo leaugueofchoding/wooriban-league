@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import PlayerProfile from '../components/PlayerProfile.jsx';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import {
@@ -2199,7 +2199,8 @@ function LeagueManager() {
 
 
 function AdminPage() {
-    const [activeMenu, setActiveMenu] = useState('suggestion');
+    const { tab } = useParams(); // URL 파라미터 가져오기
+    const [activeMenu, setActiveMenu] = useState(tab || 'suggestion');
     const [activeSubMenu, setActiveSubMenu] = useState('');
 
     const renderContent = () => {
