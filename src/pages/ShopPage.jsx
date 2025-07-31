@@ -371,9 +371,24 @@ function ShopPage() {
 
   const { newItemsToBuy, totalCost } = useMemo(() => {
     if (!previewConfig || !myItems) return { newItemsToBuy: [], totalCost: 0 };
+
+    const newPartIds = new Set();
+    const config = previewConfig || {};
+
+    // 기본 파츠 추가
+    Object.values(config).forEach(value => {
+      if (typeof value === 'string') newPartIds.add(value);
+    });
+
+    // 액세서리 파츠 추가
+    if (config.accessories) {
+      Object.values(config.accessories).forEach(partId => newPartIds.add(partId));
+    }
+
     const newItems = [];
     const now = new Date();
-    Object.values(previewConfig).forEach(partId => {
+
+    newPartIds.forEach(partId => {
       if (partId && !myItems.includes(partId)) {
         const partInfo = avatarParts.find(p => p.id === partId);
         if (partInfo) {
@@ -383,6 +398,7 @@ function ShopPage() {
         }
       }
     });
+
     const cost = newItems.reduce((sum, part) => sum + part.price, 0);
     return { newItemsToBuy: newItems, totalCost: cost };
   }, [previewConfig, myItems, avatarParts]);
@@ -406,12 +422,27 @@ function ShopPage() {
   const handlePreview = (part) => {
     setJustPurchased(false);
     setPreviewConfig(prev => {
-      if (prev[part.category] === part.id) {
-        const newConfig = { ...prev };
-        delete newConfig[part.category];
-        return newConfig;
+      const { category, id, slot } = part;
+      const newConfig = JSON.parse(JSON.stringify(prev));
+
+      if (category !== 'accessory') {
+        if (prev[category] === id) {
+          delete newConfig[category];
+        } else {
+          newConfig[category] = id;
+        }
+      } else {
+        if (!newConfig.accessories) {
+          newConfig.accessories = {};
+        }
+        const currentPartInSlot = newConfig.accessories[slot];
+        if (currentPartInSlot === id) {
+          delete newConfig.accessories[slot];
+        } else {
+          newConfig.accessories[slot] = id;
+        }
       }
-      return { ...prev, [part.category]: part.id };
+      return newConfig;
     });
   };
 
@@ -430,24 +461,32 @@ function ShopPage() {
     }
   };
 
+  // ▼▼▼ [수정] 액세서리 중복 착용을 지원하는 렌더링 로직으로 교체 ▼▼▼
   const previewPartUrls = useMemo(() => {
-    if (!previewConfig) return [];
-    const partsByCategory = avatarParts.reduce((acc, part) => {
-      if (!acc[part.category]) acc[part.category] = [];
-      acc[part.category].push(part);
-      return acc;
-    }, {});
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
-    const urls = [];
+    if (!previewConfig) return [baseAvatar];
+
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
+    const urls = [baseAvatar];
+    const config = previewConfig;
+
     RENDER_ORDER.forEach(category => {
-      const partId = previewConfig[category];
+      const partId = config[category];
       if (partId) {
-        const part = partsByCategory[category]?.find(p => p.id === partId);
+        const part = avatarParts.find(p => p.id === partId);
         if (part) urls.push(part.src);
       }
     });
-    return urls;
+
+    if (config.accessories) {
+      Object.values(config.accessories).forEach(partId => {
+        const part = avatarParts.find(p => p.id === partId);
+        if (part) urls.push(part.src);
+      });
+    }
+
+    return Array.from(new Set(urls));
   }, [previewConfig, avatarParts]);
+  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   const canAfford = myPlayerData && myPlayerData.points >= totalCost;
 
@@ -471,7 +510,16 @@ function ShopPage() {
               <ItemGrid>
                 {paginatedItems.map(part => {
                   const isOwned = myItems.includes(part.id);
-                  const isPreviewing = previewConfig && previewConfig[part.category] === part.id;
+
+                  let isPreviewing = false;
+                  if (previewConfig) {
+                    if (part.category !== 'accessory') {
+                      isPreviewing = previewConfig[part.category] === part.id;
+                    } else if (previewConfig.accessories) {
+                      isPreviewing = previewConfig.accessories[part.slot] === part.id;
+                    }
+                  }
+
                   const now = new Date();
                   const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate();
                   const saleDaysText = part.saleDays && part.saleDays.length > 0 ? `[${part.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 한정` : null;
@@ -511,7 +559,6 @@ function ShopPage() {
             <PreviewPanel>
               <h3 style={{ textAlign: 'center', marginTop: 0 }}>아바타 미리보기</h3>
               <AvatarCanvas>
-                <PartImage src={baseAvatar} alt="기본 아바타" />
                 {previewPartUrls.map(src => <PartImage key={src} src={src} />)}
               </AvatarCanvas>
               <BuyButton onClick={handlePurchasePreview} disabled={newItemsToBuy.length === 0 || !canAfford}>

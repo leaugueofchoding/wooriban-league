@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth } from '../api/firebase';
+import { auth, approveMissionsInBatch } from '../api/firebase'; // approveMissionsInBatch import 추가
 import { useParams, useNavigate } from 'react-router-dom';
 
 const RecorderWrapper = styled.div`
@@ -47,8 +47,8 @@ const StudentListItem = styled.li`
   }
   
   &.approved {
-    background-color: #e9ecef;
-    opacity: 0.7;
+    border-left: 5px solid #28a745;
+    background-color: #f8f9fa;
   }
 `;
 
@@ -153,7 +153,7 @@ function RecorderPage() {
 
     const [selectedMissionId, setSelectedMissionId] = useState(missionId || '');
     const [checkedStudents, setCheckedStudents] = useState(new Set());
-    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null); // 펼쳐진 항목 ID
+    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
 
     useEffect(() => {
@@ -167,7 +167,7 @@ function RecorderPage() {
         missionSubmissions
             .filter(sub => sub.missionId === selectedMissionId)
             .forEach(sub => {
-                statusMap.set(sub.studentId, sub); // submission 객체 전체를 저장
+                statusMap.set(sub.studentId, sub);
             });
         return statusMap;
     }, [missionSubmissions, selectedMissionId]);
@@ -193,7 +193,6 @@ function RecorderPage() {
     const handleStudentClick = (studentId, status) => {
         if (status === 'approved') return;
 
-        // 체크박스 토글
         setCheckedStudents(prev => {
             const newSet = new Set(prev);
             if (newSet.has(studentId)) {
@@ -205,10 +204,15 @@ function RecorderPage() {
         });
     };
 
-    const handleRowClick = (studentId, status) => {
-        if (status !== 'pending') return;
-        setExpandedSubmissionId(prev => (prev === studentId ? null : studentId));
+    // ▼▼▼ [수정] 승인 완료된 미션도 펼쳐볼 수 있도록 로직 변경 ▼▼▼
+    const handleRowClick = (studentId) => {
+        const submission = studentSubmissionStatus.get(studentId);
+        // 제출물이 있고, 그 제출물에 글이나 사진이 있을 경우에만 펼치기/접기 동작
+        if (submission && (submission.text || submission.photoUrl)) {
+            setExpandedSubmissionId(prev => (prev === studentId ? null : studentId));
+        }
     };
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const handleSelectAll = () => {
         const eligiblePlayerIds = sortedPlayers
@@ -274,13 +278,14 @@ function RecorderPage() {
                                     key={player.id}
                                     className={status}
                                 >
-                                    <StudentSummary onClick={() => handleRowClick(player.id, status)}>
+                                    {/* ▼▼▼ [수정] handleRowClick에 status 인자 제거 ▼▼▼ */}
+                                    <StudentSummary onClick={() => handleRowClick(player.id)}>
                                         <input
                                             type="checkbox"
                                             checked={checkedStudents.has(player.id)}
                                             onChange={() => handleStudentClick(player.id, status)}
                                             onClick={(e) => {
-                                                e.stopPropagation(); // 부모 클릭 방지
+                                                e.stopPropagation();
                                                 handleStudentClick(player.id, status);
                                             }}
                                             disabled={status === 'approved'}

@@ -88,7 +88,7 @@ const AttendanceModal = () => {
                 <ModalText>
                     오늘 하루도 우리반 리그에 참여해주셔서 감사합니다!
                     <br />
-                    출석 보상으로 <strong>50포인트</strong>를 드려요.
+                    출석 보상으로 <strong>100포인트</strong>를 드려요.
                 </ModalText>
                 <ClaimButton onClick={handleClaim}>
                     보상 받기

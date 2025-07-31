@@ -369,14 +369,14 @@ function DashboardPage() {
         return Object.entries(contributionsByName).reduce((top, current) => current[1] > top[1] ? current : top, ["", 0]);
     }, [activeGoal]);
 
+    // ▼▼▼ [수정] 액세서리 중복 착용을 지원하는 렌더링 로직으로 교체 ▼▼▼
     const myAvatarUrls = useMemo(() => {
-        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
         if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
 
+        const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
         const urls = [baseAvatar];
         const config = myPlayerData.avatarConfig;
 
-        // 1. 기본 파츠 렌더링
         RENDER_ORDER.forEach(category => {
             const partId = config[category];
             if (partId) {
@@ -385,7 +385,6 @@ function DashboardPage() {
             }
         });
 
-        // 2. 액세서리 파츠 렌더링
         if (config.accessories) {
             Object.values(config.accessories).forEach(partId => {
                 const part = avatarParts.find(p => p.id === partId);
@@ -393,8 +392,9 @@ function DashboardPage() {
             });
         }
 
-        return urls;
+        return Array.from(new Set(urls));
     }, [myPlayerData, avatarParts]);
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const handleDonate = async () => {
         if (!myPlayerData) return alert('플레이어 정보를 불러올 수 없습니다.');
@@ -502,10 +502,8 @@ function DashboardPage() {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     if (isSimpleMission) {
-                                        // 단순 미션은 바로 승인 요청
                                         submitMissionForApproval(mission.id, {});
                                     } else {
-                                        // 글/사진 미션은 제출 페이지로 이동
                                         navigate('/missions');
                                     }
                                 };
