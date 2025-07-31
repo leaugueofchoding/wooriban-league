@@ -1023,6 +1023,7 @@ function MissionManager() {
     const [reward, setReward] = useState(100);
     const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
     const [showArchived, setShowArchived] = useState(false);
+    const [prerequisiteMissionId, setPrerequisiteMissionId] = useState(''); // [추가] 이전 미션 ID 상태
 
     const handleSubmissionTypeChange = (type) => {
         setSubmissionTypes(prev => ({ ...prev, [type]: !prev[type] }));
@@ -1032,7 +1033,7 @@ function MissionManager() {
         if (!title.trim() || !reward) {
             return alert('미션 이름과 보상 포인트를 모두 입력해주세요.');
         }
-        // 글/사진 중 하나도 선택하지 않으면 기본(simple) 타입으로 간주
+
         const selectedTypes = Object.entries(submissionTypes)
             .filter(([, isSelected]) => isSelected)
             .map(([type]) => type);
@@ -1040,11 +1041,18 @@ function MissionManager() {
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
 
         try {
-            await createMission({ title, reward: Number(reward), submissionType: typeToSend });
+            // [수정] createMission 호출 시 prerequisiteMissionId를 포함하여 전달
+            await createMission({
+                title,
+                reward: Number(reward),
+                submissionType: typeToSend,
+                prerequisiteMissionId: prerequisiteMissionId || null
+            });
             alert('새로운 미션이 등록되었습니다!');
             setTitle('');
             setReward(100);
-            setSubmissionTypes({ text: false, photo: false }); // 상태 초기화
+            setSubmissionTypes({ text: false, photo: false });
+            setPrerequisiteMissionId(''); // 상태 초기화
             await fetchInitialData();
         } catch (error) {
             console.error("미션 생성 오류:", error);
@@ -1087,8 +1095,24 @@ function MissionManager() {
                         /> 사진
                     </label>
                 </div>
+            </InputGroup>
+            {/* ▼▼▼ [추가된 부분] ▼▼▼ */}
+            <InputGroup>
+                <label htmlFor="prerequisite">이전 미션 선택 (선택 사항):</label>
+                <select
+                    id="prerequisite"
+                    value={prerequisiteMissionId}
+                    onChange={(e) => setPrerequisiteMissionId(e.target.value)}
+                    style={{ flex: 1, padding: '0.5rem' }}
+                >
+                    <option value="">-- 없음 --</option>
+                    {missions.map(mission => (
+                        <option key={mission.id} value={mission.id}>{mission.title}</option>
+                    ))}
+                </select>
                 <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
             </InputGroup>
+            {/* ▲▲▲ [추가된 부분] ▲▲▲ */}
 
             <div style={{ marginTop: '2rem' }}>
                 <ToggleButton onClick={() => setShowArchived(prev => !prev)}>

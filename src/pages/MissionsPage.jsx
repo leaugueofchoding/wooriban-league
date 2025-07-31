@@ -149,7 +149,6 @@ const ExitButton = styled.button`
   }
 `;
 
-// ▼▼▼ [추가] 제출물 상세 보기 UI 컴포넌트 ▼▼▼
 const SubmissionDetails = styled.div`
     padding: ${props => props.$isOpen ? '1rem' : '0 1rem'};
     max-height: ${props => props.$isOpen ? '1000px' : '0'};
@@ -187,18 +186,29 @@ function SubmissionDetailsView({ submission, isOpen }) {
     </SubmissionDetails>
   );
 }
-// ▲▲▲ 여기까지 추가 ▲▲▲
 
-function MissionItem({ mission, myPlayerData, submission, canSubmitMission }) {
+function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission }) {
   const { submitMissionForApproval } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photo: null });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false); // [추가] 제출물 보기 상태
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
+  const submission = mySubmissions[mission.id];
   const submissionStatus = submission?.status;
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
   const hasViewableContent = submission && (submission.text || submission.photoUrl);
+
+  // [수정] 이전 미션 '제출' 여부 확인 로직
+  const isPrerequisiteSubmitted = useMemo(() => {
+    if (!mission.prerequisiteMissionId) {
+      return true; // 선행 미션이 없으면 통과
+    }
+    const prerequisiteSubmission = mySubmissions[mission.prerequisiteMissionId];
+    // 'pending' 또는 'approved' 상태, 즉 제출 기록이 있으면 통과
+    return !!prerequisiteSubmission;
+  }, [mission.prerequisiteMissionId, mySubmissions]);
+
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -210,10 +220,15 @@ function MissionItem({ mission, myPlayerData, submission, canSubmitMission }) {
   const handleSubmit = async () => {
     if (isSubmitting || !!submissionStatus) return;
 
+    // [수정] 이전 미션 미제출 시 제출 방지
+    if (!isPrerequisiteSubmitted) {
+      alert("이전 미션을 먼저 제출해야 합니다.");
+      return;
+    }
+
     if (isSubmissionRequired) {
       const isTextRequired = submissionType.includes('text');
       const isPhotoRequired = submissionType.includes('photo');
-
       if ((isTextRequired && isPhotoRequired) && !submissionContent.text.trim() && !submissionContent.photo) {
         return alert('글 또는 사진을 제출해야 합니다.');
       }
@@ -254,9 +269,13 @@ function MissionItem({ mission, myPlayerData, submission, canSubmitMission }) {
       return <RequestButton $status="pending" disabled>승인 대기중</RequestButton>;
     }
 
-    const isButtonDisabled = isSubmitting || (isSubmissionRequired && !submissionContent.text.trim() && !submissionContent.photo);
+    const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || (isSubmissionRequired && !submissionContent.text.trim() && !submissionContent.photo);
+
+    // [수정] 안내 문구 변경
+    const buttonTitle = !isPrerequisiteSubmitted ? "이전 미션을 먼저 제출해야 합니다." : "";
+
     return (
-      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled}>
+      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} title={buttonTitle}>
         {isSubmitting ? '요청 중...' : '다 했어요!'}
       </RequestButton>
     );
@@ -279,6 +298,7 @@ function MissionItem({ mission, myPlayerData, submission, canSubmitMission }) {
               value={submissionContent.text}
               onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
               placeholder="미션 내용을 여기에 입력하세요..."
+              disabled={!isPrerequisiteSubmitted}
             />
           )}
           {submissionType.includes('photo') && (
@@ -291,6 +311,7 @@ function MissionItem({ mission, myPlayerData, submission, canSubmitMission }) {
                   accept="image/*"
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
+                  disabled={!isPrerequisiteSubmitted}
                 />
               </FileInputLabel>
               {submissionContent.photo && <FileName>{submissionContent.photo.name}</FileName>}
@@ -299,11 +320,11 @@ function MissionItem({ mission, myPlayerData, submission, canSubmitMission }) {
         </SubmissionArea>
       )}
 
-      {/* ▼▼▼ [추가] 승인 완료된 제출물 보기 ▼▼▼ */}
       <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
     </MissionCard>
   );
 }
+
 
 
 function MissionsPage() {
@@ -338,7 +359,7 @@ function MissionsPage() {
               key={mission.id}
               mission={mission}
               myPlayerData={myPlayerData}
-              submission={mySubmissionsMap[mission.id]}
+              mySubmissions={mySubmissionsMap}
               canSubmitMission={canSubmitMission}
             />
           ))
