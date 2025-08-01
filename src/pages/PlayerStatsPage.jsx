@@ -113,6 +113,11 @@ const TeammateGrid = styled.div`
     gap: 1rem;
 `;
 
+const StyledLinkForCard = styled(Link)`
+  text-decoration: none;
+  color: inherit;
+`;
+
 const TeammateCard = styled.div`
     text-align: center;
 `;
@@ -274,16 +279,18 @@ function SeasonStatsCard({ seasonData }) {
                     <h4>{seasonData.team.teamName} 팀원</h4>
                     <TeammateGrid>
                         {teammateAvatars.map(mate => (
-                            <TeammateCard key={mate.id}>
-                                <AvatarDisplay>
-                                    {mate.urls.map((url, index) => <PartImage key={`${url}-${index}`} src={url} />)}
-                                </AvatarDisplay>
-                                <span>{mate.name}</span>
-                                <BadgeContainer>
-                                    {seasonData.team.captainId === mate.id && <span title="주장">Ⓒ </span>}
-                                    {seasonData.isTopScorer && playerId === mate.id && <span title="득점왕">⚽</span>}
-                                </BadgeContainer>
-                            </TeammateCard>
+                            <StyledLinkForCard key={mate.id} to={`/profile/${mate.id}`}>
+                                <TeammateCard>
+                                    <AvatarDisplay>
+                                        {mate.urls.map((url, index) => <PartImage key={`${url}-${index}`} src={url} />)}
+                                    </AvatarDisplay>
+                                    <span>{mate.name}</span>
+                                    <BadgeContainer>
+                                        {seasonData.team.captainId === mate.id && <span title="주장">Ⓒ </span>}
+                                        {seasonData.isTopScorer && playerId === mate.id && <span title="득점왕">⚽</span>}
+                                    </BadgeContainer>
+                                </TeammateCard>
+                            </StyledLinkForCard>
                         ))}
                     </TeammateGrid>
                 </TeamInfo>

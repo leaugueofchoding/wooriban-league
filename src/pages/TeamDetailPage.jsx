@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import defaultEmblem from '../assets/default-emblem.png';
 import baseAvatar from '../assets/base-avatar.png';
 import { auth, updateTeamInfo, uploadTeamEmblem } from '../api/firebase';
@@ -102,6 +102,11 @@ const Section = styled.div`
 const SectionTitle = styled.h2`
   margin-top: 0;
   margin-bottom: 1.5rem;
+`;
+
+const StyledLinkForCard = styled(Link)`
+  text-decoration: none;
+  color: inherit;
 `;
 
 const MemberList = styled.ul`
@@ -338,13 +343,15 @@ function TeamDetailPage() {
                     <MemberList>
                         {teamMembers.map(player => (
                             <MemberCard key={player.id}>
-                                <AvatarDisplay>
-                                    {player.avatarUrls.map((url, index) => (
-                                        <PartImage key={`${url}-${index}`} src={url} alt={`player-avatar-part-${index}`} />
-                                    ))}
-                                </AvatarDisplay>
-                                <PlayerName>{player.name}</PlayerName>
-                                {teamData.captainId === player.id && <CaptainBadge>Ⓒ</CaptainBadge>}
+                                <StyledLinkForCard to={`/profile/${player.id}`}>
+                                    <AvatarDisplay>
+                                        {player.avatarUrls.map((url, index) => (
+                                            <PartImage key={`${url}-${index}`} src={url} alt={`player-avatar-part-${index}`} />
+                                        ))}
+                                    </AvatarDisplay>
+                                    <PlayerName>{player.name}</PlayerName>
+                                    {teamData.captainId === player.id && <CaptainBadge>Ⓒ</CaptainBadge>}
+                                </StyledLinkForCard>
                             </MemberCard>
                         ))}
                     </MemberList>
