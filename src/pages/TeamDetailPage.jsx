@@ -4,9 +4,33 @@ import React, { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import defaultEmblem from '../assets/default-emblem.png';
 import baseAvatar from '../assets/base-avatar.png';
 import { auth, updateTeamInfo, uploadTeamEmblem } from '../api/firebase';
+
+// ▼▼▼ [수정] 아래 presetEmblems 데이터를 수정하여 프리셋 엠블럼을 관리하세요. ▼▼▼
+// 1. /src/assets/ 폴더에 emblem_tokkis.png 와 같이 이미지 파일을 추가합니다.
+import defaultEmblem from '../assets/default-emblem.png';
+import emblemTokki from '../assets/emblem_tokki.png';
+import emblemTiger from '../assets/emblem_tiger.png';
+import emblemLion from '../assets/emblem_lion.png';
+import emblemPig from '../assets/emblem_pig.png';
+import emblemDaramjui from '../assets/emblem_daramjui.png';
+import emblemCat from '../assets/emblem_cat.png';
+import emblemDog from '../assets/emblem_dog.png';
+
+
+// 2. 아래 목록에 추가합니다.
+const presetEmblems = [
+    { id: 'tokki', src: emblemTokki },
+    { id: 'tiger', src: emblemTiger },
+    { id: 'lion', src: emblemLion },
+    { id: 'pig', src: emblemPig },
+    { id: 'daramjui', src: emblemDaramjui },
+    { id: 'cat', src: emblemCat },
+    { id: 'dog', src: emblemDog },
+    { id: 'default', src: defaultEmblem } // 기본 엠블럼
+];
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 // --- Styled Components ---
 
@@ -33,6 +57,7 @@ const TeamEmblem = styled.img`
   background-color: #fff;
   border: 4px solid #fff;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  cursor: pointer; /* [추가] 클릭 가능하도록 커서 변경 */
 `;
 
 const TeamInfo = styled.div`
@@ -85,7 +110,6 @@ const InputGroup = styled.div`
     gap: 0.5rem;
 `;
 
-
 const ContentGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -104,11 +128,6 @@ const SectionTitle = styled.h2`
   margin-bottom: 1.5rem;
 `;
 
-const StyledLinkForCard = styled(Link)`
-  text-decoration: none;
-  color: inherit;
-`;
-
 const MemberList = styled.ul`
   list-style: none;
   padding: 0;
@@ -117,8 +136,11 @@ const MemberList = styled.ul`
   gap: 1.5rem;
 `;
 
-const MemberCard = styled.li`
+const MemberCard = styled(Link)`
   text-align: center;
+  text-decoration: none;
+  color: inherit;
+  display: block;
 `;
 
 const AvatarDisplay = styled.div`
@@ -199,7 +221,40 @@ const MatchResult = styled.span`
     }};
 `;
 
-// --- Component ---
+const PresetEmblemContainer = styled.div`
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+`;
+
+const PresetEmblem = styled.img`
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid ${props => props.$isSelected ? '#007bff' : 'transparent'};
+    transition: border-color 0.2s;
+`;
+
+// ▼▼▼ [추가] 엠블럼 확대 모달 스타일 ▼▼▼
+const ModalBackground = styled.div`
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+`;
+
+const ModalEmblem = styled.img`
+    max-width: 80vw;
+    max-height: 80vh;
+    border-radius: 50%;
+    object-fit: contain;
+`;
+// ▲▲▲ 여기까지 추가 ▲▲▲
 
 function TeamDetailPage() {
     const { teamId } = useParams();
@@ -209,8 +264,10 @@ function TeamDetailPage() {
 
     const [isEditing, setIsEditing] = useState(false);
     const [newTeamName, setNewTeamName] = useState('');
+    const [newEmblemUrl, setNewEmblemUrl] = useState('');
     const [newEmblemFile, setNewEmblemFile] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isEmblemModalOpen, setIsEmblemModalOpen] = useState(false); // [추가]
 
     const teamData = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
     const isCaptain = useMemo(() => currentUser && teamData && teamData.captainId === players.find(p => p.authUid === currentUser.uid)?.id, [currentUser, teamData, players]);
@@ -267,6 +324,7 @@ function TeamDetailPage() {
 
     const handleEditClick = () => {
         setNewTeamName(teamData.teamName);
+        setNewEmblemUrl(teamData.emblemUrl || defaultEmblem);
         setIsEditing(true);
     };
 
@@ -274,11 +332,11 @@ function TeamDetailPage() {
         if (!newTeamName.trim()) return alert('팀 이름을 입력해주세요.');
         setIsSaving(true);
         try {
-            let emblemUrl = teamData.emblemUrl;
+            let finalEmblemUrl = newEmblemUrl;
             if (newEmblemFile) {
-                emblemUrl = await uploadTeamEmblem(teamId, newEmblemFile);
+                finalEmblemUrl = await uploadTeamEmblem(teamId, newEmblemFile);
             }
-            await updateTeamInfo(teamId, newTeamName, emblemUrl);
+            await updateTeamInfo(teamId, newTeamName, finalEmblemUrl);
             alert('팀 정보가 성공적으로 수정되었습니다.');
             await fetchInitialData();
             setIsEditing(false);
@@ -295,6 +353,14 @@ function TeamDetailPage() {
         navigate('/league', { state: { defaultTab: 'teamInfo' } });
     };
 
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setNewEmblemFile(file);
+            setNewEmblemUrl(URL.createObjectURL(file));
+        }
+    }
+
     if (!teamData) {
         return (
             <Wrapper>
@@ -305,45 +371,65 @@ function TeamDetailPage() {
     }
 
     return (
-        <Wrapper>
-            <Header>
-                <TeamEmblem src={teamData.emblemUrl || defaultEmblem} alt={`${teamData.teamName} 엠블럼`} />
-                <TeamInfo>
-                    <TeamNameContainer>
-                        <TeamName>{teamData.teamName}</TeamName>
-                        {isCaptain && canEditTeam && !isEditing && (
-                            <EditButton onClick={handleEditClick}>팀 정보 수정</EditButton>
+        <>
+            <Wrapper>
+                <Header>
+                    <TeamEmblem
+                        src={isEditing ? newEmblemUrl : (teamData.emblemUrl || defaultEmblem)}
+                        alt={`${teamData.teamName} 엠블럼`}
+                        onClick={() => setIsEmblemModalOpen(true)}
+                    />
+                    <TeamInfo>
+                        <TeamNameContainer>
+                            <TeamName>{teamData.teamName}</TeamName>
+                            {isCaptain && canEditTeam && !isEditing && (
+                                <EditButton onClick={handleEditClick}>팀 정보 수정</EditButton>
+                            )}
+                        </TeamNameContainer>
+                        <Record>시즌 기록: {teamStats.wins}승 {teamStats.draws}무 {teamStats.losses}패</Record>
+
+                        {isEditing && (
+                            <EditForm>
+                                <InputGroup>
+                                    <label htmlFor="teamName">팀 이름:</label>
+                                    <input id="teamName" type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} />
+                                </InputGroup>
+                                <InputGroup>
+                                    <label htmlFor="emblem">엠블럼 직접 올리기:</label>
+                                    <input id="emblem" type="file" accept="image/*" onChange={handleFileChange} />
+                                </InputGroup>
+                                <div>
+                                    <label>프리셋에서 선택:</label>
+                                    <PresetEmblemContainer>
+                                        {presetEmblems.map(emblem => (
+                                            <PresetEmblem
+                                                key={emblem.id}
+                                                src={emblem.src}
+                                                $isSelected={newEmblemUrl === emblem.src}
+                                                onClick={() => {
+                                                    setNewEmblemUrl(emblem.src);
+                                                    setNewEmblemFile(null);
+                                                }}
+                                            />
+                                        ))}
+                                    </PresetEmblemContainer>
+                                </div>
+                                <div>
+                                    <button onClick={handleSave} disabled={isSaving}>{isSaving ? '저장 중...' : '저장'}</button>
+                                    <button onClick={() => setIsEditing(false)} disabled={isSaving}>취소</button>
+                                </div>
+                            </EditForm>
                         )}
-                    </TeamNameContainer>
-                    <Record>시즌 기록: {teamStats.wins}승 {teamStats.draws}무 {teamStats.losses}패</Record>
 
-                    {isEditing && (
-                        <EditForm>
-                            <InputGroup>
-                                <label htmlFor="teamName">팀 이름:</label>
-                                <input id="teamName" type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} />
-                            </InputGroup>
-                            <InputGroup>
-                                <label htmlFor="emblem">팀 엠블럼:</label>
-                                <input id="emblem" type="file" accept="image/*" onChange={(e) => setNewEmblemFile(e.target.files[0])} />
-                            </InputGroup>
-                            <div>
-                                <button onClick={handleSave} disabled={isSaving}>{isSaving ? '저장 중...' : '저장'}</button>
-                                <button onClick={() => setIsEditing(false)} disabled={isSaving}>취소</button>
-                            </div>
-                        </EditForm>
-                    )}
+                    </TeamInfo>
+                </Header>
 
-                </TeamInfo>
-            </Header>
-
-            <ContentGrid>
-                <Section>
-                    <SectionTitle>팀원 목록</SectionTitle>
-                    <MemberList>
-                        {teamMembers.map(player => (
-                            <MemberCard key={player.id}>
-                                <StyledLinkForCard to={`/profile/${player.id}`}>
+                <ContentGrid>
+                    <Section>
+                        <SectionTitle>팀원 목록</SectionTitle>
+                        <MemberList>
+                            {teamMembers.map(player => (
+                                <MemberCard key={player.id} to={`/profile/${player.id}`}>
                                     <AvatarDisplay>
                                         {player.avatarUrls.map((url, index) => (
                                             <PartImage key={`${url}-${index}`} src={url} alt={`player-avatar-part-${index}`} />
@@ -351,46 +437,56 @@ function TeamDetailPage() {
                                     </AvatarDisplay>
                                     <PlayerName>{player.name}</PlayerName>
                                     {teamData.captainId === player.id && <CaptainBadge>Ⓒ</CaptainBadge>}
-                                </StyledLinkForCard>
-                            </MemberCard>
-                        ))}
-                    </MemberList>
-                </Section>
-                <Section>
-                    <SectionTitle>경기 기록</SectionTitle>
-                    <MatchHistoryList>
-                        {teamMatches.length > 0 ? teamMatches.map(match => {
-                            const isTeamA = match.teamA_id === teamId;
-                            const opponentId = isTeamA ? match.teamB_id : match.teamA_id;
-                            const opponent = teams.find(t => t.id === opponentId);
-                            let result = 'D';
-                            if (match.status === '완료') {
-                                const myScore = isTeamA ? match.teamA_score : match.teamB_score;
-                                const opponentScore = isTeamA ? match.teamB_score : match.teamA_score;
-                                if (myScore > opponentScore) result = 'W';
-                                else if (myScore < opponentScore) result = 'L';
-                            }
-                            return (
-                                <MatchHistoryItem key={match.id}>
-                                    <span>vs {opponent?.teamName || 'N/A'}</span>
-                                    {match.status === '완료' ? (
-                                        <>
-                                            <span>{match.teamA_score} : {match.teamB_score}</span>
-                                            <MatchResult result={result}>{result}</MatchResult>
-                                        </>
-                                    ) : <span>예정</span>}
-                                </MatchHistoryItem>
-                            )
-                        }) : <p>경기 기록이 없습니다.</p>}
-                    </MatchHistoryList>
-                </Section>
-            </ContentGrid>
+                                </MemberCard>
+                            ))}
+                        </MemberList>
+                    </Section>
+                    <Section>
+                        <SectionTitle>경기 기록</SectionTitle>
+                        <MatchHistoryList>
+                            {teamMatches.length > 0 ? teamMatches.map(match => {
+                                const isTeamA = match.teamA_id === teamId;
+                                const opponentId = isTeamA ? match.teamB_id : match.teamA_id;
+                                const opponent = teams.find(t => t.id === opponentId);
+                                let result = 'D';
+                                if (match.status === '완료') {
+                                    const myScore = isTeamA ? match.teamA_score : match.teamB_score;
+                                    const opponentScore = isTeamA ? match.teamB_score : match.teamA_score;
+                                    if (myScore > opponentScore) result = 'W';
+                                    else if (myScore < opponentScore) result = 'L';
+                                }
+                                return (
+                                    <MatchHistoryItem key={match.id}>
+                                        <span>vs {opponent?.teamName || 'N/A'}</span>
+                                        {match.status === '완료' ? (
+                                            <>
+                                                <span>{match.teamA_score} : {match.teamB_score}</span>
+                                                <MatchResult result={result}>{result}</MatchResult>
+                                            </>
+                                        ) : <span>예정</span>}
+                                    </MatchHistoryItem>
+                                )
+                            }) : <p>경기 기록이 없습니다.</p>}
+                        </MatchHistoryList>
+                    </Section>
+                </ContentGrid>
 
-            <ButtonContainer>
-                <ExitButton onClick={handleGoBack}>팀 목록으로</ExitButton>
-                <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
-            </ButtonContainer>
-        </Wrapper>
+                <ButtonContainer>
+                    <ExitButton onClick={handleGoBack}>팀 목록으로</ExitButton>
+                    <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
+                </ButtonContainer>
+            </Wrapper>
+
+            {/* ▼▼▼ [추가] 엠블럼 확대 모달 렌더링 ▼▼▼ */}
+            {isEmblemModalOpen && (
+                <ModalBackground onClick={() => setIsEmblemModalOpen(false)}>
+                    <ModalEmblem
+                        src={isEditing ? newEmblemUrl : (teamData.emblemUrl || defaultEmblem)}
+                        alt="확대된 엠블럼"
+                    />
+                </ModalBackground>
+            )}
+        </>
     );
 }
 

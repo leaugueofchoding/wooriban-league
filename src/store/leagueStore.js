@@ -41,7 +41,7 @@ import {
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
-import defaultEmblem from '../assets/default-emblem.png';
+import defaultEmblem from '../assets/emblem_default.png';
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
