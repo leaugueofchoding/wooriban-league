@@ -35,7 +35,8 @@ import {
     grantAttendanceReward,
     db,
     updatePlayerStatus,
-    createNewSeason
+    createNewSeason,
+    saveAvatarMemorials
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -476,6 +477,14 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
+            // [추가] 아바타 박제(메모리얼) 기능: 시즌에 참여한 모든 선수의 아바타 정보를 저장합니다.
+            const playersInSeason = teams.flatMap(team => team.members) // 모든 팀의 멤버 ID를 하나의 배열로 만듭니다.
+                .map(playerId => players.find(p => p.id === playerId)) // ID를 실제 선수 데이터로 변환합니다.
+                .filter(Boolean); // 혹시 모를 null 값을 제거합니다.
+
+            if (playersInSeason.length > 0) {
+                await saveAvatarMemorials(season.id, playersInSeason);
+            }
 
             await updateSeason(season.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));

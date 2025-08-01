@@ -481,11 +481,13 @@ export async function uploadAvatarPart(file, category) {
   const downloadURL = await getDownloadURL(uploadResult.ref);
 
   const partDocRef = doc(db, 'avatarParts', file.name);
+  // [수정] createdAt 필드에 서버의 현재 시간을 기록하도록 추가
   await setDoc(partDocRef, {
     id: file.name,
     category: category,
     src: downloadURL,
     status: 'visible',
+    createdAt: serverTimestamp(), // 아이템 생성 시간 기록
   });
   return { id: file.name, category, src: downloadURL, status: 'visible' };
 }
@@ -774,6 +776,21 @@ export async function createNewSeason(seasonName) {
   });
 }
 
+export async function saveAvatarMemorials(seasonId, playersInSeason) {
+  const batch = writeBatch(db);
+  playersInSeason.forEach(player => {
+    // avatarConfig가 있는 선수만 저장
+    if (player.avatarConfig) {
+      const memorialRef = doc(db, 'seasons', seasonId, 'memorials', player.id);
+      batch.set(memorialRef, {
+        playerId: player.id,
+        playerName: player.name,
+        avatarConfig: player.avatarConfig
+      });
+    }
+  });
+  await batch.commit();
+}
 
 export async function createPlayerFromUser(user) {
   const playerRef = doc(db, 'players', user.uid);
@@ -1157,12 +1174,18 @@ export async function grantAttendanceReward(playerId, rewardAmount) {
   );
 }
 
+export async function getAvatarMemorials(seasonId) {
+  const memorialsRef = collection(db, 'seasons', seasonId, 'memorials');
+  const querySnapshot = await getDocs(memorialsRef);
+  return querySnapshot.docs.map(doc => doc.data());
+}
+
 // [수정] 선수의 전체 시즌 기록(득점, 경기목록, 순위 포함)을 가져오는 함수
 export async function getPlayerSeasonStats(playerId) {
   if (!playerId) return [];
 
   const allSeasons = await getSeasons();
-  const allPlayers = await getPlayers();
+  const allPlayers = await getPlayers(); // players를 한 번만 불러오도록 수정
 
   const statsBySeason = {};
 
@@ -1175,7 +1198,6 @@ export async function getPlayerSeasonStats(playerId) {
       const allMatchesInSeason = await getMatches(seasonId);
       const completedMatches = allMatchesInSeason.filter(m => m.status === '완료');
 
-      // --- 시즌의 모든 선수 득점 집계 ---
       const seasonScorers = {};
       completedMatches.forEach(match => {
         if (match.scorers) {
@@ -1188,7 +1210,6 @@ export async function getPlayerSeasonStats(playerId) {
       const topScorerGoals = Math.max(0, ...Object.values(seasonScorers));
       const isTopScorer = (seasonScorers[playerId] || 0) === topScorerGoals && topScorerGoals > 0;
 
-      // --- 시즌 순위 계산 ---
       let standings = allTeamsInSeason.map(t => ({
         id: t.id, teamName: t.teamName, points: 0, goalDifference: 0, goalsFor: 0,
       }));
@@ -1214,7 +1235,6 @@ export async function getPlayerSeasonStats(playerId) {
 
       const myRank = standings.findIndex(t => t.id === playerTeam.id) + 1;
 
-      // --- 선수 개인 기록 집계 ---
       const myCompletedMatches = completedMatches.filter(m => m.teamA_id === playerTeam.id || m.teamB_id === playerTeam.id);
       const stats = { wins: 0, draws: 0, losses: 0, played: myCompletedMatches.length, goals: seasonScorers[playerId] || 0 };
 
@@ -1228,17 +1248,22 @@ export async function getPlayerSeasonStats(playerId) {
         else stats.draws++;
       });
 
+      // [추가] 해당 시즌의 아바타 메모리얼 정보 가져오기
+      const memorialRef = doc(db, 'seasons', seasonId, 'memorials', playerId);
+      const memorialSnap = await getDoc(memorialRef);
+      const memorialAvatarConfig = memorialSnap.exists() ? memorialSnap.data().avatarConfig : null;
+
       statsBySeason[seasonId] = {
         season,
         team: playerTeam,
         rank: myRank,
-        isTopScorer, // 득점왕 여부 추가
+        isTopScorer,
         stats,
-        matches: myCompletedMatches
+        matches: myCompletedMatches,
+        memorialAvatarConfig, // [추가] 박제된 아바타 정보 포함
       };
     }
   }
 
-  // 최신 시즌 순으로 정렬하여 반환
   return Object.values(statsBySeason).sort((a, b) => b.season.createdAt.toMillis() - a.season.createdAt.toMillis());
 }

@@ -417,11 +417,36 @@ function DashboardPage() {
     };
 
     const shopHighlightItems = useMemo(() => {
-        const saleItems = avatarParts.filter(part => {
-            const now = new Date();
-            return part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate() && part.status !== 'hidden';
-        });
-        return saleItems.slice(0, 2);
+        const now = new Date();
+
+        // 1. 할인 중인 아이템 필터링
+        const saleItems = avatarParts.filter(part =>
+            part.isSale &&
+            part.saleStartDate?.toDate() < now &&
+            now < part.saleEndDate?.toDate() &&
+            part.status !== 'hidden'
+        );
+
+        // 2. 신규 아이템 필터링 및 정렬 (createdAt이 있는 아이템만)
+        const newItems = avatarParts
+            .filter(part => part.createdAt && part.status !== 'hidden')
+            .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+
+        let highlightItems = [];
+
+        if (saleItems.length > 0) {
+            // 할인 아이템이 있으면, 할인템 1개 + 신규템 1개
+            highlightItems.push(saleItems[0]);
+            const newestItem = newItems.find(item => item.id !== saleItems[0].id);
+            if (newestItem) {
+                highlightItems.push(newestItem);
+            }
+        } else {
+            // 할인 아이템이 없으면, 신규템 2개
+            highlightItems = newItems.slice(0, 2);
+        }
+
+        return highlightItems;
     }, [avatarParts]);
 
     const topRankedTeams = useMemo(() => {

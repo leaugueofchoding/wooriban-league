@@ -49,11 +49,6 @@ const StatLabel = styled.p`
     font-weight: 500;
 `;
 
-const SectionTitle = styled.h2`
-  margin-top: 0;
-  margin-bottom: 1.5rem;
-`;
-
 const SeasonList = styled.div`
     display: flex;
     flex-direction: column;
@@ -224,16 +219,17 @@ function SeasonStatsCard({ seasonData }) {
     const { playerId } = useParams();
     const [isOpen, setIsOpen] = useState(false);
 
-    // ▼▼▼ [수정] 액세서리 중복 착용을 지원하는 렌더링 로직으로 교체 ▼▼▼
     const teammateAvatars = useMemo(() => {
         if (!seasonData.team || !seasonData.team.members) return [];
         return seasonData.team.members.map(memberId => {
             const memberData = players.find(p => p.id === memberId);
             if (!memberData) return null;
 
+            // [수정] 시즌 종료 시점의 아바타(memorial)가 있으면 그것을, 없으면 현재 아바타를 사용
+            const config = seasonData.memorialAvatarConfig || memberData.avatarConfig || {};
+
             const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const urls = [baseAvatar];
-            const config = memberData.avatarConfig || {};
 
             RENDER_ORDER.forEach(category => {
                 const partId = config[category];
@@ -252,8 +248,7 @@ function SeasonStatsCard({ seasonData }) {
 
             return { id: memberId, name: memberData.name, urls: Array.from(new Set(urls)) };
         }).filter(Boolean);
-    }, [seasonData.team, players, avatarParts]);
-    // ▲▲▲ 여기까지 수정 ▲▲▲
+    }, [seasonData, players, avatarParts]);
 
     const seasonPoints = useMemo(() => {
         const VICTORY_REWARD = 50;
