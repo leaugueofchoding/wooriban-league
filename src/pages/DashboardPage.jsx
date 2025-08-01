@@ -312,13 +312,17 @@ const RequestButton = styled.button`
     background-color: ${props => {
         if (props.$status === 'approved') return '#007bff';
         if (props.$status === 'pending') return '#6c757d';
+        if (props.$status === 'rejected') return '#ffc107'; // [추가] 반려 상태일 때 노란색
         return '#dc3545';
     }};
+
+    color: ${props => (props.$status === 'rejected' ? 'black' : 'white')}; /* [추가] 반려 상태일 때 글자색 */
 
     &:hover:not(:disabled) {
         background-color: ${props => {
         if (props.$status === 'approved') return '#0056b3';
         if (props.$status === 'pending') return '#5a6268';
+        if (props.$status === 'rejected') return '#e0a800'; // [추가] 반려 상태일 때 hover 색
         return '#c82333';
     }};
     }
@@ -505,10 +509,13 @@ function DashboardPage() {
                                 const handleButtonClick = (e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    if (isSimpleMission) {
-                                        submitMissionForApproval(mission.id, {});
-                                    } else {
+
+                                    // 반려되었거나, 글/사진 제출이 필요하면 무조건 미션 페이지로 이동
+                                    if (submissionStatus === 'rejected' || !isSimpleMission) {
                                         navigate('/missions');
+                                    } else if (isSimpleMission) {
+                                        // 단순 미션일 때만 바로 승인 요청
+                                        submitMissionForApproval(mission.id, {});
                                     }
                                 };
 
@@ -521,12 +528,14 @@ function DashboardPage() {
                                         {canSubmitMission && (
                                             <RequestButton
                                                 onClick={handleButtonClick}
-                                                disabled={!!submissionStatus}
+                                                // [수정] 반려 상태일 때는 버튼이 비활성화되지 않도록 조건 변경
+                                                disabled={submissionStatus === 'pending' || submissionStatus === 'approved'}
                                                 $status={submissionStatus}
                                             >
                                                 {submissionStatus === 'pending' && '승인 대기중'}
                                                 {submissionStatus === 'approved' && '완료!'}
-                                                {!submissionStatus && (isSimpleMission ? '다 했어요!' : '다 했어요!')}
+                                                {submissionStatus === 'rejected' && '다시하기'}
+                                                {!submissionStatus && (isSimpleMission ? '다 했어요!' : '제출하러 가기')}
                                             </RequestButton>
                                         )}
                                     </Card>

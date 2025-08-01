@@ -547,25 +547,29 @@ const getBackgroundPosition = (category) => {
     switch (category) {
         case 'bottom': return 'center 75%';
         case 'shoes': return 'center 100%';
-        case 'hair': case 'eyes': case 'nose': case 'mouth': return 'center 5%';
+        case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+        case 'hair': return 'center 0%';
         case 'top':
         default: return 'center 55%';
     }
 };
 
 const ItemImage = styled.div`
-  width: 120px;
-  height: 120px;
+  width: 150px;
+  height: 150px;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
-  background-size: 200%;
+  /* [수정] 액세서리는 기본 확대 없이 원래 크기로 표시 */
+  background-size: ${props => props.$category === 'accessory' ? 'contain' : '200%'};
   background-repeat: no-repeat;
   background-color: #e9ecef;
   transition: background-size 0.2s ease-in-out;
   background-position: ${props => getBackgroundPosition(props.$category)};
+  
+  /* [수정] 액세서리는 hover 시에도 확대되지 않음 */
   &:hover {
-    background-size: 220%;
+    background-size: ${props => props.$category === 'accessory' ? 'contain' : '220%'};
   }
 `;
 

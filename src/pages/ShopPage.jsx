@@ -143,26 +143,36 @@ const getBackgroundPosition = (category) => {
   switch (category) {
     case 'bottom': return 'center 75%';
     case 'shoes': return 'center 100%';
-    case 'hair': case 'top': case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+    case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+    case 'hair': return 'center 0%';
+    case 'top':
     default: return 'center 55%';
   }
 };
 const ItemImage = styled.div`
-  width: 100px;
-  height: 100px;
+  width: 160px;
+  height: 160px;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
-  background-size: 200%;
+  /* [수정] 액세서리는 기본 확대 없이 원래 크기로 표시 */
+  background-size: ${props => props.$category === 'accessory' ? 'contain' : '200%'};
   background-repeat: no-repeat;
   background-color: #e9ecef;
   background-position: ${props => getBackgroundPosition(props.$category)};
-  // [추가] 모바일 반응형
+  transition: background-size 0.2s ease-in-out;
+
+  /* [수정] 액세서리는 hover 시에도 확대되지 않음 */
+  &:hover {
+    background-size: ${props => props.$category === 'accessory' ? 'contain' : '220%'};
+  }
+
   @media (max-width: 768px) {
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
   }
 `;
+
 const BuyButton = styled.button`
   width: 100%;
   padding: 0.75rem;
@@ -461,14 +471,15 @@ function ShopPage() {
     }
   };
 
-  // ▼▼▼ [수정] 액세서리 중복 착용을 지원하는 렌더링 로직으로 교체 ▼▼▼
   const previewPartUrls = useMemo(() => {
     if (!previewConfig) return [baseAvatar];
 
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
+    // [수정] 렌더링 순서 변경
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'mouth', 'nose', 'eyes'];
     const urls = [baseAvatar];
     const config = previewConfig;
 
+    // 1. 기본 파츠 렌더링
     RENDER_ORDER.forEach(category => {
       const partId = config[category];
       if (partId) {
@@ -477,6 +488,7 @@ function ShopPage() {
       }
     });
 
+    // 2. 액세서리 파츠 렌더링 (가장 위에)
     if (config.accessories) {
       Object.values(config.accessories).forEach(partId => {
         const part = avatarParts.find(p => p.id === partId);
@@ -486,7 +498,6 @@ function ShopPage() {
 
     return Array.from(new Set(urls));
   }, [previewConfig, avatarParts]);
-  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   const canAfford = myPlayerData && myPlayerData.points >= totalCost;
 
