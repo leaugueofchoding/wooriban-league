@@ -199,6 +199,8 @@ const List = styled.ul`
   list-style: none;
   padding: 0;
   flex-grow: 1;
+  max-height: 400px; /* 스크롤 적용 */
+  overflow-y: auto; /* 스크롤 적용 */
 `;
 
 const ListItem = styled.li`
@@ -1261,10 +1263,10 @@ function AvatarPartManager() {
         const newName = displayNames[partId].trim();
         try {
             await updateAvatarPartDisplayName(partId, newName);
-            updateLocalAvatarPartDisplayName(partId, newName);
+            updateLocalAvatarPartDisplayName(partId, newName); // 로컬 상태만 업데이트
+            alert('이름이 저장되었습니다.'); // 사용자에게 피드백
         } catch (error) {
             alert(`이름 저장 실패: ${error.message}`);
-            fetchInitialData();
         }
     };
 
@@ -1289,7 +1291,7 @@ function AvatarPartManager() {
             await batchUpdateAvatarPartDetails(priceUpdates, slotUpdates);
 
             alert('변경사항이 성공적으로 저장되었습니다.');
-            await fetchInitialData();
+            // await fetchInitialData(); // 전체 데이터 새로고침 제거
         } catch (error) {
             console.error("저장 오류:", error);
             alert('저장 중 오류가 발생했습니다.');
@@ -1314,10 +1316,10 @@ function AvatarPartManager() {
         const newStatus = part.status === 'hidden' ? 'visible' : 'hidden';
         try {
             await updateAvatarPartStatus(part.id, newStatus);
-            updateLocalAvatarPartStatus(part.id, newStatus);
+            updateLocalAvatarPartStatus(part.id, newStatus); // 로컬 상태만 업데이트
         } catch (error) {
             alert(`오류: ${error.message}`);
-            fetchInitialData();
+            // fetchInitialData(); // 전체 데이터 새로고침 제거
         }
     };
 
@@ -1395,7 +1397,7 @@ function AvatarPartManager() {
                 <SectionTitle>아바타 아이템 관리 🎨</SectionTitle>
 
                 <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
-                    <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png" multiple />
+                    <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png, image/gif" multiple />
                     <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
                         <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
                         <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
@@ -1762,7 +1764,7 @@ function MyRoomItemManager() {
             <Section>
                 <SectionTitle>마이룸 아이템 관리 🏠</SectionTitle>
                 <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-                    <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg" multiple />
+                    <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg, image/gif" multiple />
                     <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
                         <option value="배경">배경</option>
                         <option value="바닥">바닥</option>
@@ -2549,7 +2551,7 @@ function LeagueManager() {
 
 function AdminPage() {
     const { tab } = useParams();
-    const [activeMenu, setActiveMenu] = useState(tab || 'suggestion');
+    const [activeMenu, setActiveMenu] = useState(tab || 'mission');
     const [activeSubMenu, setActiveSubMenu] = useState('');
     const [shopSubMenu, setShopSubMenu] = useState('avatar'); // [신규] 상점 관리 서브메뉴 상태
 

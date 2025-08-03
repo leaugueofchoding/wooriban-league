@@ -1429,42 +1429,104 @@ export async function addMyRoomComment(roomId, commentData) {
 }
 
 /**
- * 마이룸 댓글에 '좋아요'를 누르고 댓글 작성자에게 보상을 지급합니다. (하루 최대 300P)
+ * 마이룸 댓글에 '좋아요'를 누르고, 방 주인이 누를 경우에만 보상을 지급합니다.
  * @param {string} roomId - 마이룸 주인 ID
  * @param {string} commentId - '좋아요'를 받을 댓글 ID
- * @param {string} likerId - '좋아요'를 누르는 사람 (마이룸 주인) ID
+ * @param {string} likerId - '좋아요'를 누르는 사람 ID
  */
 export async function likeMyRoomComment(roomId, commentId, likerId) {
   const commentRef = doc(db, "players", roomId, "myRoomComments", commentId);
 
-  return runTransaction(db, async (transaction) => {
-    const commentSnap = await transaction.get(commentRef);
-    if (!commentSnap.exists()) throw new Error("댓글을 찾을 수 없습니다.");
+  // 방 주인이 좋아요를 눌렀을 때만 포인트 지급 트랜잭션 실행
+  if (likerId === roomId) {
+    return runTransaction(db, async (transaction) => {
+      const commentSnap = await transaction.get(commentRef);
+      if (!commentSnap.exists()) throw new Error("댓글을 찾을 수 없습니다.");
 
-    const commentData = commentSnap.data();
-    if (commentData.likes.includes(likerId)) {
+      const commentData = commentSnap.data();
+      if (commentData.likes.includes(likerId)) {
+        throw new Error("이미 '좋아요'를 누른 댓글입니다.");
+      }
+
+      const commenterRef = doc(db, "players", commentData.commenterId);
+      const commenterSnap = await transaction.get(commenterRef);
+      if (!commenterSnap.exists()) throw new Error("댓글 작성자 정보를 찾을 수 없습니다.");
+
+      // 댓글 작성자에게 30P 지급
+      transaction.update(commenterRef, { points: increment(30) });
+      // 댓글에 '좋아요' 누른 사람 기록
+      transaction.update(commentRef, { likes: arrayUnion(likerId) });
+
+      await addPointHistory(commentData.commenterId, commentData.commenterName, 30, "칭찬 댓글 '좋아요' 보상");
+
+      createNotification(
+        commentData.commenterId,
+        "❤️ 내 댓글에 '좋아요'를 받았어요!",
+        `칭찬 댓글 보상으로 30P를 획득했습니다!`,
+        "comment_like"
+      );
+    });
+  } else {
+    // 방문자가 '좋아요'를 누를 경우, 포인트 지급 없이 '좋아요' 기록만 추가
+    const commentDoc = await getDoc(commentRef);
+    if (!commentDoc.exists()) throw new Error("댓글을 찾을 수 없습니다.");
+    if (commentDoc.data().likes.includes(likerId)) {
       throw new Error("이미 '좋아요'를 누른 댓글입니다.");
     }
+    await updateDoc(commentRef, {
+      likes: arrayUnion(likerId)
+    });
+  }
+}
 
-    const commenterRef = doc(db, "players", commentData.commenterId);
-    const commenterSnap = await transaction.get(commenterRef);
-    if (!commenterSnap.exists()) throw new Error("댓글 작성자 정보를 찾을 수 없습니다.");
 
-    // 댓글 작성자에게 30P 지급
-    transaction.update(commenterRef, { points: increment(30) });
-    // 댓글에 '좋아요' 누른 사람 기록
-    transaction.update(commentRef, { likes: arrayUnion(likerId) });
+/**
+ * 마이룸 대댓글에 '좋아요'를 누르고 방 주인에게 보상을 지급합니다.
+ * @param {string} roomId - 마이룸 주인 ID
+ * @param {string} commentId - 댓글 ID
+ * @param {object} reply - '좋아요'를 받을 답글 객체
+ * @param {string} likerId - '좋아요'를 누르는 사람 (원본 댓글 작성자) ID
+ */
+export async function likeMyRoomReply(roomId, commentId, reply, likerId) {
+  const commentRef = doc(db, "players", roomId, "myRoomComments", commentId);
+  const roomOwnerRef = doc(db, "players", roomId); // Read 대상을 미리 지정
 
-    await addPointHistory(commentData.commenterId, commentData.commenterName, 30, "칭찬 댓글 '좋아요' 보상");
+  return runTransaction(db, async (transaction) => {
+    // ▼▼▼ 모든 Read 작업을 transaction 시작 부분으로 이동 ▼▼▼
+    const commentSnap = await transaction.get(commentRef);
+    const roomOwnerSnap = await transaction.get(roomOwnerRef);
+
+    if (!commentSnap.exists()) throw new Error("댓글을 찾을 수 없습니다.");
+    if (!roomOwnerSnap.exists()) throw new Error("방 주인 정보를 찾을 수 없습니다.");
+
+    const commentData = commentSnap.data();
+    const replies = commentData.replies || [];
+    // Firestore 타임스탬프 객체는 toDate()로 변환 후 비교해야 정확합니다.
+    const replyIndex = replies.findIndex(r =>
+      r.createdAt?.toDate().getTime() === reply.createdAt?.toDate().getTime() && r.text === reply.text
+    );
+
+    if (replyIndex === -1) throw new Error("답글을 찾을 수 없습니다.");
+    if (replies[replyIndex].likes.includes(likerId)) throw new Error("이미 '좋아요'를 누른 답글입니다.");
+
+    // ▼▼▼ 모든 Write 작업을 Read 이후에 실행 ▼▼▼
+    transaction.update(roomOwnerRef, { points: increment(15) });
+
+    replies[replyIndex].likes.push(likerId);
+    transaction.update(commentRef, { replies: replies });
+
+    const roomOwnerData = roomOwnerSnap.data();
+    await addPointHistory(roomId, roomOwnerData.name, 15, "내 답글 '좋아요' 보상");
 
     createNotification(
-      commentData.commenterId,
-      "❤️ 내 댓글에 '좋아요'를 받았어요!",
-      `칭찬 댓글 보상으로 30P를 획득했습니다!`,
-      "comment_like"
+      roomId,
+      "❤️ 내 답글에 '좋아요'를 받았어요!",
+      `답글 '좋아요' 보상으로 15P를 획득했습니다!`,
+      "reply_like"
     );
   });
 }
+
 
 /**
  * 특정 마이룸의 모든 댓글을 불러옵니다.
@@ -1491,6 +1553,70 @@ export async function getAllMyRoomComments() {
     const roomId = parentPath.split('/').pop();
     return { id: doc.id, roomId, ...doc.data() };
   });
+}
+
+/**
+ * [관리자용] 특정 마이룸의 댓글을 삭제합니다.
+ * @param {string} roomId - 마이룸 주인 ID
+ * @param {string} commentId - 삭제할 댓글 ID
+ */
+export async function deleteMyRoomComment(roomId, commentId) {
+  const commentRef = doc(db, "players", roomId, "myRoomComments", commentId);
+  await deleteDoc(commentRef);
+}
+
+/**
+ * [관리자용] 특정 마이룸의 대댓글을 삭제합니다.
+ * @param {string} roomId - 마이룸 주인 ID
+ * @param {string} commentId - 댓글 ID
+ * @param {object} replyToDelete - 삭제할 답글 객체
+ */
+export async function deleteMyRoomReply(roomId, commentId, replyToDelete) {
+  const commentRef = doc(db, "players", roomId, "myRoomComments", commentId);
+  const commentSnap = await getDoc(commentRef);
+  if (commentSnap.exists()) {
+    const commentData = commentSnap.data();
+    const updatedReplies = (commentData.replies || []).filter(reply =>
+      !(reply.createdAt.isEqual(replyToDelete.createdAt) && reply.text === replyToDelete.text)
+    );
+    await updateDoc(commentRef, { replies: updatedReplies });
+  }
+}
+
+/**
+ * 마이룸 댓글에 답글(대댓글)을 작성합니다.
+ * @param {string} roomId - 마이룸 주인 ID
+ * @param {string} commentId - 답글을 달 댓글 ID
+ * @param {object} replyData - 답글 데이터 (replierId, replierName, text)
+ */
+export async function addMyRoomReply(roomId, commentId, replyData) {
+  const commentRef = doc(db, "players", roomId, "myRoomComments", commentId);
+  const commentSnap = await getDoc(commentRef);
+
+  if (!commentSnap.exists()) {
+    throw new Error("원본 댓글을 찾을 수 없습니다.");
+  }
+  const commentData = commentSnap.data();
+
+  const reply = {
+    ...replyData,
+    createdAt: new Date(), // serverTimestamp()를 new Date()로 변경
+    likes: []
+  };
+
+  // replies 필드가 없으면 생성하고, 있으면 추가합니다.
+  await updateDoc(commentRef, {
+    replies: arrayUnion(reply)
+  });
+
+  // 원본 댓글 작성자에게 알림 전송
+  createNotification(
+    commentData.commenterId, // 알림 받을 사람 (댓글 작성자)
+    `💬 ${replyData.replierName}님이 내 댓글에 답글을 남겼습니다.`,
+    `"${replyData.text}"`,
+    "myroom_reply",
+    `/my-room/${roomId}`
+  );
 }
 
 // =================================================================

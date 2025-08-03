@@ -1,9 +1,9 @@
-// src/pages/MyRoomPage.jsx
+// src/pages/MyRoomPage.jsx (전체 코드)
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, getMyRoomComments, addMyRoomComment, likeMyRoom, likeMyRoomComment } from '../api/firebase';
+import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
 import { doc, updateDoc, getDoc, collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { useParams, useNavigate } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
@@ -143,6 +143,12 @@ const CommentList = styled.div`
     gap: 1.5rem;
 `;
 
+const CommentWrapper = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+`;
+
 const CommentCard = styled.div`
     background-color: #f8f9fa;
     padding: 1rem;
@@ -150,12 +156,36 @@ const CommentCard = styled.div`
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 1rem;
+`;
+
+const ReplyCard = styled(CommentCard)`
+    background-color: #e9ecef;
+    margin-left: 2rem; /* 들여쓰기 */
 `;
 
 const CommentContent = styled.div`
     flex-grow: 1;
     p { margin: 0; }
     small { color: #6c757d; }
+`;
+
+const CommentActions = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+`;
+
+const DeleteButton = styled.button`
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #dc3545;
+    &:hover {
+        color: #a71d2a;
+    }
 `;
 
 const LikeButton = styled.button`
@@ -165,6 +195,17 @@ const LikeButton = styled.button`
     font-size: 1.5rem;
     transition: transform 0.2s;
     &:hover { transform: scale(1.2); }
+    &:disabled {
+        cursor: not-allowed;
+        filter: grayscale(100%);
+    }
+`;
+
+const ReplyInputContainer = styled.div`
+    display: flex;
+    gap: 0.5rem;
+    margin-left: 2rem;
+    align-items: center;
 `;
 
 const InventoryContainer = styled.div`
@@ -229,6 +270,20 @@ const SaveButton = styled.button`
     }
 `;
 
+const VisitButton = styled.button`
+    padding: 0.8rem 2rem;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: white;
+    background-color: #17a2b8;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    &:hover {
+        background-color: #117a8b;
+    }
+`;
+
 const ExitButton = styled.button`
   padding: 0.8rem 2rem;
   font-size: 1.1rem;
@@ -254,9 +309,11 @@ function MyRoomPage() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [likes, setLikes] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyContent, setReplyContent] = useState("");
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
-  const isMyRoom = useMemo(() => currentUser?.uid === playerId, [currentUser, playerId]);
+  const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   const { ownedBackgrounds, ownedFurnitures } = useMemo(() => {
@@ -273,7 +330,6 @@ function MyRoomPage() {
         }
       }
     });
-    // [오류 수정] 올바른 변수 이름으로 반환합니다.
     return { ownedBackgrounds: backgrounds, ownedFurnitures: furnitures };
   }, [myPlayerData, myRoomItems]);
 
@@ -375,12 +431,9 @@ function MyRoomPage() {
 
     setRoomConfig(prev => {
       const newConfig = { ...prev };
-      // 이미 방에 아이템이 있다면
       if (newConfig[item.id]) {
-        // 방에서 제거
         delete newConfig[item.id];
       } else {
-        // 방에 없다면, 중앙에 기본값으로 추가
         newConfig[item.id] = { left: 50, top: 50, zIndex: Date.now(), isFlipped: false };
       }
       return newConfig;
@@ -419,6 +472,21 @@ function MyRoomPage() {
     }
   };
 
+  const handleAddMyRoomReply = async (commentId) => {
+    if (!replyContent.trim() || !myPlayerData) return;
+    try {
+      await addMyRoomReply(playerId, commentId, {
+        replierId: myPlayerData.id,
+        replierName: myPlayerData.name,
+        text: replyContent,
+      });
+      setReplyContent("");
+      setReplyingTo(null);
+    } catch (error) {
+      alert(`답글 작성 실패: ${error.message}`);
+    }
+  };
+
   const handleLikeRoom = async () => {
     if (isMyRoom || !myPlayerData) return;
     try {
@@ -429,12 +497,62 @@ function MyRoomPage() {
   };
 
   const handleLikeComment = async (commentId) => {
-    if (!isMyRoom) return alert("방 주인만 댓글에 '좋아요'를 누를 수 있습니다.");
+    if (!myPlayerData) return alert("로그인 후 이용해주세요.");
     try {
       await likeMyRoomComment(playerId, commentId, myPlayerData.id);
     } catch (error) {
       alert(error.message);
     }
+  };
+
+  const handleLikeMyRoomReply = async (comment, reply) => {
+    if (!myPlayerData) return;
+    if (myPlayerData.id !== comment.commenterId) {
+      alert("댓글을 작성한 사람만 답글에 '좋아요'를 누를 수 있습니다.");
+      return;
+    }
+    try {
+      await likeMyRoomReply(playerId, comment.id, reply, myPlayerData.id);
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    if (window.confirm("정말로 이 댓글을 삭제하시겠습니까?")) {
+      try {
+        await deleteMyRoomComment(playerId, commentId);
+      } catch (error) {
+        alert(`댓글 삭제 실패: ${error.message}`);
+      }
+    }
+  };
+
+  const handleRandomVisit = () => {
+    const visitedKey = 'visitedMyRooms';
+    let visited = JSON.parse(sessionStorage.getItem(visitedKey)) || [];
+
+    const allPlayerIds = players.filter(p => p.status !== 'inactive' && p.id !== myPlayerData.id).map(p => p.id);
+    let unvisited = allPlayerIds.filter(id => !visited.includes(id) && id !== playerId);
+
+    if (unvisited.length === 0) {
+      unvisited = allPlayerIds.filter(id => id !== playerId);
+      visited = [];
+      if (unvisited.length > 0) {
+        alert("모든 친구들의 방을 둘러보았습니다! 처음부터 다시 시작합니다.");
+      }
+    }
+
+    if (unvisited.length === 0) {
+      alert("방문할 다른 친구가 없습니다.");
+      return;
+    }
+
+    const randomPlayerId = unvisited[Math.floor(Math.random() * unvisited.length)];
+    visited.push(randomPlayerId);
+    sessionStorage.setItem(visitedKey, JSON.stringify(visited));
+
+    navigate(`/my-room/${randomPlayerId}`);
   };
 
   return (
@@ -445,7 +563,7 @@ function MyRoomPage() {
     >
       <Header>
         <h1>{roomOwnerData?.name || '...'}의 마이룸</h1>
-        {!isMyRoom && (
+        {!isMyRoom && myPlayerData && (
           <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} title={hasLikedThisMonth ? "이번 달에 이미 좋아했습니다." : "이 방 좋아요!"}>
             {hasLikedThisMonth ? '❤️' : '🤍'} {likes.length}
           </LikeButton>
@@ -511,34 +629,78 @@ function MyRoomPage() {
 
       <SocialFeaturesContainer>
         <h2>방명록</h2>
-        <CommentInputSection>
-          <CommentTextarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="따뜻한 칭찬과 격려의 말을 남겨주세요."
-            maxLength={100}
-          />
-          <CommentSubmitButton onClick={handlePostComment}>등록</CommentSubmitButton>
-        </CommentInputSection>
+        {myPlayerData && (
+          <CommentInputSection>
+            <CommentTextarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="따뜻한 칭찬과 격려의 말을 남겨주세요."
+              maxLength={100}
+            />
+            <CommentSubmitButton onClick={handlePostComment}>등록</CommentSubmitButton>
+          </CommentInputSection>
+        )}
         <CommentList>
           {comments.map(comment => (
-            <CommentCard key={comment.id}>
-              <CommentContent>
-                <p>{comment.text}</p>
-                <small>{comment.commenterName} - {comment.createdAt?.toDate().toLocaleDateString()}</small>
-              </CommentContent>
-              {isMyRoom && (
-                <LikeButton onClick={() => handleLikeComment(comment.id)} disabled={comment.likes.includes(myPlayerData.id)}>
-                  {comment.likes.includes(myPlayerData.id) ? '❤️' : '�'} {comment.likes.length}
-                </LikeButton>
+            <CommentWrapper key={comment.id}>
+              <CommentCard>
+                <CommentContent>
+                  <p>{comment.text}</p>
+                  <small>{comment.commenterName} - {comment.createdAt?.toDate().toLocaleDateString()}</small>
+                </CommentContent>
+                <CommentActions>
+                  {isMyRoom && (
+                    <DeleteButton onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}>답글</DeleteButton>
+                  )}
+                  {myPlayerData?.role === 'admin' && (
+                    <DeleteButton onClick={() => handleDeleteComment(comment.id)}>삭제</DeleteButton>
+                  )}
+                  {myPlayerData && (
+                    <LikeButton onClick={() => handleLikeComment(comment.id)} disabled={comment.likes.includes(myPlayerData.id)}>
+                      {comment.likes.includes(myPlayerData.id) ? '❤️' : '🤍'} {comment.likes.length}
+                    </LikeButton>
+                  )}
+                </CommentActions>
+              </CommentCard>
+
+              {replyingTo === comment.id && (
+                <ReplyInputContainer>
+                  <CommentTextarea
+                    value={replyContent}
+                    onChange={(e) => setReplyContent(e.target.value)}
+                    placeholder="답글을 입력하세요..."
+                    rows={2}
+                  />
+                  <CommentSubmitButton onClick={() => handleAddMyRoomReply(comment.id)}>등록</CommentSubmitButton>
+                </ReplyInputContainer>
               )}
-            </CommentCard>
+
+              {comment.replies?.map((reply, index) => (
+                <ReplyCard key={index}>
+                  <CommentContent>
+                    <p>{reply.text}</p>
+                    <small>{reply.replierName} - {reply.createdAt?.toDate().toLocaleDateString()}</small>
+                  </CommentContent>
+                  <CommentActions>
+                    {myPlayerData?.role === 'admin' && (
+                      <DeleteButton onClick={() => handleDeleteReply(comment.id, reply)}>삭제</DeleteButton>
+                    )}
+                    {myPlayerData?.id === comment.commenterId && (
+                      <LikeButton onClick={() => handleLikeMyRoomReply(comment, reply)} disabled={reply.likes.includes(myPlayerData.id)}>
+                        {reply.likes.includes(myPlayerData.id) ? '❤️' : '🤍'} {reply.likes.length}
+                      </LikeButton>
+                    )}
+                  </CommentActions>
+                </ReplyCard>
+              ))}
+            </CommentWrapper>
           ))}
         </CommentList>
       </SocialFeaturesContainer>
 
       <ButtonContainer>
         {isMyRoom && <SaveButton onClick={handleSaveLayout}>마이룸 저장하기</SaveButton>}
+        {!isMyRoom && myPlayerData && <VisitButton onClick={handleRandomVisit}>계속 놀러가기</VisitButton>}
         <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
       </ButtonContainer>
     </Wrapper>
