@@ -21,16 +21,15 @@ import RecorderDashboardPage from './pages/RecorderDashboardPage';
 import PlayerStatsPage from './pages/PlayerStatsPage';
 import TeamDetailPage from './pages/TeamDetailPage';
 import SuggestionPage from './pages/SuggestionPage';
-
+import MyRoomPage from './pages/MyRoomPage'; // [신규] 마이룸 페이지 import
 
 // Common Components
 import Auth from './components/Auth';
 import AttendanceModal from './components/AttendanceModal';
 import PointAdjustmentModal from './components/PointAdjustmentModal';
 import Footer from './components/Footer';
-import PatchNoteModal from './components/PatchNoteModal'; // [추가]
+import PatchNoteModal from './components/PatchNoteModal';
 
-// ▼▼▼ [추가] 전체 앱 레이아웃을 위한 Wrapper ▼▼▼
 const AppWrapper = styled.div`
   display: flex;
   flex-direction: column;
@@ -41,8 +40,6 @@ const MainContent = styled.main`
   flex-grow: 1;
 `;
 
-
-// AccessDenied, ProtectedRoute 컴포넌트는 기존과 동일
 const AccessDeniedWrapper = styled.div`
   max-width: 800px;
   margin: 4rem auto;
@@ -101,7 +98,7 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   const { isLoading, setLoading, fetchInitialData, cleanupListeners, checkAttendance } = useLeagueStore();
   const [authChecked, setAuthChecked] = useState(false);
-  const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false); // [추가]
+  const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -127,12 +124,11 @@ function App() {
 
   return (
     <BrowserRouter>
-      {/* ▼▼▼ [수정] AppWrapper로 전체 구조 변경 ▼▼▼ */}
       <AppWrapper>
         <Auth user={auth.currentUser} />
         <AttendanceModal />
         <PointAdjustmentModal />
-        <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} /> {/* [추가] */}
+        <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
@@ -160,9 +156,12 @@ function App() {
             <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
             <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
 
+            {/* ▼▼▼ [신규] 마이룸 페이지 라우트 ▼▼▼ */}
+            <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
+
           </Routes>
         </MainContent>
-        <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} /> {/* [수정] */}
+        <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} />
       </AppWrapper>
     </BrowserRouter>
   );

@@ -369,6 +369,7 @@ function ProfilePage() {
           <ButtonRow>
             {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
             <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
+            <StyledLink to={`/my-room/${playerData.id}`} style={{ backgroundColor: '#fd7e14', color: 'white' }}>마이룸 가기</StyledLink>
           </ButtonRow>
         </ButtonGroup>
 

@@ -82,7 +82,7 @@ const MyInfoCard = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
+  gap: 1rem;
   padding: 1.5rem;
   background-color: #fff;
   border-radius: 12px;
@@ -103,23 +103,68 @@ const ProfileLink = styled(Link)`
   }
 `;
 
-const SuggestionButton = styled(Link)`
+const ActionButtonsWrapper = styled.div`
+  display: flex;
+  gap: 1rem;
+`;
+
+const VisitButton = styled.button`
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-decoration: none;
-    padding: 1rem 1.5rem;
+    padding: 1rem;
+    width: 140px; /* 너비 고정 */
+    height: 120px; /* 높이 고정 */
     border-radius: 12px;
     background-color: #f8f9fa;
     color: #495057;
     font-weight: bold;
     border: 1px solid #dee2e6;
     transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    font-size: 1rem; /* 폰트 크기 명시 */
 
     & > span:first-child {
         font-size: 2rem;
         margin-bottom: 0.5rem;
+    }
+    
+    & > span:last-child {
+        line-height: 1.2; /* 줄간격 조정 */
+    }
+
+    &:hover {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+    }
+`;
+
+const SuggestionButton = styled(Link)`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    padding: 1rem;
+    width: 140px; /* 너비 고정 */
+    height: 120px; /* 높이 고정 */
+    border-radius: 12px;
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: bold;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s ease-in-out;
+    font-size: 1rem; /* 폰트 크기 명시 */
+
+    & > span:first-child {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    & > span:last-child {
+        line-height: 1.2; /* 줄간격 조정 */
     }
 
     &:hover {
@@ -491,6 +536,17 @@ function DashboardPage() {
     const isGoalAchieved = activeGoal && activeGoal.currentPoints >= activeGoal.targetPoints;
     const progressPercent = activeGoal ? Math.min((activeGoal.currentPoints / activeGoal.targetPoints) * 100, 100) : 0;
     const rankIcons = ["🥇", "🥈", "🥉"];
+    const handleRandomVisit = () => {
+        if (!myPlayerData) return;
+        const otherPlayers = players.filter(p => p.id !== myPlayerData.id && p.status !== 'inactive');
+        if (otherPlayers.length === 0) {
+            alert("방문할 다른 친구가 없습니다.");
+            return;
+        }
+        const randomPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+        navigate(`/my-room/${randomPlayer.id}`);
+    };
+
 
     return (
         <DashboardWrapper>
@@ -512,10 +568,16 @@ function DashboardPage() {
                                 <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
                             </InfoText>
                         </ProfileLink>
-                        <SuggestionButton to="/suggestions">
-                            <span>💌</span>
-                            <span>선생님께<br></br>메시지 보내기</span>
-                        </SuggestionButton>
+                        <ActionButtonsWrapper>
+                            <VisitButton onClick={handleRandomVisit}>
+                                <span>🏠</span>
+                                <span>친구집<br />구경가기</span>
+                            </VisitButton>
+                            <SuggestionButton to="/suggestions">
+                                <span>💌</span>
+                                <span>선생님께<br />메시지 보내기</span>
+                            </SuggestionButton>
+                        </ActionButtonsWrapper>
                     </MyInfoCard>
                 </TopGrid>
             )}
