@@ -1675,8 +1675,8 @@ export async function batchUpdateMyRoomItemDetails(updates) {
     const itemRef = doc(db, 'myRoomItems', item.id);
     const dataToUpdate = {};
     // undefined가 아닌 경우에만 업데이트 객체에 추가
-    if (item.price !== undefined) dataToUpdate.price = item.price;
-    if (item.width !== undefined) dataToUpdate.width = item.width;
+    if (item.price !== undefined) dataToUpdate.price = Number(item.price);
+    if (item.width !== undefined) dataToUpdate.width = Number(item.width);
 
     // 업데이트할 내용이 있을 경우에만 batch에 추가
     if (Object.keys(dataToUpdate).length > 0) {

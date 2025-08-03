@@ -596,8 +596,9 @@ const getBackgroundPosition = (category) => {
 };
 
 const ItemImage = styled.div`
-  width: 150px;
-  height: 150px;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto; /* 가운데 정렬 추가 */
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
@@ -1785,17 +1786,31 @@ function MyRoomItemManager() {
         } finally { setIsUploading(false); }
     };
 
-    const handleSaveAllPrices = async () => {
-        if (!window.confirm(`'${activeTab}' 탭의 모든 아이템 가격을 저장하시겠습니까?`)) return;
+    const handleSaveAllDetails = async () => {
+        if (!window.confirm(`'${activeTab}' 탭의 모든 아이템 가격과 크기를 저장하시겠습니까?`)) return;
         try {
-            const priceUpdates = Object.entries(prices)
-                .filter(([id]) => itemCategories[activeTab]?.some(item => item.id === id))
-                .map(([id, price]) => ({ id, price: Number(price) }));
-            await batchUpdateMyRoomItemDetails(priceUpdates);
-            alert('가격이 성공적으로 저장되었습니다.');
-            refreshItems();
+            const currentTabItemIds = new Set(itemCategories[activeTab]?.map(item => item.id) || []);
+
+            const updates = Array.from(currentTabItemIds).map(id => ({
+                id,
+                price: Number(prices[id] || 0),
+                width: Number(widths[id] || 15)
+            }));
+
+            await batchUpdateMyRoomItemDetails(updates);
+
+            // ▼▼▼ [신규] 로컬 상태(zustand store) 직접 업데이트 ▼▼▼
+            useLeagueStore.setState(state => {
+                const updatedMyRoomItems = state.myRoomItems.map(item => {
+                    const update = updates.find(u => u.id === item.id);
+                    return update ? { ...item, ...update } : item;
+                });
+                return { myRoomItems: updatedMyRoomItems };
+            });
+
+            alert('아이템 정보가 성공적으로 저장되었습니다.');
         } catch (error) {
-            alert('가격 저장 중 오류가 발생했습니다.');
+            alert(`저장 중 오류가 발생했습니다: ${error.message}`);
         }
     };
 
@@ -1966,7 +1981,11 @@ function MyRoomItemManager() {
                                             <SaveButton onClick={() => handleSaveDisplayName(item.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
                                         </div>
 
-                                        <ItemImage src={item.src} $category={item.category} style={{ backgroundSize: 'contain', backgroundPosition: 'center' }} />
+                                        <ItemImage
+                                            src={item.src}
+                                            $category={item.category}
+                                            style={{ backgroundSize: 'contain', backgroundPosition: 'center' }}
+                                        />
 
                                         {saleDaysText && (
                                             <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>{saleDaysText}</div>
@@ -1995,7 +2014,7 @@ function MyRoomItemManager() {
                             <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>다음</PageButton>
                         </PaginationContainer>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                            <SaveButton onClick={handleSaveAllPrices}>'{activeTab}' 탭 가격 모두 저장</SaveButton>
+                            <SaveButton onClick={handleSaveAllDetails}>'{activeTab}' 탭 정보 모두 저장</SaveButton>
                         </div>
                     </>
                 )}
