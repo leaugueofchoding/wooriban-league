@@ -953,6 +953,45 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
   }
 }
 
+// ▼▼▼ [신규] 마이룸 아이템 구매 함수 ▼▼▼
+export async function buyMyRoomItem(playerId, item) {
+  const playerRef = doc(db, "players", playerId);
+
+  return runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) {
+      throw new Error("플레이어 정보를 찾을 수 없습니다.");
+    }
+    const playerData = playerDoc.data();
+
+    // sale 로직 추가
+    const now = new Date();
+    let finalPrice = item.price;
+    if (item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate()) {
+      finalPrice = item.salePrice;
+    }
+
+    if (playerData.points < finalPrice) {
+      throw new Error("포인트가 부족합니다.");
+    }
+    if (playerData.ownedMyRoomItems?.includes(item.id)) {
+      throw new Error("이미 소유하고 있는 아이템입니다.");
+    }
+
+    transaction.update(playerRef, {
+      points: increment(-finalPrice),
+      ownedMyRoomItems: arrayUnion(item.id) // ownedParts가 아닌 ownedMyRoomItems에 추가
+    });
+
+    await addPointHistory(
+      playerData.authUid,
+      playerData.name,
+      -finalPrice,
+      `마이룸 아이템 '${item.displayName || item.id}' 구매`
+    );
+  });
+}
+
 export async function updatePlayerProfile(playerId, profileData) {
   if (profileData.name && profileData.name.trim().length === 0) {
     throw new Error("이름을 비워둘 수 없습니다.");
@@ -1077,6 +1116,59 @@ export async function batchDeleteAvatarParts(partsToDelete) {
 
   await batch.commit();
 }
+
+// --- 마이룸 아이템 세일 관리 ---
+
+export async function batchUpdateMyRoomItemSaleInfo(itemIds, salePercent, startDate, endDate) {
+  const batch = writeBatch(db);
+
+  for (const itemId of itemIds) {
+    const itemRef = doc(db, "myRoomItems", itemId);
+    const itemSnap = await getDoc(itemRef);
+
+    if (itemSnap.exists()) {
+      const itemData = itemSnap.data();
+      const originalPrice = itemData.price;
+      const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
+
+      batch.update(itemRef, {
+        isSale: true,
+        originalPrice: originalPrice,
+        salePrice: salePrice,
+        saleStartDate: startDate,
+        saleEndDate: endDate,
+      });
+    }
+  }
+  await batch.commit();
+}
+
+export async function batchEndMyRoomItemSale(itemIds) {
+  const batch = writeBatch(db);
+  for (const itemId of itemIds) {
+    const itemRef = doc(db, "myRoomItems", itemId);
+    batch.update(itemRef, {
+      isSale: false,
+      salePrice: null,
+      originalPrice: null,
+      saleStartDate: null,
+      saleEndDate: null,
+    });
+  }
+  await batch.commit();
+}
+
+export async function batchUpdateMyRoomItemSaleDays(itemIds, saleDays) {
+  const batch = writeBatch(db);
+  for (const itemId of itemIds) {
+    const itemRef = doc(db, "myRoomItems", itemId);
+    batch.update(itemRef, {
+      saleDays: saleDays,
+    });
+  }
+  await batch.commit();
+}
+
 
 // --- 알림 관련 ---
 export async function createNotification(userId, title, body, type, link = null) {
@@ -1266,4 +1358,87 @@ export async function getPlayerSeasonStats(playerId) {
   }
 
   return Object.values(statsBySeason).sort((a, b) => b.season.createdAt.toMillis() - a.season.createdAt.toMillis());
+}
+
+// =================================================================
+// ▼▼▼ 3단계 '하우징 시스템' 신규 추가 함수들 ▼▼▼
+// =================================================================
+
+// --- 마이룸 아이템(가구 등) 관리 ---
+
+/**
+ * 관리자가 새로운 마이룸 아이템을 Storage에 업로드하고 Firestore에 정보를 등록합니다.
+ * @param {File} file - 업로드할 이미지 파일
+ * @param {string} category - 아이템 카테고리 (바닥, 벽지, 가구, 소품)
+ * @returns {object} - 등록된 아이템 정보
+ * @param {string} itemId - 수정할 아이템의 ID
+ * @param {string} displayName - 새로운 표시 이름
+ */
+
+export async function updateMyRoomItemDisplayName(itemId, displayName) {
+  const itemRef = doc(db, "myRoomItems", itemId);
+  await updateDoc(itemRef, { displayName });
+}
+
+export async function uploadMyRoomItem(file, category) {
+  const storageRef = ref(storage, `myroom-items/${category}/${file.name}`);
+  const uploadResult = await uploadBytes(storageRef, file);
+  const downloadURL = await getDownloadURL(uploadResult.ref);
+
+  const itemDocRef = doc(db, 'myRoomItems', file.name);
+  await setDoc(itemDocRef, {
+    id: file.name,
+    category: category,
+    src: downloadURL,
+    status: 'visible',
+    createdAt: serverTimestamp(),
+  });
+  return { id: file.name, category, src: downloadURL, status: 'visible' };
+}
+
+/**
+ * 모든 마이룸 아이템 목록을 Firestore에서 가져옵니다.
+ * @returns {Array<object>} - 모든 마이룸 아이템 정보 배열
+ */
+export async function getMyRoomItems() {
+  const itemsRef = collection(db, 'myRoomItems');
+  const querySnapshot = await getDocs(itemsRef);
+  return querySnapshot.docs.map(doc => doc.data());
+}
+
+/**
+ * 여러 마이룸 아이템의 가격 정보를 일괄 업데이트합니다.
+ * @param {Array<object>} updates - 업데이트할 아이템 정보 배열 (e.g., [{ id: 'sofa1', price: 500 }])
+ */
+export async function batchUpdateMyRoomItemPrices(updates) {
+  const batch = writeBatch(db);
+  updates.forEach(item => {
+    const itemRef = doc(db, 'myRoomItems', item.id);
+    batch.update(itemRef, { price: item.price });
+  });
+  await batch.commit();
+}
+
+/**
+ * 여러 마이룸 아이템을 영구적으로 삭제합니다. (Storage 파일 포함)
+ * @param {Array<object>} itemsToDelete - 삭제할 아이템 객체 배열
+ */
+export async function batchDeleteMyRoomItems(itemsToDelete) {
+  const batch = writeBatch(db);
+
+  for (const item of itemsToDelete) {
+    // Firestore에서 문서 삭제
+    const itemRef = doc(db, "myRoomItems", item.id);
+    batch.delete(itemRef);
+
+    // Storage에서 이미지 파일 삭제
+    const imageRef = ref(storage, item.src);
+    try {
+      await deleteObject(imageRef);
+    } catch (error) {
+      console.error("이미지 파일 삭제 실패 (이미 존재하지 않을 수 있음):", error);
+    }
+  }
+
+  await batch.commit();
 }

@@ -11,13 +11,12 @@ import { useNavigate } from 'react-router-dom';
 const ShopWrapper = styled.div`
   max-width: 1200px;
   margin: 2rem auto;
-  padding: 1rem; // [수정] 모바일 패딩
+  padding: 1rem;
 `;
 const Title = styled.h1`
   text-align: center;
   margin-bottom: 2rem;
   font-size: 2.5rem;
-  // [추가] 모바일 반응형
   @media (max-width: 768px) {
     font-size: 2rem;
   }
@@ -26,21 +25,19 @@ const ContentWrapper = styled.div`
   display: flex;
   gap: 2rem;
   align-items: flex-start;
-  // [추가] 모바일 반응형
   @media (max-width: 992px) {
     flex-direction: column;
   }
 `;
 const ItemContainer = styled.div`
   flex: 3;
-  width: 100%; // [추가] 모바일 레이아웃
+  width: 100%;
 `;
 const ItemGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
   min-height: 450px;
-  // [추가] 모바일 반응형
   @media (max-width: 768px) {
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
@@ -54,9 +51,7 @@ const PreviewPanel = styled.div`
   border-radius: 8px;
   background-color: #f8f9fa;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  width: 100%; // [추가] 모바일 레이아웃
-
-  // [추가] 모바일 반응형
+  width: 100%;
   @media (max-width: 992px) {
     position: static;
   }
@@ -71,8 +66,6 @@ const AvatarCanvas = styled.div`
   border: 4px solid #fff;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   overflow: hidden;
-
-  // [추가] 모바일 반응형
   @media (max-width: 768px) {
     width: 200px;
     height: 200px;
@@ -155,16 +148,14 @@ const ItemImage = styled.div`
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
-  /* [수정] 액세서리는 기본 확대 없이 원래 크기로 표시 */
-  background-size: ${props => props.$category === 'accessory' ? 'contain' : '200%'};
+  background-size: ${props => ['바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '200%'};
   background-repeat: no-repeat;
   background-color: #e9ecef;
   background-position: ${props => getBackgroundPosition(props.$category)};
   transition: background-size 0.2s ease-in-out;
 
-  /* [수정] 액세서리는 hover 시에도 확대되지 않음 */
   &:hover {
-    background-size: ${props => props.$category === 'accessory' ? 'contain' : '220%'};
+    background-size: ${props => ['바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '220%'};
   }
 
   @media (max-width: 768px) {
@@ -191,7 +182,7 @@ const TabContainer = styled.div`
   display: flex;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
-  justify-content: center; // [추가]
+  justify-content: center;
 `;
 const TabButton = styled.button`
   padding: 0.75rem 1rem;
@@ -201,7 +192,6 @@ const TabButton = styled.button`
   background-color: ${props => props.$active ? '#007bff' : 'white'};
   color: ${props => props.$active ? 'white' : 'black'};
   cursor: pointer;
-  // [추가] 모바일 반응형
   @media (max-width: 768px) {
     font-size: 0.9rem;
     padding: 0.6rem 0.8rem;
@@ -303,24 +293,18 @@ const ITEMS_PER_PAGE = 6;
 
 const translateCategory = (category) => {
   const categoryMap = {
-    'all': '전체',
-    'hair': '헤어',
-    'top': '상의',
-    'bottom': '하의',
-    'shoes': '신발',
-    'face': '얼굴',
-    'eyes': '눈',
-    'nose': '코',
-    'mouth': '입',
-    'accessory': '액세서리'
+    'all': '전체', 'hair': '헤어', 'top': '상의', 'bottom': '하의', 'shoes': '신발',
+    'face': '얼굴', 'eyes': '눈', 'nose': '코', 'mouth': '입', 'accessory': '액세서리',
+    '바닥': '바닥', '벽지': '벽지', '가구': '가구', '소품': '소품'
   };
   return categoryMap[category] || category;
 };
 
 function ShopPage() {
-  const { players, avatarParts, fetchInitialData } = useLeagueStore();
+  const { players, avatarParts, myRoomItems, fetchInitialData, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
+  const [mainTab, setMainTab] = useState('avatar');
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [previewConfig, setPreviewConfig] = useState(null);
@@ -336,6 +320,9 @@ function ShopPage() {
   }, [myPlayerData]);
 
   const partCategories = useMemo(() => {
+    if (mainTab === 'myroom') {
+      return ['바닥', '벽지', '가구', '소품'];
+    }
     const today = new Date().getDay();
     const categories = avatarParts.reduce((acc, part) => {
       if (part.price > 0 && part.status !== 'hidden') {
@@ -350,29 +337,48 @@ function ShopPage() {
       return order.indexOf(a) - order.indexOf(b);
     });
     return ['all', ...sorted];
-  }, [avatarParts]);
+  }, [avatarParts, mainTab]);
 
   const itemsForSale = useMemo(() => {
     const today = new Date().getDay();
-    let items = avatarParts.filter(part => {
-      if (part.status === 'hidden') return false;
-      if (part.saleDays && part.saleDays.length > 0) {
-        return part.saleDays.includes(today);
+    let items = [];
+
+    if (mainTab === 'avatar') {
+      items = avatarParts.filter(part => {
+        if (part.status === 'hidden') return false;
+        if (part.saleDays && part.saleDays.length > 0) {
+          return part.saleDays.includes(today);
+        }
+        return true;
+      });
+      items = items.filter(part => part.price > 0);
+      if (activeTab !== 'all') {
+        items = items.filter(part => part.category === activeTab);
       }
-      return true;
-    });
-    items = items.filter(part => part.price > 0);
-    if (activeTab !== 'all') {
-      items = items.filter(part => part.category === activeTab);
+    } else {
+      items = myRoomItems.filter(item => item.price > 0 && item.status !== 'hidden');
+      if (activeTab) {
+        items = items.filter(item => item.category === activeTab);
+      }
     }
     return items;
-  }, [avatarParts, activeTab]);
+  }, [avatarParts, myRoomItems, mainTab, activeTab]);
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return itemsForSale.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [itemsForSale, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setJustPurchased(false);
+    if (mainTab === 'avatar') {
+      setActiveTab('all');
+    } else {
+      setActiveTab('바닥');
+    }
+  }, [mainTab]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -385,12 +391,10 @@ function ShopPage() {
     const newPartIds = new Set();
     const config = previewConfig || {};
 
-    // 기본 파츠 추가
     Object.values(config).forEach(value => {
       if (typeof value === 'string') newPartIds.add(value);
     });
 
-    // 액세서리 파츠 추가
     if (config.accessories) {
       Object.values(config.accessories).forEach(partId => newPartIds.add(partId));
     }
@@ -419,9 +423,8 @@ function ShopPage() {
     const itemNames = newItemsToBuy.map(p => p.displayName || p.id).join(', ');
     if (window.confirm(`총 ${newItemsToBuy.length}개의 새 아이템(${itemNames})을 ${totalCost}P에 구매하시겠습니까?`)) {
       try {
-        await buyMultipleAvatarParts(myPlayerData.id, newItemsToBuy);
+        await buyMultipleAvatarParts(newItemsToBuy);
         alert('구매를 완료했습니다!');
-        await fetchInitialData();
         setJustPurchased(true);
       } catch (error) {
         alert(`구매 실패: ${error.message}`);
@@ -429,10 +432,37 @@ function ShopPage() {
     }
   };
 
-  const handlePreview = (part) => {
+  const handlePreview = async (item) => {
+    if (mainTab === 'myroom') {
+      const isOwned = myPlayerData?.ownedMyRoomItems?.includes(item.id);
+      if (isOwned) {
+        alert("이미 소유하고 있는 아이템입니다.");
+        return;
+      }
+
+      const now = new Date();
+      const isCurrentlyOnSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+      const finalPrice = isCurrentlyOnSale ? item.salePrice : item.price;
+
+      if (myPlayerData.points < finalPrice) {
+        alert("포인트가 부족합니다.");
+        return;
+      }
+
+      if (window.confirm(`'${item.displayName || item.id}' 아이템을 ${finalPrice}P에 구매하시겠습니까?`)) {
+        try {
+          await buyMyRoomItem(item);
+          alert('구매를 완료했습니다!');
+        } catch (error) {
+          alert(`구매 실패: ${error.message}`);
+        }
+      }
+      return;
+    }
+
     setJustPurchased(false);
     setPreviewConfig(prev => {
-      const { category, id, slot } = part;
+      const { category, id, slot } = item;
       const newConfig = JSON.parse(JSON.stringify(prev));
 
       if (category !== 'accessory') {
@@ -474,12 +504,10 @@ function ShopPage() {
   const previewPartUrls = useMemo(() => {
     if (!previewConfig) return [baseAvatar];
 
-    // [수정] 렌더링 순서 변경
     const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'mouth', 'nose', 'eyes'];
     const urls = [baseAvatar];
     const config = previewConfig;
 
-    // 1. 기본 파츠 렌더링
     RENDER_ORDER.forEach(category => {
       const partId = config[category];
       if (partId) {
@@ -488,7 +516,6 @@ function ShopPage() {
       }
     });
 
-    // 2. 액세서리 파츠 렌더링 (가장 위에)
     if (config.accessories) {
       Object.values(config.accessories).forEach(partId => {
         const part = avatarParts.find(p => p.id === partId);
@@ -509,6 +536,10 @@ function ShopPage() {
           <p style={{ textAlign: 'center', fontSize: '1.2rem' }}>
             내 포인트: <strong>💰 {myPlayerData?.points ?? '...'} P</strong>
           </p>
+          <TabContainer>
+            <TabButton $active={mainTab === 'avatar'} onClick={() => setMainTab('avatar')}>아바타</TabButton>
+            <TabButton $active={mainTab === 'myroom'} onClick={() => setMainTab('myroom')}>마이룸</TabButton>
+          </TabContainer>
           <ContentWrapper>
             <ItemContainer>
               <TabContainer>
@@ -520,10 +551,12 @@ function ShopPage() {
               </TabContainer>
               <ItemGrid>
                 {paginatedItems.map(part => {
-                  const isOwned = myItems.includes(part.id);
+                  const isOwned = mainTab === 'avatar'
+                    ? myPlayerData?.ownedParts?.includes(part.id)
+                    : myPlayerData?.ownedMyRoomItems?.includes(part.id);
 
                   let isPreviewing = false;
-                  if (previewConfig) {
+                  if (previewConfig && mainTab === 'avatar') {
                     if (part.category !== 'accessory') {
                       isPreviewing = previewConfig[part.category] === part.id;
                     } else if (previewConfig.accessories) {
@@ -567,25 +600,27 @@ function ShopPage() {
               </PaginationContainer>
             </ItemContainer>
 
-            <PreviewPanel>
-              <h3 style={{ textAlign: 'center', marginTop: 0 }}>아바타 미리보기</h3>
-              <AvatarCanvas>
-                {previewPartUrls.map(src => <PartImage key={src} src={src} />)}
-              </AvatarCanvas>
-              <BuyButton onClick={handlePurchasePreview} disabled={newItemsToBuy.length === 0 || !canAfford}>
-                {newItemsToBuy.length > 0 ? `새 아이템 ${newItemsToBuy.length}개 구매 (${totalCost}P)` : '구매할 새 아이템 없음'}
-              </BuyButton>
-              <ActionButton onClick={handleResetPreview}>
-                전체 초기화
-              </ActionButton>
-              <ActionButtonGroup>
-                {justPurchased && (
-                  <WearButton onClick={handleWearPurchased}>
-                    ✨ 구입한 옷 착용하기
-                  </WearButton>
-                )}
-              </ActionButtonGroup>
-            </PreviewPanel>
+            {mainTab === 'avatar' && (
+              <PreviewPanel>
+                <h3 style={{ textAlign: 'center', marginTop: 0 }}>아바타 미리보기</h3>
+                <AvatarCanvas>
+                  {previewPartUrls.map(src => <PartImage key={src} src={src} />)}
+                </AvatarCanvas>
+                <BuyButton onClick={handlePurchasePreview} disabled={newItemsToBuy.length === 0 || !canAfford}>
+                  {newItemsToBuy.length > 0 ? `새 아이템 ${newItemsToBuy.length}개 구매 (${totalCost}P)` : '구매할 새 아이템 없음'}
+                </BuyButton>
+                <ActionButton onClick={handleResetPreview}>
+                  전체 초기화
+                </ActionButton>
+                <ActionButtonGroup>
+                  {justPurchased && (
+                    <WearButton onClick={handleWearPurchased}>
+                      ✨ 구입한 옷 착용하기
+                    </WearButton>
+                  )}
+                </ActionButtonGroup>
+              </PreviewPanel>
+            )}
           </ContentWrapper>
           <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
         </>

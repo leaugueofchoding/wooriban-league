@@ -27,7 +27,16 @@ import {
     db,
     completeClassGoal,
     createNewSeason,
-    replyToSuggestion
+    replyToSuggestion,
+    // ▼▼▼ [신규] 마이룸 아이템 관련 함수 import ▼▼▼
+    uploadMyRoomItem,
+    getMyRoomItems,
+    batchUpdateMyRoomItemPrices,
+    batchDeleteMyRoomItems,
+    batchUpdateMyRoomItemSaleInfo,
+    batchEndMyRoomItemSale,
+    batchUpdateMyRoomItemSaleDays,
+    updateMyRoomItemDisplayName // <--- 이 부분을 추가해주세요!
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
@@ -1547,6 +1556,341 @@ function AvatarPartManager() {
     );
 }
 
+// src/pages/AdminPage.jsx
+
+// =================================================================
+// ▼▼▼ [수정 완료] 마이룸 아이템 관리 컴포넌트 ▼▼▼
+// =================================================================
+function MyRoomItemManager() {
+    const { fetchInitialData, updateLocalMyRoomItemDisplayName } = useLeagueStore();
+    const myRoomItemsFromStore = useLeagueStore(state => state.myRoomItems);
+
+    const [myRoomItems, setMyRoomItems] = useState([]);
+    const [files, setFiles] = useState([]);
+    const [uploadCategory, setUploadCategory] = useState('가구');
+    const [isUploading, setIsUploading] = useState(false);
+    const [prices, setPrices] = useState({});
+    const [displayNames, setDisplayNames] = useState({});
+    const [checkedItems, setCheckedItems] = useState(new Set());
+    const [isDeleteMode, setIsDeleteMode] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaleMode, setIsSaleMode] = useState(false);
+    const [isSaleDayMode, setIsSaleDayMode] = useState(false);
+    const [salePercent, setSalePercent] = useState(0);
+    const [startDate, setStartDate] = useState(new Date());
+    const [endDate, setEndDate] = useState(new Date());
+    const [selectedDays, setSelectedDays] = useState(new Set());
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 8;
+    const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+
+    const refreshItems = async () => {
+        setIsLoading(true);
+        await fetchInitialData();
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        setMyRoomItems(myRoomItemsFromStore);
+        const initialPrices = {};
+        const initialDisplayNames = {};
+        myRoomItemsFromStore.forEach(item => {
+            initialPrices[item.id] = item.price || 0;
+            initialDisplayNames[item.id] = item.displayName || '';
+        });
+        setPrices(initialPrices);
+        setDisplayNames(initialDisplayNames);
+        if (myRoomItemsFromStore.length > 0 || !useLeagueStore.getState().isLoading) {
+            setIsLoading(false);
+        }
+    }, [myRoomItemsFromStore]);
+
+    const itemCategories = useMemo(() => {
+        return myRoomItems.reduce((acc, item) => {
+            if (!acc[item.category]) acc[item.category] = [];
+            acc[item.category].push(item);
+            return acc;
+        }, {});
+    }, [myRoomItems]);
+
+    const sortedCategories = ['바닥', '벽지', '가구', '소품'];
+    const [activeTab, setActiveTab] = useState('가구');
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab]);
+
+    const currentTabItems = useMemo(() => itemCategories[activeTab] || [], [itemCategories, activeTab]);
+    const totalPages = Math.ceil(currentTabItems.length / ITEMS_PER_PAGE);
+    const paginatedItems = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        return currentTabItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [currentTabItems, currentPage]);
+
+    const handleFileChange = (e) => setFiles(Array.from(e.target.files));
+    const handlePriceChange = (itemId, value) => setPrices(prev => ({ ...prev, [itemId]: value }));
+    const handleDisplayNameChange = (itemId, value) => setDisplayNames(prev => ({ ...prev, [itemId]: value }));
+    const handleCheckboxChange = (itemId) => {
+        setCheckedItems(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(itemId)) newSet.delete(itemId);
+            else newSet.add(itemId);
+            return newSet;
+        });
+    };
+    const handleSelectAll = () => {
+        const currentItemsOnPage = paginatedItems.map(item => item.id);
+        const allSelectedOnPage = currentItemsOnPage.length > 0 && currentItemsOnPage.every(id => checkedItems.has(id));
+        setCheckedItems(prev => {
+            const newSet = new Set(prev);
+            if (allSelectedOnPage) {
+                currentItemsOnPage.forEach(id => newSet.delete(id));
+            } else {
+                currentItemsOnPage.forEach(id => newSet.add(id));
+            }
+            return newSet;
+        });
+    };
+
+    const handleSaveDisplayName = async (itemId) => {
+        const newName = displayNames[itemId].trim();
+        try {
+            await updateMyRoomItemDisplayName(itemId, newName);
+            updateLocalMyRoomItemDisplayName(itemId, newName);
+        } catch (error) {
+            alert(`이름 저장 실패: ${error.message}`);
+            refreshItems();
+        }
+    };
+
+    const handleUpload = async () => {
+        if (files.length === 0) return alert('파일을 선택해주세요.');
+        setIsUploading(true);
+        try {
+            await Promise.all(files.map(file => uploadMyRoomItem(file, uploadCategory)));
+            alert(`${files.length}개의 아이템이 업로드되었습니다!`);
+            setFiles([]);
+            document.getElementById('myroom-file-input').value = "";
+            refreshItems();
+        } catch (error) {
+            alert('아이템 업로드 중 오류가 발생했습니다.');
+        } finally { setIsUploading(false); }
+    };
+
+    const handleSaveAllPrices = async () => {
+        if (!window.confirm(`'${activeTab}' 탭의 모든 아이템 가격을 저장하시겠습니까?`)) return;
+        try {
+            const priceUpdates = Object.entries(prices)
+                .filter(([id]) => itemCategories[activeTab]?.some(item => item.id === id))
+                .map(([id, price]) => ({ id, price: Number(price) }));
+            await batchUpdateMyRoomItemPrices(priceUpdates);
+            alert('가격이 성공적으로 저장되었습니다.');
+            refreshItems();
+        } catch (error) {
+            alert('가격 저장 중 오류가 발생했습니다.');
+        }
+    };
+
+    const handleBatchDelete = async () => {
+        if (checkedItems.size === 0) return alert('삭제할 아이템을 하나 이상 선택해주세요.');
+        const itemsToDelete = Array.from(checkedItems).map(id => myRoomItems.find(p => p.id === id)).filter(Boolean);
+        const itemNames = itemsToDelete.map(p => p.displayName || p.id).join(', ');
+        if (window.confirm(`선택한 ${checkedItems.size}개 아이템(${itemNames})을 영구적으로 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`)) {
+            try {
+                await batchDeleteMyRoomItems(itemsToDelete);
+                setCheckedItems(new Set());
+                setIsDeleteMode(false);
+                alert('선택한 아이템이 삭제되었습니다.');
+                refreshItems();
+            } catch (error) {
+                alert(`삭제 실패: ${error.message}`);
+            }
+        }
+    };
+
+    const handleApplySale = async () => {
+        if (checkedItems.size === 0) return alert('세일을 적용할 아이템을 하나 이상 선택해주세요.');
+        if (salePercent <= 0 || salePercent >= 100) return alert('할인율은 1% 이상, 100% 미만이어야 합니다.');
+        if (!startDate || !endDate || endDate < startDate) return alert('올바른 할인 기간을 설정해주세요.');
+        if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
+            try {
+                await batchUpdateMyRoomItemSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
+                refreshItems();
+                setCheckedItems(new Set());
+                setIsSaleMode(false);
+                alert('세일이 적용되었습니다.');
+            } catch (error) { alert(`세일 적용 실패: ${error.message}`); }
+        }
+    };
+
+    const handleEndSale = async (itemId) => {
+        if (window.confirm(`'${itemId}' 아이템의 세일을 즉시 종료하시겠습니까?`)) {
+            try {
+                await batchEndMyRoomItemSale([itemId]);
+                refreshItems();
+                alert('세일이 종료되었습니다.');
+            } catch (error) { alert(`세일 종료 실패: ${error.message}`); }
+        }
+    };
+
+    const handleDayToggle = (dayIndex) => {
+        setSelectedDays(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(dayIndex)) newSet.delete(dayIndex);
+            else newSet.add(dayIndex);
+            return newSet;
+        });
+    };
+
+    const handleSaveSaleDays = async () => {
+        if (checkedItems.size === 0) return alert('요일을 설정할 아이템을 하나 이상 선택해주세요.');
+        const dayArray = Array.from(selectedDays).sort();
+        const dayNames = dayArray.map(d => DAYS_OF_WEEK[d]).join(', ');
+        if (window.confirm(`선택한 ${checkedItems.size}개 아이템을 [${dayNames}] 요일에만 판매하도록 설정하시겠습니까?\n(선택한 요일이 없으면 상시 판매로 변경됩니다.)`)) {
+            try {
+                await batchUpdateMyRoomItemSaleDays(Array.from(checkedItems), dayArray);
+                refreshItems();
+                setCheckedItems(new Set());
+                setIsSaleDayMode(false);
+                alert('판매 요일이 설정되었습니다.');
+            } catch (error) { alert(`요일 설정 실패: ${error.message}`); }
+        }
+    };
+
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>마이룸 아이템 관리 🏠</SectionTitle>
+                <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+                    <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg" multiple />
+                    <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                        <option value="바닥">바닥</option>
+                        <option value="벽지">벽지</option>
+                        <option value="가구">가구</option>
+                        <option value="소품">소품</option>
+                    </select>
+                    <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
+                        {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
+                    </SaveButton>
+                </InputGroup>
+
+                <InputGroup>
+                    <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                        {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
+                    </SaveButton>
+                    <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
+                        {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
+                    </SaveButton>
+                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                        {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
+                    </SaveButton>
+                </InputGroup>
+
+                {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleApplySale} disabled={checkedItems.size === 0}>{checkedItems.size}개 세일 적용</SaveButton>
+                    </InputGroup>
+                    <InputGroup>
+                        <span>할인율(%):</span><ScoreInput type="number" value={salePercent} onChange={e => setSalePercent(Number(e.target.value))} style={{ width: '100px' }} />
+                        <span>시작일:</span><DatePicker selected={startDate} onChange={date => setStartDate(date)} dateFormat="yyyy/MM/dd" />
+                        <span>종료일:</span><DatePicker selected={endDate} onChange={date => setEndDate(date)} dateFormat="yyyy/MM/dd" />
+                    </InputGroup>
+                </div>)}
+
+                {isSaleDayMode && (<div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleSaveSaleDays} disabled={checkedItems.size === 0}>{checkedItems.size}개 요일 설정</SaveButton>
+                    </InputGroup>
+                    <InputGroup>
+                        <span>판매 요일:</span>
+                        {DAYS_OF_WEEK.map((day, index) => (
+                            <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input type="checkbox" checked={selectedDays.has(index)} onChange={() => handleDayToggle(index)} /> {day}
+                            </label>
+                        ))}
+                    </InputGroup>
+                </div>)}
+
+                {isDeleteMode && (<div style={{ border: '2px solid #dc3545', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff0f1' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: 0 }}>
+                        <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleBatchDelete} disabled={checkedItems.size === 0} style={{ backgroundColor: '#dc3545' }}>
+                            {checkedItems.size}개 영구 삭제
+                        </SaveButton>
+                    </InputGroup>
+                </div>)}
+
+                <TabContainer>
+                    {sortedCategories.map(category => (
+                        <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
+                            {category} ({itemCategories[category]?.length || 0})
+                        </TabButton>
+                    ))}
+                </TabContainer>
+
+                {isLoading ? <p>아이템 목록을 불러오는 중...</p> : (
+                    <>
+                        <ItemGrid>
+                            {paginatedItems.map(item => {
+                                const isCurrentlyOnSale = item.isSale && item.saleStartDate?.toDate() < new Date() && new Date() < item.saleEndDate?.toDate();
+                                const saleDaysText = item.saleDays && item.saleDays.length > 0 ? `[${item.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 판매` : null;
+
+                                return (
+                                    <ItemCard key={item.id}>
+                                        {(isSaleMode || isSaleDayMode || isDeleteMode) && (
+                                            <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1 }}>
+                                                <input type="checkbox" checked={checkedItems.has(item.id)} onChange={() => handleCheckboxChange(item.id)} style={{ width: '20px', height: '20px' }} />
+                                            </div>
+                                        )}
+                                        {isCurrentlyOnSale && <SaleBadge>SALE</SaleBadge>}
+
+                                        <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                                            <input
+                                                type="text"
+                                                value={displayNames[item.id] || ''}
+                                                onChange={(e) => handleDisplayNameChange(item.id, e.target.value)}
+                                                placeholder={item.id}
+                                                style={{ width: '100%', textAlign: 'center', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                                            />
+                                            <SaveButton onClick={() => handleSaveDisplayName(item.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
+                                        </div>
+
+                                        <ItemImage src={item.src} $category={item.category} style={{ backgroundSize: 'contain', backgroundPosition: 'center' }} />
+
+                                        {saleDaysText && (
+                                            <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>{saleDaysText}</div>
+                                        )}
+                                        <ScoreInput type="number" value={prices[item.id] || ''} onChange={(e) => handlePriceChange(item.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: '0.5rem 0' }} />
+
+                                        {isCurrentlyOnSale && (
+                                            <div style={{ fontSize: '0.8em', color: 'red', marginTop: '0.5rem' }}>
+                                                <p style={{ margin: 0 }}>{item.salePrice}P ({Math.round(100 - (item.salePrice / item.originalPrice * 100))}%)</p>
+                                                <button onClick={() => handleEndSale(item.id)} style={{ fontSize: '0.7em' }}>세일 종료</button>
+                                            </div>
+                                        )}
+                                    </ItemCard>
+                                );
+                            })}
+                        </ItemGrid>
+                        <PaginationContainer>
+                            <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>이전</PageButton>
+                            {Array.from({ length: totalPages }, (_, i) => (
+                                <PageButton key={i + 1} $isActive={currentPage === i + 1} onClick={() => setCurrentPage(i + 1)}>{i + 1}</PageButton>
+                            ))}
+                            <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>다음</PageButton>
+                        </PaginationContainer>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                            <SaveButton onClick={handleSaveAllPrices}>'{activeTab}' 탭 가격 모두 저장</SaveButton>
+                        </div>
+                    </>
+                )}
+            </Section>
+        </FullWidthSection>
+    );
+}
+
 function RoleManager() {
     const { players, fetchInitialData } = useLeagueStore();
     const [selectedPlayerId, setSelectedPlayerId] = useState('');
@@ -2203,9 +2547,10 @@ function LeagueManager() {
 
 
 function AdminPage() {
-    const { tab } = useParams(); // URL 파라미터 가져오기
+    const { tab } = useParams();
     const [activeMenu, setActiveMenu] = useState(tab || 'suggestion');
     const [activeSubMenu, setActiveSubMenu] = useState('');
+    const [shopSubMenu, setShopSubMenu] = useState('avatar'); // [신규] 상점 관리 서브메뉴 상태
 
     const renderContent = () => {
         if (activeMenu === 'mission') {
@@ -2231,7 +2576,12 @@ function AdminPage() {
             )
         }
         if (activeMenu === 'shop') {
-            return <AvatarPartManager />;
+            // [수정] 서브메뉴에 따라 다른 컴포넌트 렌더링
+            switch (shopSubMenu) {
+                case 'avatar': return <AvatarPartManager />;
+                case 'myroom': return <MyRoomItemManager />;
+                default: return <AvatarPartManager />;
+            }
         }
         if (activeMenu === 'league') {
             switch (activeSubMenu) {
@@ -2268,7 +2618,14 @@ function AdminPage() {
                         <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
                     </NavItem>
                     <NavItem>
+                        {/* [수정] 상점 관리 메뉴 및 서브메뉴 추가 */}
                         <NavButton $active={activeMenu === 'shop'} onClick={() => handleMenuClick('shop')}>상점 관리</NavButton>
+                        {activeMenu === 'shop' && (
+                            <SubNavList>
+                                <SubNavItem><SubNavButton $active={shopSubMenu === 'avatar'} onClick={() => setShopSubMenu('avatar')}>아바타 아이템</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={shopSubMenu === 'myroom'} onClick={() => setShopSubMenu('myroom')}>마이룸 아이템</SubNavButton></SubNavItem>
+                            </SubNavList>
+                        )}
                     </NavItem>
                     <NavItem>
                         <NavButton $active={activeMenu === 'league'} onClick={() => handleMenuClick('league')}>가가볼 리그 관리</NavButton>

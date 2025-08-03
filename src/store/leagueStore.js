@@ -36,7 +36,12 @@ import {
     db,
     updatePlayerStatus,
     createNewSeason,
-    saveAvatarMemorials
+    saveAvatarMemorials,
+    getMyRoomItems, // 마이룸 아이템 함수 추가
+    updateMyRoomItemDisplayName,
+    buyMyRoomItem,
+    buyMultipleAvatarParts, // [복원] 누락되었던 함수 import
+    updatePlayerProfile // [복원] 누락되었던 함수 import
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -52,6 +57,7 @@ export const useLeagueStore = create((set, get) => ({
     matches: [],
     users: [],
     avatarParts: [],
+    myRoomItems: [], // 마이룸 아이템 상태 추가
     missions: [],
     archivedMissions: [],
     missionSubmissions: [],
@@ -95,6 +101,15 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
+    // ▼▼▼ [신규] 마이룸 아이템 이름 로컬 업데이트 함수 ▼▼▼
+    updateLocalMyRoomItemDisplayName: (itemId, newName) => {
+        set(state => ({
+            myRoomItems: state.myRoomItems.map(item =>
+                item.id === itemId ? { ...item, displayName: newName } : item
+            )
+        }));
+    },
+
     fetchInitialData: async () => {
         try {
             set({ isLoading: true });
@@ -130,15 +145,16 @@ export const useLeagueStore = create((set, get) => ({
             }
 
             get().subscribeToMatches(activeSeason.id);
-
             const [
                 playersData, teamsData, usersData,
-                avatarPartsData, activeMissionsData, archivedMissionsData, submissionsData
+                avatarPartsData, myRoomItemsData, // myRoomItemsData 추가
+                activeMissionsData, archivedMissionsData, submissionsData
             ] = await Promise.all([
                 get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(),
                 getTeams(activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
+                getMyRoomItems(), // getMyRoomItems 호출 추가
                 getMissions('active'),
                 getMissions('archived'),
                 getMissionSubmissions()
@@ -146,7 +162,9 @@ export const useLeagueStore = create((set, get) => ({
 
             set({
                 players: playersData, teams: teamsData, users: usersData,
-                avatarParts: avatarPartsData, missions: activeMissionsData,
+                avatarParts: avatarPartsData,
+                myRoomItems: myRoomItemsData, // 상태 업데이트
+                missions: activeMissionsData,
                 archivedMissions: archivedMissionsData, missionSubmissions: submissionsData,
                 currentSeason: activeSeason, isLoading: false,
             });
@@ -261,6 +279,37 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
     // ▲▲▲ 여기까지 수정 ▲▲▲
+
+    buyMultipleAvatarParts: async (partsToBuy) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await buyMultipleAvatarParts(myPlayerData.id, partsToBuy);
+        await get().fetchInitialData();
+    },
+
+    buyMyRoomItem: async (item) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await buyMyRoomItem(myPlayerData.id, item);
+        await get().fetchInitialData();
+    },
+
+    updatePlayerProfile: async (profileData) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await updatePlayerProfile(myPlayerData.id, profileData);
+        await get().fetchInitialData();
+    },
+    // ▲▲▲ [복원 완료] ▲▲▲
 
     subscribeToPlayerData: (userId) => {
         const playerDocRef = doc(db, 'players', userId);
