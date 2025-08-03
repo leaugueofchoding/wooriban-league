@@ -1613,7 +1613,7 @@ function MyRoomItemManager() {
         }, {});
     }, [myRoomItems]);
 
-    const sortedCategories = ['바닥', '벽지', '가구', '소품'];
+    const sortedCategories = ['배경', '바닥', '벽지', '가구', '소품'];
     const [activeTab, setActiveTab] = useState('가구');
 
     useEffect(() => {
@@ -1764,6 +1764,7 @@ function MyRoomItemManager() {
                 <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
                     <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg" multiple />
                     <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                        <option value="배경">배경</option>
                         <option value="바닥">바닥</option>
                         <option value="벽지">벽지</option>
                         <option value="가구">가구</option>

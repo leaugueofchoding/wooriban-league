@@ -295,7 +295,7 @@ const translateCategory = (category) => {
   const categoryMap = {
     'all': '전체', 'hair': '헤어', 'top': '상의', 'bottom': '하의', 'shoes': '신발',
     'face': '얼굴', 'eyes': '눈', 'nose': '코', 'mouth': '입', 'accessory': '액세서리',
-    '바닥': '바닥', '벽지': '벽지', '가구': '가구', '소품': '소품'
+    '배경': '배경', '바닥': '바닥', '벽지': '벽지', '가구': '가구', '소품': '소품'
   };
   return categoryMap[category] || category;
 };
@@ -321,7 +321,7 @@ function ShopPage() {
 
   const partCategories = useMemo(() => {
     if (mainTab === 'myroom') {
-      return ['바닥', '벽지', '가구', '소품'];
+      return ['배경', '바닥', '벽지', '가구', '소품'];
     }
     const today = new Date().getDay();
     const categories = avatarParts.reduce((acc, part) => {

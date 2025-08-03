@@ -31,12 +31,22 @@ const Header = styled.div`
 
 const RoomContainer = styled.div`
   width: 100%;
-  padding-top: 75%;
+  padding-top: 75%; /* 4:3 ratio */
   position: relative;
   border: 2px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
   user-select: none;
+`;
+
+const AppliedBackground = styled.img`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
 `;
 
 const RoomBackground = styled.img`
@@ -46,6 +56,7 @@ const RoomBackground = styled.img`
   width: 100%;
   height: 100%;
   object-fit: contain;
+  z-index: 1;
 `;
 
 const DraggableItem = styled.img`
@@ -172,12 +183,13 @@ const InventoryGrid = styled.div`
 
 const InventoryItem = styled.div`
   background-color: #fff;
-  border: 1px solid #ddd;
+  border: 1px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
+  box-shadow: ${props => props.$isSelected ? '0 0 0 2px #007bff' : 'none'};
   border-radius: 8px;
   padding: 0.5rem;
   text-align: center;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all 0.2s;
 
   &:hover {
     transform: scale(1.05);
@@ -229,6 +241,7 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
+
 function MyRoomPage() {
   const { playerId } = useParams();
   const navigate = useNavigate();
@@ -245,6 +258,55 @@ function MyRoomPage() {
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => currentUser?.uid === playerId, [currentUser, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+
+  const { ownedBackgrounds, ownedFurnitures } = useMemo(() => {
+    if (!myPlayerData?.ownedMyRoomItems) return { ownedBackgrounds: [], ownedFurnitures: [] };
+    const backgrounds = [];
+    const furnitures = [];
+    myPlayerData.ownedMyRoomItems.forEach(itemId => {
+      const item = myRoomItems.find(i => i.id === itemId);
+      if (item) {
+        if (['배경', '바닥', '벽지'].includes(item.category)) {
+          backgrounds.push(item);
+        } else {
+          furnitures.push(item);
+        }
+      }
+    });
+    // [오류 수정] 올바른 변수 이름으로 반환합니다.
+    return { ownedBackgrounds: backgrounds, ownedFurnitures: furnitures };
+  }, [myPlayerData, myRoomItems]);
+
+  const ownerAvatarUrls = useMemo(() => {
+    if (!roomOwnerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
+    const urls = [baseAvatar];
+    const config = roomOwnerData.avatarConfig;
+    RENDER_ORDER.forEach(category => {
+      const partId = config[category];
+      if (partId) {
+        const part = avatarParts.find(p => p.id === partId);
+        if (part) urls.push(part.src);
+      }
+    });
+    if (config.accessories) {
+      Object.values(config.accessories).forEach(partId => {
+        const part = avatarParts.find(p => p.id === partId);
+        if (part) urls.push(part.src);
+      });
+    }
+    return Array.from(new Set(urls));
+  }, [roomOwnerData, avatarParts]);
+
+  const appliedBackground = useMemo(() => {
+    if (!roomConfig.backgroundId) return null;
+    return myRoomItems.find(item => item.id === roomConfig.backgroundId);
+  }, [roomConfig, myRoomItems]);
+
+  const hasLikedThisMonth = useMemo(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    return likes.some(like => like.id === myPlayerData?.id && like.lastLikedMonth === currentMonth);
+  }, [likes, myPlayerData]);
 
   useEffect(() => {
     if (!roomOwnerData) return;
@@ -276,38 +338,6 @@ function MyRoomPage() {
       unsubscribeLikes();
     };
   }, [roomOwnerData]);
-
-  const ownedItems = useMemo(() => {
-    if (!myPlayerData?.ownedMyRoomItems) return [];
-    return myPlayerData.ownedMyRoomItems.map(itemId => myRoomItems.find(item => item.id === itemId)).filter(Boolean);
-  }, [myPlayerData, myRoomItems]);
-
-  const ownerAvatarUrls = useMemo(() => {
-    if (!roomOwnerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
-    const urls = [baseAvatar];
-    const config = roomOwnerData.avatarConfig;
-    RENDER_ORDER.forEach(category => {
-      const partId = config[category];
-      if (partId) {
-        const part = avatarParts.find(p => p.id === partId);
-        if (part) urls.push(part.src);
-      }
-    });
-    if (config.accessories) {
-      Object.values(config.accessories).forEach(partId => {
-        const part = avatarParts.find(p => p.id === partId);
-        if (part) urls.push(part.src);
-      });
-    }
-    return Array.from(new Set(urls));
-  }, [roomOwnerData, avatarParts]);
-
-
-  const hasLikedThisMonth = useMemo(() => {
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    return likes.some(like => like.id === myPlayerData?.id && like.lastLikedMonth === currentMonth);
-  }, [likes, myPlayerData]);
 
   const handleMouseDown = (e, itemId) => {
     e.preventDefault();
@@ -342,11 +372,26 @@ function MyRoomPage() {
 
   const handleAddItemToRoom = (item) => {
     if (!isMyRoom) return;
+
+    setRoomConfig(prev => {
+      const newConfig = { ...prev };
+      // 이미 방에 아이템이 있다면
+      if (newConfig[item.id]) {
+        // 방에서 제거
+        delete newConfig[item.id];
+      } else {
+        // 방에 없다면, 중앙에 기본값으로 추가
+        newConfig[item.id] = { left: 50, top: 50, zIndex: Date.now(), isFlipped: false };
+      }
+      return newConfig;
+    });
+  };
+
+  const handleBackgroundSelect = (item) => {
+    if (!isMyRoom) return;
     setRoomConfig(prev => ({
       ...prev,
-      [item.id]: prev[item.id]
-        ? { ...prev[item.id], zIndex: Date.now() }
-        : { left: 50, top: 50, zIndex: Date.now(), isFlipped: false }
+      backgroundId: prev.backgroundId === item.id ? null : item.id
     }));
   };
 
@@ -408,6 +453,7 @@ function MyRoomPage() {
       </Header>
 
       <RoomContainer ref={roomContainerRef}>
+        {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
         <RoomBackground src={myRoomBg} alt="마이룸 배경" />
 
         {roomConfig.playerAvatar && (
@@ -424,7 +470,7 @@ function MyRoomPage() {
         )}
 
         {Object.entries(roomConfig).map(([itemId, config]) => {
-          if (itemId === 'playerAvatar') return null;
+          if (itemId === 'playerAvatar' || itemId === 'backgroundId') return null;
           const itemInfo = myRoomItems.find(item => item.id === itemId);
           if (!itemInfo) return null;
 
@@ -441,14 +487,24 @@ function MyRoomPage() {
 
       {isMyRoom && (
         <InventoryContainer>
-          <h3>내 아이템 목록 (클릭하여 방에 추가)</h3>
+          <h3>내 아이템 목록 (클릭하여 방에 추가/적용)</h3>
+          <h4>배경/바닥/벽지</h4>
           <InventoryGrid>
-            {ownedItems.length > 0 ? ownedItems.map(item => (
+            {ownedBackgrounds.length > 0 ? ownedBackgrounds.map(item => (
+              <InventoryItem key={item.id} onClick={() => handleBackgroundSelect(item)} $isSelected={roomConfig.backgroundId === item.id}>
+                <img src={item.src} alt={item.displayName || item.id} />
+                <p>{item.displayName || item.id}</p>
+              </InventoryItem>
+            )) : <p>소유한 배경 아이템이 없습니다.</p>}
+          </InventoryGrid>
+          <h4 style={{ marginTop: '1.5rem' }}>가구/소품</h4>
+          <InventoryGrid>
+            {ownedFurnitures.length > 0 ? ownedFurnitures.map(item => (
               <InventoryItem key={item.id} onClick={() => handleAddItemToRoom(item)}>
                 <img src={item.src} alt={item.displayName || item.id} />
                 <p>{item.displayName || item.id}</p>
               </InventoryItem>
-            )) : <p>소유한 마이룸 아이템이 없습니다.</p>}
+            )) : <p>소유한 가구/소품 아이템이 없습니다.</p>}
           </InventoryGrid>
         </InventoryContainer>
       )}
@@ -473,7 +529,7 @@ function MyRoomPage() {
               </CommentContent>
               {isMyRoom && (
                 <LikeButton onClick={() => handleLikeComment(comment.id)} disabled={comment.likes.includes(myPlayerData.id)}>
-                  {comment.likes.includes(myPlayerData.id) ? '❤️' : '🤍'} {comment.likes.length}
+                  {comment.likes.includes(myPlayerData.id) ? '❤️' : '�'} {comment.likes.length}
                 </LikeButton>
               )}
             </CommentCard>

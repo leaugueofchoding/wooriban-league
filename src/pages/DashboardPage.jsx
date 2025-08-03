@@ -115,8 +115,8 @@ const VisitButton = styled.button`
     justify-content: center;
     text-decoration: none;
     padding: 1rem;
-    width: 140px; /* 너비 고정 */
-    height: 120px; /* 높이 고정 */
+    width: 140px;
+    height: 120px;
     border-radius: 12px;
     background-color: #f8f9fa;
     color: #495057;
@@ -124,7 +124,7 @@ const VisitButton = styled.button`
     border: 1px solid #dee2e6;
     transition: all 0.2s ease-in-out;
     cursor: pointer;
-    font-size: 1rem; /* 폰트 크기 명시 */
+    font-size: 1rem;
 
     & > span:first-child {
         font-size: 2rem;
@@ -132,7 +132,7 @@ const VisitButton = styled.button`
     }
     
     & > span:last-child {
-        line-height: 1.2; /* 줄간격 조정 */
+        line-height: 1.2;
     }
 
     &:hover {
@@ -146,17 +146,18 @@ const SuggestionButton = styled(Link)`
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    text-align: center; /* 텍스트 가운데 정렬 추가 */
     text-decoration: none;
     padding: 1rem;
-    width: 140px; /* 너비 고정 */
-    height: 120px; /* 높이 고정 */
+    width: 140px;
+    height: 120px;
     border-radius: 12px;
     background-color: #f8f9fa;
     color: #495057;
     font-weight: bold;
     border: 1px solid #dee2e6;
     transition: all 0.2s ease-in-out;
-    font-size: 1rem; /* 폰트 크기 명시 */
+    font-size: 1rem;
 
     & > span:first-child {
         font-size: 2rem;
@@ -164,7 +165,7 @@ const SuggestionButton = styled(Link)`
     }
 
     & > span:last-child {
-        line-height: 1.2; /* 줄간격 조정 */
+        line-height: 1.2;
     }
 
     &:hover {
@@ -570,8 +571,8 @@ function DashboardPage() {
                         </ProfileLink>
                         <ActionButtonsWrapper>
                             <VisitButton onClick={handleRandomVisit}>
-                                <span>🏠</span>
-                                <span>친구집<br />구경가기</span>
+                                <span>👫</span>
+                                <span>친구집<br />놀러가기</span>
                             </VisitButton>
                             <SuggestionButton to="/suggestions">
                                 <span>💌</span>
