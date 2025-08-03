@@ -1666,14 +1666,22 @@ export async function getMyRoomItems() {
 }
 
 /**
- * 여러 마이룸 아이템의 가격 정보를 일괄 업데이트합니다.
- * @param {Array<object>} updates - 업데이트할 아이템 정보 배열 (e.g., [{ id: 'sofa1', price: 500 }])
+ * 여러 마이룸 아이템의 상세 정보(가격, 크기 등)를 일괄 업데이트합니다.
+ * @param {Array<object>} updates - 업데이트할 아이템 정보 배열 (e.g., [{ id: 'sofa1', price: 500, width: 20 }])
  */
-export async function batchUpdateMyRoomItemPrices(updates) {
+export async function batchUpdateMyRoomItemDetails(updates) {
   const batch = writeBatch(db);
   updates.forEach(item => {
     const itemRef = doc(db, 'myRoomItems', item.id);
-    batch.update(itemRef, { price: item.price });
+    const dataToUpdate = {};
+    // undefined가 아닌 경우에만 업데이트 객체에 추가
+    if (item.price !== undefined) dataToUpdate.price = item.price;
+    if (item.width !== undefined) dataToUpdate.width = item.width;
+
+    // 업데이트할 내용이 있을 경우에만 batch에 추가
+    if (Object.keys(dataToUpdate).length > 0) {
+      batch.update(itemRef, dataToUpdate);
+    }
   });
   await batch.commit();
 }

@@ -31,12 +31,15 @@ import {
     // ▼▼▼ [신규] 마이룸 아이템 관련 함수 import ▼▼▼
     uploadMyRoomItem,
     getMyRoomItems,
-    batchUpdateMyRoomItemPrices,
+    batchUpdateMyRoomItemDetails,
     batchDeleteMyRoomItems,
     batchUpdateMyRoomItemSaleInfo,
     batchEndMyRoomItemSale,
     batchUpdateMyRoomItemSaleDays,
-    updateMyRoomItemDisplayName // <--- 이 부분을 추가해주세요!
+    updateMyRoomItemDisplayName,
+    getAllMyRoomComments, // 댓글 모니터링 함수 import
+    deleteMyRoomComment,  // 댓글 삭제 함수 import
+    deleteMyRoomReply     // 답글 삭제 함수 import
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
@@ -222,6 +225,33 @@ const ChatLayout = styled.div`
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   overflow: hidden;
+`;
+
+const MonitorCommentCard = styled.div`
+    background-color: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+`;
+
+const MonitorHeader = styled.div`
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+    & > strong { color: #007bff; }
+    & > span { cursor: pointer; text-decoration: underline; }
+`;
+
+const MonitorContent = styled.p`
+    margin: 0 0 0.5rem;
+`;
+
+const MonitorReply = styled.div`
+    border-left: 3px solid #ced4da;
+    padding-left: 1rem;
+    margin-left: 1rem;
+    font-size: 0.95rem;
 `;
 
 const StudentListPanel = styled.div`
@@ -746,7 +776,78 @@ function PendingMissionWidget() {
     );
 }
 
-function SuggestionManager() {
+function MyRoomCommentMonitor() {
+    const { players } = useLeagueStore();
+    const [allComments, setAllComments] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const fetchComments = async () => {
+            setIsLoading(true);
+            const comments = await getAllMyRoomComments();
+            setAllComments(comments);
+            setIsLoading(false);
+        };
+        fetchComments();
+    }, []);
+
+    const handleDeleteComment = async (roomId, commentId) => {
+        if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
+            await deleteMyRoomComment(roomId, commentId);
+            setAllComments(prev => prev.filter(c => c.id !== commentId));
+        }
+    };
+
+    const handleDeleteReply = async (roomId, commentId, reply) => {
+        if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
+            const comment = allComments.find(c => c.id === commentId);
+            if (comment) {
+                // Firestore 타임스탬프 객체 비교를 위해 toDate().getTime() 사용
+                const updatedReplies = comment.replies.filter(r =>
+                    !(r.createdAt?.toDate().getTime() === reply.createdAt?.toDate().getTime() && r.text === reply.text)
+                );
+                await deleteMyRoomReply(roomId, commentId, reply);
+                setAllComments(prev => prev.map(c => c.id === commentId ? { ...c, replies: updatedReplies } : c));
+            }
+        }
+    };
+
+    if (isLoading) return <Section><p>댓글을 불러오는 중...</p></Section>;
+
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>마이룸 댓글 모음</SectionTitle>
+                <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                    {allComments.map(comment => {
+                        const roomOwner = players.find(p => p.id === comment.roomId);
+                        return (
+                            <MonitorCommentCard key={comment.id}>
+                                <MonitorHeader>
+                                    <strong>{comment.commenterName}</strong> → <span onClick={() => navigate(`/my-room/${roomOwner?.id}`)}><strong>{roomOwner?.name || '??'}</strong>님의 마이룸</span>
+                                    <StyledButton onClick={() => handleDeleteComment(comment.roomId, comment.id)} style={{ float: 'right', padding: '0.2rem 0.5rem', fontSize: '0.8rem', backgroundColor: '#dc3545' }}>댓글 삭제</StyledButton>
+                                </MonitorHeader>
+                                <MonitorContent>{comment.text}</MonitorContent>
+                                {comment.replies?.map((reply, index) => (
+                                    <MonitorReply key={index}>
+                                        <MonitorHeader>
+                                            <strong>{reply.replierName}</strong>(방주인)
+                                            <StyledButton onClick={() => handleDeleteReply(comment.roomId, comment.id, reply)} style={{ float: 'right', padding: '0.2rem 0.5rem', fontSize: '0.8rem', backgroundColor: '#6c757d' }}>답글 삭제</StyledButton>
+                                        </MonitorHeader>
+                                        <MonitorContent>{reply.text}</MonitorContent>
+                                    </MonitorReply>
+                                ))}
+                            </MonitorCommentCard>
+                        )
+                    })}
+                </div>
+            </Section>
+        </FullWidthSection>
+    );
+}
+
+function MessageManager() {
     const { players } = useLeagueStore();
     const [allSuggestions, setAllSuggestions] = useState([]);
     const [selectedStudentId, setSelectedStudentId] = useState(null);
@@ -1573,6 +1674,7 @@ function MyRoomItemManager() {
     const [isUploading, setIsUploading] = useState(false);
     const [prices, setPrices] = useState({});
     const [displayNames, setDisplayNames] = useState({});
+    const [widths, setWidths] = useState({}); // [신규] 아이템 너비 상태
     const [checkedItems, setCheckedItems] = useState(new Set());
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -1596,12 +1698,15 @@ function MyRoomItemManager() {
         setMyRoomItems(myRoomItemsFromStore);
         const initialPrices = {};
         const initialDisplayNames = {};
+        const initialWidths = {}; // [신규]
         myRoomItemsFromStore.forEach(item => {
             initialPrices[item.id] = item.price || 0;
             initialDisplayNames[item.id] = item.displayName || '';
+            initialWidths[item.id] = item.width || 15; // [신규] 기본값 15%
         });
         setPrices(initialPrices);
         setDisplayNames(initialDisplayNames);
+        setWidths(initialWidths); // [신규]
         if (myRoomItemsFromStore.length > 0 || !useLeagueStore.getState().isLoading) {
             setIsLoading(false);
         }
@@ -1632,6 +1737,7 @@ function MyRoomItemManager() {
     const handleFileChange = (e) => setFiles(Array.from(e.target.files));
     const handlePriceChange = (itemId, value) => setPrices(prev => ({ ...prev, [itemId]: value }));
     const handleDisplayNameChange = (itemId, value) => setDisplayNames(prev => ({ ...prev, [itemId]: value }));
+    const handleWidthChange = (itemId, value) => setWidths(prev => ({ ...prev, [itemId]: value })); // [신규]
     const handleCheckboxChange = (itemId) => {
         setCheckedItems(prev => {
             const newSet = new Set(prev);
@@ -1685,7 +1791,7 @@ function MyRoomItemManager() {
             const priceUpdates = Object.entries(prices)
                 .filter(([id]) => itemCategories[activeTab]?.some(item => item.id === id))
                 .map(([id, price]) => ({ id, price: Number(price) }));
-            await batchUpdateMyRoomItemPrices(priceUpdates);
+            await batchUpdateMyRoomItemDetails(priceUpdates);
             alert('가격이 성공적으로 저장되었습니다.');
             refreshItems();
         } catch (error) {
@@ -1866,7 +1972,11 @@ function MyRoomItemManager() {
                                             <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>{saleDaysText}</div>
                                         )}
                                         <ScoreInput type="number" value={prices[item.id] || ''} onChange={(e) => handlePriceChange(item.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: '0.5rem 0' }} />
-
+                                        {/* ▼▼▼ [신규] 너비 조절 입력 필드 추가 ▼▼▼ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                            <label htmlFor={`width-${item.id}`} style={{ fontSize: '0.8rem' }}>크기(%):</label>
+                                            <ScoreInput id={`width-${item.id}`} type="number" value={widths[item.id] || ''} onChange={(e) => handleWidthChange(item.id, e.target.value)} style={{ width: '100%', margin: 0 }} />
+                                        </div>
                                         {isCurrentlyOnSale && (
                                             <div style={{ fontSize: '0.8em', color: 'red', marginTop: '0.5rem' }}>
                                                 <p style={{ margin: 0 }}>{item.salePrice}P ({Math.round(100 - (item.salePrice / item.originalPrice * 100))}%)</p>
@@ -2552,8 +2662,8 @@ function LeagueManager() {
 function AdminPage() {
     const { tab } = useParams();
     const [activeMenu, setActiveMenu] = useState(tab || 'mission');
-    const [activeSubMenu, setActiveSubMenu] = useState('');
-    const [shopSubMenu, setShopSubMenu] = useState('avatar'); // [신규] 상점 관리 서브메뉴 상태
+    const [activeSubMenu, setActiveSubMenu] = useState('messages'); // 소셜 관리의 기본 서브메뉴
+    const [shopSubMenu, setShopSubMenu] = useState('avatar');
 
     const renderContent = () => {
         if (activeMenu === 'mission') {
@@ -2567,8 +2677,12 @@ function AdminPage() {
                 </>
             );
         }
-        if (activeMenu === 'suggestion') {
-            return <SuggestionManager />;
+        if (activeMenu === 'social') {
+            switch (activeSubMenu) {
+                case 'messages': return <MessageManager />;
+                case 'comments': return <MyRoomCommentMonitor />;
+                default: return <MessageManager />;
+            }
         }
         if (activeMenu === 'student') {
             return (
@@ -2579,7 +2693,6 @@ function AdminPage() {
             )
         }
         if (activeMenu === 'shop') {
-            // [수정] 서브메뉴에 따라 다른 컴포넌트 렌더링
             switch (shopSubMenu) {
                 case 'avatar': return <AvatarPartManager />;
                 case 'myroom': return <MyRoomItemManager />;
@@ -2590,18 +2703,18 @@ function AdminPage() {
             switch (activeSubMenu) {
                 case 'league_manage': return <LeagueManager />;
                 case 'player_manage': return <PlayerManager />;
-                default: return <PlayerManager />;
+                default: return <LeagueManager />;
             }
         }
-        return <SuggestionManager />;
+        return <PendingMissionWidget />;
     };
 
     const handleMenuClick = (menu) => {
         setActiveMenu(menu);
-        if (menu === 'league') {
-            if (activeMenu !== 'league') {
-                setActiveSubMenu('league_manage');
-            }
+        if (menu === 'social') {
+            if (activeMenu !== 'social') setActiveSubMenu('messages');
+        } else if (menu === 'league') {
+            if (activeMenu !== 'league') setActiveSubMenu('league_manage');
         } else {
             setActiveSubMenu('');
         }
@@ -2615,13 +2728,18 @@ function AdminPage() {
                         <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
                     </NavItem>
                     <NavItem>
-                        <NavButton $active={activeMenu === 'suggestion'} onClick={() => handleMenuClick('suggestion')}>학생 메시지</NavButton>
+                        <NavButton $active={activeMenu === 'social'} onClick={() => handleMenuClick('social')}>소셜 관리</NavButton>
+                        {activeMenu === 'social' && (
+                            <SubNavList>
+                                <SubNavItem><SubNavButton $active={activeSubMenu === 'messages'} onClick={() => setActiveSubMenu('messages')}>1:1 메시지</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={activeSubMenu === 'comments'} onClick={() => setActiveSubMenu('comments')}>마이룸 댓글 모음</SubNavButton></SubNavItem>
+                            </SubNavList>
+                        )}
                     </NavItem>
                     <NavItem>
                         <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
                     </NavItem>
                     <NavItem>
-                        {/* [수정] 상점 관리 메뉴 및 서브메뉴 추가 */}
                         <NavButton $active={activeMenu === 'shop'} onClick={() => handleMenuClick('shop')}>상점 관리</NavButton>
                         {activeMenu === 'shop' && (
                             <SubNavList>

@@ -62,7 +62,7 @@ const RoomBackground = styled.img`
 const DraggableItem = styled.img`
   position: absolute;
   cursor: grab;
-  width: ${props => props.$width || '15%'};
+  width: ${props => props.$width}%; /* Firestore의 width 값을 직접 사용 */
   height: auto;
   z-index: ${props => props.$zIndex};
   left: ${props => props.$left}%;
@@ -595,6 +595,7 @@ function MyRoomPage() {
           return (
             <DraggableItem
               key={itemId} src={itemInfo.src} alt={itemInfo.displayName || itemId}
+              $width={itemInfo.width || 15} // Firestore에 저장된 width 값 사용 (없으면 기본값 15)
               $left={config.left} $top={config.top} $zIndex={config.zIndex} $isFlipped={config.isFlipped}
               onMouseDown={(e) => handleMouseDown(e, itemId)}
               onDoubleClick={() => handleDoubleClick(itemId)}
