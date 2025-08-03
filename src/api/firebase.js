@@ -480,16 +480,29 @@ export async function uploadAvatarPart(file, category) {
   const uploadResult = await uploadBytes(storageRef, file);
   const downloadURL = await getDownloadURL(uploadResult.ref);
 
-  const partDocRef = doc(db, 'avatarParts', file.name);
-  // [수정] createdAt 필드에 서버의 현재 시간을 기록하도록 추가
-  await setDoc(partDocRef, {
+  const newPartData = {
     id: file.name,
     category: category,
     src: downloadURL,
     status: 'visible',
-    createdAt: serverTimestamp(), // 아이템 생성 시간 기록
-  });
-  return { id: file.name, category, src: downloadURL, status: 'visible' };
+    createdAt: serverTimestamp(),
+    displayName: file.name.split('.')[0], // 파일명을 기본 표시 이름으로 사용
+    price: 0,
+    isSale: false,
+    salePrice: null,
+    originalPrice: null,
+    saleStartDate: null,
+    saleEndDate: null,
+    saleDays: [],
+    slot: 'face' // 액세서리를 위한 기본값
+  };
+
+  const partDocRef = doc(db, 'avatarParts', file.name);
+  await setDoc(partDocRef, newPartData);
+
+  // Firestore에서 반환된 Timestamp 객체를 포함하여 반환해야 로컬 상태와 동기화됩니다.
+  const savedDoc = await getDoc(partDocRef);
+  return savedDoc.data();
 }
 
 export async function updateAvatarPartStatus(partId, status) {
@@ -1459,11 +1472,13 @@ export async function likeMyRoomComment(roomId, commentId, likerId) {
 
       await addPointHistory(commentData.commenterId, commentData.commenterName, 30, "칭찬 댓글 '좋아요' 보상");
 
-      createNotification(
+      // ▼▼▼ [수정] 알림 통합 로직으로 변경 ▼▼▼
+      await createOrUpdateAggregatedNotification(
         commentData.commenterId,
+        "comment_like",
+        30,
         "❤️ 내 댓글에 '좋아요'를 받았어요!",
-        `칭찬 댓글 보상으로 30P를 획득했습니다!`,
-        "comment_like"
+        "칭찬 댓글 보상으로 {amount}P를 획득했습니다!"
       );
     });
   } else {
@@ -1518,12 +1533,14 @@ export async function likeMyRoomReply(roomId, commentId, reply, likerId) {
     const roomOwnerData = roomOwnerSnap.data();
     await addPointHistory(roomId, roomOwnerData.name, 15, "내 답글 '좋아요' 보상");
 
-    createNotification(
-      roomId,
+    await createOrUpdateAggregatedNotification(
+      roomId, // 알림 받을 사람 (방 주인)
+      "reply_like",
+      15,
       "❤️ 내 답글에 '좋아요'를 받았어요!",
-      `답글 '좋아요' 보상으로 15P를 획득했습니다!`,
-      "reply_like"
+      "답글 '좋아요' 보상으로 {amount}P를 획득했습니다!"
     );
+    // ▲▲▲ [수정 완료] ▲▲▲
   });
 }
 
@@ -1617,6 +1634,53 @@ export async function addMyRoomReply(roomId, commentId, replyData) {
     "myroom_reply",
     `/my-room/${roomId}`
   );
+}
+
+async function createOrUpdateAggregatedNotification(userId, type, amount, title, bodyTemplate) {
+  if (!userId) return;
+
+  const notifsRef = collection(db, 'notifications');
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+  const q = query(
+    notifsRef,
+    where('userId', '==', userId),
+    where('type', '==', type),
+    where('isRead', '==', false),
+    where('createdAt', '>=', fiveMinutesAgo),
+    orderBy('createdAt', 'desc'),
+    limit(1)
+  );
+
+  const querySnapshot = await getDocs(q);
+
+  if (!querySnapshot.empty) {
+    // 5분 내에 읽지 않은 동일 타입의 알림이 있으면, 해당 알림을 업데이트
+    const existingNotifDoc = querySnapshot.docs[0];
+    const existingNotifData = existingNotifDoc.data();
+    const existingAmount = existingNotifData.aggregatedAmount || 0;
+    const newAmount = existingAmount + amount;
+
+    await updateDoc(existingNotifDoc.ref, {
+      body: bodyTemplate.replace('{amount}', newAmount),
+      createdAt: serverTimestamp(), // 최신 시간으로 갱신
+      aggregatedAmount: newAmount,
+      aggregationCount: (existingNotifData.aggregationCount || 1) + 1
+    });
+  } else {
+    // 없으면 새로 생성
+    await addDoc(notifsRef, {
+      userId,
+      title,
+      body: bodyTemplate.replace('{amount}', amount),
+      type,
+      link: null,
+      isRead: false,
+      createdAt: serverTimestamp(),
+      aggregatedAmount: amount,
+      aggregationCount: 1
+    });
+  }
 }
 
 // =================================================================

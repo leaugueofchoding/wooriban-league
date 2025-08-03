@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, buyMultipleAvatarParts, updatePlayerAvatar } from '../api/firebase';
+import { auth, buyMultipleAvatarParts, updatePlayerAvatar, buyMyRoomItem } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 import { useNavigate } from 'react-router-dom';
 
@@ -148,14 +148,14 @@ const ItemImage = styled.div`
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
-  background-size: ${props => ['바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '200%'};
+  background-size: ${props => ['하우스', '배경', '바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '200%'};
   background-repeat: no-repeat;
   background-color: #e9ecef;
   background-position: ${props => getBackgroundPosition(props.$category)};
   transition: background-size 0.2s ease-in-out;
 
   &:hover {
-    background-size: ${props => ['바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '220%'};
+    background-size: ${props => ['하우스', '배경', '바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '220%'};
   }
 
   @media (max-width: 768px) {
@@ -295,13 +295,13 @@ const translateCategory = (category) => {
   const categoryMap = {
     'all': '전체', 'hair': '헤어', 'top': '상의', 'bottom': '하의', 'shoes': '신발',
     'face': '얼굴', 'eyes': '눈', 'nose': '코', 'mouth': '입', 'accessory': '액세서리',
-    '배경': '배경', '바닥': '바닥', '벽지': '벽지', '가구': '가구', '소품': '소품'
+    '하우스': '하우스', '가구': '가구', '소품': '소품'
   };
   return categoryMap[category] || category;
 };
 
 function ShopPage() {
-  const { players, avatarParts, myRoomItems, fetchInitialData, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
+  const { players, avatarParts, myRoomItems, fetchInitialData, buyMyRoomItem } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
   const [mainTab, setMainTab] = useState('avatar');
@@ -321,7 +321,7 @@ function ShopPage() {
 
   const partCategories = useMemo(() => {
     if (mainTab === 'myroom') {
-      return ['배경', '바닥', '벽지', '가구', '소품'];
+      return ['하우스', '가구', '소품'];
     }
     const today = new Date().getDay();
     const categories = avatarParts.reduce((acc, part) => {
@@ -357,12 +357,12 @@ function ShopPage() {
       }
     } else {
       items = myRoomItems.filter(item => item.price > 0 && item.status !== 'hidden');
-      if (activeTab) {
+      if (activeTab && partCategories.includes(activeTab)) {
         items = items.filter(item => item.category === activeTab);
       }
     }
     return items;
-  }, [avatarParts, myRoomItems, mainTab, activeTab]);
+  }, [avatarParts, myRoomItems, mainTab, activeTab, partCategories]);
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
@@ -376,7 +376,7 @@ function ShopPage() {
     if (mainTab === 'avatar') {
       setActiveTab('all');
     } else {
-      setActiveTab('바닥');
+      setActiveTab('하우스');
     }
   }, [mainTab]);
 

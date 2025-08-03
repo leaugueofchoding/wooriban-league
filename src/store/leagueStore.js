@@ -263,22 +263,31 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ▼▼▼ [수정] 문법 오류가 발생했던 부분 ▼▼▼
-    batchAdjustPoints: async (playerIds, amount, reason) => {
-        const playerNames = playerIds.map(id => get().players.find(p => p.id === id)?.name).join(', ');
-        const actionText = amount > 0 ? '지급' : '차감';
-        const confirmationMessage = `${playerNames} 선수들에게 ${Math.abs(amount)} 포인트를 ${actionText}하시겠습니까?\n\n사유: ${reason}`;
-        if (!window.confirm(confirmationMessage)) return;
-        try {
-            await batchAdjustPlayerPoints(playerIds, amount, reason);
-            const players = await getPlayers();
-            set({ players });
-            alert('포인트가 성공적으로 일괄 조정되었습니다.');
-        } catch (error) {
-            alert(`포인트 조정 중 오류가 발생했습니다: ${error.message}`);
-        }
+    buyMultipleAvatarParts: async (partsToBuy) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
+        const newPartIds = partsToBuy.map(part => part.id);
+
+        await buyMultipleAvatarParts(myPlayerData.id, partsToBuy);
+
+        // ▼▼▼ [수정] 로컬 상태 직접 업데이트 (새로고침 방지) ▼▼▼
+        set(state => ({
+            players: state.players.map(player => {
+                if (player.id === myPlayerData.id) {
+                    return {
+                        ...player,
+                        points: player.points - totalCost,
+                        ownedParts: [...(player.ownedParts || []), ...newPartIds]
+                    };
+                }
+                return player;
+            })
+        }));
     },
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     buyMultipleAvatarParts: async (partsToBuy) => {
         const user = auth.currentUser;
@@ -296,10 +305,22 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        await buyMyRoomItem(myPlayerData.id, item);
-        await get().fetchInitialData();
-    },
+        const finalPrice = await buyMyRoomItem(myPlayerData.id, item); // [수정] 최종 가격을 반환받도록 변경
 
+        // ▼▼▼ [수정] 로컬 상태 직접 업데이트 (새로고침 방지) ▼▼▼
+        set(state => ({
+            players: state.players.map(player => {
+                if (player.id === myPlayerData.id) {
+                    return {
+                        ...player,
+                        points: player.points - finalPrice,
+                        ownedMyRoomItems: [...(player.ownedMyRoomItems || []), item.id]
+                    };
+                }
+                return player;
+            })
+        }));
+    },
     updatePlayerProfile: async (profileData) => {
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");

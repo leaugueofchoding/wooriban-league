@@ -1404,11 +1404,14 @@ function AvatarPartManager() {
         if (files.length === 0) return alert('파일을 선택해주세요.');
         setIsUploading(true);
         try {
-            await Promise.all(files.map(file => uploadAvatarPart(file, uploadCategory)));
+            const newItems = await Promise.all(files.map(file => uploadMyRoomItem(file, uploadCategory)));
+            useLeagueStore.setState(state => ({
+                myRoomItems: [...state.myRoomItems, ...newItems]
+            }));
             alert(`${files.length}개의 아이템이 업로드되었습니다!`);
             setFiles([]);
-            document.getElementById('avatar-file-input').value = "";
-            await fetchInitialData();
+            document.getElementById('myroom-file-input').value = "";
+            // refreshItems(); // 전체 데이터 새로고침 제거
         } catch (error) {
             alert('아이템 업로드 중 오류가 발생했습니다.');
         } finally { setIsUploading(false); }
@@ -1432,7 +1435,18 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
-                await fetchInitialData();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => {
+                    const updatedAvatarParts = state.avatarParts.map(part => {
+                        if (checkedItems.has(part.id)) {
+                            const originalPrice = part.price;
+                            const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
+                            return { ...part, isSale: true, originalPrice, salePrice, saleStartDate: startDate, saleEndDate: endDate };
+                        }
+                        return part;
+                    });
+                    return { avatarParts: updatedAvatarParts };
+                });
                 setCheckedItems(new Set());
                 setIsSaleMode(false);
                 alert('세일이 적용되었습니다.');
@@ -1444,7 +1458,12 @@ function AvatarPartManager() {
         if (window.confirm(`'${partId}' 아이템의 세일을 즉시 종료하시겠습니까?`)) {
             try {
                 await batchEndSale([partId]);
-                await fetchInitialData();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => ({
+                    avatarParts: state.avatarParts.map(part =>
+                        part.id === partId ? { ...part, isSale: false, salePrice: null, originalPrice: null, saleStartDate: null, saleEndDate: null } : part
+                    )
+                }));
                 alert('세일이 종료되었습니다.');
             } catch (error) { alert(`세일 종료 실패: ${error.message}`); }
         }
@@ -1466,7 +1485,12 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템을 [${dayNames}] 요일에만 판매하도록 설정하시겠습니까?\n(선택한 요일이 없으면 상시 판매로 변경됩니다.)`)) {
             try {
                 await batchUpdateSaleDays(Array.from(checkedItems), dayArray);
-                await fetchInitialData();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => ({
+                    avatarParts: state.avatarParts.map(part =>
+                        checkedItems.has(part.id) ? { ...part, saleDays: dayArray } : part
+                    )
+                }));
                 setCheckedItems(new Set());
                 setIsSaleDayMode(false);
                 alert('판매 요일이 설정되었습니다.');
@@ -1483,7 +1507,10 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템(${itemNames})을 영구적으로 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`)) {
             try {
                 await batchDeleteAvatarParts(itemsToDelete);
-                await fetchInitialData();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => ({
+                    avatarParts: state.avatarParts.filter(part => !checkedItems.has(part.id))
+                }));
                 setCheckedItems(new Set());
                 setIsDeleteMode(false);
                 alert('선택한 아이템이 삭제되었습니다.');
@@ -1721,7 +1748,7 @@ function MyRoomItemManager() {
         }, {});
     }, [myRoomItems]);
 
-    const sortedCategories = ['배경', '바닥', '벽지', '가구', '소품'];
+    const sortedCategories = ['하우스', '배경', '가구', '소품']; // 카테고리 목록 수정
     const [activeTab, setActiveTab] = useState('가구');
 
     useEffect(() => {
@@ -1821,10 +1848,13 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템(${itemNames})을 영구적으로 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`)) {
             try {
                 await batchDeleteMyRoomItems(itemsToDelete);
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => ({
+                    myRoomItems: state.myRoomItems.filter(item => !checkedItems.has(item.id))
+                }));
                 setCheckedItems(new Set());
                 setIsDeleteMode(false);
                 alert('선택한 아이템이 삭제되었습니다.');
-                refreshItems();
             } catch (error) {
                 alert(`삭제 실패: ${error.message}`);
             }
@@ -1838,7 +1868,18 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateMyRoomItemSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
-                refreshItems();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => {
+                    const updatedMyRoomItems = state.myRoomItems.map(item => {
+                        if (checkedItems.has(item.id)) {
+                            const originalPrice = item.price;
+                            const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
+                            return { ...item, isSale: true, originalPrice, salePrice, saleStartDate: startDate, saleEndDate: endDate };
+                        }
+                        return item;
+                    });
+                    return { myRoomItems: updatedMyRoomItems };
+                });
                 setCheckedItems(new Set());
                 setIsSaleMode(false);
                 alert('세일이 적용되었습니다.');
@@ -1850,7 +1891,12 @@ function MyRoomItemManager() {
         if (window.confirm(`'${itemId}' 아이템의 세일을 즉시 종료하시겠습니까?`)) {
             try {
                 await batchEndMyRoomItemSale([itemId]);
-                refreshItems();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => ({
+                    myRoomItems: state.myRoomItems.map(item =>
+                        item.id === itemId ? { ...item, isSale: false, salePrice: null, originalPrice: null, saleStartDate: null, saleEndDate: null } : item
+                    )
+                }));
                 alert('세일이 종료되었습니다.');
             } catch (error) { alert(`세일 종료 실패: ${error.message}`); }
         }
@@ -1872,7 +1918,12 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템을 [${dayNames}] 요일에만 판매하도록 설정하시겠습니까?\n(선택한 요일이 없으면 상시 판매로 변경됩니다.)`)) {
             try {
                 await batchUpdateMyRoomItemSaleDays(Array.from(checkedItems), dayArray);
-                refreshItems();
+                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                useLeagueStore.setState(state => ({
+                    myRoomItems: state.myRoomItems.map(item =>
+                        checkedItems.has(item.id) ? { ...item, saleDays: dayArray } : item
+                    )
+                }));
                 setCheckedItems(new Set());
                 setIsSaleDayMode(false);
                 alert('판매 요일이 설정되었습니다.');
@@ -1888,8 +1939,7 @@ function MyRoomItemManager() {
                     <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg, image/gif" multiple />
                     <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
                         <option value="배경">배경</option>
-                        <option value="바닥">바닥</option>
-                        <option value="벽지">벽지</option>
+                        <option value="하우스">하우스</option>
                         <option value="가구">가구</option>
                         <option value="소품">소품</option>
                     </select>
