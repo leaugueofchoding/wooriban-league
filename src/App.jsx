@@ -22,6 +22,8 @@ import PlayerStatsPage from './pages/PlayerStatsPage';
 import TeamDetailPage from './pages/TeamDetailPage';
 import SuggestionPage from './pages/SuggestionPage';
 import MyRoomPage from './pages/MyRoomPage'; // [신규] 마이룸 페이지 import
+import BroadcastPage from './pages/BroadcastPage'; // [신규] TV 송출용 페이지 import
+
 
 // Common Components
 import Auth from './components/Auth';
@@ -133,6 +135,7 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/access-denied" element={<AccessDenied />} />
+            <Route path="/broadcast" element={<BroadcastPage />} /> {/* [신규] TV 송출용 페이지 라우트 */}
 
             {/* 가가볼 리그 관련 라우트 */}
             <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
