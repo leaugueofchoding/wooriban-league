@@ -41,7 +41,8 @@ import {
     updateMyRoomItemDisplayName,
     buyMyRoomItem,
     buyMultipleAvatarParts, // [복원] 누락되었던 함수 import
-    updatePlayerProfile // [복원] 누락되었던 함수 import
+    updatePlayerProfile, // [복원] 누락되었던 함수 import
+    updateMatchStatus
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -269,32 +270,6 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
-        const newPartIds = partsToBuy.map(part => part.id);
-
-        await buyMultipleAvatarParts(myPlayerData.id, partsToBuy);
-
-        // ▼▼▼ [수정] 로컬 상태 직접 업데이트 (새로고침 방지) ▼▼▼
-        set(state => ({
-            players: state.players.map(player => {
-                if (player.id === myPlayerData.id) {
-                    return {
-                        ...player,
-                        points: player.points - totalCost,
-                        ownedParts: [...(player.ownedParts || []), ...newPartIds]
-                    };
-                }
-                return player;
-            })
-        }));
-    },
-
-    buyMultipleAvatarParts: async (partsToBuy) => {
-        const user = auth.currentUser;
-        if (!user) throw new Error("로그인이 필요합니다.");
-        const myPlayerData = get().players.find(p => p.authUid === user.uid);
-        if (!myPlayerData) throw new Error("Player data not found.");
-
         await buyMultipleAvatarParts(myPlayerData.id, partsToBuy);
         await get().fetchInitialData();
     },
@@ -305,21 +280,8 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        const finalPrice = await buyMyRoomItem(myPlayerData.id, item); // [수정] 최종 가격을 반환받도록 변경
-
-        // ▼▼▼ [수정] 로컬 상태 직접 업데이트 (새로고침 방지) ▼▼▼
-        set(state => ({
-            players: state.players.map(player => {
-                if (player.id === myPlayerData.id) {
-                    return {
-                        ...player,
-                        points: player.points - finalPrice,
-                        ownedMyRoomItems: [...(player.ownedMyRoomItems || []), item.id]
-                    };
-                }
-                return player;
-            })
-        }));
+        await buyMyRoomItem(myPlayerData.id, item);
+        await get().fetchInitialData();
     },
     updatePlayerProfile: async (profileData) => {
         const user = auth.currentUser;
@@ -330,7 +292,6 @@ export const useLeagueStore = create((set, get) => ({
         await updatePlayerProfile(myPlayerData.id, profileData);
         await get().fetchInitialData();
     },
-    // ▲▲▲ [복원 완료] ▲▲▲
 
     subscribeToPlayerData: (userId) => {
         const playerDocRef = doc(db, 'players', userId);
@@ -462,6 +423,26 @@ export const useLeagueStore = create((set, get) => ({
         return isCorrect;
     },
 
+    // ▼▼▼ [핵심 수정] batchAdjustPoints를 스토어 액션으로 추가 ▼▼▼
+    batchAdjustPoints: async (playerIds, amount, reason) => {
+        try {
+            await batchAdjustPlayerPoints(playerIds, amount, reason);
+            // 성공 후 로컬 상태 업데이트
+            set(state => ({
+                players: state.players.map(player => {
+                    if (playerIds.includes(player.id)) {
+                        return { ...player, points: (player.points || 0) + amount };
+                    }
+                    return player;
+                })
+            }));
+        } catch (error) {
+            console.error("포인트 일괄 조정 오류:", error);
+            alert("포인트 조정 중 오류가 발생했습니다.");
+        }
+    },
+    // ▲▲▲ 여기까지 수정 ▲▲▲
+
     createSeason: async (seasonName) => {
         await createNewSeason(seasonName);
         const seasonsData = await getSeasons();
@@ -479,14 +460,13 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) { console.error("시즌 시작 오류:", error); }
     },
 
-
     endSeason: async () => {
         const season = get().currentSeason;
         if (!season || season.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
         if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
 
         try {
-            const { teams, matches, players, batchAdjustPoints } = get();
+            const { teams, matches, players } = get();
             const completedMatches = matches.filter(m => m.status === '완료');
 
             let stats = teams.map(team => ({
@@ -521,7 +501,7 @@ export const useLeagueStore = create((set, get) => ({
                     const rankedTeamId = stats[config.rank - 1].id;
                     const rankedTeam = teams.find(t => t.id === rankedTeamId);
                     if (rankedTeam && rankedTeam.members.length > 0) {
-                        await batchAdjustPoints(rankedTeam.members, config.prize, `${season.seasonName} ${config.label} 보상`);
+                        await get().batchAdjustPoints(rankedTeam.members, config.prize, `${season.seasonName} ${config.label} 보상`);
                     }
                 }
             }
@@ -542,15 +522,14 @@ export const useLeagueStore = create((set, get) => ({
                 if (maxGoals > 0) {
                     const topScorers = Object.keys(scorerPoints).filter(playerId => scorerPoints[playerId] === maxGoals);
                     if (topScorers.length > 0) {
-                        await batchAdjustPoints(topScorers, topScorerPrize, `${season.seasonName} 득점왕 보상`);
+                        await get().batchAdjustPoints(topScorers, topScorerPrize, `${season.seasonName} 득점왕 보상`);
                     }
                 }
             }
 
-            // [추가] 아바타 박제(메모리얼) 기능: 시즌에 참여한 모든 선수의 아바타 정보를 저장합니다.
-            const playersInSeason = teams.flatMap(team => team.members) // 모든 팀의 멤버 ID를 하나의 배열로 만듭니다.
-                .map(playerId => players.find(p => p.id === playerId)) // ID를 실제 선수 데이터로 변환합니다.
-                .filter(Boolean); // 혹시 모를 null 값을 제거합니다.
+            const playersInSeason = teams.flatMap(team => team.members)
+                .map(playerId => players.find(p => p.id === playerId))
+                .filter(Boolean);
 
             if (playersInSeason.length > 0) {
                 await saveAvatarMemorials(season.id, playersInSeason);

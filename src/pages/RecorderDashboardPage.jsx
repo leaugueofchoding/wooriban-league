@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, approveMissionsInBatch, rejectMissionSubmission } from '../api/firebase.js';
-// orderBy를 import 목록에 추가했습니다.
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { auth, db, approveMissionsInBatch, rejectMissionSubmission, updateMatchStatus } from '../api/firebase.js';
+import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 
 const Wrapper = styled.div`
@@ -113,17 +112,7 @@ const VsText = styled.span`
   font-size: 1.5rem;
   font-weight: 700;
   color: #343a40;
-  margin: 0 1rem; /* 양 옆에 간격을 줍니다 */
-`;
-// ▲▲▲ 여기까지 추가해주세요 ▲▲▲
-
-const SaveButton = styled.button`
-  padding: 0.5rem 1rem;
-  border: none;
-  background-color: #007bff;
-  color: white;
-  border-radius: 4px;
-  cursor: pointer;
+  margin: 0 1rem;
 `;
 
 const ScorerSection = styled.div`
@@ -214,94 +203,111 @@ const SubmissionDetails = styled.div`
     }
 `;
 
+const RemoteButton = styled.button`
+    padding: 0.5rem 1rem;
+    border: none;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+    
+    &.start { background-color: #28a745; }
+    &.end { background-color: #dc3545; }
+    &.next { background-color: #007bff; }
+`;
 
-function MatchRow({ match, isInitiallyOpen, onSave }) {
-    const { players, teams, saveScores, currentSeason } = useLeagueStore();
+
+function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchAvailable }) {
+    const { players, teams, saveScores } = useLeagueStore();
+    const [showScorers, setShowScorers] = useState(isInitiallyOpen);
 
     const teamA = useMemo(() => teams.find(t => t.id === match.teamA_id), [teams, match.teamA_id]);
     const teamB = useMemo(() => teams.find(t => t.id === match.teamB_id), [teams, match.teamB_id]);
 
-    const teamAMembers = useMemo(() => {
-        const members = teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
-        return members;
-    }, [teamA, players]);
-
-    const teamBMembers = useMemo(() => {
-        const members = teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
-        return members;
-    }, [teamB, players]);
+    const teamAMembers = useMemo(() => teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamA, players]);
+    const teamBMembers = useMemo(() => teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamB, players]);
 
     const initialScore = useMemo(() => {
-        if (typeof match.teamA_score === 'number' && typeof match.teamB_score === 'number') {
-            return { a: match.teamA_score, b: match.teamB_score };
+        if (match.status !== '예정') {
+            return { a: match.teamA_score ?? 0, b: match.teamB_score ?? 0 };
         }
         const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
-        return { a: maxMembers, b: maxMembers };
+        return { a: match.teamA_score ?? maxMembers, b: match.teamB_score ?? maxMembers };
     }, [match, teamAMembers, teamBMembers]);
 
-    const [scoreA, setScoreA] = useState(initialScore.a);
-    const [scoreB, setScoreB] = useState(initialScore.b);
-    const [showScorers, setShowScorers] = useState(isInitiallyOpen);
-    const [scorers, setScorers] = useState(match.scorers || {});
-    const [ownGoals, setOwnGoals] = useState({ A: 0, B: 0 });
-
-    const isSeasonActive = currentSeason?.status === 'active';
+    const scoreA = initialScore.a;
+    const scoreB = initialScore.b;
+    const scorers = match.scorers || {};
 
     useEffect(() => {
         setShowScorers(isInitiallyOpen);
     }, [isInitiallyOpen]);
 
-    const handleScorerChange = (playerId, amount) => {
+    const handleScoreChange = async (team, amount) => {
+        const newScoreA = team === 'A' ? Math.max(0, scoreA + amount) : scoreA;
+        const newScoreB = team === 'B' ? Math.max(0, scoreB + amount) : scoreB;
+
+        await updateDoc(doc(db, 'matches', match.id), {
+            teamA_score: newScoreA,
+            teamB_score: newScoreB,
+        });
+    };
+
+    // ▼▼▼ [핵심 수정] 득점 시 상대팀 점수 차감 및 예외처리 로직 강화 ▼▼▼
+    const handleScorerChange = async (playerId, amount) => {
         const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
         const currentGoals = scorers[playerId] || 0;
 
-        if (amount === -1 && currentGoals === 0) return;
+        // [-] 버튼 클릭 시: 득점이 0이면 아무것도 하지 않음
+        if (amount === -1 && currentGoals === 0) {
+            return;
+        }
+
+        // [+] 버튼 클릭 시: 상대팀 점수가 0이면 득점 불가
         if (amount === 1) {
-            if (playerTeam === 'A' && scoreB === 0) return;
-            if (playerTeam === 'B' && scoreA === 0) return;
-        }
-
-        setScorers(prev => {
-            const newGoals = Math.max(0, currentGoals + amount);
-            const newScorers = { ...prev };
-            if (newGoals > 0) {
-                newScorers[playerId] = newGoals;
-            } else {
-                delete newScorers[playerId];
+            if (playerTeam === 'A' && scoreB === 0) {
+                alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
+                return;
             }
-            return newScorers;
+            if (playerTeam === 'B' && scoreA === 0) {
+                alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
+                return;
+            }
+        }
+
+        const newScorers = { ...scorers };
+        const newGoals = Math.max(0, currentGoals + amount);
+        if (newGoals > 0) {
+            newScorers[playerId] = newGoals;
+        } else {
+            delete newScorers[playerId];
+        }
+
+        const newScoreA = playerTeam === 'B' ? Math.max(0, scoreA - amount) : scoreA;
+        const newScoreB = playerTeam === 'A' ? Math.max(0, scoreB - amount) : scoreB;
+
+        await updateDoc(doc(db, 'matches', match.id), {
+            scorers: newScorers,
+            teamA_score: newScoreA,
+            teamB_score: newScoreB
         });
-
-        if (playerTeam === 'A') {
-            setScoreB(s => Math.max(0, s - amount));
-        } else {
-            setScoreA(s => Math.max(0, s - amount));
-        }
     };
 
-    const handleOwnGoalChange = (team, amount) => {
-        const currentOwnGoals = ownGoals[team];
+    const handleOwnGoalChange = async (team) => {
+        const newScoreA = team === 'A' ? Math.max(0, scoreA - 1) : scoreA;
+        const newScoreB = team === 'B' ? Math.max(0, scoreB - 1) : scoreB;
 
-        if (amount === -1 && currentOwnGoals === 0) return;
-
-        if (team === 'A') {
-            if (amount === 1 && scoreA === 0) return;
-            setScoreA(s => Math.max(0, s - amount));
-        } else {
-            if (amount === 1 && scoreB === 0) return;
-            setScoreB(s => Math.max(0, s - amount));
-        }
-
-        setOwnGoals(prev => ({
-            ...prev,
-            [team]: Math.max(0, currentOwnGoals + amount)
-        }));
+        await updateDoc(doc(db, 'matches', match.id), {
+            teamA_score: newScoreA,
+            teamB_score: newScoreB
+        });
     };
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
-    const handleSave = () => {
+    const handleEndGame = () => {
         saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
-        alert('저장되었습니다!');
-        onSave(match.id);
+        onStatusChange(match.id, '완료');
     };
 
     return (
@@ -309,20 +315,29 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
             <MatchSummary>
                 <TeamName>{teamA?.teamName || 'N/A'}</TeamName>
                 <ScoreControl>
-                    <ScoreButton onClick={() => setScoreA(s => Math.max(0, s - 1))} disabled={!isSeasonActive}>-</ScoreButton>
+                    <ScoreButton onClick={() => handleScoreChange('A', -1)} disabled={match.status === '완료'}>-</ScoreButton>
                     <ScoreDisplay>{scoreA}</ScoreDisplay>
-                    <ScoreButton onClick={() => setScoreA(s => s + 1)} disabled={!isSeasonActive}>+</ScoreButton>
+                    <ScoreButton onClick={() => handleScoreChange('A', 1)} disabled={match.status === '완료'}>+</ScoreButton>
                 </ScoreControl>
                 <VsText>vs</VsText>
                 <ScoreControl>
-                    <ScoreButton onClick={() => setScoreB(s => Math.max(0, s - 1))} disabled={!isSeasonActive}>-</ScoreButton>
+                    <ScoreButton onClick={() => handleScoreChange('B', -1)} disabled={match.status === '완료'}>-</ScoreButton>
                     <ScoreDisplay>{scoreB}</ScoreDisplay>
-                    <ScoreButton onClick={() => setScoreB(s => s + 1)} disabled={!isSeasonActive}>+</ScoreButton>
+                    <ScoreButton onClick={() => handleScoreChange('B', 1)} disabled={match.status === '완료'}>+</ScoreButton>
                 </ScoreControl>
                 <TeamName>{teamB?.teamName || 'N/A'}</TeamName>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <SaveButton onClick={() => setShowScorers(s => !s)} disabled={!isSeasonActive}>득점</SaveButton>
-                    <SaveButton onClick={handleSave} disabled={!isSeasonActive}>저장</SaveButton>
+
+                <div style={{ display: 'flex', gap: '0.5rem', width: '220px', justifyContent: 'flex-end' }}>
+                    <StyledButton onClick={() => setShowScorers(s => !s)} disabled={match.status === '완료'}>득점</StyledButton>
+                    {match.status === '예정' && (
+                        <RemoteButton className="start" onClick={() => onStatusChange(match.id, '진행중')}>경기 시작</RemoteButton>
+                    )}
+                    {match.status === '진행중' && (
+                        <RemoteButton className="end" onClick={handleEndGame}>경기 종료</RemoteButton>
+                    )}
+                    {match.status === '완료' && isNextMatchAvailable && (
+                        <RemoteButton className="next" onClick={onNext}>다음 경기로</RemoteButton>
+                    )}
                 </div>
             </MatchSummary>
             {showScorers && (
@@ -333,9 +348,9 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
                                     <ScoreControl>
-                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, -1)}>-</ScoreButton>
-                                        <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
-                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, 1)}>+</ScoreButton>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, -1)} disabled={match.status === '완료'}>-</ScoreButton>
+                                        <ScoreDisplay style={{ fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, 1)} disabled={match.status === '완료'}>+</ScoreButton>
                                         <span>골</span>
                                     </ScoreControl>
                                 </ScorerRow>
@@ -343,10 +358,7 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
                             <ScorerRow>
                                 <span style={{ color: 'red' }}>자책:</span>
                                 <ScoreControl>
-                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('A', -1)}>-</ScoreButton>
-                                    <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{ownGoals.A}</ScoreDisplay>
-                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('A', 1)}>+</ScoreButton>
-                                    <span>골</span>
+                                    <ScoreButton onClick={() => handleOwnGoalChange('A')} disabled={match.status === '완료'}>+</ScoreButton>
                                 </ScoreControl>
                             </ScorerRow>
                         </TeamScorerList>
@@ -355,9 +367,9 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
                                     <ScoreControl>
-                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, -1)}>-</ScoreButton>
-                                        <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
-                                        <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleScorerChange(player.id, 1)}>+</ScoreButton>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, -1)} disabled={match.status === '완료'}>-</ScoreButton>
+                                        <ScoreDisplay style={{ fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, 1)} disabled={match.status === '완료'}>+</ScoreButton>
                                         <span>골</span>
                                     </ScoreControl>
                                 </ScorerRow>
@@ -365,10 +377,7 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
                             <ScorerRow>
                                 <span style={{ color: 'red' }}>자책:</span>
                                 <ScoreControl>
-                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('B', -1)}>-</ScoreButton>
-                                    <ScoreDisplay style={{ width: '20px', fontSize: '1.2rem' }}>{ownGoals.B}</ScoreDisplay>
-                                    <ScoreButton style={{ width: '28px', height: '28px', fontSize: '1rem' }} onClick={() => handleOwnGoalChange('B', 1)}>+</ScoreButton>
-                                    <span>골</span>
+                                    <ScoreButton onClick={() => handleOwnGoalChange('B')} disabled={match.status === '완료'}>+</ScoreButton>
                                 </ScoreControl>
                             </ScorerRow>
                         </TeamScorerList>
@@ -379,13 +388,12 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     );
 }
 
-
 function RecorderDashboardPage() {
-    const { players, missions, matches } = useLeagueStore();
+    const { players, missions, matches, saveScores } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [activeTab, setActiveTab] = useState('pending');
-    const [openedMatchId, setOpenedMatchId] = useState(null);
+    const [mainTab, setMainTab] = useState('league');
+    const [activeMatchTab, setActiveMatchTab] = useState('pending');
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
     const navigate = useNavigate();
@@ -395,24 +403,37 @@ function RecorderDashboardPage() {
         return players.find(p => p.authUid === currentUser.uid);
     }, [players, currentUser]);
 
-    const filteredMatches = useMemo(() => {
-        return matches.filter(m => (activeTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
-    }, [matches, activeTab]);
-
-    useEffect(() => {
-        const pendingMatches = matches.filter(m => m.status !== '완료');
-        if (pendingMatches.length > 0) {
-            setOpenedMatchId(pendingMatches[0].id);
-        } else {
-            setOpenedMatchId(null);
-        }
+    const sortedMatches = useMemo(() => {
+        return [...matches].sort((a, b) => {
+            const statusOrder = { '진행중': 1, '예정': 2, '완료': 3 };
+            return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
+        });
     }, [matches]);
+
+    const filteredMatches = useMemo(() => {
+        return sortedMatches.filter(m => (activeMatchTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
+    }, [sortedMatches, activeMatchTab]);
+
+    const nextUpcomingMatch = useMemo(() => {
+        return sortedMatches.find(m => m.status === '예정');
+    }, [sortedMatches]);
+
+    const isNextMatchAvailable = useMemo(() => {
+        const completedMatches = sortedMatches.filter(m => m.status === '완료');
+        const lastCompleted = completedMatches[completedMatches.length - 1];
+        return lastCompleted && nextUpcomingMatch;
+    }, [sortedMatches, nextUpcomingMatch]);
+
+    const currentOrNextMatchId = useMemo(() => {
+        const inProgress = sortedMatches.find(m => m.status === '진행중');
+        if (inProgress) return inProgress.id;
+        return nextUpcomingMatch?.id || null;
+    }, [sortedMatches, nextUpcomingMatch]);
+
 
     useEffect(() => {
         const submissionsRef = collection(db, "missionSubmissions");
-        // orderBy를 import했으므로 정상적으로 작동합니다.
         const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
-
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const validSubmissions = submissions.filter(sub =>
@@ -420,7 +441,6 @@ function RecorderDashboardPage() {
             );
             setPendingSubmissions(validSubmissions);
         });
-
         return () => unsubscribe();
     }, [missions]);
 
@@ -428,17 +448,10 @@ function RecorderDashboardPage() {
         setProcessingIds(prev => new Set(prev).add(submission.id));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
-
         if (!student || !mission || !currentUser) {
-            alert('학생 또는 미션 정보를 찾을 수 없거나, 사용자 정보가 없습니다.');
-            setProcessingIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(submission.id);
-                return newSet;
-            });
+            alert('정보를 찾을 수 없습니다.');
             return;
         }
-
         try {
             if (action === 'approve') {
                 await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, mission.reward);
@@ -446,94 +459,103 @@ function RecorderDashboardPage() {
                 await rejectMissionSubmission(submission.id, student.authUid, mission.title);
             }
         } catch (error) {
-            console.error(`미션 ${action} 오류:`, error);
-            alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
+            console.error(`미션 처리 오류:`, error);
         }
     };
 
-    const handleSaveAndOpenNext = (savedMatchId) => {
-        const pendingMatches = matches.filter(m => m.status !== '완료');
-        const currentIndex = pendingMatches.findIndex(m => m.id === savedMatchId);
+    const handleMatchStatusChange = async (matchId, newStatus) => {
+        await updateMatchStatus(matchId, newStatus);
+    };
 
-        const nextMatch = pendingMatches[currentIndex + 1];
-        setOpenedMatchId(nextMatch ? nextMatch.id : null);
+    const handleNextMatch = () => {
+        // This function is just to trigger UI update.
+        // The actual next match is shown automatically by onSnapshot.
     };
 
     return (
         <Wrapper>
-            <Section>
-                <SectionTitle>승인 대기중인 미션 ✅ ({pendingSubmissions.length}건)</SectionTitle>
-                {pendingSubmissions.length === 0 ? (
-                    <p>현재 승인을 기다리는 미션이 없습니다.</p>
-                ) : (
-                    <List>
-                        {pendingSubmissions.map(sub => {
-                            const student = players.find(p => p.id === sub.studentId);
-                            const mission = missions.find(m => m.id === sub.missionId);
-                            const isProcessing = processingIds.has(sub.id);
-                            const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
-                            const isOpen = expandedSubmissionId === sub.id;
+            <TabContainer>
+                <TabButton $active={mainTab === 'mission'} onClick={() => setMainTab('mission')}>미션 승인</TabButton>
+                <TabButton $active={mainTab === 'league'} onClick={() => setMainTab('league')}>경기 관리</TabButton>
+            </TabContainer>
 
-                            if (!mission) return null;
+            {mainTab === 'mission' && (
+                <Section>
+                    <SectionTitle>승인 대기중인 미션 ✅ ({pendingSubmissions.length}건)</SectionTitle>
+                    {pendingSubmissions.length > 0 ? (
+                        <List>
+                            {pendingSubmissions.map(sub => {
+                                const student = players.find(p => p.id === sub.studentId);
+                                const mission = missions.find(m => m.id === sub.missionId);
+                                const isProcessing = processingIds.has(sub.id);
+                                const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
+                                const isOpen = expandedSubmissionId === sub.id;
 
-                            const hasContent = sub.text || sub.photoUrl;
+                                if (!mission) return null;
 
-                            return (
-                                <ListItem key={sub.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', width: '100%', cursor: hasContent ? 'pointer' : 'default' }} onClick={() => hasContent && setExpandedSubmissionId(prev => prev === sub.id ? null : sub.id)}>
-                                        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {student?.name} - [{mission?.title}]
-                                            {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
-                                            {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
-                                        </span>
-                                        <span style={{ fontWeight: 'bold', color: '#007bff', margin: '0 1rem' }}>{mission?.reward}P</span>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <StyledButton
-                                                onClick={(e) => { e.stopPropagation(); handleAction('approve', sub); }}
-                                                style={{ backgroundColor: '#28a745' }}
-                                                disabled={isProcessing || isMyOwnSubmission}
-                                                title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
-                                            >
-                                                {isProcessing ? '처리중...' : '승인'}
-                                            </StyledButton>
-                                            <StyledButton
-                                                onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
-                                                style={{ backgroundColor: '#dc3545' }}
-                                                disabled={isProcessing || isMyOwnSubmission}
-                                                title={isMyOwnSubmission ? "자신의 미션은 거절할 수 없습니다." : ""}
-                                            >
-                                                거절
-                                            </StyledButton>
+                                const hasContent = sub.text || sub.photoUrl;
+
+                                return (
+                                    <ListItem key={sub.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', width: '100%', cursor: hasContent ? 'pointer' : 'default' }} onClick={() => hasContent && setExpandedSubmissionId(prev => prev === sub.id ? null : sub.id)}>
+                                            <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {student?.name} - [{mission?.title}]
+                                                {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
+                                                {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
+                                            </span>
+                                            <span style={{ fontWeight: 'bold', color: '#007bff', margin: '0 1rem' }}>{mission?.reward}P</span>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <StyledButton
+                                                    onClick={(e) => { e.stopPropagation(); handleAction('approve', sub); }}
+                                                    style={{ backgroundColor: '#28a745' }}
+                                                    disabled={isProcessing || isMyOwnSubmission}
+                                                    title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
+                                                >
+                                                    {isProcessing ? '처리중...' : '승인'}
+                                                </StyledButton>
+                                                <StyledButton
+                                                    onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
+                                                    style={{ backgroundColor: '#dc3545' }}
+                                                    disabled={isProcessing || isMyOwnSubmission}
+                                                    title={isMyOwnSubmission ? "자신의 미션은 거절할 수 없습니다." : ""}
+                                                >
+                                                    거절
+                                                </StyledButton>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <SubmissionDetails $isOpen={isOpen}>
-                                        {sub.text && <p>{sub.text}</p>}
-                                        {sub.photoUrl && <img src={sub.photoUrl} alt="제출된 사진" />}
-                                    </SubmissionDetails>
-                                </ListItem>
-                            )
-                        })}
-                    </List>
-                )}
-            </Section>
+                                        <SubmissionDetails $isOpen={isOpen}>
+                                            {sub.text && <p>{sub.text}</p>}
+                                            {sub.photoUrl && <img src={sub.photoUrl} alt="제출된 사진" />}
+                                        </SubmissionDetails>
+                                    </ListItem>
+                                )
+                            })}
+                        </List>
+                    ) : <p>현재 승인을 기다리는 미션이 없습니다.</p>}
+                </Section>
+            )}
 
-            <Section>
-                <SectionTitle>경기 결과 입력 ⚽</SectionTitle>
-                <TabContainer>
-                    <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>입력 대기</TabButton>
-                    <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
-                </TabContainer>
-                {filteredMatches.length > 0 ? (
-                    filteredMatches.map(match =>
-                        <MatchRow
-                            key={match.id}
-                            match={match}
-                            isInitiallyOpen={openedMatchId === match.id}
-                            onSave={handleSaveAndOpenNext}
-                        />
-                    )
-                ) : <p>해당 목록에 경기가 없습니다.</p>}
-            </Section>
+            {mainTab === 'league' && (
+                <Section>
+                    <SectionTitle>경기 결과 입력 ⚽</SectionTitle>
+                    <TabContainer>
+                        <TabButton $active={activeMatchTab === 'pending'} onClick={() => setActiveMatchTab('pending')}>대기/진행중 경기</TabButton>
+                        <TabButton $active={activeMatchTab === 'completed'} onClick={() => setActiveMatchTab('completed')}>완료된 경기</TabButton>
+                    </TabContainer>
+                    {filteredMatches.length > 0 ? (
+                        filteredMatches.map(match =>
+                            <MatchRow
+                                key={match.id}
+                                match={match}
+                                isInitiallyOpen={match.id === currentOrNextMatchId}
+                                onStatusChange={handleMatchStatusChange}
+                                onNext={handleNextMatch}
+                                isNextMatchAvailable={isNextMatchAvailable}
+                            />
+                        )
+                    ) : <p>해당 목록에 경기가 없습니다.</p>}
+                </Section>
+            )}
 
             <StyledButton onClick={() => navigate(-1)} style={{ marginTop: '2rem', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}>
                 돌아가기

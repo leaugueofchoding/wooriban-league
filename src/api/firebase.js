@@ -742,6 +742,13 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
   await batch.commit();
 }
 
+// ▼▼▼ [신규] 경기 상태(status)만 변경하는 함수 추가 ▼▼▼
+export async function updateMatchStatus(matchId, newStatus) {
+  const matchRef = doc(db, 'matches', matchId);
+  await updateDoc(matchRef, { status: newStatus });
+}
+// ▲▲▲ 여기까지 추가 ▲▲▲
+
 export async function deleteMatchesBySeason(seasonId) {
   const matchesRef = collection(db, 'matches');
   const q = query(matchesRef, where("seasonId", "==", seasonId));

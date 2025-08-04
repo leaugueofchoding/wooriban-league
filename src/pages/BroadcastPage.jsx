@@ -182,11 +182,28 @@ function BroadcastPage() {
         if (!currentSeason) return;
         const matchesRef = collection(db, 'matches');
         const q = query(matchesRef, where("seasonId", "==", currentSeason.id));
+
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const matchesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const nextMatch = matchesData.find(m => m.status === '예정') || { id: 'end', status: '종료' };
-            setCurrentMatch(nextMatch);
-            matchesData.sort((a, b) => (a.status === '예정' && b.status !== '예정') ? -1 : 1);
+
+            // ▼▼▼ [수정] '진행중'인 경기를 최우선으로 찾도록 로직 변경 ▼▼▼
+            const inProgressMatch = matchesData.find(m => m.status === '진행중');
+            const upcomingMatch = matchesData.find(m => m.status === '예정');
+
+            let matchToShow = { id: 'end', status: '종료' }; // 기본값
+            if (inProgressMatch) {
+                matchToShow = inProgressMatch;
+            } else if (upcomingMatch) {
+                matchToShow = upcomingMatch;
+            }
+            setCurrentMatch(matchToShow);
+            // ▲▲▲ 여기까지 수정 ▲▲▲
+
+            // 사이드바 정렬: 진행중 > 예정 > 완료 순
+            matchesData.sort((a, b) => {
+                const statusOrder = { '진행중': 1, '예정': 2, '완료': 3 };
+                return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
+            });
             setAllMatches(matchesData);
         });
         return () => unsubscribe();
@@ -197,13 +214,23 @@ function BroadcastPage() {
     const teamAMembers = useMemo(() => teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamA, players]);
     const teamBMembers = useMemo(() => teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamB, players]);
 
+    const matchStatusText = useMemo(() => {
+        if (!currentMatch) return "로딩 중...";
+        switch (currentMatch.status) {
+            case '진행중': return "경기 중";
+            case '예정': return "경기 준비중";
+            case '종료': return "모든 경기 종료";
+            default: return "대기 중";
+        }
+    }, [currentMatch]);
+
     if (!currentSeason) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>시즌 정보를 불러오는 중입니다...</BroadcastWrapper>;
     if (!currentMatch) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>경기를 불러오는 중...</BroadcastWrapper>;
 
     return (
         <BroadcastWrapper>
             <Header>
-                <MatchStatus>{currentMatch.status === '종료' ? "모든 경기 종료" : "경기 준비중"}</MatchStatus>
+                <MatchStatus>{matchStatusText}</MatchStatus>
             </Header>
 
             <MainContent>
