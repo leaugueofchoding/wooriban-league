@@ -856,11 +856,14 @@ export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAns
   return isCorrect;
 }
 
-// --- 미션(Missions) 관련 ---
 export async function createMission(missionData) {
   const missionsRef = collection(db, 'missions');
+  // [수정] reward 필드를 삭제하고 rewards 배열을 사용하도록 변경
+  const { reward, ...restOfData } = missionData;
   await addDoc(missionsRef, {
-    ...missionData,
+    ...restOfData,
+    // 기본 보상(reward) 필드를 rewards 배열의 첫 번째 값으로 자동 설정
+    reward: missionData.rewards[0],
     createdAt: new Date(),
     status: 'active'
   });
@@ -1778,5 +1781,36 @@ export async function batchDeleteMyRoomItems(itemsToDelete) {
     }
   }
 
+  await batch.commit();
+}
+
+export async function updateAvatarPartCategory(partId, newCategory) {
+  const partRef = doc(db, 'avatarParts', partId);
+  await updateDoc(partRef, { category: newCategory });
+}
+
+// [신규] 마이룸 아이템 카테고리 업데이트 함수
+export async function updateMyRoomItemCategory(itemId, newCategory) {
+  const itemRef = doc(db, "myRoomItems", itemId);
+  await updateDoc(itemRef, { category: newCategory });
+}
+
+// [신규] 아바타 파츠 카테고리 일괄 업데이트 함수
+export async function batchUpdateAvatarPartCategory(partIds, newCategory) {
+  const batch = writeBatch(db);
+  partIds.forEach(partId => {
+    const partRef = doc(db, "avatarParts", partId);
+    batch.update(partRef, { category: newCategory });
+  });
+  await batch.commit();
+}
+
+// [신규] 마이룸 아이템 카테고리 일괄 업데이트 함수
+export async function batchUpdateMyRoomItemCategory(itemIds, newCategory) {
+  const batch = writeBatch(db);
+  itemIds.forEach(itemId => {
+    const itemRef = doc(db, "myRoomItems", itemId);
+    batch.update(itemRef, { category: newCategory });
+  });
   await batch.commit();
 }

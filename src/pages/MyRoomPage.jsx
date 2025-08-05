@@ -4,12 +4,12 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
-import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from 'firebase/firestore'; // onSnapshot을 getDocs로 변경하고 추가
+import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore'; // getDocs를 onSnapshot으로 변경
 import { useParams, useNavigate } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
 
-// --- Styled Components ---
+// --- Styled Components (기존과 동일) ---
 
 const Wrapper = styled.div`
   max-width: 960px;
@@ -46,7 +46,7 @@ const AppliedHouse = styled.img`
   width: 100%;
   height: 100%;
   object-fit: contain;
-  z-index: 1; /* 중간 레이어: 기본 방과 동일한 레벨 */
+  z-index: 1; 
   pointer-events: none; 
 `;
 
@@ -57,7 +57,7 @@ const AppliedBackground = styled.img`
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: 0; /* 가장 아래 레이어: 바닥/벽지 */
+  z-index: 0; 
   pointer-events: none;
 `;
 
@@ -68,13 +68,13 @@ const RoomBackground = styled.img`
   width: 100%;
   height: 100%;
   object-fit: contain;
-  z-index: 1; /* 중간 레이어: 기본 방의 틀 */
+  z-index: 1; 
   pointer-events: none;
 `;
 
 const DraggableItem = styled.img`
   position: absolute;
-  cursor: grab;
+  cursor: ${props => props.$isEditing ? 'grab' : 'default'};
   width: ${props => props.$width}%;
   height: auto;
   z-index: ${props => props.$zIndex};
@@ -84,8 +84,7 @@ const DraggableItem = styled.img`
   transition: transform 0.2s;
 
   &:active {
-    cursor: grabbing;
-    z-index: 1000;
+    cursor: ${props => props.$isEditing ? 'grabbing' : 'default'};
   }
 `;
 
@@ -93,7 +92,7 @@ const DraggableAvatarContainer = styled.div`
   position: absolute;
   width: 15%;
   height: 25%;
-  cursor: grab;
+  cursor: ${props => props.$isEditing ? 'grab' : 'default'};
   z-index: ${props => props.$zIndex};
   left: ${props => props.$left}%;
   top: ${props => props.$top}%;
@@ -101,8 +100,7 @@ const DraggableAvatarContainer = styled.div`
   transition: transform 0.2s;
   
   &:active {
-    cursor: grabbing;
-    z-index: 1000;
+    cursor: ${props => props.$isEditing ? 'grabbing' : 'default'};
   }
 
   img {
@@ -223,31 +221,28 @@ const ReplyInputContainer = styled.div`
 
 const InventoryContainer = styled.div`
   margin-top: 2rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
 `;
 
 const InventoryGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 1rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  min-height: 120px;
+  padding-top: 1rem;
 `;
 
 const InventoryItem = styled.div`
   background-color: #fff;
-  border: 1px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
-  box-shadow: ${props => props.$isSelected ? '0 0 0 2px #007bff' : 'none'};
+  border: 2px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
   border-radius: 8px;
   padding: 0.5rem;
   text-align: center;
-  cursor: pointer;
   transition: all 0.2s;
-
-  &:hover {
-    transform: scale(1.05);
-  }
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 
   img {
     width: 80px;
@@ -259,8 +254,50 @@ const InventoryItem = styled.div`
     font-size: 0.8rem;
     margin: 0.5rem 0 0;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
+
+const ItemControls = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+`;
+
+const ControlButton = styled.button`
+  background: #e9ecef;
+  border: 1px solid #ced4da;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    background: #ced4da;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ItemCount = styled.span`
+  font-weight: bold;
+  font-size: 1rem;
+  min-width: 20px;
+`;
+
 
 const ButtonContainer = styled.div`
     display: flex;
@@ -280,6 +317,13 @@ const SaveButton = styled.button`
     cursor: pointer;
     &:hover {
         background-color: #218838;
+    }
+`;
+
+const EditRoomButton = styled(SaveButton)`
+    background-color: #007bff;
+    &:hover {
+        background-color: #0056b3;
     }
 `;
 
@@ -309,6 +353,27 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
+const InventoryHeader = styled.h4`
+    cursor: pointer;
+    user-select: none;
+    margin: 0;
+    padding: 0.5rem 0;
+    font-size: 1.2rem;
+    
+    &:not(:first-child) {
+        margin-top: 1.5rem;
+        border-top: 1px solid #dee2e6;
+        padding-top: 1.5rem;
+    }
+`;
+
+const AccordionContent = styled.div`
+    max-height: ${props => props.$isOpen ? '1000px' : '0'};
+    opacity: ${props => props.$isOpen ? 1 : 0};
+    overflow: hidden;
+    transition: all 0.5s ease-in-out;
+`;
+
 
 function MyRoomPage() {
   const { playerId } = useParams();
@@ -316,7 +381,14 @@ function MyRoomPage() {
   const { players, myRoomItems, avatarParts } = useLeagueStore();
   const currentUser = auth.currentUser;
 
-  const [roomConfig, setRoomConfig] = useState({});
+  const [isEditing, setIsEditing] = useState(false);
+
+  const [roomConfig, setRoomConfig] = useState({
+    items: [],
+    houseId: null,
+    backgroundId: null,
+    playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false }
+  });
   const [draggingItem, setDraggingItem] = useState(null);
   const roomContainerRef = useRef(null);
   const [comments, setComments] = useState([]);
@@ -324,20 +396,25 @@ function MyRoomPage() {
   const [likes, setLikes] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
-  const [isInventoryOpen, setIsInventoryOpen] = useState(true); // <-- 이 줄을 추가해주세요
+
+  const [openInventories, setOpenInventories] = useState({
+    background: true,
+    furniture: true,
+    cafe: true
+  });
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
-  const { backgroundItems, furnitureItems } = useMemo(() => {
-    // [수정] 관리자인지 확인하는 로직 추가
+  const { backgroundItems, furnitureItems, cafeItems } = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin'
-      ? myRoomItems // 관리자면 모든 아이템 표시
-      : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || []; // 일반 유저는 소유한 아이템만
+      ? myRoomItems
+      : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
 
     const backgrounds = [];
     const furnitures = [];
+    const cafes = [];
 
     itemsToDisplay.forEach(item => {
       if (item) {
@@ -345,10 +422,12 @@ function MyRoomPage() {
           backgrounds.push(item);
         } else if (['가구', '소품'].includes(item.category)) {
           furnitures.push(item);
+        } else if (['미니카페'].includes(item.category)) {
+          cafes.push(item);
         }
       }
     });
-    return { backgroundItems: backgrounds, furnitureItems: furnitures };
+    return { backgroundItems: backgrounds, furnitureItems: furnitures, cafeItems: cafes };
   }, [myPlayerData, myRoomItems]);
 
   const ownerAvatarUrls = useMemo(() => {
@@ -375,110 +454,171 @@ function MyRoomPage() {
   const appliedHouse = useMemo(() => {
     if (!roomConfig.houseId) return null;
     return myRoomItems.find(item => item.id === roomConfig.houseId);
-  }, [roomConfig, myRoomItems]);
+  }, [roomConfig.houseId, myRoomItems]);
 
   const appliedBackground = useMemo(() => {
     if (!roomConfig.backgroundId) return null;
     return myRoomItems.find(item => item.id === roomConfig.backgroundId);
-  }, [roomConfig, myRoomItems]);
+  }, [roomConfig.backgroundId, myRoomItems]);
 
   const hasLikedThisMonth = useMemo(() => {
     const currentMonth = new Date().toISOString().slice(0, 7);
     return likes.some(like => like.id === myPlayerData?.id && like.lastLikedMonth === currentMonth);
   }, [likes, myPlayerData]);
 
+  const itemCounts = useMemo(() => {
+    return roomConfig.items.reduce((acc, item) => {
+      acc[item.itemId] = (acc[item.itemId] || 0) + 1;
+      return acc;
+    }, {});
+  }, [roomConfig.items]);
+
   useEffect(() => {
     if (!roomOwnerData) return;
 
-    // 데이터를 한 번만 불러오는 함수
-    const fetchData = async () => {
-      // 1. 방 주인의 정보(myRoomConfig) 불러오기
-      const playerRef = doc(db, 'players', roomOwnerData.id);
-      const playerSnap = await getDoc(playerRef);
+    // 방 설정 불러오기 (한 번만)
+    const playerRef = doc(db, 'players', roomOwnerData.id);
+    getDoc(playerRef).then(playerSnap => {
       if (playerSnap.exists()) {
-        const config = playerSnap.data().myRoomConfig || {};
-        if (!config.playerAvatar) {
-          config.playerAvatar = { left: 50, top: 60, zIndex: 100, isFlipped: false };
+        const configData = playerSnap.data().myRoomConfig || {};
+        if (!Array.isArray(configData.items)) {
+          const convertedItems = Object.entries(configData)
+            .filter(([key, value]) => typeof value === 'object' && value.left !== undefined)
+            .map(([itemId, itemConfig], index) => ({
+              instanceId: Date.now() + index,
+              itemId,
+              ...itemConfig
+            }));
+          setRoomConfig({
+            items: convertedItems,
+            houseId: configData.houseId || null,
+            backgroundId: configData.backgroundId || null,
+            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false }
+          });
+        } else {
+          setRoomConfig({
+            items: configData.items || [],
+            houseId: configData.houseId || null,
+            backgroundId: configData.backgroundId || null,
+            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false }
+          });
         }
-        setRoomConfig(config);
       }
+    });
 
-      // 2. 댓글 목록 불러오기
-      const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
-      const commentsSnapshot = await getDocs(commentsQuery);
-      setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    // 방명록 실시간 구독
+    const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
+    const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
+      setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
-      // 3. '좋아요' 목록 불러오기
-      const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
-      const likesSnapshot = await getDocs(likesQuery);
-      setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    // 좋아요 실시간 구독
+    const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
+    const unsubscribeLikes = onSnapshot(likesQuery, (snapshot) => {
+      setLikes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 컴포넌트가 언마운트될 때 구독 해제
+    return () => {
+      unsubscribeComments();
+      unsubscribeLikes();
     };
-
-    fetchData();
-
   }, [roomOwnerData]);
 
-  const handleMouseDown = (e, itemId) => {
+  const handleMouseDown = (e, instanceId) => {
     e.preventDefault();
-    if (!isMyRoom) return;
-    setDraggingItem({ id: itemId });
+    if (!isMyRoom || !isEditing) return;
+    setDraggingItem({ id: instanceId });
   };
 
   const handleMouseMove = (e) => {
-    if (!draggingItem || !isMyRoom) return;
+    if (!draggingItem || !isMyRoom || !isEditing) return;
     const roomRect = roomContainerRef.current.getBoundingClientRect();
     const x = ((e.clientX - roomRect.left) / roomRect.width) * 100;
     const y = ((e.clientY - roomRect.top) / roomRect.height) * 100;
-    setRoomConfig(prev => ({
-      ...prev,
-      [draggingItem.id]: { ...prev[draggingItem.id], left: x, top: y, zIndex: Date.now() }
-    }));
+
+    setRoomConfig(prev => {
+      if (draggingItem.id === 'playerAvatar') {
+        return { ...prev, playerAvatar: { ...prev.playerAvatar, left: x, top: y } };
+      }
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.instanceId === draggingItem.id ? { ...item, left: x, top: y } : item
+        )
+      };
+    });
   };
 
   const handleMouseUp = () => setDraggingItem(null);
 
-  const handleDoubleClick = (itemId) => {
-    if (!isMyRoom) return;
+  const handleDoubleClick = (instanceId) => {
+    if (!isMyRoom || !isEditing) return;
     setRoomConfig(prev => {
-      const currentItem = prev[itemId] || { isFlipped: false };
-      return { ...prev, [itemId]: { ...currentItem, isFlipped: !currentItem.isFlipped } };
+      if (instanceId === 'playerAvatar') {
+        return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
+      }
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.instanceId === instanceId ? { ...item, isFlipped: !item.isFlipped } : item
+        )
+      };
     });
   };
 
-  const handleAddItemToRoom = (item) => {
-    if (!isMyRoom) return;
+  const handleAddItem = (itemToAdd) => {
+    if (!isMyRoom || !isEditing) return;
     setRoomConfig(prev => {
-      const newConfig = { ...prev };
-      if (newConfig[item.id]) {
-        delete newConfig[item.id];
-      } else {
-        newConfig[item.id] = { left: 50, top: 50, zIndex: Date.now(), isFlipped: false };
-      }
-      return newConfig;
+      const currentZIndexes = prev.items.map(i => i.zIndex);
+      const maxZIndex = currentZIndexes.length > 0 ? Math.max(...currentZIndexes) : 99;
+
+      const newItemInstance = {
+        instanceId: Date.now(),
+        itemId: itemToAdd.id,
+        left: 50,
+        top: 50,
+        zIndex: maxZIndex + 1,
+        isFlipped: false
+      };
+
+      return { ...prev, items: [...prev.items, newItemInstance] };
+    });
+  };
+
+  const handleRemoveItem = (itemToRemove) => {
+    if (!isMyRoom || !isEditing) return;
+    setRoomConfig(prev => {
+      const itemsOfType = prev.items.filter(i => i.itemId === itemToRemove.id);
+      if (itemsOfType.length === 0) return prev;
+
+      const lastItem = itemsOfType.reduce((latest, current) =>
+        current.instanceId > latest.instanceId ? current : latest
+      );
+
+      return {
+        ...prev,
+        items: prev.items.filter(item => item.instanceId !== lastItem.instanceId)
+      };
     });
   };
 
   const handleHouseSelect = (item) => {
-    if (!isMyRoom) return;
-    setRoomConfig(prev => ({
-      ...prev,
-      houseId: prev.houseId === item.id ? null : item.id
-    }));
+    if (!isMyRoom || !isEditing) return;
+    setRoomConfig(prev => ({ ...prev, houseId: prev.houseId === item.id ? null : item.id }));
   };
 
   const handleBackgroundSelect = (item) => {
-    if (!isMyRoom) return;
-    setRoomConfig(prev => ({
-      ...prev,
-      backgroundId: prev.backgroundId === item.id ? null : item.id
-    }));
+    if (!isMyRoom || !isEditing) return;
+    setRoomConfig(prev => ({ ...prev, backgroundId: prev.backgroundId === item.id ? null : item.id }));
   };
 
   const handleSaveLayout = async () => {
-    if (!isMyRoom) return;
+    if (!isMyRoom || !isEditing) return;
     try {
       await updateDoc(doc(db, 'players', playerId), { myRoomConfig: roomConfig });
       alert('마이룸이 저장되었습니다!');
+      setIsEditing(false);
     } catch (error) {
       alert('저장 중 오류가 발생했습니다.');
     }
@@ -612,73 +752,97 @@ function MyRoomPage() {
             $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
             onMouseDown={(e) => handleMouseDown(e, 'playerAvatar')}
             onDoubleClick={() => handleDoubleClick('playerAvatar')}
+            $isEditing={isEditing}
           >
             {ownerAvatarUrls.map(url => <img key={url} src={url} alt="" />)}
           </DraggableAvatarContainer>
         )}
 
-        {Object.entries(roomConfig).map(([itemId, config]) => {
-          if (itemId === 'playerAvatar' || itemId === 'houseId' || itemId === 'backgroundId') return null;
-          const itemInfo = myRoomItems.find(item => item.id === itemId);
+        {roomConfig.items.map((itemInstance) => {
+          const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
           if (!itemInfo) return null;
 
           return (
             <DraggableItem
-              key={itemId} src={itemInfo.src} alt={itemInfo.displayName || itemId}
+              key={itemInstance.instanceId} src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id}
               $width={itemInfo.width || 15}
-              $left={config.left} $top={config.top} $zIndex={config.zIndex} $isFlipped={config.isFlipped}
-              onMouseDown={(e) => handleMouseDown(e, itemId)}
-              onDoubleClick={() => handleDoubleClick(itemId)}
+              $left={itemInstance.left} $top={itemInstance.top} $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
+              onMouseDown={(e) => handleMouseDown(e, itemInstance.instanceId)}
+              onDoubleClick={() => handleDoubleClick(itemInstance.instanceId)}
+              $isEditing={isEditing}
             />
           );
         })}
       </RoomContainer>
 
       {isMyRoom && (
-        <InventoryContainer>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3
-              onClick={() => setIsInventoryOpen(prev => !prev)}
-              style={{ cursor: 'pointer', userSelect: 'none', margin: 0 }}
-            >
-              내 아이템 목록  {isInventoryOpen ? '▲' : '▼'}
-            </h3>
-            <SaveButton onClick={handleSaveLayout}>마이룸 저장</SaveButton>
-          </div>
-          <div style={{
-            maxHeight: isInventoryOpen ? '1000px' : '0',
-            opacity: isInventoryOpen ? 1 : 0,
-            overflow: 'hidden',
-            transition: 'all 0.5s ease-in-out',
-            marginTop: isInventoryOpen ? '1rem' : '0'
-          }}>
-            <h4>하우스/배경</h4>
-            <InventoryGrid>
-              {backgroundItems.length > 0 ? backgroundItems.map(item => {
-                const isHouse = item.category === '하우스';
-                return (
-                  <InventoryItem
-                    key={item.id}
-                    onClick={() => isHouse ? handleHouseSelect(item) : handleBackgroundSelect(item)}
-                    $isSelected={isHouse ? roomConfig.houseId === item.id : roomConfig.backgroundId === item.id}
-                  >
+        isEditing ? (
+          <InventoryContainer>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>내 아이템 목록</h3>
+              <SaveButton onClick={handleSaveLayout}>마이룸 저장</SaveButton>
+            </div>
+
+            <InventoryHeader onClick={() => setOpenInventories(p => ({ ...p, background: !p.background }))}>
+              하우스/배경 {openInventories.background ? '▲' : '▼'}
+            </InventoryHeader>
+            <AccordionContent $isOpen={openInventories.background}>
+              <InventoryGrid>
+                {backgroundItems.length > 0 ? backgroundItems.map(item => {
+                  const isHouse = item.category === '하우스';
+                  return (
+                    <InventoryItem key={item.id} $isSelected={isHouse ? roomConfig.houseId === item.id : roomConfig.backgroundId === item.id}>
+                      <img src={item.src} alt={item.displayName || item.id} onClick={() => isHouse ? handleHouseSelect(item) : handleBackgroundSelect(item)} />
+                      <p>{item.displayName || item.id}</p>
+                    </InventoryItem>
+                  )
+                }) : <p>소유한 하우스/배경 아이템이 없습니다.</p>}
+              </InventoryGrid>
+            </AccordionContent>
+
+            <InventoryHeader onClick={() => setOpenInventories(p => ({ ...p, furniture: !p.furniture }))}>
+              가구/소품 {openInventories.furniture ? '▲' : '▼'}
+            </InventoryHeader>
+            <AccordionContent $isOpen={openInventories.furniture}>
+              <InventoryGrid>
+                {furnitureItems.length > 0 ? furnitureItems.map(item => (
+                  <InventoryItem key={item.id}>
                     <img src={item.src} alt={item.displayName || item.id} />
                     <p>{item.displayName || item.id}</p>
+                    <ItemControls>
+                      <ControlButton onClick={() => handleRemoveItem(item)} disabled={(itemCounts[item.id] || 0) === 0}>-</ControlButton>
+                      <ItemCount>{itemCounts[item.id] || 0}</ItemCount>
+                      <ControlButton onClick={() => handleAddItem(item)}>+</ControlButton>
+                    </ItemControls>
                   </InventoryItem>
-                )
-              }) : <p>소유한 하우스/배경 아이템이 없습니다.</p>}
-            </InventoryGrid>
-            <h4 style={{ marginTop: '1.5rem' }}>가구/소품</h4>
-            <InventoryGrid>
-              {furnitureItems.length > 0 ? furnitureItems.map(item => (
-                <InventoryItem key={item.id} onClick={() => handleAddItemToRoom(item)} $isSelected={!!roomConfig[item.id]}>
-                  <img src={item.src} alt={item.displayName || item.id} />
-                  <p>{item.displayName || item.id}</p>
-                </InventoryItem>
-              )) : <p>소유한 가구/소품 아이템이 없습니다.</p>}
-            </InventoryGrid>
+                )) : <p>소유한 가구/소품 아이템이 없습니다.</p>}
+              </InventoryGrid>
+            </AccordionContent>
+
+            <InventoryHeader onClick={() => setOpenInventories(p => ({ ...p, cafe: !p.cafe }))}>
+              미니카페 {openInventories.cafe ? '▲' : '▼'}
+            </InventoryHeader>
+            <AccordionContent $isOpen={openInventories.cafe}>
+              <InventoryGrid>
+                {cafeItems.length > 0 ? cafeItems.map(item => (
+                  <InventoryItem key={item.id}>
+                    <img src={item.src} alt={item.displayName || item.id} />
+                    <p>{item.displayName || item.id}</p>
+                    <ItemControls>
+                      <ControlButton onClick={() => handleRemoveItem(item)} disabled={(itemCounts[item.id] || 0) === 0}>-</ControlButton>
+                      <ItemCount>{itemCounts[item.id] || 0}</ItemCount>
+                      <ControlButton onClick={() => handleAddItem(item)}>+</ControlButton>
+                    </ItemControls>
+                  </InventoryItem>
+                )) : <p>소유한 미니카페 아이템이 없습니다.</p>}
+              </InventoryGrid>
+            </AccordionContent>
+          </InventoryContainer>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
+            <EditRoomButton onClick={() => setIsEditing(true)}>마이룸 수정</EditRoomButton>
           </div>
-        </InventoryContainer>
+        )
       )}
 
       <SocialFeaturesContainer>
@@ -729,7 +893,6 @@ function MyRoomPage() {
       </SocialFeaturesContainer>
 
       <ButtonContainer>
-        {/* isMyRoom && <SaveButton> 태그가 이곳에서 위로 이동했습니다. */}
         {!isMyRoom && myPlayerData && <VisitButton onClick={handleRandomVisit}>계속 놀러가기</VisitButton>}
         <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
       </ButtonContainer>

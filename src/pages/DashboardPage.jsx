@@ -358,17 +358,17 @@ const RequestButton = styled.button`
     background-color: ${props => {
         if (props.$status === 'approved') return '#007bff';
         if (props.$status === 'pending') return '#6c757d';
-        if (props.$status === 'rejected') return '#ffc107'; // [추가] 반려 상태일 때 노란색
+        if (props.$status === 'rejected') return '#ffc107';
         return '#dc3545';
     }};
 
-    color: ${props => (props.$status === 'rejected' ? 'black' : 'white')}; /* [추가] 반려 상태일 때 글자색 */
+    color: ${props => (props.$status === 'rejected' ? 'black' : 'white')};
 
     &:hover:not(:disabled) {
         background-color: ${props => {
         if (props.$status === 'approved') return '#0056b3';
         if (props.$status === 'pending') return '#5a6268';
-        if (props.$status === 'rejected') return '#e0a800'; // [추가] 반려 상태일 때 hover 색
+        if (props.$status === 'rejected') return '#e0a800';
         return '#c82333';
     }};
     }
@@ -464,34 +464,26 @@ function DashboardPage() {
 
     const shopHighlightItems = useMemo(() => {
         const now = new Date();
-
-        // 1. 할인 중인 아이템 필터링
         const saleItems = avatarParts.filter(part =>
             part.isSale &&
             part.saleStartDate?.toDate() < now &&
             now < part.saleEndDate?.toDate() &&
             part.status !== 'hidden'
         );
-
-        // 2. 신규 아이템 필터링 및 정렬 (createdAt이 있는 아이템만)
         const newItems = avatarParts
             .filter(part => part.createdAt && part.status !== 'hidden')
             .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
         let highlightItems = [];
-
         if (saleItems.length > 0) {
-            // 할인 아이템이 있으면, 할인템 1개 + 신규템 1개
             highlightItems.push(saleItems[0]);
             const newestItem = newItems.find(item => item.id !== saleItems[0].id);
             if (newestItem) {
                 highlightItems.push(newestItem);
             }
         } else {
-            // 할인 아이템이 없으면, 신규템 2개
             highlightItems = newItems.slice(0, 2);
         }
-
         return highlightItems;
     }, [avatarParts]);
 
@@ -527,13 +519,13 @@ function DashboardPage() {
         return submissionsMap;
     }, [missionSubmissions, myPlayerData]);
 
-    // [추가] 미완료 미션 개수 계산
     const uncompletedMissionsCount = useMemo(() => {
         return missions.filter(mission => mySubmissions[mission.id] !== 'approved').length;
     }, [missions, mySubmissions]);
 
     const recentMissions = useMemo(() => missions.slice(0, 2), [missions]);
-    const canSubmitMission = myPlayerData && ['player', 'recorder'].includes(myPlayerData.role);
+
+    const canSubmitMission = myPlayerData && ['player', 'recorder', 'admin'].includes(myPlayerData.role);
     const isGoalAchieved = activeGoal && activeGoal.currentPoints >= activeGoal.targetPoints;
     const progressPercent = activeGoal ? Math.min((activeGoal.currentPoints / activeGoal.targetPoints) * 100, 100) : 0;
     const rankIcons = ["🥇", "🥈", "🥉"];
@@ -547,7 +539,6 @@ function DashboardPage() {
         const randomPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
         navigate(`/my-room/${randomPlayer.id}`);
     };
-
 
     return (
         <DashboardWrapper>
@@ -586,7 +577,6 @@ function DashboardPage() {
             <MainGrid>
                 <ClickableSection to="/missions">
                     <Section>
-                        {/* [수정] 제목에 미완료 미션 개수 표시 */}
                         <TitleWrapper><Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title></TitleWrapper>
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {
@@ -598,32 +588,43 @@ function DashboardPage() {
                                     e.preventDefault();
                                     e.stopPropagation();
 
-                                    // 반려되었거나, 글/사진 제출이 필요하면 무조건 미션 페이지로 이동
                                     if (submissionStatus === 'rejected' || !isSimpleMission) {
                                         navigate('/missions');
                                     } else if (isSimpleMission) {
-                                        // 단순 미션일 때만 바로 승인 요청
                                         submitMissionForApproval(mission.id, {});
                                     }
                                 };
 
+                                const rewardText = useMemo(() => {
+                                    if (!mission.rewards || mission.rewards.length <= 1) {
+                                        return `💰 ${mission.reward} P`;
+                                    }
+                                    const minReward = Math.min(...mission.rewards);
+                                    const maxReward = Math.max(...mission.rewards);
+                                    return `💰 ${minReward} ~ ${maxReward} P`;
+                                }, [mission.rewards, mission.reward]);
+
                                 return (
                                     <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         <div style={{ flexGrow: 1 }}>
-                                            <CardTitle>{mission.title}</CardTitle>
-                                            <CardText>💰 {mission.reward} P</CardText>
+                                            <CardTitle>
+                                                {mission.title}
+                                                {mission.isFixed && <span title="고정 미션"> 🔄</span>}
+                                                {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
+                                                {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
+                                            </CardTitle>
+                                            <CardText>{rewardText}</CardText>
                                         </div>
                                         {canSubmitMission && (
                                             <RequestButton
                                                 onClick={handleButtonClick}
-                                                // [수정] 반려 상태일 때는 버튼이 비활성화되지 않도록 조건 변경
                                                 disabled={submissionStatus === 'pending' || submissionStatus === 'approved'}
                                                 $status={submissionStatus}
                                             >
                                                 {submissionStatus === 'pending' && '승인 대기중'}
                                                 {submissionStatus === 'approved' && '완료!'}
                                                 {submissionStatus === 'rejected' && '다시하기'}
-                                                {!submissionStatus && (isSimpleMission ? '다 했어요!' : '제출하러 가기')}
+                                                {!submissionStatus && (isSimpleMission ? '다 했어요!' : '다 했어요!')}
                                             </RequestButton>
                                         )}
                                     </Card>
@@ -643,7 +644,7 @@ function DashboardPage() {
                                         {item.isSale && <SaleBadge>SALE</SaleBadge>}
                                         <ItemImage src={item.src} $category={item.category} />
                                         <CardTitle style={{ textAlign: 'center' }}>{item.displayName || item.id}</CardTitle>
-                                        <CardText style={{ textAlign: 'center', color: '#dc3545' }}>💰 {item.salePrice} P</CardText>
+                                        <CardText style={{ textAlign: 'center', color: '#dc3545' }}>💰 {item.isSale ? item.salePrice : item.price} P</CardText>
                                     </Card>
                                 ))}
                             </ItemWidgetGrid>

@@ -31,7 +31,6 @@ const MissionCard = styled.div`
   display: flex;
   flex-direction: column; /* 세로 정렬로 변경 */
   gap: 1rem;
-  /* [추가] 반려된 미션 테두리 스타일 */
   border-left: 5px solid ${props => props.$status === 'rejected' ? '#dc3545' : 'transparent'};
 `;
 
@@ -225,12 +224,14 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const submission = mySubmissions[mission.id];
   const submissionStatus = submission?.status;
 
-  // [추가] 반려 상태일 때, 기존 제출 내용을 불러오도록 useEffect 추가
+  const isTodayMission = !mission.createdAt || new Date(mission.createdAt.toDate()).toDateString() === new Date().toDateString();
+  const canSubmitFixedMission = mission.isFixed ? isTodayMission || submissionStatus === 'pending' : true;
+
   useEffect(() => {
     if (submissionStatus === 'rejected' && submission) {
       setSubmissionContent({
         text: submission.text || '',
-        photo: null // 사진은 다시 선택해야 함
+        photo: null
       });
     }
   }, [submissionStatus, submission]);
@@ -240,11 +241,9 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const hasViewableContent = submission && (submission.text || submission.photoUrl);
 
   const isPrerequisiteSubmitted = useMemo(() => {
-    if (!mission.prerequisiteMissionId) {
-      return true;
-    }
+    if (!mission.prerequisiteMissionId) return true;
     const prerequisiteSubmission = mySubmissions[mission.prerequisiteMissionId];
-    return !!prerequisiteSubmission;
+    return prerequisiteSubmission?.status === 'approved';
   }, [mission.prerequisiteMissionId, mySubmissions]);
 
 
@@ -256,11 +255,10 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting || submissionStatus === 'pending' || submissionStatus === 'approved') return;
+    if (isSubmitting || submissionStatus === 'pending' || submissionStatus === 'approved' || !canSubmitFixedMission) return;
 
     if (!isPrerequisiteSubmitted) {
-      alert("이전 미션을 먼저 제출하고 [다했어요] 버튼을 누르세요.");
-      return;
+      return alert("이전 미션을 먼저 완료해야 합니다.");
     }
 
     if (isSubmissionRequired) {
@@ -282,7 +280,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       await submitMissionForApproval(mission.id, submissionContent);
       alert('미션 완료를 성공적으로 요청했습니다!');
       if (submissionStatus === 'rejected') {
-        setSubmissionContent({ text: '', photo: null }); // 재제출 후 초기화
+        setSubmissionContent({ text: '', photo: null });
       }
     } catch (error) {
       alert(`요청 실패: ${error.message}`);
@@ -293,6 +291,10 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const renderButton = () => {
     if (!canSubmitMission) return null;
+
+    if (!canSubmitFixedMission && submissionStatus !== 'pending') {
+      return <RequestButton disabled>기간 만료</RequestButton>;
+    }
 
     if (submissionStatus === 'approved') {
       if (hasViewableContent) {
@@ -309,8 +311,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       return <RequestButton $status="pending" disabled>승인 대기중</RequestButton>;
     }
 
-    const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || (isSubmissionRequired && !submissionContent.text.trim() && !submissionContent.photo);
-    const buttonTitle = !isPrerequisiteSubmitted ? "이전 미션을 먼저 제출해야 합니다." : "";
+    const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted;
+    const buttonTitle = !isPrerequisiteSubmitted ? "이전 미션을 먼저 완료해야 합니다." : "";
 
     return (
       <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} title={buttonTitle} $status={submissionStatus}>
@@ -319,18 +321,31 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     );
   };
 
+  const rewardText = useMemo(() => {
+    if (!mission.rewards || mission.rewards.length <= 1) {
+      return `💰 ${mission.reward} P`;
+    }
+    const minReward = Math.min(...mission.rewards);
+    const maxReward = Math.max(...mission.rewards);
+    return `💰 ${minReward} ~ ${maxReward} P`;
+  }, [mission.rewards, mission.reward]);
+
   return (
     <MissionCard $status={submissionStatus}>
       <MissionHeader>
         <MissionInfo>
-          <MissionTitle>{mission.title}</MissionTitle>
-          <MissionReward>💰 {mission.reward} P</MissionReward>
+          <MissionTitle>
+            {mission.title}
+            {mission.isFixed && <span title="고정 미션"> 🔄</span>}
+            {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
+            {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
+          </MissionTitle>
+          <MissionReward>{rewardText}</MissionReward>
         </MissionInfo>
         {renderButton()}
       </MissionHeader>
 
-      {/* [수정] 반려 상태일 때도 제출 영역이 보이도록 조건 변경 */}
-      {canSubmitMission && isSubmissionRequired && (submissionStatus === 'rejected' || !submissionStatus) && (
+      {canSubmitMission && isSubmissionRequired && canSubmitFixedMission && (submissionStatus === 'rejected' || !submissionStatus) && (
         <SubmissionArea>
           {submissionType.includes('text') && (
             <TextArea
@@ -387,13 +402,16 @@ function MissionsPage() {
   }, [missionSubmissions, myPlayerData]);
 
   const filteredMissions = useMemo(() => {
+    // [수정] 관리자 전용 미션은 더 이상 여기서 필터링하지 않습니다.
+    const visibleMissions = missions;
+
     if (hideCompleted) {
-      return missions.filter(mission => mySubmissionsMap[mission.id]?.status !== 'approved');
+      return visibleMissions.filter(mission => mySubmissionsMap[mission.id]?.status !== 'approved');
     }
-    return missions;
+    return visibleMissions;
   }, [missions, mySubmissionsMap, hideCompleted]);
 
-  const canSubmitMission = myPlayerData && ['player', 'recorder'].includes(myPlayerData.role);
+  const canSubmitMission = myPlayerData && ['player', 'recorder', 'admin'].includes(myPlayerData.role);
 
   return (
     <MissionsWrapper>

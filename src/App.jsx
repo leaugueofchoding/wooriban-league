@@ -98,7 +98,10 @@ const ProtectedRoute = ({ children }) => {
 
 
 function App() {
-  const { isLoading, setLoading, fetchInitialData, cleanupListeners, checkAttendance } = useLeagueStore();
+  const {
+    isLoading, setLoading, fetchInitialData, cleanupListeners,
+    checkAttendance, pointAdjustmentNotification // <-- [추가] pointAdjustmentNotification state 가져오기
+  } = useLeagueStore();
   const [authChecked, setAuthChecked] = useState(false);
   const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false);
 
@@ -129,15 +132,15 @@ function App() {
       <AppWrapper>
         <Auth user={auth.currentUser} />
         <AttendanceModal />
-        <PointAdjustmentModal />
+        {/* ▼▼▼ [수정] pointAdjustmentNotification이 있을 때만 모달 렌더링 ▼▼▼ */}
+        {pointAdjustmentNotification && <PointAdjustmentModal />}
         <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/access-denied" element={<AccessDenied />} />
-            <Route path="/broadcast" element={<BroadcastPage />} /> {/* [신규] TV 송출용 페이지 라우트 */}
+            <Route path="/broadcast" element={<BroadcastPage />} />
 
-            {/* 가가볼 리그 관련 라우트 */}
             <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="/league/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
 
@@ -145,21 +148,19 @@ function App() {
             <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
             <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-            <Route path="/admin/:tab" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />            <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
+            <Route path="/admin/:tab" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+            <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
 
-            {/* 프로필 관련 라우트 */}
             <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
             <Route path="/profile/:playerId/stats" element={<ProtectedRoute><PlayerStatsPage /></ProtectedRoute>} />
             <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
-            {/* 기록원 관련 라우트 */}
             <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} />
             <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
             <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
             <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
 
-            {/* ▼▼▼ [신규] 마이룸 페이지 라우트 ▼▼▼ */}
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
 
           </Routes>

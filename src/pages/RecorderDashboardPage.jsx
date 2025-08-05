@@ -254,17 +254,14 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
         });
     };
 
-    // ▼▼▼ [핵심 수정] 득점 시 상대팀 점수 차감 및 예외처리 로직 강화 ▼▼▼
     const handleScorerChange = async (playerId, amount) => {
         const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
         const currentGoals = scorers[playerId] || 0;
 
-        // [-] 버튼 클릭 시: 득점이 0이면 아무것도 하지 않음
         if (amount === -1 && currentGoals === 0) {
             return;
         }
 
-        // [+] 버튼 클릭 시: 상대팀 점수가 0이면 득점 불가
         if (amount === 1) {
             if (playerTeam === 'A' && scoreB === 0) {
                 alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
@@ -303,7 +300,6 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
             teamB_score: newScoreB
         });
     };
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const handleEndGame = () => {
         saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
@@ -389,7 +385,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
 }
 
 function RecorderDashboardPage() {
-    const { players, missions, matches, saveScores } = useLeagueStore();
+    const { players, missions, matches } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
     const [mainTab, setMainTab] = useState('league');
@@ -444,7 +440,7 @@ function RecorderDashboardPage() {
         return () => unsubscribe();
     }, [missions]);
 
-    const handleAction = async (action, submission) => {
+    const handleAction = async (action, submission, reward) => {
         setProcessingIds(prev => new Set(prev).add(submission.id));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
@@ -454,7 +450,7 @@ function RecorderDashboardPage() {
         }
         try {
             if (action === 'approve') {
-                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, mission.reward);
+                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
             } else if (action === 'reject') {
                 await rejectMissionSubmission(submission.id, student.authUid, mission.title);
             }
@@ -467,10 +463,7 @@ function RecorderDashboardPage() {
         await updateMatchStatus(matchId, newStatus);
     };
 
-    const handleNextMatch = () => {
-        // This function is just to trigger UI update.
-        // The actual next match is shown automatically by onSnapshot.
-    };
+    const handleNextMatch = () => { };
 
     return (
         <Wrapper>
@@ -491,9 +484,13 @@ function RecorderDashboardPage() {
                                 const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
                                 const isOpen = expandedSubmissionId === sub.id;
 
-                                if (!mission) return null;
+                                // ▼▼▼ [수정] 관리자 전용 미션 필터링 로직 ▼▼▼
+                                if (!mission || (mission.adminOnly && myPlayerData?.role !== 'admin')) {
+                                    return null;
+                                }
 
                                 const hasContent = sub.text || sub.photoUrl;
+                                const isTieredReward = mission.rewards && mission.rewards.length > 1;
 
                                 return (
                                     <ListItem key={sub.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
@@ -503,16 +500,30 @@ function RecorderDashboardPage() {
                                                 {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
                                                 {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
                                             </span>
-                                            <span style={{ fontWeight: 'bold', color: '#007bff', margin: '0 1rem' }}>{mission?.reward}P</span>
+
                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                <StyledButton
-                                                    onClick={(e) => { e.stopPropagation(); handleAction('approve', sub); }}
-                                                    style={{ backgroundColor: '#28a745' }}
-                                                    disabled={isProcessing || isMyOwnSubmission}
-                                                    title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
-                                                >
-                                                    {isProcessing ? '처리중...' : '승인'}
-                                                </StyledButton>
+                                                {isTieredReward ? (
+                                                    mission.rewards.map(reward => (
+                                                        <StyledButton
+                                                            key={reward}
+                                                            onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, reward); }}
+                                                            style={{ backgroundColor: '#28a745' }}
+                                                            disabled={isProcessing || isMyOwnSubmission}
+                                                            title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : `${reward}P 승인`}
+                                                        >
+                                                            {isProcessing ? '...' : `${reward}P`}
+                                                        </StyledButton>
+                                                    ))
+                                                ) : (
+                                                    <StyledButton
+                                                        onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, mission.reward); }}
+                                                        style={{ backgroundColor: '#28a745' }}
+                                                        disabled={isProcessing || isMyOwnSubmission}
+                                                        title={isMyOwnSubmission ? "자신의 미션은 승인할 수 없습니다." : ""}
+                                                    >
+                                                        {isProcessing ? '처리중...' : '승인'}
+                                                    </StyledButton>
+                                                )}
                                                 <StyledButton
                                                     onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
                                                     style={{ backgroundColor: '#dc3545' }}

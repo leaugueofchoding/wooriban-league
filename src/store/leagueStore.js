@@ -42,7 +42,9 @@ import {
     buyMyRoomItem,
     buyMultipleAvatarParts, // [복원] 누락되었던 함수 import
     updatePlayerProfile, // [복원] 누락되었던 함수 import
-    updateMatchStatus
+    updateMatchStatus,
+    batchUpdateAvatarPartCategory, // [추가]
+    batchUpdateMyRoomItemCategory // [추가]
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -283,6 +285,38 @@ export const useLeagueStore = create((set, get) => ({
         await buyMyRoomItem(myPlayerData.id, item);
         await get().fetchInitialData();
     },
+
+    batchMoveAvatarPartCategory: async (partIds, newCategory) => {
+        try {
+            await batchUpdateAvatarPartCategory(partIds, newCategory);
+            // 로컬 상태를 즉시 업데이트하여 빠른 UI 반응성 제공
+            set(state => ({
+                avatarParts: state.avatarParts.map(part =>
+                    partIds.includes(part.id) ? { ...part, category: newCategory } : part
+                )
+            }));
+        } catch (error) {
+            alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`);
+            // 에러 발생 시 데이터 동기화를 위해 전체 데이터를 다시 불러옴
+            get().fetchInitialData();
+        }
+    },
+
+    batchMoveMyRoomItemCategory: async (itemIds, newCategory) => {
+        try {
+            await batchUpdateMyRoomItemCategory(itemIds, newCategory);
+            set(state => ({
+                myRoomItems: state.myRoomItems.map(item =>
+                    itemIds.includes(item.id) ? { ...item, category: newCategory } : item
+                )
+            }));
+        } catch (error) {
+            alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`);
+            get().fetchInitialData();
+        }
+    },
+    // ▲▲▲ 여기까지 추가 ▲▲▲
+
     updatePlayerProfile: async (profileData) => {
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");

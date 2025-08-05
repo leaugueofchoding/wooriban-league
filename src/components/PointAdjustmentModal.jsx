@@ -75,38 +75,38 @@ const CloseButton = styled.button`
 `;
 
 const PointAdjustmentModal = () => {
-    const { pointAdjustmentNotification, clearPointAdjustmentNotification } = useLeagueStore();
+  const { pointAdjustmentNotification, clearPointAdjustmentNotification } = useLeagueStore();
 
-    useEffect(() => {
-        if (pointAdjustmentNotification?.data?.amount > 0) {
-            confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-            });
-        }
-    }, [pointAdjustmentNotification]);
-
-    if (!pointAdjustmentNotification) {
-        return null;
+  useEffect(() => {
+    if (pointAdjustmentNotification?.data?.amount > 0) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
     }
+  }, [pointAdjustmentNotification]);
 
-    const { title, data } = pointAdjustmentNotification;
-    const { amount, reason } = data;
-    const isPositive = amount > 0;
+  if (!pointAdjustmentNotification) {
+    return null;
+  }
 
-    return (
-        <ModalBackground onClick={clearPointAdjustmentNotification}>
-            <ModalContainer onClick={e => e.stopPropagation()}>
-                <ModalTitle $isPositive={isPositive}>{title}</ModalTitle>
-                <ModalText>사유: <strong>{reason}</strong></ModalText>
-                <PointChange $isPositive={isPositive}>
-                    {isPositive ? `+${amount.toLocaleString()}` : amount.toLocaleString()} P
-                </PointChange>
-                <CloseButton onClick={clearPointAdjustmentNotification}>확인</CloseButton>
-            </ModalContainer>
-        </ModalBackground>
-    );
+  const { title, data } = pointAdjustmentNotification;
+  const { amount, reason } = data;
+  const isPositive = amount > 0;
+
+  return (
+    <ModalBackground onClick={clearPointAdjustmentNotification}>
+      <ModalContainer onClick={e => e.stopPropagation()}>
+        <ModalTitle $isPositive={isPositive}>{title}</ModalTitle>
+        <ModalText>사유: <strong>{reason}</strong></ModalText>
+        <PointChange $isPositive={isPositive}>
+          {isPositive ? `+${amount.toLocaleString()}` : amount.toLocaleString()} P
+        </PointChange>
+        <CloseButton onClick={clearPointAdjustmentNotification}>확인</CloseButton>
+      </ModalContainer>
+    </ModalBackground>
+  );
 };
 
 export default PointAdjustmentModal;

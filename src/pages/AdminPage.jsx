@@ -1136,40 +1136,57 @@ function MissionManager() {
     } = useLeagueStore();
     const navigate = useNavigate();
 
+    // ▼▼▼ [수정] 미션 생성을 위한 state 확장 ▼▼▼
     const [title, setTitle] = useState('');
-    const [reward, setReward] = useState(100);
+    const [rewards, setRewards] = useState(['100', '', '']); // 차등 보상
     const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
+    const [isFixed, setIsFixed] = useState(false); // 고정 미션
+    const [adminOnly, setAdminOnly] = useState(false); // 관리자 전용
+    const [prerequisiteMissionId, setPrerequisiteMissionId] = useState('');
     const [showArchived, setShowArchived] = useState(false);
-    const [prerequisiteMissionId, setPrerequisiteMissionId] = useState(''); // [추가] 이전 미션 ID 상태
-
+    const [showAdvanced, setShowAdvanced] = useState({
+        rewards: false,
+        prerequisite: false,
+    });
+    // ▲▲▲ 여기까지 수정 ▲▲▲
     const handleSubmissionTypeChange = (type) => {
         setSubmissionTypes(prev => ({ ...prev, [type]: !prev[type] }));
     };
 
     const handleCreateMission = async () => {
-        if (!title.trim() || !reward) {
-            return alert('미션 이름과 보상 포인트를 모두 입력해주세요.');
+        // ▼▼▼ [수정] 새로운 UI state를 기반으로 데이터 처리 ▼▼▼
+        if (!title.trim() || !rewards[0]) {
+            return alert('미션 이름과 기본 보상 포인트를 모두 입력해주세요.');
         }
 
         const selectedTypes = Object.entries(submissionTypes)
             .filter(([, isSelected]) => isSelected)
             .map(([type]) => type);
-
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
 
+        // 차등 보상 배열 정리 (숫자 변환 및 빈 값 제거)
+        const finalRewards = rewards
+            .map(r => Number(r))
+            .filter(r => r > 0);
+
         try {
-            // [수정] createMission 호출 시 prerequisiteMissionId를 포함하여 전달
             await createMission({
                 title,
-                reward: Number(reward),
+                rewards: finalRewards, // reward -> rewards 배열로 변경
                 submissionType: typeToSend,
-                prerequisiteMissionId: prerequisiteMissionId || null
+                isFixed: isFixed, // 고정 미션 여부
+                adminOnly: adminOnly, // 관리자 전용 여부
+                prerequisiteMissionId: prerequisiteMissionId || null,
             });
             alert('새로운 미션이 등록되었습니다!');
+            // 모든 state 초기화
             setTitle('');
-            setReward(100);
+            setRewards(['100', '', '']);
             setSubmissionTypes({ text: false, photo: false });
-            setPrerequisiteMissionId(''); // 상태 초기화
+            setIsFixed(false);
+            setAdminOnly(false);
+            setPrerequisiteMissionId('');
+            setShowAdvanced({ rewards: false, prerequisite: false });
             await fetchInitialData();
         } catch (error) {
             console.error("미션 생성 오류:", error);
@@ -1182,54 +1199,57 @@ function MissionManager() {
     return (
         <Section>
             <SectionTitle>미션 관리 📜</SectionTitle>
-            <InputGroup>
-                <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="미션 이름 (예: 수학 익힘책 5쪽)"
-                    style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
-                />
-                <ScoreInput
-                    type="number"
-                    value={reward}
-                    onChange={(e) => setReward(e.target.value)}
-                    style={{ width: '80px' }}
-                />
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={submissionTypes.text}
-                            onChange={() => handleSubmissionTypeChange('text')}
-                        /> 글
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={submissionTypes.photo}
-                            onChange={() => handleSubmissionTypeChange('photo')}
-                        /> 사진
-                    </label>
-                </div>
-            </InputGroup>
-            {/* ▼▼▼ [추가된 부분] ▼▼▼ */}
-            <InputGroup>
-                <label htmlFor="prerequisite">이전 미션 선택 (선택 사항):</label>
-                <select
-                    id="prerequisite"
-                    value={prerequisiteMissionId}
-                    onChange={(e) => setPrerequisiteMissionId(e.target.value)}
-                    style={{ flex: 1, padding: '0.5rem' }}
-                >
-                    <option value="">-- 없음 --</option>
-                    {missions.map(mission => (
-                        <option key={mission.id} value={mission.id}>{mission.title}</option>
-                    ))}
-                </select>
-                <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
-            </InputGroup>
-            {/* ▲▲▲ [추가된 부분] ▲▲▲ */}
+            {/* ▼▼▼ [재수정] 미션 출제 UI 레이아웃 변경 ▼▼▼ */}
+            <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+                {/* 1줄: 기본 정보 */}
+                <InputGroup>
+                    <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="미션 이름"
+                        style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
+                    />
+                    <ScoreInput
+                        type="number"
+                        value={rewards[0]}
+                        onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])}
+                        style={{ width: '80px' }}
+                        placeholder="기본 보상"
+                    />
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <label title="글 제출 필요"><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} /> 글</label>
+                        <label title="사진 제출 필요"><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} /> 사진</label>
+                    </div>
+                </InputGroup>
+
+                {/* 2줄: 추가 설정 영역 (토글) */}
+                {showAdvanced.rewards && (
+                    <InputGroup>
+                        <label>차등 보상:</label>
+                        <ScoreInput type="number" value={rewards[1]} onChange={e => setRewards(p => [p[0], e.target.value, p[2]])} style={{ width: '80px' }} placeholder="2단계" />
+                        <ScoreInput type="number" value={rewards[2]} onChange={e => setRewards(p => [p[0], p[1], e.target.value])} style={{ width: '80px' }} placeholder="3단계" />
+                    </InputGroup>
+                )}
+                {showAdvanced.prerequisite && (
+                    <InputGroup>
+                        <label htmlFor="prerequisite">연계 미션:</label>
+                        <select id="prerequisite" value={prerequisiteMissionId} onChange={(e) => setPrerequisiteMissionId(e.target.value)} style={{ flex: 1, padding: '0.5rem' }}>
+                            <option value="">-- 없음 --</option>
+                            {missions.map(mission => (<option key={mission.id} value={mission.id}>{mission.title}</option>))}
+                        </select>
+                    </InputGroup>
+                )}
+
+                {/* 3줄: 액션 버튼 */}
+                <InputGroup style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem' }}>
+                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }}>차등 보상</StyledButton>
+                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }}>연계 미션</StyledButton>
+                    <StyledButton onClick={() => setIsFixed(p => !p)} style={{ backgroundColor: isFixed ? '#17a2b8' : '#6c757d' }}>{isFixed ? '반복(활성)' : '반복 미션'}</StyledButton>
+                    <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }}>{adminOnly ? ' 관리(활성)' : '관리자만'}</StyledButton>
+                    <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
+                </InputGroup>
+            </div>
 
             <div style={{ marginTop: '2rem' }}>
                 <ToggleButton onClick={() => setShowArchived(prev => !prev)}>
@@ -1278,7 +1298,7 @@ function MissionManager() {
 }
 
 function AvatarPartManager() {
-    const { avatarParts, fetchInitialData, updateLocalAvatarPartStatus, updateLocalAvatarPartDisplayName } = useLeagueStore();
+    const { avatarParts, fetchInitialData, updateLocalAvatarPartStatus, updateLocalAvatarPartDisplayName, batchMoveAvatarPartCategory } = useLeagueStore();
     const [files, setFiles] = useState([]);
     const [uploadCategory, setUploadCategory] = useState('hair');
     const [isUploading, setIsUploading] = useState(false);
@@ -1293,7 +1313,24 @@ function AvatarPartManager() {
     const [endDate, setEndDate] = useState(new Date());
     const [selectedDays, setSelectedDays] = useState(new Set());
     const [isDeleteMode, setIsDeleteMode] = useState(false);
+    const [isMoveMode, setIsMoveMode] = useState(false);
+    const [moveTargetCategory, setMoveTargetCategory] = useState('');
 
+    const handleBatchMove = async () => {
+        if (checkedItems.size === 0) return alert('이동할 아이템을 하나 이상 선택해주세요.');
+        if (!moveTargetCategory) return alert('이동할 카테고리를 선택해주세요.');
+        if (window.confirm(`선택한 ${checkedItems.size}개의 아이템을 '${moveTargetCategory}' 카테고리로 이동하시겠습니까?`)) {
+            try {
+                await batchMoveAvatarPartCategory(Array.from(checkedItems), moveTargetCategory);
+                alert('아이템이 이동되었습니다.');
+                setCheckedItems(new Set());
+                setIsMoveMode(false);
+                setMoveTargetCategory('');
+            } catch (error) {
+                alert(`아이템 이동 실패: ${error.message}`);
+            }
+        }
+    };
 
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 8;
@@ -1538,16 +1575,43 @@ function AvatarPartManager() {
                 </InputGroup>
 
                 <InputGroup style={{ justifyContent: 'flex-start' }}>
-                    <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                    <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                         {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
                     </SaveButton>
-                    <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
+                    <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
                         {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
                     </SaveButton>
-                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                    {/* ▼▼▼ [수정] 아이템 이동 버튼 추가 ▼▼▼ */}
+                    <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
+                        {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
+                    </SaveButton>
+                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsMoveMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
                         {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
                     </SaveButton>
                 </InputGroup>
+
+                {/* ▼▼▼ [추가] 아이템 이동 패널 ▼▼▼ */}
+                {isMoveMode && (<div style={{ border: '2px solid #ffc107', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff9e6' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleBatchMove} disabled={checkedItems.size === 0 || !moveTargetCategory} style={{ backgroundColor: '#ffc107', color: 'black' }}>
+                            {checkedItems.size}개 이동 실행
+                        </SaveButton>
+                    </InputGroup>
+                    <InputGroup>
+                        <span>이동할 카테고리:</span>
+                        <select
+                            value={moveTargetCategory}
+                            onChange={(e) => setMoveTargetCategory(e.target.value)}
+                            style={{ flex: 1, padding: '0.5rem' }}
+                        >
+                            <option value="">-- 카테고리 선택 --</option>
+                            {sortedCategories.filter(c => c !== activeTab).map(category => (
+                                <option key={category} value={category}>{category}</option>
+                            ))}
+                        </select>
+                    </InputGroup>
+                </div>)}
 
                 {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -1605,11 +1669,10 @@ function AvatarPartManager() {
 
                         return (
                             <ItemCard key={part.id}>
-                                {(isSaleMode || isSaleDayMode || isDeleteMode) && (
+                                {(isSaleMode || isSaleDayMode || isMoveMode || isDeleteMode) && (
                                     <div style={{ height: '25px' }}>
                                         <input type="checkbox" checked={checkedItems.has(part.id)} onChange={() => handleCheckboxChange(part.id)} style={{ width: '20px', height: '20px' }} />
                                     </div>)}
-                                {!(isSaleMode || isSaleDayMode || isDeleteMode) && <div style={{ height: '25px' }}></div>}
 
                                 <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
                                     <input
@@ -1693,7 +1756,7 @@ function AvatarPartManager() {
 // ▼▼▼ [수정 완료] 마이룸 아이템 관리 컴포넌트 ▼▼▼
 // =================================================================
 function MyRoomItemManager() {
-    const { fetchInitialData, updateLocalMyRoomItemDisplayName } = useLeagueStore();
+    const { fetchInitialData, updateLocalMyRoomItemDisplayName, batchMoveMyRoomItemCategory } = useLeagueStore();
     const myRoomItemsFromStore = useLeagueStore(state => state.myRoomItems);
 
     const [myRoomItems, setMyRoomItems] = useState([]);
@@ -1713,6 +1776,24 @@ function MyRoomItemManager() {
     const [endDate, setEndDate] = useState(new Date());
     const [selectedDays, setSelectedDays] = useState(new Set());
     const [currentPage, setCurrentPage] = useState(1);
+    const [isMoveMode, setIsMoveMode] = useState(false);
+    const [moveTargetCategory, setMoveTargetCategory] = useState('');
+
+    const handleBatchMove = async () => {
+        if (checkedItems.size === 0) return alert('이동할 아이템을 하나 이상 선택해주세요.');
+        if (!moveTargetCategory) return alert('이동할 카테고리를 선택해주세요.');
+        if (window.confirm(`선택한 ${checkedItems.size}개의 아이템을 '${moveTargetCategory}' 카테고리로 이동하시겠습니까?`)) {
+            try {
+                await batchMoveMyRoomItemCategory(Array.from(checkedItems), moveTargetCategory);
+                alert('아이템이 이동되었습니다.');
+                setCheckedItems(new Set());
+                setIsMoveMode(false);
+                setMoveTargetCategory('');
+            } catch (error) {
+                alert(`아이템 이동 실패: ${error.message}`);
+            }
+        }
+    };
     const ITEMS_PER_PAGE = 8;
     const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -1748,7 +1829,7 @@ function MyRoomItemManager() {
         }, {});
     }, [myRoomItems]);
 
-    const sortedCategories = ['하우스', '배경', '가구', '소품']; // 카테고리 목록 수정
+    const sortedCategories = ['하우스', '배경', '가구', '소품', '미니카페']; // 카테고리 목록 수정
     const [activeTab, setActiveTab] = useState('가구');
 
     useEffect(() => {
@@ -1942,6 +2023,8 @@ function MyRoomItemManager() {
                         <option value="하우스">하우스</option>
                         <option value="가구">가구</option>
                         <option value="소품">소품</option>
+                        <option value="미니카페">미니카페</option> 
+
                     </select>
                     <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
                         {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
@@ -1949,16 +2032,42 @@ function MyRoomItemManager() {
                 </InputGroup>
 
                 <InputGroup>
-                    <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
+                    <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                         {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
                     </SaveButton>
-                    <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
+                    <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
                         {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
                     </SaveButton>
-                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                    {/* ▼▼▼ [수정] 아이템 이동 버튼 추가 ▼▼▼ */}
+                    <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
+                        {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
+                    </SaveButton>
+                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsMoveMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
                         {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
                     </SaveButton>
                 </InputGroup>
+
+                {isMoveMode && (<div style={{ border: '2px solid #ffc107', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff9e6' }}>
+                    <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
+                        <SaveButton onClick={handleBatchMove} disabled={checkedItems.size === 0 || !moveTargetCategory} style={{ backgroundColor: '#ffc107', color: 'black' }}>
+                            {checkedItems.size}개 이동 실행
+                        </SaveButton>
+                    </InputGroup>
+                    <InputGroup>
+                        <span>이동할 카테고리:</span>
+                        <select
+                            value={moveTargetCategory}
+                            onChange={(e) => setMoveTargetCategory(e.target.value)}
+                            style={{ flex: 1, padding: '0.5rem' }}
+                        >
+                            <option value="">-- 카테고리 선택 --</option>
+                            {sortedCategories.filter(c => c !== activeTab).map(category => (
+                                <option key={category} value={category}>{category}</option>
+                            ))}
+                        </select>
+                    </InputGroup>
+                </div>)}
 
                 {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -2013,7 +2122,7 @@ function MyRoomItemManager() {
 
                                 return (
                                     <ItemCard key={item.id}>
-                                        {(isSaleMode || isSaleDayMode || isDeleteMode) && (
+                                        {(isSaleMode || isSaleDayMode || isMoveMode || isDeleteMode) && (
                                             <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1 }}>
                                                 <input type="checkbox" checked={checkedItems.has(item.id)} onChange={() => handleCheckboxChange(item.id)} style={{ width: '20px', height: '20px' }} />
                                             </div>

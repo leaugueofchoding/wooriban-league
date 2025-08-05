@@ -82,42 +82,51 @@ const CloseButton = styled.button`
 
 
 const PatchNoteModal = ({ isOpen, onClose }) => {
-    if (!isOpen) return null;
+  if (!isOpen) return null;
 
-    return (
-        <ModalBackground onClick={onClose}>
-            <ModalContainer onClick={e => e.stopPropagation()}>
-                <ModalTitle>🚀 우리반 리그 패치 노트</ModalTitle>
-                <ContentArea>
-                    {/* ▼▼▼ [추가] 최신 업데이트 내역 ▼▼▼ */}
-                    <VersionHeader>v4.1 (2025-07-30)</VersionHeader>
-                    <ChangeList>
-                        <li>🚀 **[기능개선]** 미션 제출방법에 [글]과 [사진]이 추가되었습니다.</li>
-                        <li>🚀 **[기능개선]** 리그 홈 실시간 업데이트: 경기 결과 저장 시, 순위표와 경기 일정이 애니메이션과 함께 즉시 갱신됩니다.</li>
-                        <li>🚀 **[기능개선]** 알림창 UX 개선: 알림창 외부를 클릭해도 창이 닫히도록 수정되었습니다.</li>
-                        <li>✅ **[버그수정]** 아바타 렌더링 오류 수정: 선수 기록 페이지 등에서 여러 개의 액세서리를 착용한 아바타가 정상적으로 표시되도록 수정했습니다.</li>
-                    </ChangeList>
-                    {/* ▲▲▲ 여기까지 추가 ▲▲▲ */}
+  return (
+    <ModalBackground onClick={onClose}>
+      <ModalContainer onClick={e => e.stopPropagation()}>
+        <ModalTitle>🚀 우리반 리그 패치 노트</ModalTitle>
+        <ContentArea>
+          {/* ▼▼▼ [추가] 최신 업데이트 내역 ▼▼▼ */}
+          <VersionHeader>v4.2 (2025-08-06)</VersionHeader>
+          <ChangeList>
+            <li>✨ **[신규기능]** 마이룸 편집에 '수정 모드'가 추가되었습니다. 이제 수정 버튼을 눌러야만 아이템 목록이 보이고 편집할 수 있습니다.</li>
+            <li>🚀 **[기능개선]** 한번 구매한 마이룸 아이템은 개수 제한 없이 여러 번 배치할 수 있도록 변경되었습니다. (+/- 버튼으로 조작)</li>
+            <li>🚀 **[기능개선]** 미션 관리 기능이 대폭 개선되었습니다. (차등 보상, 고정 미션, 관리자 전용 미션, 제출 유형 아이콘)</li>
+            <li>✅ **[버그수정]** 마이룸에 배치한 아이템의 순서(위/아래)가 저장 후에도 그대로 유지되도록 수정되었습니다.</li>
+            <li>✅ **[버그수정]** 관리자가 포인트를 조정했을 때, 해당 학생에게 상세 내역이 담긴 모달 팝업이 다시 나타나도록 복구했습니다.</li>
+          </ChangeList>
+          {/* ▲▲▲ 여기까지 추가 ▲▲▲ */}
 
-                    <VersionHeader>v4.final (2024-07-26)</VersionHeader>
-                    <ChangeList>
-                        <li>✅ **[버그수정]** 선수 비활성화 기능 추가 (데이터 보존)</li>
-                        <li>✅ **[버그수정]** 퀴즈 문제 고정 (localStorage 활용)</li>
-                        <li>✅ **[버그수정]** 경기 결과 저장 오류 해결</li>
-                        <li>🚀 **[기능개선]** 기록원 UX 대폭 개선 (+, - 버튼, 자책골, 자동 점수 차감)</li>
-                        <li>🚀 **[기능개선]** 모바일 화면 최적화 (대시보드, 리그홈, 상점)</li>
-                        <li>🚀 **[기능개선]** 프로필 편집 UX 개선 (이름/성별 동시 수정)</li>
-                        <li>✨ **[신규기능]** 건의사항 시스템 (1:1 소통, 관리자 답변 및 알림)</li>
-                        <li>✨ **[신규기능]** 포인트 변동 실시간 알림 모달 기능</li>
-                        <li>✨ **[신규기능]** 득점왕 보상 시스템 추가</li>
-                        <li>✨ **[신규기능]** 선수 기록 페이지 강화 (시즌/랭킹 탭 분리, 정렬 기능)</li>
-                        <li>✨ **[신규기능]** 프로필 성별 등록 및 팀 자동 배정 로직 개선</li>
-                    </ChangeList>
-                </ContentArea>
-                <CloseButton onClick={onClose}>닫기</CloseButton>
-            </ModalContainer>
-        </ModalBackground>
-    );
+          <VersionHeader>v4.1 (2025-07-30)</VersionHeader>
+          <ChangeList>
+            <li>🚀 **[기능개선]** 미션 제출방법에 [글]과 [사진]이 추가되었습니다.</li>
+            <li>🚀 **[기능개선]** 리그 홈 실시간 업데이트: 경기 결과 저장 시, 순위표와 경기 일정이 애니메이션과 함께 즉시 갱신됩니다.</li>
+            <li>🚀 **[기능개선]** 알림창 UX 개선: 알림창 외부를 클릭해도 창이 닫히도록 수정되었습니다.</li>
+            <li>✅ **[버그수정]** 아바타 렌더링 오류 수정: 선수 기록 페이지 등에서 여러 개의 액세서리를 착용한 아바타가 정상적으로 표시되도록 수정했습니다.</li>
+          </ChangeList>
+
+          <VersionHeader>v4.final (2024-07-26)</VersionHeader>
+          <ChangeList>
+            <li>✅ **[버그수정]** 선수 비활성화 기능 추가 (데이터 보존)</li>
+            <li>✅ **[버그수정]** 퀴즈 문제 고정 (localStorage 활용)</li>
+            <li>✅ **[버그수정]** 경기 결과 저장 오류 해결</li>
+            <li>🚀 **[기능개선]** 기록원 UX 대폭 개선 (+, - 버튼, 자책골, 자동 점수 차감)</li>
+            <li>🚀 **[기능개선]** 모바일 화면 최적화 (대시보드, 리그홈, 상점)</li>
+            <li>🚀 **[기능개선]** 프로필 편집 UX 개선 (이름/성별 동시 수정)</li>
+            <li>✨ **[신규기능]** 건의사항 시스템 (1:1 소통, 관리자 답변 및 알림)</li>
+            <li>✨ **[신규기능]** 포인트 변동 실시간 알림 모달 기능</li>
+            <li>✨ **[신규기능]** 득점왕 보상 시스템 추가</li>
+            <li>✨ **[신규기능]** 선수 기록 페이지 강화 (시즌/랭킹 탭 분리, 정렬 기능)</li>
+            <li>✨ **[신규기능]** 프로필 성별 등록 및 팀 자동 배정 로직 개선</li>
+          </ChangeList>
+        </ContentArea>
+        <CloseButton onClick={onClose}>닫기</CloseButton>
+      </ModalContainer>
+    </ModalBackground>
+  );
 };
 
 export default PatchNoteModal;
