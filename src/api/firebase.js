@@ -279,20 +279,24 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
     if (!playerDoc.exists()) {
       throw new Error("해당 플레이어를 찾을 수 없습니다.");
     }
-
+    const playerData = playerDoc.data();
     transaction.update(playerRef, { points: increment(amount) });
 
-    const message = amount > 0 ? `+${amount}P가 지급되었습니다.` : `${amount}P가 차감되었습니다.`;
+    const title = `${amount > 0 ? '+' : ''}${amount}P 포인트 조정`;
+    const body = `사유: ${reason}`;
+
     createNotification(
-      playerDoc.data().authUid,
-      `포인트가 조정되었습니다.`,
-      `${message} (사유: ${reason})`,
-      'point'
+      playerData.authUid,
+      title,
+      body,
+      'point',
+      null,
+      { amount, reason, title } // 모달에 전달할 데이터
     );
 
     await addPointHistory(
-      playerDoc.data().authUid,
-      playerDoc.data().name,
+      playerData.authUid,
+      playerData.name,
       amount,
       reason
     );
@@ -311,24 +315,16 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
       const playerData = playerDoc.data();
       batch.update(playerRef, { points: increment(amount) });
 
-      // [수정] 알림 제목을 보상 내용에 맞게 동적으로 변경
-      let notificationTitle = `+${amount}P 획득!`;
-      if (reason.includes('우승')) {
-        notificationTitle = `🏆 리그 우승! +${amount}P`;
-      } else if (reason.includes('준우승')) {
-        notificationTitle = `🥈 리그 준우승! +${amount}P`;
-      } else if (reason.includes('3위')) {
-        notificationTitle = `🥉 리그 3위! +${amount}P`;
-      } else if (reason.includes('득점왕')) {
-        notificationTitle = `⚽ 득점왕! +${amount}P`;
-      }
+      const title = `${amount > 0 ? '+' : ''}${amount}P 포인트 조정`;
+      const body = `사유: ${reason}`;
 
       createNotification(
         playerData.authUid,
-        notificationTitle, // 수정된 알림 제목 적용
-        `'${reason}' 보상으로 ${amount}P를 획득했습니다.`,
+        title,
+        body,
         'point',
-        `/profile/${playerId}`
+        `/profile/${playerId}`,
+        { amount, reason, title } // 모달에 전달할 데이터
       );
 
       await addPointHistory(
@@ -1191,9 +1187,9 @@ export async function batchUpdateMyRoomItemSaleDays(itemIds, saleDays) {
 
 
 // --- 알림 관련 ---
-export async function createNotification(userId, title, body, type, link = null) {
+export async function createNotification(userId, title, body, type, link = null, data = null) {
   if (!userId) return;
-  await addDoc(collection(db, 'notifications'), {
+  const notificationData = {
     userId,
     title,
     body,
@@ -1201,7 +1197,11 @@ export async function createNotification(userId, title, body, type, link = null)
     link,
     isRead: false,
     createdAt: serverTimestamp(),
-  });
+  };
+  if (data) {
+    notificationData.data = data;
+  }
+  await addDoc(collection(db, 'notifications'), notificationData);
 }
 
 export async function getNotificationsForUser(userId) {
