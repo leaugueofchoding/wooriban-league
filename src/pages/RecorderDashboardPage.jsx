@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, approveMissionsInBatch, rejectMissionSubmission, updateMatchStatus } from '../api/firebase.js';
+import { auth, db, approveMissionsInBatch, rejectMissionSubmission, updateMatchStatus, updateMatchStartTime } from '../api/firebase.js';
 import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 
@@ -241,6 +241,23 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
     const scorers = match.scorers || {};
 
     useEffect(() => {
+        // '예정' 상태의 경기이고 점수가 Firestore에 설정되지 않았을 때 초기 점수를 저장합니다.
+        if (match.status === '예정' && (match.teamA_score == null || match.teamB_score == null)) {
+            const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
+            const defaultScoreA = match.teamA_score ?? maxMembers;
+            const defaultScoreB = match.teamB_score ?? maxMembers;
+
+            if (match.teamA_score == null || match.teamB_score == null) {
+                updateDoc(doc(db, 'matches', match.id), {
+                    teamA_score: defaultScoreA,
+                    teamB_score: defaultScoreB,
+                });
+            }
+        }
+    }, [match.id, match.status, match.teamA_score, match.teamB_score, teamAMembers.length, teamBMembers.length]);
+
+
+    useEffect(() => {
         setShowScorers(isInitiallyOpen);
     }, [isInitiallyOpen]);
 
@@ -344,9 +361,9 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
                                     <ScoreControl>
-                                        <ScoreButton onClick={() => handleScorerChange(player.id, -1)} disabled={match.status === '완료'}>-</ScoreButton>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, -1)} disabled={match.status !== '진행중'}>-</ScoreButton>
                                         <ScoreDisplay style={{ fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
-                                        <ScoreButton onClick={() => handleScorerChange(player.id, 1)} disabled={match.status === '완료'}>+</ScoreButton>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, 1)} disabled={match.status !== '진행중'}>+</ScoreButton>
                                         <span>골</span>
                                     </ScoreControl>
                                 </ScorerRow>
@@ -354,7 +371,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
                             <ScorerRow>
                                 <span style={{ color: 'red' }}>자책:</span>
                                 <ScoreControl>
-                                    <ScoreButton onClick={() => handleOwnGoalChange('A')} disabled={match.status === '완료'}>+</ScoreButton>
+                                    <ScoreButton onClick={() => handleOwnGoalChange('A')} disabled={match.status !== '진행중'}>+</ScoreButton>
                                 </ScoreControl>
                             </ScorerRow>
                         </TeamScorerList>
@@ -363,9 +380,9 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
                                 <ScorerRow key={player.id}>
                                     <span>{player.name}:</span>
                                     <ScoreControl>
-                                        <ScoreButton onClick={() => handleScorerChange(player.id, -1)} disabled={match.status === '완료'}>-</ScoreButton>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, -1)} disabled={match.status !== '진행중'}>-</ScoreButton>
                                         <ScoreDisplay style={{ fontSize: '1.2rem' }}>{scorers[player.id] || 0}</ScoreDisplay>
-                                        <ScoreButton onClick={() => handleScorerChange(player.id, 1)} disabled={match.status === '완료'}>+</ScoreButton>
+                                        <ScoreButton onClick={() => handleScorerChange(player.id, 1)} disabled={match.status !== '진행중'}>+</ScoreButton>
                                         <span>골</span>
                                     </ScoreControl>
                                 </ScorerRow>
@@ -373,7 +390,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
                             <ScorerRow>
                                 <span style={{ color: 'red' }}>자책:</span>
                                 <ScoreControl>
-                                    <ScoreButton onClick={() => handleOwnGoalChange('B')} disabled={match.status === '완료'}>+</ScoreButton>
+                                    <ScoreButton onClick={() => handleOwnGoalChange('B')} disabled={match.status !== '진행중'}>+</ScoreButton>
                                 </ScoreControl>
                             </ScorerRow>
                         </TeamScorerList>
@@ -460,6 +477,9 @@ function RecorderDashboardPage() {
     };
 
     const handleMatchStatusChange = async (matchId, newStatus) => {
+        if (newStatus === '진행중') {
+            await updateMatchStartTime(matchId); // 경기 시작 시간 기록
+        }
         await updateMatchStatus(matchId, newStatus);
     };
 

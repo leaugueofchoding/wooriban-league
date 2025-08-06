@@ -20,6 +20,22 @@ const Wrapper = styled.div`
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 `;
 
+const TabContainer = styled.div`
+  display: flex;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+`;
+
+const TabButton = styled.button`
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border: 1px solid #ccc;
+  background-color: ${props => props.$active ? '#007bff' : 'white'};
+  color: ${props => props.$active ? 'white' : 'black'};
+  cursor: pointer;
+`;
+
 const Header = styled.div`
   text-align: center;
   margin-bottom: 2rem;
@@ -397,37 +413,25 @@ function MyRoomPage() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
 
-  const [openInventories, setOpenInventories] = useState({
-    background: true,
-    furniture: true,
-    cafe: true
-  });
+  const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
-  const { backgroundItems, furnitureItems, cafeItems } = useMemo(() => {
+  const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin'
       ? myRoomItems
       : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
 
-    const backgrounds = [];
-    const furnitures = [];
-    const cafes = [];
+    const categories = { '하우스': [], '배경': [], '가구': [], '소품': [], '미니카페': [] };
 
     itemsToDisplay.forEach(item => {
-      if (item) {
-        if (['하우스', '배경', '바닥', '벽지'].includes(item.category)) {
-          backgrounds.push(item);
-        } else if (['가구', '소품'].includes(item.category)) {
-          furnitures.push(item);
-        } else if (['미니카페'].includes(item.category)) {
-          cafes.push(item);
-        }
+      if (item && categories[item.category]) {
+        categories[item.category].push(item);
       }
     });
-    return { backgroundItems: backgrounds, furnitureItems: furnitures, cafeItems: cafes };
+    return categories;
   }, [myPlayerData, myRoomItems]);
 
   const ownerAvatarUrls = useMemo(() => {
@@ -783,58 +787,42 @@ function MyRoomPage() {
               <SaveButton onClick={handleSaveLayout}>마이룸 저장</SaveButton>
             </div>
 
-            <InventoryHeader onClick={() => setOpenInventories(p => ({ ...p, background: !p.background }))}>
-              하우스/배경 {openInventories.background ? '▲' : '▼'}
-            </InventoryHeader>
-            <AccordionContent $isOpen={openInventories.background}>
+            <TabContainer style={{ justifyContent: 'flex-start', borderBottom: '1px solid #dee2e6' }}>
+              {['하우스', '배경', '가구', '소품', '미니카페'].map(category => (
+                <TabButton
+                  key={category}
+                  $active={activeInventoryTab === category}
+                  onClick={() => setActiveInventoryTab(category)}
+                >
+                  {category} ({categorizedInventory[category]?.length || 0})
+                </TabButton>
+              ))}
+            </TabContainer>
+
+            <AccordionContent $isOpen={true} style={{ maxHeight: '300px', overflowY: 'auto' }}>
               <InventoryGrid>
-                {backgroundItems.length > 0 ? backgroundItems.map(item => {
-                  const isHouse = item.category === '하우스';
+                {categorizedInventory[activeInventoryTab]?.length > 0 ? categorizedInventory[activeInventoryTab].map(item => {
+                  if (['하우스', '배경'].includes(activeInventoryTab)) {
+                    const isHouse = item.category === '하우스';
+                    return (
+                      <InventoryItem key={item.id} $isSelected={isHouse ? roomConfig.houseId === item.id : roomConfig.backgroundId === item.id}>
+                        <img src={item.src} alt={item.displayName || item.id} onClick={() => isHouse ? handleHouseSelect(item) : handleBackgroundSelect(item)} />
+                        <p>{item.displayName || item.id}</p>
+                      </InventoryItem>
+                    )
+                  }
                   return (
-                    <InventoryItem key={item.id} $isSelected={isHouse ? roomConfig.houseId === item.id : roomConfig.backgroundId === item.id}>
-                      <img src={item.src} alt={item.displayName || item.id} onClick={() => isHouse ? handleHouseSelect(item) : handleBackgroundSelect(item)} />
+                    <InventoryItem key={item.id}>
+                      <img src={item.src} alt={item.displayName || item.id} />
                       <p>{item.displayName || item.id}</p>
+                      <ItemControls>
+                        <ControlButton onClick={() => handleRemoveItem(item)} disabled={(itemCounts[item.id] || 0) === 0}>-</ControlButton>
+                        <ItemCount>{itemCounts[item.id] || 0}</ItemCount>
+                        <ControlButton onClick={() => handleAddItem(item)}>+</ControlButton>
+                      </ItemControls>
                     </InventoryItem>
-                  )
-                }) : <p>소유한 하우스/배경 아이템이 없습니다.</p>}
-              </InventoryGrid>
-            </AccordionContent>
-
-            <InventoryHeader onClick={() => setOpenInventories(p => ({ ...p, furniture: !p.furniture }))}>
-              가구/소품 {openInventories.furniture ? '▲' : '▼'}
-            </InventoryHeader>
-            <AccordionContent $isOpen={openInventories.furniture}>
-              <InventoryGrid>
-                {furnitureItems.length > 0 ? furnitureItems.map(item => (
-                  <InventoryItem key={item.id}>
-                    <img src={item.src} alt={item.displayName || item.id} />
-                    <p>{item.displayName || item.id}</p>
-                    <ItemControls>
-                      <ControlButton onClick={() => handleRemoveItem(item)} disabled={(itemCounts[item.id] || 0) === 0}>-</ControlButton>
-                      <ItemCount>{itemCounts[item.id] || 0}</ItemCount>
-                      <ControlButton onClick={() => handleAddItem(item)}>+</ControlButton>
-                    </ItemControls>
-                  </InventoryItem>
-                )) : <p>소유한 가구/소품 아이템이 없습니다.</p>}
-              </InventoryGrid>
-            </AccordionContent>
-
-            <InventoryHeader onClick={() => setOpenInventories(p => ({ ...p, cafe: !p.cafe }))}>
-              미니카페 {openInventories.cafe ? '▲' : '▼'}
-            </InventoryHeader>
-            <AccordionContent $isOpen={openInventories.cafe}>
-              <InventoryGrid>
-                {cafeItems.length > 0 ? cafeItems.map(item => (
-                  <InventoryItem key={item.id}>
-                    <img src={item.src} alt={item.displayName || item.id} />
-                    <p>{item.displayName || item.id}</p>
-                    <ItemControls>
-                      <ControlButton onClick={() => handleRemoveItem(item)} disabled={(itemCounts[item.id] || 0) === 0}>-</ControlButton>
-                      <ItemCount>{itemCounts[item.id] || 0}</ItemCount>
-                      <ControlButton onClick={() => handleAddItem(item)}>+</ControlButton>
-                    </ItemControls>
-                  </InventoryItem>
-                )) : <p>소유한 미니카페 아이템이 없습니다.</p>}
+                  );
+                }) : <p>해당 카테고리의 아이템이 없습니다.</p>}
               </InventoryGrid>
             </AccordionContent>
           </InventoryContainer>

@@ -738,6 +738,12 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
   await batch.commit();
 }
 
+// ▼▼▼ [신규] 경기 시작 시간 기록 함수 추가 ▼▼▼
+export async function updateMatchStartTime(matchId) {
+  const matchRef = doc(db, 'matches', matchId);
+  await updateDoc(matchRef, { startTime: serverTimestamp() });
+}
+
 // ▼▼▼ [신규] 경기 상태(status)만 변경하는 함수 추가 ▼▼▼
 export async function updateMatchStatus(matchId, newStatus) {
   const matchRef = doc(db, 'matches', matchId);
