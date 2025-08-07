@@ -67,14 +67,13 @@ const AppliedHouse = styled.img`
   pointer-events: none; 
 `;
 
-// ▼▼▼ [수정] object-fit 속성을 'contain'으로 변경 ▼▼▼
 const AppliedBackground = styled.img`
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain; /* cover -> contain */
+  object-fit: cover;
   z-index: 0; 
   pointer-events: none;
 `;
