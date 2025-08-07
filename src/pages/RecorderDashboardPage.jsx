@@ -6,6 +6,7 @@ import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, approveMissionsInBatch, rejectMissionSubmission, updateMatchStatus, updateMatchStartTime } from '../api/firebase.js';
 import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
+import BroadcastPage from './BroadcastPage'; // 방송 페이지 컴포넌트 import
 
 const Wrapper = styled.div`
   max-width: 800px;
@@ -28,6 +29,15 @@ const SectionTitle = styled.h2`
   border-bottom: 2px solid #eee;
   padding-bottom: 0.5rem;
   margin-bottom: 1rem;
+`;
+
+const BroadcastContainer = styled.div`
+    height: 450px;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+    border: 2px solid #dee2e6;
 `;
 
 const List = styled.ul`
@@ -214,11 +224,10 @@ const RemoteButton = styled.button`
     
     &.start { background-color: #28a745; }
     &.end { background-color: #dc3545; }
-    &.next { background-color: #007bff; }
 `;
 
 
-function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchAvailable }) {
+function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
     const { players, teams, saveScores } = useLeagueStore();
     const [showScorers, setShowScorers] = useState(isInitiallyOpen);
 
@@ -228,20 +237,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
     const teamAMembers = useMemo(() => teamA?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamA, players]);
     const teamBMembers = useMemo(() => teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamB, players]);
 
-    const initialScore = useMemo(() => {
-        if (match.status !== '예정') {
-            return { a: match.teamA_score ?? 0, b: match.teamB_score ?? 0 };
-        }
-        const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
-        return { a: match.teamA_score ?? maxMembers, b: match.teamB_score ?? maxMembers };
-    }, [match, teamAMembers, teamBMembers]);
-
-    const scoreA = initialScore.a;
-    const scoreB = initialScore.b;
-    const scorers = match.scorers || {};
-
     useEffect(() => {
-        // '예정' 상태의 경기이고 점수가 Firestore에 설정되지 않았을 때 초기 점수를 저장합니다.
         if (match.status === '예정' && (match.teamA_score == null || match.teamB_score == null)) {
             const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
             const defaultScoreA = match.teamA_score ?? maxMembers;
@@ -256,6 +252,9 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
         }
     }, [match.id, match.status, match.teamA_score, match.teamB_score, teamAMembers.length, teamBMembers.length]);
 
+    const scoreA = match.teamA_score ?? 0;
+    const scoreB = match.teamB_score ?? 0;
+    const scorers = match.scorers || {};
 
     useEffect(() => {
         setShowScorers(isInitiallyOpen);
@@ -275,19 +274,11 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
         const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
         const currentGoals = scorers[playerId] || 0;
 
-        if (amount === -1 && currentGoals === 0) {
-            return;
-        }
+        if (amount === -1 && currentGoals === 0) return;
 
         if (amount === 1) {
-            if (playerTeam === 'A' && scoreB === 0) {
-                alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
-                return;
-            }
-            if (playerTeam === 'B' && scoreA === 0) {
-                alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
-                return;
-            }
+            if (playerTeam === 'A' && scoreB === 0) return alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
+            if (playerTeam === 'B' && scoreA === 0) return alert("상대팀의 점수가 0점이므로 더 이상 득점할 수 없습니다.");
         }
 
         const newScorers = { ...scorers };
@@ -325,7 +316,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
 
     return (
         <MatchItem>
-            <MatchSummary>
+            <MatchSummary style={{ minWidth: '0' }}> {/* minWidth 제거 */}
                 <TeamName>{teamA?.teamName || 'N/A'}</TeamName>
                 <ScoreControl>
                     <ScoreButton onClick={() => handleScoreChange('A', -1)} disabled={match.status === '완료'}>-</ScoreButton>
@@ -340,7 +331,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
                 </ScoreControl>
                 <TeamName>{teamB?.teamName || 'N/A'}</TeamName>
 
-                <div style={{ display: 'flex', gap: '0.5rem', width: '220px', justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexShrink: 0 }}> {/* flexShrink 추가 */}
                     <StyledButton onClick={() => setShowScorers(s => !s)} disabled={match.status === '완료'}>득점</StyledButton>
                     {match.status === '예정' && (
                         <RemoteButton className="start" onClick={() => onStatusChange(match.id, '진행중')}>경기 시작</RemoteButton>
@@ -348,8 +339,8 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange, onNext, isNextMatchA
                     {match.status === '진행중' && (
                         <RemoteButton className="end" onClick={handleEndGame}>경기 종료</RemoteButton>
                     )}
-                    {match.status === '완료' && isNextMatchAvailable && (
-                        <RemoteButton className="next" onClick={onNext}>다음 경기로</RemoteButton>
+                    {match.status === '완료' && (
+                        <StyledButton disabled>완료된 경기</StyledButton>
                     )}
                 </div>
             </MatchSummary>
@@ -406,7 +397,6 @@ function RecorderDashboardPage() {
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
     const [mainTab, setMainTab] = useState('mission');
-    const [activeMatchTab, setActiveMatchTab] = useState('pending');
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
     const navigate = useNavigate();
@@ -423,25 +413,12 @@ function RecorderDashboardPage() {
         });
     }, [matches]);
 
-    const filteredMatches = useMemo(() => {
-        return sortedMatches.filter(m => (activeMatchTab === 'pending' ? m.status !== '완료' : m.status === '완료'));
-    }, [sortedMatches, activeMatchTab]);
-
-    const nextUpcomingMatch = useMemo(() => {
-        return sortedMatches.find(m => m.status === '예정');
-    }, [sortedMatches]);
-
-    const isNextMatchAvailable = useMemo(() => {
-        const completedMatches = sortedMatches.filter(m => m.status === '완료');
-        const lastCompleted = completedMatches[completedMatches.length - 1];
-        return lastCompleted && nextUpcomingMatch;
-    }, [sortedMatches, nextUpcomingMatch]);
-
     const currentOrNextMatchId = useMemo(() => {
         const inProgress = sortedMatches.find(m => m.status === '진행중');
         if (inProgress) return inProgress.id;
+        const nextUpcomingMatch = sortedMatches.find(m => m.status === '예정');
         return nextUpcomingMatch?.id || null;
-    }, [sortedMatches, nextUpcomingMatch]);
+    }, [sortedMatches]);
 
 
     useEffect(() => {
@@ -478,12 +455,10 @@ function RecorderDashboardPage() {
 
     const handleMatchStatusChange = async (matchId, newStatus) => {
         if (newStatus === '진행중') {
-            await updateMatchStartTime(matchId); // 경기 시작 시간 기록
+            await updateMatchStartTime(matchId);
         }
         await updateMatchStatus(matchId, newStatus);
     };
-
-    const handleNextMatch = () => { };
 
     return (
         <Wrapper>
@@ -504,7 +479,6 @@ function RecorderDashboardPage() {
                                 const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
                                 const isOpen = expandedSubmissionId === sub.id;
 
-                                // ▼▼▼ [수정] 관리자 전용 미션 필터링 로직 ▼▼▼
                                 if (!mission || (mission.adminOnly && myPlayerData?.role !== 'admin')) {
                                     return null;
                                 }
@@ -569,19 +543,16 @@ function RecorderDashboardPage() {
             {mainTab === 'league' && (
                 <Section>
                     <SectionTitle>경기 결과 입력 ⚽</SectionTitle>
-                    <TabContainer>
-                        <TabButton $active={activeMatchTab === 'pending'} onClick={() => setActiveMatchTab('pending')}>대기/진행중 경기</TabButton>
-                        <TabButton $active={activeMatchTab === 'completed'} onClick={() => setActiveMatchTab('completed')}>완료된 경기</TabButton>
-                    </TabContainer>
-                    {filteredMatches.length > 0 ? (
-                        filteredMatches.map(match =>
+                    <BroadcastContainer>
+                        <BroadcastPage isMiniMode={true} />
+                    </BroadcastContainer>
+                    {sortedMatches.length > 0 ? (
+                        sortedMatches.map(match =>
                             <MatchRow
                                 key={match.id}
                                 match={match}
                                 isInitiallyOpen={match.id === currentOrNextMatchId}
                                 onStatusChange={handleMatchStatusChange}
-                                onNext={handleNextMatch}
-                                isNextMatchAvailable={isNextMatchAvailable}
                             />
                         )
                     ) : <p>해당 목록에 경기가 없습니다.</p>}

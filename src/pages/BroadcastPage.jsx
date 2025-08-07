@@ -9,7 +9,7 @@ import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
 import whistleSound from '../assets/whistle.mp3';
 
-// --- Styled Components (기존과 동일) ---
+// --- Styled Components ---
 
 const highlight = keyframes`
   0%, 100% {
@@ -24,10 +24,10 @@ const highlight = keyframes`
 `;
 
 const BroadcastWrapper = styled.div`
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: grid;
-  grid-template-columns: 1fr 350px;
+  grid-template-columns: ${props => props.$isMiniMode ? '1fr' : '1fr 350px'};
   grid-template-rows: auto 1fr;
   font-family: 'Pretendard', sans-serif;
   font-weight: 700;
@@ -36,27 +36,27 @@ const BroadcastWrapper = styled.div`
 `;
 
 const Header = styled.header`
-  grid-column: 1 / 2;
+  grid-column: 1 / ${props => props.$isMiniMode ? '2' : '2'};
   grid-row: 1 / 2;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 1rem;
+  padding: ${props => props.$isMiniMode ? '0.5rem' : '1rem'};
   color: #fff;
   position: relative;
 `;
 
 const MatchStatus = styled.div`
   background-color: rgba(255,255,255,0.1);
-  padding: 0.8rem 2rem;
+  padding: ${props => props.$isMiniMode ? '0.4rem 1rem' : '0.8rem 2rem'};
   border-radius: 50px;
-  font-size: 2.5rem;
+  font-size: ${props => props.$isMiniMode ? '1.5rem' : '2.5rem'};
   font-weight: bold;
   font-variant-numeric: tabular-nums;
 `;
 
 const MainContent = styled.main`
-  grid-column: 1 / 2;
+  grid-column: 1 / ${props => props.$isMiniMode ? '2' : '2'};
   grid-row: 2 / 2;
   display: flex;
   width: 100%;
@@ -69,9 +69,9 @@ const TeamSection = styled.section`
   flex-direction: column;
   justify-content: flex-start;
   align-items: center;
-  padding: 3rem 2rem;
+  padding: ${props => props.$isMiniMode ? '1rem' : '3rem 2rem'};
   color: #000;
-  gap: 2.5rem;
+  gap: ${props => props.$isMiniMode ? '1rem' : '2.5rem'};
   
   ${props => props.side === 'left' && css`
     background-color: #ccff00;
@@ -93,25 +93,26 @@ const TeamInfoContainer = styled.div`
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
+    gap: ${props => props.$isMiniMode ? '0.5rem' : '1.5rem'};
 `;
 
 const TeamEmblem = styled.img`
-  width: 250px;
-  height: 250px;
+  width: ${props => props.$isMiniMode ? '80px' : '250px'};
+  height: ${props => props.$isMiniMode ? '80px' : '250px'};
   border-radius: 50%;
   object-fit: cover;
-  border: 5px solid #000;
+  border: ${props => props.$isMiniMode ? '3px solid #000' : '5px solid #000'};
   background-color: #fff;
 `;
 
 const TeamName = styled.h1`
-  font-size: 4rem;
+  font-size: ${props => props.$isMiniMode ? '1.8rem' : '4rem'};
   font-weight: 900;
+  margin: 0;
 `;
 
 const Score = styled.div`
-  font-size: 15rem;
+  font-size: ${props => props.$isMiniMode ? '5rem' : '15rem'};
   font-weight: 900;
   line-height: 1;
 `;
@@ -119,7 +120,7 @@ const Score = styled.div`
 const Separator = styled.hr`
   width: 100%;
   border: none;
-  height: 20px;
+  height: ${props => props.$isMiniMode ? '5px' : '20px'};
   background-color: #a0a0a0;
 `;
 
@@ -131,8 +132,8 @@ const LineupGrid = styled.ul`
   max-width: 800px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1.5rem 2rem;
-  font-size: 2.8rem;
+  gap: ${props => props.$isMiniMode ? '0.5rem 1rem' : '1.5rem 2rem'};
+  font-size: ${props => props.$isMiniMode ? '1rem' : '2.8rem'};
   font-weight: 700;
 `;
 
@@ -190,9 +191,9 @@ function PlayerNameplate({ player, isCaptain, goals, isHighlight }) {
   );
 }
 
-function BroadcastPage() {
+function BroadcastPage({ isMiniMode = false }) {
   const { players, teams, currentSeason } = useLeagueStore();
-  const [matchForDisplay, setMatchForDisplay] = useState(null); // 화면에 표시될 최종 경기
+  const [matchForDisplay, setMatchForDisplay] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
   const [lastScorerId, setLastScorerId] = useState(null);
   const prevScorersRef = useRef({});
@@ -221,11 +222,10 @@ function BroadcastPage() {
       });
 
       if (justCompletedMatch) {
-        setMatchForDisplay(justCompletedMatch); // 화면을 종료된 경기로 고정
+        setMatchForDisplay(justCompletedMatch);
         playWhistle();
         const { teamA_score, teamB_score } = justCompletedMatch;
         if (teamA_score !== teamB_score) {
-          // 콘페티 효과
           if (!confettiCanvasRef.current) {
             const canvas = document.createElement('canvas');
             canvas.style.position = 'fixed';
@@ -239,17 +239,20 @@ function BroadcastPage() {
           const winningSide = teamA_score > teamB_score ? 'left' : 'right';
           const fire = (particleRatio, opts) => myConfetti({ ...opts, origin: { x: winningSide === 'left' ? 0.25 : 0.75, y: 0.6 }, particleCount: Math.floor(200 * particleRatio) });
           fire(0.25, { spread: 26, startVelocity: 55 }); fire(0.2, { spread: 60 }); fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 }); fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 }); fire(0.1, { spread: 120, startVelocity: 45 });
+
+          setTimeout(() => {
+            if (confettiCanvasRef.current) {
+              document.body.removeChild(confettiCanvasRef.current);
+              confettiCanvasRef.current = null;
+            }
+          }, 4000);
         }
 
         setTimeout(() => {
-          if (confettiCanvasRef.current) {
-            document.body.removeChild(confettiCanvasRef.current);
-            confettiCanvasRef.current = null;
-          }
           const inProgress = matchesData.find(m => m.status === '진행중');
           const upcoming = matchesData.find(m => m.status === '예정');
           setMatchForDisplay(inProgress || upcoming || { id: 'end', status: '종료' });
-        }, 3000); // 3초 후 다음 경기로 전환
+        }, 5000);
 
       } else {
         const inProgress = matchesData.find(m => m.status === '진행중');
@@ -339,41 +342,41 @@ function BroadcastPage() {
     }
   }, [matchForDisplay, timeLeft]);
 
-  if (!currentSeason) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>시즌 정보를 불러오는 중입니다...</BroadcastWrapper>;
+  if (!currentSeason && !isMiniMode) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>시즌 정보를 불러오는 중입니다...</BroadcastWrapper>;
   if (!matchForDisplay) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>경기를 불러오는 중...</BroadcastWrapper>;
 
   return (
-    <BroadcastWrapper>
-      <Header>
-        <MatchStatus>{matchStatusText}</MatchStatus>
+    <BroadcastWrapper $isMiniMode={isMiniMode}>
+      <Header $isMiniMode={isMiniMode}>
+        <MatchStatus $isMiniMode={isMiniMode}>{matchStatusText}</MatchStatus>
       </Header>
 
       <MainContent>
         {matchForDisplay.status !== '종료' ? (
           <>
-            <TeamSection side="left">
+            <TeamSection side="left" $isMiniMode={isMiniMode}>
               <Scoreboard>
-                <TeamInfoContainer>
-                  <TeamEmblem src={teamA?.emblemUrl || defaultEmblem} />
-                  <TeamName>{teamA?.teamName}</TeamName>
+                <TeamInfoContainer $isMiniMode={isMiniMode}>
+                  <TeamEmblem src={teamA?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
+                  <TeamName $isMiniMode={isMiniMode}>{teamA?.teamName}</TeamName>
                 </TeamInfoContainer>
-                <Score>{matchForDisplay.teamA_score ?? '...'}</Score>
+                <Score $isMiniMode={isMiniMode}>{matchForDisplay.teamA_score ?? '...'}</Score>
               </Scoreboard>
-              <Separator />
-              <LineupGrid>
+              <Separator $isMiniMode={isMiniMode} />
+              <LineupGrid $isMiniMode={isMiniMode}>
                 {teamAMembers.map(p => <PlayerNameplate key={p.id} player={p} isCaptain={teamA?.captainId === p.id} goals={scorers[p.id] || 0} isHighlight={lastScorerId === p.id} />)}
               </LineupGrid>
             </TeamSection>
-            <TeamSection side="right">
+            <TeamSection side="right" $isMiniMode={isMiniMode}>
               <Scoreboard>
-                <Score>{matchForDisplay.teamB_score ?? '...'}</Score>
-                <TeamInfoContainer>
-                  <TeamEmblem src={teamB?.emblemUrl || defaultEmblem} />
-                  <TeamName>{teamB?.teamName}</TeamName>
+                <Score $isMiniMode={isMiniMode}>{matchForDisplay.teamB_score ?? '...'}</Score>
+                <TeamInfoContainer $isMiniMode={isMiniMode}>
+                  <TeamEmblem src={teamB?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
+                  <TeamName $isMiniMode={isMiniMode}>{teamB?.teamName}</TeamName>
                 </TeamInfoContainer>
               </Scoreboard>
-              <Separator />
-              <LineupGrid>
+              <Separator $isMiniMode={isMiniMode} />
+              <LineupGrid $isMiniMode={isMiniMode}>
                 {teamBMembers.map(p => <PlayerNameplate key={p.id} player={p} isCaptain={teamB?.captainId === p.id} goals={scorers[p.id] || 0} isHighlight={lastScorerId === p.id} />)}
               </LineupGrid>
             </TeamSection>
@@ -385,21 +388,23 @@ function BroadcastPage() {
         )}
       </MainContent>
 
-      <MatchListSection>
-        <MatchListTitle>오늘의 경기</MatchListTitle>
-        {allMatches.map(match => {
-          const teamAInfo = teams.find(t => t.id === match.teamA_id);
-          const teamBInfo = teams.find(t => t.id === match.teamB_id);
-          if (!teamAInfo || !teamBInfo) return null;
-          return (
-            <MatchListItem key={match.id} className={match.id === matchForDisplay.id ? 'current' : ''}>
-              <span>{teamAInfo.teamName}</span>
-              <strong>{match.status === '완료' ? `${match.teamA_score} : ${match.teamB_score}` : 'VS'}</strong>
-              <span>{teamBInfo.teamName}</span>
-            </MatchListItem>
-          )
-        })}
-      </MatchListSection>
+      {!isMiniMode && (
+        <MatchListSection>
+          <MatchListTitle>오늘의 경기</MatchListTitle>
+          {allMatches.map(match => {
+            const teamAInfo = teams.find(t => t.id === match.teamA_id);
+            const teamBInfo = teams.find(t => t.id === match.teamB_id);
+            if (!teamAInfo || !teamBInfo) return null;
+            return (
+              <MatchListItem key={match.id} className={match.id === matchForDisplay.id ? 'current' : ''}>
+                <span>{teamAInfo.teamName}</span>
+                <strong>{match.status === '완료' ? `${match.teamA_score} : ${match.teamB_score}` : 'VS'}</strong>
+                <span>{teamBInfo.teamName}</span>
+              </MatchListItem>
+            )
+          })}
+        </MatchListSection>
+      )}
     </BroadcastWrapper>
   );
 }
