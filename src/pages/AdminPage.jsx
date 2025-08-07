@@ -3,6 +3,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import PlayerProfile from '../components/PlayerProfile.jsx';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
@@ -215,6 +218,54 @@ const ListItem = styled.li`
   border-bottom: 1px solid #eee;
   &:last-child {
     border-bottom: none;
+  }
+`;
+
+function SortableListItem({ id, mission, index, missionsToDisplay, navigate, unarchiveMission, archiveMission, removeMission }) {
+    const { reorderMissions } = useLeagueStore();
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        touchAction: 'none', // 터치 장치에서 스크롤 대신 드래그가 되도록 설정
+    };
+
+    return (
+        <ListItem ref={setNodeRef} style={style} {...attributes} {...listeners}>
+            <div style={{ flex: 1, marginRight: '1rem' }}>
+                <strong>{mission.title}</strong>
+                <span style={{ marginLeft: '1rem', color: '#6c757d' }}>(보상: {mission.reward}P)</span>
+            </div>
+            <MissionControls>
+                <StyledButton onClick={() => navigate(`/recorder/${mission.id}`)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
+                {mission.status === 'archived' ? (
+                    <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
+                ) : (
+                    <StyledButton onClick={() => archiveMission(mission.id)} style={{ backgroundColor: '#ffc107', color: 'black' }}>숨김</StyledButton>
+                )}
+                <StyledButton onClick={() => removeMission(mission.id)} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
+            </MissionControls>
+        </ListItem>
+    );
+}
+
+const BroadcastButton = styled(Link)`
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background-color: #dc3545;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: bold;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #c82333;
   }
 `;
 
@@ -777,6 +828,56 @@ function PendingMissionWidget() {
     );
 }
 
+function AttendanceChecker({ players }) {
+    const [selectedDate, setSelectedDate] = useState(new Date());
+
+    const formatDate = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const attendedPlayers = useMemo(() => {
+        const dateString = formatDate(selectedDate);
+        return players.filter(p => p.lastAttendance === dateString)
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [players, selectedDate]);
+
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>출석 확인</SectionTitle>
+                <InputGroup>
+                    <label>날짜 선택:</label>
+                    <DatePicker
+                        selected={selectedDate}
+                        onChange={(date) => setSelectedDate(date)}
+                        dateFormat="yyyy/MM/dd"
+                        popperPlacement="bottom-start"
+                    />
+                </InputGroup>
+                <h4>
+                    {formatDate(selectedDate)} 출석: {attendedPlayers.length}명
+                </h4>
+                <List>
+                    {attendedPlayers.length > 0 ? (
+                        attendedPlayers.map(player => (
+                            <ListItem key={player.id} style={{ gridTemplateColumns: '1fr' }}>
+                                <Link to={`/profile/${player.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                    <PlayerProfile player={player} />
+                                </Link>
+                            </ListItem>
+                        ))
+                    ) : (
+                        <p>해당 날짜에 출석한 학생이 없습니다.</p>
+                    )}
+                </List>
+            </Section>
+        </FullWidthSection>
+    );
+}
+
 function MyRoomCommentMonitor() {
     const { players } = useLeagueStore();
     const [allComments, setAllComments] = useState([]);
@@ -1132,9 +1233,23 @@ function MissionManager() {
         archiveMission,
         unarchiveMission,
         removeMission,
-        fetchInitialData
+        fetchInitialData,
+        reorderMissions
     } = useLeagueStore();
     const navigate = useNavigate();
+    const sensors = useSensors(useSensor(PointerSensor)); // 드래그 센서 추가
+
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        if (active.id !== over.id) {
+            const listKey = showArchived ? 'archivedMissions' : 'missions';
+            const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
+            const newIndex = missionsToDisplay.findIndex(m => m.id === over.id);
+            const newList = arrayMove(missionsToDisplay, oldIndex, newIndex);
+
+            reorderMissions(newList, listKey);
+        }
+    };
 
     // ▼▼▼ [수정] 미션 생성을 위한 state 확장 ▼▼▼
     const [title, setTitle] = useState('');
@@ -1256,42 +1371,29 @@ function MissionManager() {
                     {showArchived ? '활성 미션 보기' : `숨긴 미션 보기 (${archivedMissions.length}개)`}
                 </ToggleButton>
 
-                <List>
-                    {missionsToDisplay.length > 0 ? (
-                        missionsToDisplay.map(mission => (
-                            <ListItem key={mission.id} style={{ gridTemplateColumns: '1fr auto' }}>
-                                <div>
-                                    <strong>{mission.title}</strong>
-                                    <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
-                                        (보상: {mission.reward}P)
-                                    </span>
-                                </div>
-                                <MissionControls>
-                                    <StyledButton
-                                        onClick={() => navigate(`/recorder/${mission.id}`)}
-                                        style={{ backgroundColor: '#17a2b8' }}
-                                    >
-                                        상태 확인
-                                    </StyledButton>
-                                    {showArchived ? (
-                                        <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>
-                                            활성화
-                                        </StyledButton>
-                                    ) : (
-                                        <StyledButton onClick={() => archiveMission(mission.id)} style={{ backgroundColor: '#ffc107', color: 'black' }}>
-                                            숨김
-                                        </StyledButton>
-                                    )}
-                                    <StyledButton onClick={() => removeMission(mission.id)} style={{ backgroundColor: '#dc3545' }}>
-                                        삭제
-                                    </StyledButton>
-                                </MissionControls>
-                            </ListItem>
-                        ))
-                    ) : (
-                        <p>{showArchived ? '숨겨진 미션이 없습니다.' : '현재 출제된 미션이 없습니다.'}</p>
-                    )}
-                </List>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={missionsToDisplay.map(m => m.id)} strategy={verticalListSortingStrategy}>
+                        <List>
+                            {missionsToDisplay.length > 0 ? (
+                                missionsToDisplay.map((mission, index) => (
+                                    <SortableListItem
+                                        key={mission.id}
+                                        id={mission.id}
+                                        mission={mission}
+                                        index={index}
+                                        missionsToDisplay={missionsToDisplay}
+                                        navigate={navigate}
+                                        unarchiveMission={unarchiveMission}
+                                        archiveMission={archiveMission}
+                                        removeMission={removeMission}
+                                    />
+                                ))
+                            ) : (
+                                <p>{showArchived ? '숨겨진 미션이 없습니다.' : '현재 출제된 미션이 없습니다.'}</p>
+                            )}
+                        </List>
+                    </SortableContext>
+                </DndContext>
             </div>
         </Section>
     );
@@ -2023,7 +2125,7 @@ function MyRoomItemManager() {
                         <option value="하우스">하우스</option>
                         <option value="가구">가구</option>
                         <option value="소품">소품</option>
-                        <option value="미니카페">미니카페</option> 
+                        <option value="미니카페">미니카페</option>
 
                     </select>
                     <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
@@ -2838,9 +2940,11 @@ function LeagueManager() {
 
 
 function AdminPage() {
+    const { players } = useLeagueStore();
     const { tab } = useParams();
     const [activeMenu, setActiveMenu] = useState(tab || 'mission');
     const [activeSubMenu, setActiveSubMenu] = useState('messages'); // 소셜 관리의 기본 서브메뉴
+    const [studentSubMenu, setStudentSubMenu] = useState('point'); // 학생 관리의 기본 서브메뉴
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
 
     const renderContent = () => {
@@ -2863,12 +2967,14 @@ function AdminPage() {
             }
         }
         if (activeMenu === 'student') {
-            return (
-                <GridContainer>
-                    <PointManager />
-                    <RoleManager />
-                </GridContainer>
-            )
+            switch (studentSubMenu) {
+                case 'point':
+                    return <GridContainer><PointManager /><RoleManager /></GridContainer>;
+                case 'attendance':
+                    return <AttendanceChecker players={players} />;
+                default:
+                    return <GridContainer><PointManager /><RoleManager /></GridContainer>;
+            }
         }
         if (activeMenu === 'shop') {
             switch (shopSubMenu) {
@@ -2901,6 +3007,7 @@ function AdminPage() {
     return (
         <AdminWrapper>
             <Sidebar>
+                <BroadcastButton to="/broadcast" target="_blank">📺 방송 송출 화면</BroadcastButton>
                 <NavList>
                     <NavItem>
                         <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
@@ -2916,6 +3023,12 @@ function AdminPage() {
                     </NavItem>
                     <NavItem>
                         <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
+                        {activeMenu === 'student' && (
+                            <SubNavList>
+                                <SubNavItem><SubNavButton $active={studentSubMenu === 'point'} onClick={() => setStudentSubMenu('point')}>포인트/역할</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={studentSubMenu === 'attendance'} onClick={() => setStudentSubMenu('attendance')}>출석 확인</SubNavButton></SubNavItem>
+                            </SubNavList>
+                        )}
                     </NavItem>
                     <NavItem>
                         <NavButton $active={activeMenu === 'shop'} onClick={() => handleMenuClick('shop')}>상점 관리</NavButton>

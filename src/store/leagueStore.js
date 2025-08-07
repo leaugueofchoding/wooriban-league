@@ -24,6 +24,7 @@ import {
     getMissionSubmissions,
     updateMissionStatus,
     deleteMission,
+    batchUpdateMissionOrder, // 새로운 함수를 import 합니다.
     createPlayerFromUser,
     markNotificationsAsRead,
     getTodaysQuizHistory,
@@ -163,12 +164,21 @@ export const useLeagueStore = create((set, get) => ({
                 getMissionSubmissions()
             ]);
 
+            const sortMissions = (missions) => {
+                return missions.sort((a, b) => {
+                    const orderA = typeof a.displayOrder === 'number' ? a.displayOrder : a.createdAt?.toMillis() || Infinity;
+                    const orderB = typeof b.displayOrder === 'number' ? b.displayOrder : b.createdAt?.toMillis() || Infinity;
+                    return orderA - orderB;
+                });
+            };
+
             set({
                 players: playersData, teams: teamsData, users: usersData,
                 avatarParts: avatarPartsData,
                 myRoomItems: myRoomItemsData, // 상태 업데이트
-                missions: activeMissionsData,
-                archivedMissions: archivedMissionsData, missionSubmissions: submissionsData,
+                missions: sortMissions(activeMissionsData),
+                archivedMissions: sortMissions(archivedMissionsData),
+                missionSubmissions: submissionsData,
                 currentSeason: activeSeason, isLoading: false,
             });
         } catch (error) {
@@ -197,6 +207,24 @@ export const useLeagueStore = create((set, get) => ({
             alert('미션이 보관되었습니다.');
         } catch (error) {
             alert('미션 보관 중 오류가 발생했습니다.');
+        }
+    },
+
+    reorderMissions: async (reorderedMissions, listKey) => {
+        // 1. 로컬 상태를 즉시 업데이트하여 UI에 먼저 반영
+        set(state => ({
+            ...state,
+            [listKey]: reorderedMissions
+        }));
+
+        // 2. 변경된 순서 전체를 Firestore에 저장
+        try {
+            await batchUpdateMissionOrder(reorderedMissions);
+        } catch (error) {
+            console.error("미션 순서 업데이트 실패:", error);
+            alert("순서 저장에 실패했습니다. 새로고침 후 다시 시도해주세요.");
+            // 오류 발생 시 데이터 동기화를 위해 전체 데이터를 다시 불러옴
+            get().fetchInitialData();
         }
     },
 
@@ -272,8 +300,24 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
+        // 1. Firebase 데이터 업데이트 (기존과 동일)
         await buyMultipleAvatarParts(myPlayerData.id, partsToBuy);
-        await get().fetchInitialData();
+
+        // 2. fetchInitialData() 대신 로컬 상태 즉시 업데이트
+        const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
+        const newPartIds = partsToBuy.map(part => part.id);
+
+        set(state => ({
+            players: state.players.map(p =>
+                p.id === myPlayerData.id
+                    ? {
+                        ...p,
+                        points: p.points - totalCost,
+                        ownedParts: [...(p.ownedParts || []), ...newPartIds]
+                    }
+                    : p
+            )
+        }));
     },
 
     buyMyRoomItem: async (item) => {
@@ -282,10 +326,26 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
+        // 1. Firebase 데이터 업데이트 (기존과 동일)
         await buyMyRoomItem(myPlayerData.id, item);
-        await get().fetchInitialData();
-    },
 
+        // 2. fetchInitialData() 대신 로컬 상태 즉시 업데이트
+        const now = new Date();
+        const isCurrentlyOnSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+        const finalPrice = isCurrentlyOnSale ? item.salePrice : item.price;
+
+        set(state => ({
+            players: state.players.map(p =>
+                p.id === myPlayerData.id
+                    ? {
+                        ...p,
+                        points: p.points - finalPrice,
+                        ownedMyRoomItems: [...(p.ownedMyRoomItems || []), item.id]
+                    }
+                    : p
+            )
+        }));
+    },
     batchMoveAvatarPartCategory: async (partIds, newCategory) => {
         try {
             await batchUpdateAvatarPartCategory(partIds, newCategory);

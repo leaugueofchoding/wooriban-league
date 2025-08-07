@@ -868,18 +868,27 @@ export async function createMission(missionData) {
   const { reward, ...restOfData } = missionData;
   await addDoc(missionsRef, {
     ...restOfData,
-    // 기본 보상(reward) 필드를 rewards 배열의 첫 번째 값으로 자동 설정
     reward: missionData.rewards[0],
     createdAt: new Date(),
-    status: 'active'
+    status: 'active',
+    displayOrder: Date.now() // 순서 값 추가
   });
 }
 
 export async function getMissions(status = 'active') {
   const missionsRef = collection(db, 'missions');
-  const q = query(missionsRef, where("status", "==", status), orderBy("createdAt", "desc"));
+  const q = query(missionsRef, where("status", "==", status));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function batchUpdateMissionOrder(reorderedMissions) {
+  const batch = writeBatch(db);
+  reorderedMissions.forEach((mission, index) => {
+    const missionRef = doc(db, 'missions', mission.id);
+    batch.update(missionRef, { displayOrder: index });
+  });
+  await batch.commit();
 }
 
 export async function checkMissionForStudent(missionId, studentId, recorderId) {

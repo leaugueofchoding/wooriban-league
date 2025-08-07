@@ -221,12 +221,22 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
+  // ▼▼▼ [수정] 반복 미션의 '오늘' 상태를 정확히 파악하기 위한 로직 ▼▼▼
   const submission = mySubmissions[mission.id];
-  const submissionStatus = submission?.status;
+  let submissionStatus = submission?.status;
 
-  const isTodayMission = !mission.createdAt || new Date(mission.createdAt.toDate()).toDateString() === new Date().toDateString();
-  const canSubmitFixedMission = mission.isFixed ? isTodayMission || submissionStatus === 'pending' : true;
+  if (mission.isFixed && submissionStatus === 'approved') {
+    const approvedDate = submission.approvedAt ? new Date(submission.approvedAt.toDate()).toDateString() : null;
+    const todayDate = new Date().toDateString();
+    if (approvedDate !== todayDate) {
+      submissionStatus = null; // 어제 완료한 미션은 오늘 다시 제출 가능하도록 상태 초기화
+    }
+  }
 
+  const isMissionActive = !mission.isFixed
+    ? (!mission.createdAt || new Date(mission.createdAt.toDate()).toDateString() === new Date().toDateString())
+    : true; // 반복 미션은 항상 활성 상태로 간주
+  // ▲▲▲ [수정 완료] ▲▲▲
   useEffect(() => {
     if (submissionStatus === 'rejected' && submission) {
       setSubmissionContent({
@@ -255,7 +265,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting || submissionStatus === 'pending' || submissionStatus === 'approved' || !canSubmitFixedMission) return;
+    if (isSubmitting || submissionStatus === 'pending' || submissionStatus === 'approved') return;
 
     if (!isPrerequisiteSubmitted) {
       return alert("이전 미션을 먼저 완료해야 합니다.");
@@ -291,10 +301,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const renderButton = () => {
     if (!canSubmitMission) return null;
-
-    if (!canSubmitFixedMission && submissionStatus !== 'pending') {
-      return <RequestButton disabled>기간 만료</RequestButton>;
-    }
 
     if (submissionStatus === 'approved') {
       if (hasViewableContent) {
@@ -345,7 +351,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
         {renderButton()}
       </MissionHeader>
 
-      {canSubmitMission && isSubmissionRequired && canSubmitFixedMission && (submissionStatus === 'rejected' || !submissionStatus) && (
+      {canSubmitMission && isSubmissionRequired && (submissionStatus === 'rejected' || !submissionStatus) && (
         <SubmissionArea>
           {submissionType.includes('text') && (
             <TextArea

@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, buyMultipleAvatarParts, updatePlayerAvatar, buyMyRoomItem } from '../api/firebase';
+import { auth, updatePlayerAvatar } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 import { useNavigate } from 'react-router-dom';
 
@@ -302,7 +302,7 @@ const translateCategory = (category) => {
 };
 
 function ShopPage() {
-  const { players, avatarParts, myRoomItems, fetchInitialData, buyMyRoomItem } = useLeagueStore();
+  const { players, avatarParts, myRoomItems, fetchInitialData, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
   const [mainTab, setMainTab] = useState('avatar');

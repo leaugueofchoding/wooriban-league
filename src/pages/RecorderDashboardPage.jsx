@@ -405,7 +405,7 @@ function RecorderDashboardPage() {
     const { players, missions, matches } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [mainTab, setMainTab] = useState('league');
+    const [mainTab, setMainTab] = useState('mission');
     const [activeMatchTab, setActiveMatchTab] = useState('pending');
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;

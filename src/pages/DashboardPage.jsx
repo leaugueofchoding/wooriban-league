@@ -523,7 +523,9 @@ function DashboardPage() {
         return missions.filter(mission => mySubmissions[mission.id] !== 'approved').length;
     }, [missions, mySubmissions]);
 
-    const recentMissions = useMemo(() => missions.slice(0, 2), [missions]);
+    const recentMissions = useMemo(() => {
+        return missions.filter(mission => mySubmissions[mission.id] !== 'approved').slice(0, 2);
+    }, [missions, mySubmissions]);
 
     const canSubmitMission = myPlayerData && ['player', 'recorder', 'admin'].includes(myPlayerData.role);
     const isGoalAchieved = activeGoal && activeGoal.currentPoints >= activeGoal.targetPoints;
