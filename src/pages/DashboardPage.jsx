@@ -7,6 +7,7 @@ import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
+import { emblemMap } from '../utils/emblemMap';
 import QuizWidget from '../components/QuizWidget';
 import confetti from 'canvas-confetti';
 
@@ -381,7 +382,7 @@ const RequestButton = styled.button`
 
 
 function DashboardPage() {
-    const { players, missions, matches, teams, registerAsPlayer, submitMissionForApproval, missionSubmissions, avatarParts } = useLeagueStore();
+    const { players, missions, matches, teams, registerAsPlayer, submitMissionForApproval, missionSubmissions, avatarParts, standingsData } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
@@ -488,27 +489,9 @@ function DashboardPage() {
     }, [avatarParts]);
 
     const topRankedTeams = useMemo(() => {
-        const completedMatches = matches.filter(m => m.status === '완료');
-        let stats = teams.map(team => ({ id: team.id, teamName: team.teamName, emblemUrl: team.emblemUrl || defaultEmblem, points: 0, goalDifference: 0, goalsFor: 0, }));
-        completedMatches.forEach(match => {
-            const teamA = stats.find(t => t.id === match.teamA_id);
-            const teamB = stats.find(t => t.id === match.teamB_id);
-            if (!teamA || !teamB) return;
-            teamA.goalsFor += match.teamA_score;
-            teamB.goalsFor += match.teamB_score;
-            teamA.goalDifference += match.teamA_score - match.teamB_score;
-            teamB.goalDifference += match.teamB_score - match.teamA_score;
-            if (match.teamA_score > match.teamB_score) teamA.points += 3;
-            else if (match.teamB_score > match.teamA_score) teamB.points += 3;
-            else { teamA.points++; teamB.points++; }
-        });
-        stats.sort((a, b) => {
-            if (b.points !== a.points) return b.points - a.points;
-            if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
-            return b.goalsFor - a.goalsFor;
-        });
-        return stats.slice(0, 3);
-    }, [matches, teams]);
+        const standings = standingsData();
+        return standings.slice(0, 3);
+    }, [standingsData]);
 
     const mySubmissions = useMemo(() => {
         if (!myPlayerData) return {};
@@ -660,8 +643,9 @@ function DashboardPage() {
                         {topRankedTeams.length > 0 ? (
                             topRankedTeams.map((team, index) => (
                                 <RankItem key={team.id}>
-                                    <Rank>{rankIcons[index] || `${index + 1}위`}</Rank>
-                                    <Emblem src={team.emblemUrl} alt={`${team.teamName} 엠블럼`} />
+                                    <Rank>{rankIcons[index] || `${team.rank}위`}</Rank>
+                                    {/* ▼▼▼ [수정] 엠블럼 src 경로 로직 수정 ▼▼▼ */}
+                                    <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
                                     <span>{team.teamName} ({team.points}점)</span>
                                 </RankItem>
                             ))

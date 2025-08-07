@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, approveMissionsInBatch } from '../api/firebase'; // approveMissionsInBatch import 추가
+import { auth, approveMissionsInBatch, getMissionHistory } from '../api/firebase';
+import MissionHistoryModal from '../components/MissionHistoryModal';
 import { useParams, useNavigate } from 'react-router-dom';
 
 const RecorderWrapper = styled.div`
@@ -33,15 +34,19 @@ const MissionSelect = styled.select`
 const StudentList = styled.ul`
   list-style: none;
   padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
 `;
 
 const StudentListItem = styled.li`
   background-color: #fff;
   border-radius: 8px;
-  margin-bottom: 1rem; /* 간격 증가 */
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   transition: all 0.2s ease-in-out;
-  
+  display: flex;
+  flex-direction: column;
+
   &.pending {
     border-left: 5px solid #ffc107;
   }
@@ -62,12 +67,10 @@ const StudentSummary = styled.div`
         width: 20px;
         height: 20px;
         margin-right: 1rem;
-        pointer-events: none; /* 클릭은 부모 요소에서 처리 */
     }
 
     label {
         flex-grow: 1;
-        pointer-events: none;
     }
 
     .status-badge {
@@ -146,6 +149,23 @@ const ExitButton = styled.button`
   }
 `;
 
+// ▼▼▼ [추가] 누락되었던 StyledButton 정의 ▼▼▼
+const StyledButton = styled.button`
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    cursor: pointer;
+    background-color: #fff;
+    transition: all 0.2s ease-in-out;
+
+    &:hover {
+        background-color: #e9ecef;
+    }
+`;
+
+
 function RecorderPage() {
     const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
     const { missionId } = useParams();
@@ -156,11 +176,20 @@ function RecorderPage() {
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
 
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+    const [missionHistory, setMissionHistory] = useState([]);
+    const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
+
     useEffect(() => {
         if (missionId) {
             setSelectedMissionId(missionId);
         }
     }, [missionId]);
+
+    const selectedMission = useMemo(() => {
+        return missions.find(m => m.id === selectedMissionId);
+    }, [missions, selectedMissionId]);
+
 
     const studentSubmissionStatus = useMemo(() => {
         const statusMap = new Map();
@@ -204,15 +233,21 @@ function RecorderPage() {
         });
     };
 
-    // ▼▼▼ [수정] 승인 완료된 미션도 펼쳐볼 수 있도록 로직 변경 ▼▼▼
     const handleRowClick = (studentId) => {
         const submission = studentSubmissionStatus.get(studentId);
-        // 제출물이 있고, 그 제출물에 글이나 사진이 있을 경우에만 펼치기/접기 동작
         if (submission && (submission.text || submission.photoUrl)) {
             setExpandedSubmissionId(prev => (prev === studentId ? null : studentId));
         }
     };
-    // ▲▲▲ 여기까지 수정 ▲▲▲
+
+    const handleHistoryView = async (e, student) => {
+        e.stopPropagation();
+        if (!selectedMissionId) return;
+        const history = await getMissionHistory(student.id, selectedMissionId);
+        setMissionHistory(history);
+        setSelectedStudentForHistory(student);
+        setIsHistoryModalOpen(true);
+    };
 
     const handleSelectAll = () => {
         const eligiblePlayerIds = sortedPlayers
@@ -278,19 +313,28 @@ function RecorderPage() {
                                     key={player.id}
                                     className={status}
                                 >
-                                    {/* ▼▼▼ [수정] handleRowClick에 status 인자 제거 ▼▼▼ */}
                                     <StudentSummary onClick={() => handleRowClick(player.id)}>
                                         <input
                                             type="checkbox"
                                             checked={checkedStudents.has(player.id)}
-                                            onChange={() => handleStudentClick(player.id, status)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleStudentClick(player.id, status);
                                             }}
+                                            onChange={() => { }} // onChange 핸들러 추가
                                             disabled={status === 'approved'}
                                         />
                                         <label>{player.name}</label>
+
+                                        {selectedMission?.isFixed && (
+                                            <StyledButton
+                                                onClick={(e) => handleHistoryView(e, player)}
+                                                style={{ marginLeft: '1rem' }}
+                                            >
+                                                기록 보기
+                                            </StyledButton>
+                                        )}
+
                                         {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
                                         {status === 'approved' && (
                                             <span className="status-badge approved">
@@ -315,6 +359,15 @@ function RecorderPage() {
 
                     <ExitButton onClick={() => navigate('/')}>대시보드로 이동</ExitButton>
                 </>
+            )}
+
+            {selectedStudentForHistory && (
+                <MissionHistoryModal
+                    isOpen={isHistoryModalOpen}
+                    onClose={() => setIsHistoryModalOpen(false)}
+                    missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
+                    history={missionHistory}
+                />
             )}
         </RecorderWrapper>
     );

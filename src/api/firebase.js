@@ -269,6 +269,18 @@ export async function deleteMission(missionId) {
   await batch.commit();
 }
 
+export async function getMissionHistory(studentId, missionId) {
+  const q = query(
+    collection(db, "missionSubmissions"),
+    where("studentId", "==", studentId),
+    where("missionId", "==", missionId),
+    where("status", "==", "approved"),
+    orderBy("approvedAt", "desc")
+  );
+
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
 
 // --- 포인트 수동 조정 ---
 export async function adjustPlayerPoints(playerId, amount, reason) {

@@ -564,11 +564,13 @@ export const useLeagueStore = create((set, get) => ({
             const completedMatches = matches.filter(m => m.status === '완료');
 
             let stats = teams.map(team => ({
-                id: team.id, teamName: team.teamName,
-                emblemId: team.emblemId,
-                emblemUrl: team.emblemUrl,
+                id: team.id,
+                teamName: team.teamName,
+                emblemId: team.emblemId,      // 프리셋 엠블럼 ID
+                emblemUrl: team.emblemUrl,    // 직접 올린 엠블럼 URL
                 played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
             }));
+
             completedMatches.forEach(match => {
                 const teamA = stats.find(t => t.id === match.teamA_id);
                 const teamB = stats.find(t => t.id === match.teamB_id);
@@ -936,8 +938,13 @@ export const useLeagueStore = create((set, get) => ({
         if (!teams || teams.length === 0) return [];
 
         const completedMatches = matches.filter(m => m.status === '완료');
+
+        // ▼▼▼ [수정] emblemId와 emblemUrl을 모두 포함하도록 수정 ▼▼▼
         let stats = teams.map(team => ({
-            id: team.id, teamName: team.teamName, emblemUrl: team.emblemUrl || defaultEmblem,
+            id: team.id,
+            teamName: team.teamName,
+            emblemId: team.emblemId,      // 프리셋 엠블럼 ID
+            emblemUrl: team.emblemUrl,    // 직접 올린 엠블럼 URL
             played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
         }));
 

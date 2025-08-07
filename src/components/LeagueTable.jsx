@@ -51,7 +51,7 @@ function LeagueTable({ standings }) {
                 <thead>
                     <tr>
                         <th>순위</th>
-                        <th style={{ textAlign: 'left' }}>팀</th> {/* 팀 헤더는 그대로 유지 */}
+                        <th style={{ textAlign: 'left' }}>팀</th>
                         <th>경기수</th>
                         <th>승</th>
                         <th>무</th>
@@ -60,6 +60,7 @@ function LeagueTable({ standings }) {
                         <th>승점</th>
                     </tr>
                 </thead>
+                {/* ▼▼▼ [수정] tbody와 map 함수 사이의 줄바꿈을 제거하여 경고 해결 ▼▼▼ */}
                 <tbody>{standings.length > 0 ? (
                     standings.map((team, index) => (
                         <motion.tr
@@ -69,7 +70,7 @@ function LeagueTable({ standings }) {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.4 }}
                         >
-                            <td>{index + 1}</td>
+                            <td>{team.rank}</td>
                             <TeamNameCell>
                                 <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
                                 <span>{team.teamName}</span>

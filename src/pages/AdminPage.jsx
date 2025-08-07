@@ -211,33 +211,52 @@ const List = styled.ul`
 
 const ListItem = styled.li`
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  /* ▼▼▼ [수정] 드래그 핸들을 위한 칼럼 추가 ▼▼▼ */
+  grid-template-columns: auto 1fr auto;
   gap: 1rem;
   align-items: center;
   padding: 0.75rem;
   border-bottom: 1px solid #eee;
+  background-color: #fff; /* 배경색 추가하여 dnd-kit 배경과 구분 */
   &:last-child {
     border-bottom: none;
   }
 `;
 
-function SortableListItem({ id, mission, index, missionsToDisplay, navigate, unarchiveMission, archiveMission, removeMission }) {
-    const { reorderMissions } = useLeagueStore();
+const DragHandle = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  cursor: grab;
+  color: #a9a9a9;
+  font-size: 1.5rem;
+  line-height: 1;
+
+  &:active {
+    cursor: grabbing;
+  }
+`;
+
+function SortableListItem({ id, mission, navigate, unarchiveMission, archiveMission, removeMission }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
-        touchAction: 'none', // 터치 장치에서 스크롤 대신 드래그가 되도록 설정
+        touchAction: 'none',
     };
 
+    // ▼▼▼ [수정] ListItem의 렌더링 방식과 이벤트 적용 위치 변경 ▼▼▼
     return (
-        <ListItem ref={setNodeRef} style={style} {...attributes} {...listeners}>
+        <ListItem ref={setNodeRef} style={style} {...attributes}>
+            <DragHandle {...listeners}>⋮⋮</DragHandle>
             <div style={{ flex: 1, marginRight: '1rem' }}>
                 <strong>{mission.title}</strong>
                 <span style={{ marginLeft: '1rem', color: '#6c757d' }}>(보상: {mission.reward}P)</span>
             </div>
             <MissionControls>
+                {/* e.stopPropagation() 더 이상 필요 없으므로 제거 */}
                 <StyledButton onClick={() => navigate(`/recorder/${mission.id}`)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
                 {mission.status === 'archived' ? (
                     <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
@@ -1397,13 +1416,11 @@ function MissionManager() {
                     <SortableContext items={missionsToDisplay.map(m => m.id)} strategy={verticalListSortingStrategy}>
                         <List>
                             {missionsToDisplay.length > 0 ? (
-                                missionsToDisplay.map((mission, index) => (
+                                missionsToDisplay.map((mission) => ( // [수정] index prop 제거
                                     <SortableListItem
                                         key={mission.id}
                                         id={mission.id}
                                         mission={mission}
-                                        index={index}
-                                        missionsToDisplay={missionsToDisplay}
                                         navigate={navigate}
                                         unarchiveMission={unarchiveMission}
                                         archiveMission={archiveMission}

@@ -3,7 +3,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth } from '../api/firebase';
+import { auth, getMissionHistory } from '../api/firebase';
+import MissionHistoryModal from '../components/MissionHistoryModal';
 import { useNavigate } from 'react-router-dom';
 
 const MissionsWrapper = styled.div`
@@ -221,6 +222,9 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [missionHistory, setMissionHistory] = useState([]);
+
   // ▼▼▼ [수정] 반복 미션의 '오늘' 상태를 정확히 파악하기 위한 로직 ▼▼▼
   const submission = mySubmissions[mission.id];
   let submissionStatus = submission?.status;
@@ -299,8 +303,24 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     }
   };
 
+  const handleHistoryView = async (e) => {
+    e.stopPropagation(); // 버튼 클릭 시 아코디언이 열리는 것을 방지
+    const history = await getMissionHistory(myPlayerData.id, mission.id);
+    setMissionHistory(history);
+    setIsHistoryModalOpen(true);
+  };
+
   const renderButton = () => {
     if (!canSubmitMission) return null;
+
+    // ▼▼▼ [수정] isFixed 미션일 경우 '지난 기록 보기' 버튼 렌더링 ▼▼▼
+    if (mission.isFixed && submissionStatus === 'approved') {
+      return (
+        <RequestButton $status="approved" onClick={handleHistoryView}>
+          지난 기록 보기
+        </RequestButton>
+      );
+    }
 
     if (submissionStatus === 'approved') {
       if (hasViewableContent) {
@@ -337,51 +357,59 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   }, [mission.rewards, mission.reward]);
 
   return (
-    <MissionCard $status={submissionStatus}>
-      <MissionHeader>
-        <MissionInfo>
-          <MissionTitle>
-            {mission.title}
-            {mission.isFixed && <span title="고정 미션"> 🔄</span>}
-            {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
-            {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
-          </MissionTitle>
-          <MissionReward>{rewardText}</MissionReward>
-        </MissionInfo>
-        {renderButton()}
-      </MissionHeader>
+    <> {/* ▼▼▼ [추가] Fragment로 감싸기 ▼▼▼ */}
+      <MissionCard $status={submissionStatus}>
+        <MissionHeader>
+          <MissionInfo>
+            <MissionTitle>
+              {mission.title}
+              {mission.isFixed && <span title="고정 미션"> 🔄</span>}
+              {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
+              {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
+            </MissionTitle>
+            <MissionReward>{rewardText}</MissionReward>
+          </MissionInfo>
+          {renderButton()}
+        </MissionHeader>
 
-      {canSubmitMission && isSubmissionRequired && (submissionStatus === 'rejected' || !submissionStatus) && (
-        <SubmissionArea>
-          {submissionType.includes('text') && (
-            <TextArea
-              value={submissionContent.text}
-              onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
-              placeholder="미션 내용을 여기에 입력하세요..."
-              disabled={!isPrerequisiteSubmitted}
-            />
-          )}
-          {submissionType.includes('photo') && (
-            <div>
-              <FileInputLabel htmlFor={`file-${mission.id}`}>
-                📷 사진 첨부하기
-                <input
-                  id={`file-${mission.id}`}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                  disabled={!isPrerequisiteSubmitted}
-                />
-              </FileInputLabel>
-              {submissionContent.photo && <FileName>{submissionContent.photo.name}</FileName>}
-            </div>
-          )}
-        </SubmissionArea>
-      )}
+        {canSubmitMission && isSubmissionRequired && (submissionStatus === 'rejected' || !submissionStatus) && (
+          <SubmissionArea>
+            {submissionType.includes('text') && (
+              <TextArea
+                value={submissionContent.text}
+                onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
+                placeholder="미션 내용을 여기에 입력하세요..."
+                disabled={!isPrerequisiteSubmitted}
+              />
+            )}
+            {submissionType.includes('photo') && (
+              <div>
+                <FileInputLabel htmlFor={`file-${mission.id}`}>
+                  📷 사진 첨부하기
+                  <input
+                    id={`file-${mission.id}`}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                    disabled={!isPrerequisiteSubmitted}
+                  />
+                </FileInputLabel>
+                {submissionContent.photo && <FileName>{submissionContent.photo.name}</FileName>}
+              </div>
+            )}
+          </SubmissionArea>
+        )}
 
-      <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
-    </MissionCard>
+        <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
+      </MissionCard>
+      <MissionHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        missionTitle={mission.title}
+        history={missionHistory}
+      />
+    </>
   );
 }
 
