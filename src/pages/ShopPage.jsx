@@ -1,6 +1,6 @@
 // src/pages/ShopPage.jsx
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, updatePlayerAvatar } from '../api/firebase';
@@ -302,7 +302,7 @@ const translateCategory = (category) => {
 };
 
 function ShopPage() {
-  const { players, avatarParts, myRoomItems, fetchInitialData, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
+  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
   const [mainTab, setMainTab] = useState('avatar');
@@ -310,15 +310,19 @@ function ShopPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [previewConfig, setPreviewConfig] = useState(null);
   const [justPurchased, setJustPurchased] = useState(false);
+  const isInitialLoad = useRef(true);
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
-  const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
 
+  // ▼▼▼ [수정] useEffect 로직 변경 ▼▼▼
   useEffect(() => {
-    if (myPlayerData?.avatarConfig) {
+    if (myPlayerData?.avatarConfig && isInitialLoad.current) {
       setPreviewConfig(myPlayerData.avatarConfig);
+      isInitialLoad.current = false;
     }
   }, [myPlayerData]);
+
+  const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
 
   const partCategories = useMemo(() => {
     if (mainTab === 'myroom') {
@@ -434,6 +438,7 @@ function ShopPage() {
   };
 
   const handlePreview = async (item) => {
+    setJustPurchased(false);
     if (mainTab === 'myroom') {
       const isOwned = myPlayerData?.ownedMyRoomItems?.includes(item.id);
       if (isOwned) {
@@ -461,7 +466,6 @@ function ShopPage() {
       return;
     }
 
-    setJustPurchased(false);
     setPreviewConfig(prev => {
       const { category, id, slot } = item;
       const newConfig = JSON.parse(JSON.stringify(prev));
@@ -494,7 +498,7 @@ function ShopPage() {
     try {
       await updatePlayerAvatar(myPlayerData.id, previewConfig);
       alert("선택한 아바타가 저장되었습니다!");
-      await fetchInitialData();
+      useLeagueStore.getState().fetchInitialData();
       navigate(`/profile/${myPlayerData.id}`);
     } catch (error) {
       console.error("아바타 저장 오류:", error);

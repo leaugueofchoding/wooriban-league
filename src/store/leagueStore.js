@@ -41,11 +41,12 @@ import {
     getMyRoomItems, // 마이룸 아이템 함수 추가
     updateMyRoomItemDisplayName,
     buyMyRoomItem,
-    buyMultipleAvatarParts, // [복원] 누락되었던 함수 import
     updatePlayerProfile, // [복원] 누락되었던 함수 import
     updateMatchStatus,
     batchUpdateAvatarPartCategory, // [추가]
-    batchUpdateMyRoomItemCategory // [추가]
+    batchUpdateMyRoomItemCategory, // [추가]
+    buyMultipleAvatarParts as firebaseBuyMultipleAvatarParts, // [수정] 이름 충돌 방지를 위해 별칭 사용
+
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -301,7 +302,7 @@ export const useLeagueStore = create((set, get) => ({
         if (!myPlayerData) throw new Error("Player data not found.");
 
         // 1. Firebase 데이터 업데이트 (기존과 동일)
-        await buyMultipleAvatarParts(myPlayerData.id, partsToBuy);
+        await firebaseBuyMultipleAvatarParts(myPlayerData.id, partsToBuy);
 
         // 2. fetchInitialData() 대신 로컬 상태 즉시 업데이트
         const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
