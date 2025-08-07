@@ -8,26 +8,9 @@ import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from "
 import { useParams, useNavigate } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
-// ▼▼▼ [수정] dnd-kit 관련 모듈 추가 및 수정 ▼▼▼
-import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
-
-// --- [추가] 드래그 기능을 위한 Draggable 컴포넌트 ---
-function Draggable({ id, children, style: customStyle }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id });
-  const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    ...customStyle,
-  } : customStyle;
-
-  return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
-      {children}
-    </div>
-  );
-}
 
 
-// --- Styled Components (기존과 동일) ---
+// --- Styled Components (기존과 동일 및 신규 추가) ---
 
 const Wrapper = styled.div`
   max-width: 960px;
@@ -106,36 +89,28 @@ const RoomBackground = styled.img`
   pointer-events: none;
 `;
 
-const DraggableItem = styled.img`
+// ▼▼▼ [수정] DraggableItem -> InteractiveItem으로 변경 및 스타일 수정 ▼▼▼
+const InteractiveItem = styled.div`
   position: absolute;
-  cursor: ${props => props.$isEditing ? 'grab' : 'default'};
+  cursor: ${props => props.$isEditing ? 'pointer' : 'default'};
   width: ${props => props.$width}%;
-  height: auto;
+  height: ${props => props.$height ? `${props.$height}%` : 'auto'};
   z-index: ${props => props.$zIndex};
   left: ${props => props.$left}%;
   top: ${props => props.$top}%;
-  transform: translate(-50%, -50%) ${props => props.$isFlipped ? 'scaleX(-1)' : 'scaleX(1)'};
+  transform: translate(-50%, -50%);
+  border: ${props => props.$isSelected ? '2px dashed #007bff' : 'none'};
   
-  &:active {
-    cursor: ${props => props.$isEditing ? 'grabbing' : 'default'};
+  & > img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform: ${props => props.$isFlipped ? 'scaleX(-1)' : 'scaleX(1)'};
   }
 `;
 
-const DraggableAvatarContainer = styled.div`
-  position: absolute;
-  width: 15%;
-  height: 25%;
-  cursor: ${props => props.$isEditing ? 'grab' : 'default'};
-  z-index: ${props => props.$zIndex};
-  left: ${props => props.$left}%;
-  top: ${props => props.$top}%;
-  transform: translate(-50%, -50%) ${props => props.$isFlipped ? 'scaleX(-1)' : 'scaleX(1)'};
-  
-  &:active {
-    cursor: ${props => props.$isEditing ? 'grabbing' : 'default'};
-  }
-
-  img {
+// ▼▼▼ [추가] 아바타 파츠를 위한 스타일 컴포넌트 ▼▼▼
+const AvatarPartImage = styled.img`
     position: absolute;
     top: 0;
     left: 0;
@@ -143,8 +118,8 @@ const DraggableAvatarContainer = styled.div`
     height: 100%;
     object-fit: contain;
     pointer-events: none;
-  }
 `;
+
 
 const SocialFeaturesContainer = styled.div`
     margin-top: 2rem;
@@ -406,6 +381,58 @@ const AccordionContent = styled.div`
     transition: all 0.5s ease-in-out;
 `;
 
+// ▼▼▼ [수정] 십자 방향키 컨트롤러 UI 디자인 개선 ▼▼▼
+const ControllerWrapper = styled.div`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 120px;
+  height: 120px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 5px;
+  z-index: 1000;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const ControllerButton = styled.button`
+  background-color: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  color: white;
+  font-size: 1.5rem;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  user-select: none;
+  transition: background-color 0.2s;
+  
+  &:active {
+    background-color: rgba(0, 0, 0, 0.9);
+  }
+`;
+
+const CenterButton = styled(ControllerButton)`
+    grid-area: 2 / 2 / 3 / 3;
+    border-radius: 8px;
+    font-size: 1rem;
+`;
+// ▲▲▲ [수정 완료] ▲▲▲
+
+
+const UpButton = styled(ControllerButton)` grid-area: 1 / 2 / 2 / 3; `;
+const LeftButton = styled(ControllerButton)` grid-area: 2 / 1 / 3 / 2; `;
+const RightButton = styled(ControllerButton)` grid-area: 2 / 3 / 3 / 4; `;
+const DownButton = styled(ControllerButton)` grid-area: 3 / 2 / 4 / 3; `;
+
 
 function MyRoomPage() {
   const { playerId } = useParams();
@@ -414,6 +441,8 @@ function MyRoomPage() {
   const currentUser = auth.currentUser;
 
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState(null);
+  const moveInterval = useRef(null);
 
   const [roomConfig, setRoomConfig] = useState({
     items: [],
@@ -428,17 +457,11 @@ function MyRoomPage() {
   const [likes, setLikes] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
-
   const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
-  );
 
   const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin'
@@ -546,46 +569,57 @@ function MyRoomPage() {
     };
   }, [roomOwnerData]);
 
-  // ▼▼▼ [수정] onDragEnd 이벤트 핸들러 추가 ▼▼▼
-  const handleDragEnd = ({ active, delta }) => {
+  const handleSelect = (e, instanceId) => {
+    e.stopPropagation();
     if (!isMyRoom || !isEditing) return;
+    setSelectedItemId(instanceId);
+  };
 
-    const roomRect = roomContainerRef.current.getBoundingClientRect();
-    const xDeltaPercent = (delta.x / roomRect.width) * 100;
-    const yDeltaPercent = (delta.y / roomRect.height) * 100;
+  const moveItem = (direction) => {
+    if (!selectedItemId) return;
 
     setRoomConfig(prev => {
-      if (active.id === 'playerAvatar') {
-        return {
-          ...prev,
-          playerAvatar: {
-            ...prev.playerAvatar,
-            left: prev.playerAvatar.left + xDeltaPercent,
-            top: prev.playerAvatar.top + yDeltaPercent,
-          }
-        };
+      const moveAmount = 0.5;
+      const newConfig = JSON.parse(JSON.stringify(prev)); // Deep copy
+
+      let target;
+      if (selectedItemId === 'playerAvatar') {
+        target = newConfig.playerAvatar;
+      } else {
+        target = newConfig.items.find(i => i.instanceId === selectedItemId);
       }
-      return {
-        ...prev,
-        items: prev.items.map(item =>
-          item.instanceId === active.id
-            ? { ...item, left: item.left + xDeltaPercent, top: item.top + yDeltaPercent }
-            : item
-        )
-      };
+
+      if (target) {
+        if (direction === 'up') target.top -= moveAmount;
+        if (direction === 'down') target.top += moveAmount;
+        if (direction === 'left') target.left -= moveAmount;
+        if (direction === 'right') target.left += moveAmount;
+      }
+      return newConfig;
     });
   };
 
-  const handleDoubleClick = (instanceId) => {
-    if (!isMyRoom || !isEditing) return;
+
+  const startMoving = (direction) => {
+    stopMoving();
+    moveItem(direction);
+    moveInterval.current = setInterval(() => moveItem(direction), 50);
+  };
+
+  const stopMoving = () => {
+    clearInterval(moveInterval.current);
+  };
+
+  const handleFlip = () => {
+    if (!selectedItemId) return;
     setRoomConfig(prev => {
-      if (instanceId === 'playerAvatar') {
+      if (selectedItemId === 'playerAvatar') {
         return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
       }
       return {
         ...prev,
         items: prev.items.map(item =>
-          item.instanceId === instanceId ? { ...item, isFlipped: !item.isFlipped } : item
+          item.instanceId === selectedItemId ? { ...item, isFlipped: !item.isFlipped } : item
         )
       };
     });
@@ -620,6 +654,11 @@ function MyRoomPage() {
         current.instanceId > latest.instanceId ? current : latest
       );
 
+      // ▼▼▼ [수정] 아이템 삭제 시 선택 해제 ▼▼▼
+      if (selectedItemId === lastItem.instanceId) {
+        setSelectedItemId(null);
+      }
+
       return {
         ...prev,
         items: prev.items.filter(item => item.instanceId !== lastItem.instanceId)
@@ -643,6 +682,7 @@ function MyRoomPage() {
       await updateDoc(doc(db, 'players', playerId), { myRoomConfig: roomConfig });
       alert('마이룸이 저장되었습니다!');
       setIsEditing(false);
+      setSelectedItemId(null);
     } catch (error) {
       alert('저장 중 오류가 발생했습니다.');
     }
@@ -750,6 +790,14 @@ function MyRoomPage() {
     navigate(`/my-room/${randomPlayerId}`);
   };
 
+  // ▼▼▼ [수정] 배경 클릭 시 선택 해제 로직 ▼▼▼
+  const handleBackgroundClick = (e) => {
+    if (e.target === e.currentTarget && isEditing) {
+      setSelectedItemId(null);
+    }
+  };
+
+
   return (
     <Wrapper>
       <Header>
@@ -760,44 +808,55 @@ function MyRoomPage() {
           </LikeButton>
         )}
       </Header>
+      {/* ▼▼▼ [수정] onClick 핸들러 추가 ▼▼▼ */}
+      <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
+        <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
+        {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
+        {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <RoomContainer ref={roomContainerRef}>
-          <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
-          {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
-          {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
+        {roomConfig.playerAvatar && (
+          <InteractiveItem
+            $width={15} $height={25}
+            $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
+            $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
+            $isEditing={isEditing}
+            $isSelected={selectedItemId === 'playerAvatar'}
+            onClick={(e) => handleSelect(e, 'playerAvatar')}
+          >
+            {/* ▼▼▼ [수정] 아바타 렌더링 로직 수정 ▼▼▼ */}
+            {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
+          </InteractiveItem>
+        )}
 
-          {roomConfig.playerAvatar && (
-            <Draggable id="playerAvatar">
-              <DraggableAvatarContainer
-                $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
-                $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
-                onDoubleClick={() => handleDoubleClick('playerAvatar')}
-                $isEditing={isEditing}
-              >
-                {ownerAvatarUrls.map(url => <img key={url} src={url} alt="" />)}
-              </DraggableAvatarContainer>
-            </Draggable>
-          )}
+        {roomConfig.items.map((itemInstance) => {
+          const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
+          if (!itemInfo) return null;
 
-          {roomConfig.items.map((itemInstance) => {
-            const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
-            if (!itemInfo) return null;
+          return (
+            <InteractiveItem
+              key={itemInstance.instanceId}
+              $width={itemInfo.width || 15}
+              $left={itemInstance.left} $top={itemInstance.top}
+              $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
+              $isEditing={isEditing}
+              $isSelected={selectedItemId === itemInstance.instanceId}
+              onClick={(e) => handleSelect(e, itemInstance.instanceId)}
+            >
+              <img src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id} />
+            </InteractiveItem>
+          );
+        })}
 
-            return (
-              <Draggable key={itemInstance.instanceId} id={itemInstance.instanceId}>
-                <DraggableItem
-                  src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id}
-                  $width={itemInfo.width || 15}
-                  $left={itemInstance.left} $top={itemInstance.top} $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
-                  onDoubleClick={() => handleDoubleClick(itemInstance.instanceId)}
-                  $isEditing={isEditing}
-                />
-              </Draggable>
-            );
-          })}
-        </RoomContainer>
-      </DndContext>
+        {isEditing && selectedItemId && (
+          <ControllerWrapper>
+            <UpButton onMouseDown={() => startMoving('up')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('up')} onTouchEnd={stopMoving}>▲</UpButton>
+            <LeftButton onMouseDown={() => startMoving('left')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('left')} onTouchEnd={stopMoving}>◀</LeftButton>
+            <CenterButton onClick={handleFlip}>반전</CenterButton>
+            <RightButton onMouseDown={() => startMoving('right')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('right')} onTouchEnd={stopMoving}>▶</RightButton>
+            <DownButton onMouseDown={() => startMoving('down')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('down')} onTouchEnd={stopMoving}>▼</DownButton>
+          </ControllerWrapper>
+        )}
+      </RoomContainer>
 
       {isMyRoom && (
         isEditing ? (
@@ -848,7 +907,7 @@ function MyRoomPage() {
           </InventoryContainer>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-            <EditRoomButton onClick={() => setIsEditing(true)}>마이룸 수정</EditRoomButton>
+            <EditRoomButton onClick={() => { setIsEditing(true); setSelectedItemId(null); }}>마이룸 수정</EditRoomButton>
           </div>
         )
       )}
