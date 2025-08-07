@@ -25,8 +25,8 @@ const VersionInfo = styled.p`
 
 // [수정] onClick 핸들러를 props로 받도록 변경
 function Footer({ onVersionClick }) {
-  const version = "v4.final"; // 현재 앱 버전
-  const lastUpdate = "2024-07-26"; // 마지막 업데이트 날짜
+  const version = "v4.3"; // 현재 앱 버전
+  const lastUpdate = "2025-08-07"; // 마지막 업데이트 날짜
 
   return (
     <FooterWrapper onClick={onVersionClick}>

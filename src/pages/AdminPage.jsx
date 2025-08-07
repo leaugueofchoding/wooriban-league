@@ -736,7 +736,7 @@ function PendingMissionWidget() {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null); // <-- 이 부분이 추가되었습니다.
+    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
 
     useEffect(() => {
@@ -754,7 +754,7 @@ function PendingMissionWidget() {
         return () => unsubscribe();
     }, [missions]);
 
-    const handleAction = async (action, submission) => {
+    const handleAction = async (action, submission, reward) => { // reward 파라미터 추가
         setProcessingIds(prev => new Set(prev.add(submission.id)));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
@@ -771,7 +771,8 @@ function PendingMissionWidget() {
 
         try {
             if (action === 'approve') {
-                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, mission.reward);
+                // 전달받은 reward 값을 사용
+                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
             } else if (action === 'reject') {
                 await rejectMissionSubmission(submission.id, student.authUid, mission.title);
             }
@@ -792,8 +793,9 @@ function PendingMissionWidget() {
                         const student = players.find(p => p.id === sub.studentId);
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
-                        const isOpen = expandedSubmissionId === sub.id; // <-- 이제 이 변수가 정상적으로 선언됩니다.
+                        const isOpen = expandedSubmissionId === sub.id;
                         const hasContent = sub.text || sub.photoUrl;
+                        const isTieredReward = mission?.rewards && mission.rewards.length > 1; // 이 줄을 추가했습니다.
 
                         if (!mission) return null;
 
@@ -805,12 +807,32 @@ function PendingMissionWidget() {
                                         {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
                                         {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
                                     </span>
-                                    <span style={{ fontWeight: 'bold', color: '#007bff', margin: '0 1rem' }}>{mission?.reward}P</span>
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <StyledButton onClick={(e) => { e.stopPropagation(); handleAction('approve', sub); }} style={{ backgroundColor: '#28a745' }} disabled={isProcessing}>
-                                            {isProcessing ? '처리중...' : '승인'}
-                                        </StyledButton>
-                                        <StyledButton onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }} style={{ backgroundColor: '#dc3545' }} disabled={isProcessing}>
+                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                        {isTieredReward ? (
+                                            mission.rewards.map(reward => (
+                                                <StyledButton
+                                                    key={reward}
+                                                    onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, reward); }}
+                                                    style={{ backgroundColor: '#28a745' }}
+                                                    disabled={isProcessing}
+                                                >
+                                                    {isProcessing ? '...' : `${reward}P`}
+                                                </StyledButton>
+                                            ))
+                                        ) : (
+                                            <StyledButton
+                                                onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, mission.reward); }}
+                                                style={{ backgroundColor: '#28a745' }}
+                                                disabled={isProcessing}
+                                            >
+                                                {isProcessing ? '처리중...' : `${mission.reward}P`}
+                                            </StyledButton>
+                                        )}
+                                        <StyledButton
+                                            onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
+                                            style={{ backgroundColor: '#dc3545' }}
+                                            disabled={isProcessing}
+                                        >
                                             거절
                                         </StyledButton>
                                     </div>
