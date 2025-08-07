@@ -604,12 +604,14 @@ export async function uploadTeamEmblem(teamId, file) {
   return getDownloadURL(storageRef);
 }
 
-export async function updateTeamInfo(teamId, newName, newEmblemUrl) {
+// ▼▼▼ [수정] updateTeamInfo 함수 수정 ▼▼▼
+export async function updateTeamInfo(teamId, newName, emblemId, emblemUrl) {
   const teamRef = doc(db, 'teams', teamId);
-  const updateData = { teamName: newName };
-  if (newEmblemUrl) {
-    updateData.emblemUrl = newEmblemUrl;
-  }
+  const updateData = {
+    teamName: newName,
+    emblemId: emblemId || null, // 프리셋 ID 저장
+    emblemUrl: emblemUrl || null // 직접 업로드 URL 저장
+  };
   await updateDoc(teamRef, updateData);
 }
 

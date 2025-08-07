@@ -6,31 +6,10 @@ import { useLeagueStore } from '../store/leagueStore';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { auth, updateTeamInfo, uploadTeamEmblem } from '../api/firebase';
-
-// ▼▼▼ [수정] 아래 presetEmblems 데이터를 수정하여 프리셋 엠블럼을 관리하세요. ▼▼▼
-// 1. /src/assets/ 폴더에 emblem_tokkis.png 와 같이 이미지 파일을 추가합니다.
+// ▼▼▼ [수정] emblemMap, presetEmblems, defaultEmblem을 모두 import ▼▼▼
+import { emblemMap, presetEmblems } from '../utils/emblemMap';
 import defaultEmblem from '../assets/default-emblem.png';
-import emblemTokki from '../assets/emblem_tokki.png';
-import emblemTiger from '../assets/emblem_tiger.png';
-import emblemLion from '../assets/emblem_lion.png';
-import emblemPig from '../assets/emblem_pig.png';
-import emblemDaramjui from '../assets/emblem_daramjui.png';
-import emblemCat from '../assets/emblem_cat.png';
-import emblemDog from '../assets/emblem_dog.png';
 
-
-// 2. 아래 목록에 추가합니다.
-const presetEmblems = [
-    { id: 'tokki', src: emblemTokki },
-    { id: 'tiger', src: emblemTiger },
-    { id: 'lion', src: emblemLion },
-    { id: 'pig', src: emblemPig },
-    { id: 'daramjui', src: emblemDaramjui },
-    { id: 'cat', src: emblemCat },
-    { id: 'dog', src: emblemDog },
-    { id: 'default', src: defaultEmblem } // 기본 엠블럼
-];
-// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 // --- Styled Components ---
 
@@ -237,7 +216,6 @@ const PresetEmblem = styled.img`
     transition: border-color 0.2s;
 `;
 
-// ▼▼▼ [추가] 엠블럼 확대 모달 스타일 ▼▼▼
 const ModalBackground = styled.div`
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -254,7 +232,6 @@ const ModalEmblem = styled.img`
     border-radius: 50%;
     object-fit: contain;
 `;
-// ▲▲▲ 여기까지 추가 ▲▲▲
 
 function TeamDetailPage() {
     const { teamId } = useParams();
@@ -264,10 +241,10 @@ function TeamDetailPage() {
 
     const [isEditing, setIsEditing] = useState(false);
     const [newTeamName, setNewTeamName] = useState('');
-    const [newEmblemUrl, setNewEmblemUrl] = useState('');
     const [newEmblemFile, setNewEmblemFile] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isEmblemModalOpen, setIsEmblemModalOpen] = useState(false); // [추가]
+    const [isEmblemModalOpen, setIsEmblemModalOpen] = useState(false);
+    const [newEmblemId, setNewEmblemId] = useState('');
 
     const teamData = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
     const isCaptain = useMemo(() => currentUser && teamData && teamData.captainId === players.find(p => p.authUid === currentUser.uid)?.id, [currentUser, teamData, players]);
@@ -324,7 +301,8 @@ function TeamDetailPage() {
 
     const handleEditClick = () => {
         setNewTeamName(teamData.teamName);
-        setNewEmblemUrl(teamData.emblemUrl || defaultEmblem);
+        setNewEmblemId(teamData.emblemId || 'default');
+        setNewEmblemFile(null);
         setIsEditing(true);
     };
 
@@ -332,11 +310,16 @@ function TeamDetailPage() {
         if (!newTeamName.trim()) return alert('팀 이름을 입력해주세요.');
         setIsSaving(true);
         try {
-            let finalEmblemUrl = newEmblemUrl;
+            let finalEmblemId = newEmblemId;
+            let finalEmblemUrl = null;
+
             if (newEmblemFile) {
                 finalEmblemUrl = await uploadTeamEmblem(teamId, newEmblemFile);
+                finalEmblemId = null;
             }
-            await updateTeamInfo(teamId, newTeamName, finalEmblemUrl);
+
+            await updateTeamInfo(teamId, newTeamName, finalEmblemId, finalEmblemUrl);
+
             alert('팀 정보가 성공적으로 수정되었습니다.');
             await fetchInitialData();
             setIsEditing(false);
@@ -357,9 +340,16 @@ function TeamDetailPage() {
         const file = e.target.files[0];
         if (file) {
             setNewEmblemFile(file);
-            setNewEmblemUrl(URL.createObjectURL(file));
+            setNewEmblemId(''); // 프리셋 선택 해제
         }
     }
+
+    const selectedEmblemSrc = useMemo(() => {
+        if (newEmblemFile) return URL.createObjectURL(newEmblemFile);
+        const emblem = presetEmblems.find(e => e.id === newEmblemId);
+        return emblem ? emblem.src : defaultEmblem;
+    }, [newEmblemFile, newEmblemId]);
+
 
     if (!teamData) {
         return (
@@ -375,7 +365,7 @@ function TeamDetailPage() {
             <Wrapper>
                 <Header>
                     <TeamEmblem
-                        src={isEditing ? newEmblemUrl : (teamData.emblemUrl || defaultEmblem)}
+                        src={isEditing ? selectedEmblemSrc : (emblemMap[teamData.emblemId] || teamData.emblemUrl || defaultEmblem)}
                         alt={`${teamData.teamName} 엠블럼`}
                         onClick={() => setIsEmblemModalOpen(true)}
                     />
@@ -405,9 +395,9 @@ function TeamDetailPage() {
                                             <PresetEmblem
                                                 key={emblem.id}
                                                 src={emblem.src}
-                                                $isSelected={newEmblemUrl === emblem.src}
+                                                $isSelected={!newEmblemFile && newEmblemId === emblem.id}
                                                 onClick={() => {
-                                                    setNewEmblemUrl(emblem.src);
+                                                    setNewEmblemId(emblem.id);
                                                     setNewEmblemFile(null);
                                                 }}
                                             />
@@ -477,11 +467,10 @@ function TeamDetailPage() {
                 </ButtonContainer>
             </Wrapper>
 
-            {/* ▼▼▼ [추가] 엠블럼 확대 모달 렌더링 ▼▼▼ */}
             {isEmblemModalOpen && (
                 <ModalBackground onClick={() => setIsEmblemModalOpen(false)}>
                     <ModalEmblem
-                        src={isEditing ? newEmblemUrl : (teamData.emblemUrl || defaultEmblem)}
+                        src={isEditing ? selectedEmblemSrc : (emblemMap[teamData.emblemId] || teamData.emblemUrl || defaultEmblem)}
                         alt="확대된 엠블럼"
                     />
                 </ModalBackground>

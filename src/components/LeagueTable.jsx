@@ -3,6 +3,8 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
+import { emblemMap } from '../utils/emblemMap';
+import defaultEmblem from '../assets/default-emblem.png';
 
 const TableWrapper = styled.div`
   margin: 2rem 0;
@@ -58,35 +60,33 @@ function LeagueTable({ standings }) {
                         <th>승점</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {standings.length > 0 ? (
-                        standings.map((team, index) => (
-                            <motion.tr
-                                key={team.id}
-                                layout
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.4 }}
-                            >
-                                <td>{index + 1}</td>
-                                <TeamNameCell>
-                                    <Emblem src={team.emblemUrl} alt={`${team.teamName} 엠블럼`} />
-                                    <span>{team.teamName}</span>
-                                </TeamNameCell>
-                                <td>{team.played}</td>
-                                <td>{team.wins}</td>
-                                <td>{team.draws}</td>
-                                <td>{team.losses}</td>
-                                <td>{team.goalDifference}</td>
-                                <td><strong>{team.points}</strong></td>
-                            </motion.tr>
-                        ))
-                    ) : (
-                        <tr>
-                            <td colSpan="8">진행된 경기가 없습니다.</td>
-                        </tr>
-                    )}
-                </tbody>
+                <tbody>{standings.length > 0 ? (
+                    standings.map((team, index) => (
+                        <motion.tr
+                            key={team.id}
+                            layout
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4 }}
+                        >
+                            <td>{index + 1}</td>
+                            <TeamNameCell>
+                                <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
+                                <span>{team.teamName}</span>
+                            </TeamNameCell>
+                            <td>{team.played}</td>
+                            <td>{team.wins}</td>
+                            <td>{team.draws}</td>
+                            <td>{team.losses}</td>
+                            <td>{team.goalDifference}</td>
+                            <td><strong>{team.points}</strong></td>
+                        </motion.tr>
+                    ))
+                ) : (
+                    <tr>
+                        <td colSpan="8">진행된 경기가 없습니다.</td>
+                    </tr>
+                )}</tbody>
             </Table>
         </TableWrapper>
     );

@@ -50,7 +50,7 @@ import {
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
-import defaultEmblem from '../assets/emblem_default.png';
+import defaultEmblem from '../assets/default-emblem.png'; // [수정] defaultEmblem 경로 수정
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
@@ -564,7 +564,10 @@ export const useLeagueStore = create((set, get) => ({
             const completedMatches = matches.filter(m => m.status === '완료');
 
             let stats = teams.map(team => ({
-                id: team.id, teamName: team.teamName, points: 0, goalDifference: 0, goalsFor: 0,
+                id: team.id, teamName: team.teamName,
+                emblemId: team.emblemId,
+                emblemUrl: team.emblemUrl,
+                played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
             }));
             completedMatches.forEach(match => {
                 const teamA = stats.find(t => t.id === match.teamA_id);

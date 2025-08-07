@@ -8,6 +8,7 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
 import whistleSound from '../assets/whistle.mp3';
+import { emblemMap } from '../utils/emblemMap';
 
 // --- Styled Components ---
 
@@ -357,7 +358,7 @@ function BroadcastPage({ isMiniMode = false }) {
             <TeamSection side="left" $isMiniMode={isMiniMode}>
               <Scoreboard>
                 <TeamInfoContainer $isMiniMode={isMiniMode}>
-                  <TeamEmblem src={teamA?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
+                  <TeamEmblem src={emblemMap[teamA?.emblemId] || teamA?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
                   <TeamName $isMiniMode={isMiniMode}>{teamA?.teamName}</TeamName>
                 </TeamInfoContainer>
                 <Score $isMiniMode={isMiniMode}>{matchForDisplay.teamA_score ?? '...'}</Score>
@@ -371,7 +372,8 @@ function BroadcastPage({ isMiniMode = false }) {
               <Scoreboard>
                 <Score $isMiniMode={isMiniMode}>{matchForDisplay.teamB_score ?? '...'}</Score>
                 <TeamInfoContainer $isMiniMode={isMiniMode}>
-                  <TeamEmblem src={teamB?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
+                  {/* ▼▼▼ [수정] src 경로 로직 변경 ▼▼▼ */}
+                  <TeamEmblem src={emblemMap[teamB?.emblemId] || teamB?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
                   <TeamName $isMiniMode={isMiniMode}>{teamB?.teamName}</TeamName>
                 </TeamInfoContainer>
               </Scoreboard>

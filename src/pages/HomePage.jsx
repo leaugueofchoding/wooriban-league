@@ -7,6 +7,8 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
 import { auth } from '../api/firebase';
+import { emblemMap } from '../utils/emblemMap';
+
 
 // --- Styled Components ---
 const Wrapper = styled.div`
@@ -355,7 +357,7 @@ function TeamInfoContent({ teams, matches, currentSeason }) {
       <TeamGrid>
         {teamStats.map(team => (
           <TeamCard key={team.id} onClick={() => handleCardClick(team.id)}>
-            <TeamCardEmblem src={team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
+            <TeamCardEmblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
             <TeamCardName>{team.teamName}</TeamCardName>
             <TeamRecord>{team.wins}승 {team.draws}무 {team.losses}패</TeamRecord>
           </TeamCard>
