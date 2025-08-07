@@ -170,10 +170,14 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
+// ▼▼▼ [수정] max-height와 overflow-y 속성 추가 ▼▼▼
 const MatchHistoryList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  max-height: 300px; /* 최대 높이를 300px로 제한 */
+  overflow-y: auto; /* 내용이 넘칠 경우 세로 스크롤 생성 */
+  padding-right: 0.5rem; /* 스크롤바 공간 확보 */
 `;
 
 const MatchHistoryItem = styled.div`

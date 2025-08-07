@@ -5,6 +5,8 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { emblemMap } from '../utils/emblemMap';
 import defaultEmblem from '../assets/default-emblem.png';
+// ▼▼▼ [추가] react-router-dom의 Link import ▼▼▼
+import { Link } from 'react-router-dom';
 
 const TableWrapper = styled.div`
   margin: 2rem 0;
@@ -22,7 +24,7 @@ const Table = styled.table`
   th, td {
     padding: 0.75rem;
     border-bottom: 1px solid #eee;
-    vertical-align: middle; /* 아이콘과 텍스트 높이 맞춤 */
+    vertical-align: middle;
   }
   th {
     background-color: #f8f9fa;
@@ -32,8 +34,18 @@ const Table = styled.table`
 const TeamNameCell = styled.td`
   text-align: left;
   font-weight: 500;
-  display: flex; /* 엠블럼과 팀 이름을 가로로 정렬 */
+`;
+
+// ▼▼▼ [추가] 링크 스타일을 위한 styled-component ▼▼▼
+const TeamLink = styled(Link)`
+  display: flex;
   align-items: center;
+  text-decoration: none;
+  color: inherit;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;
 
 const Emblem = styled.img`
@@ -60,7 +72,6 @@ function LeagueTable({ standings }) {
                         <th>승점</th>
                     </tr>
                 </thead>
-                {/* ▼▼▼ [수정] tbody와 map 함수 사이의 줄바꿈을 제거하여 경고 해결 ▼▼▼ */}
                 <tbody>{standings.length > 0 ? (
                     standings.map((team, index) => (
                         <motion.tr
@@ -72,8 +83,11 @@ function LeagueTable({ standings }) {
                         >
                             <td>{team.rank}</td>
                             <TeamNameCell>
-                                <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
-                                <span>{team.teamName}</span>
+                                {/* ▼▼▼ [수정] TeamLink로 엠블럼과 팀 이름을 감싸기 ▼▼▼ */}
+                                <TeamLink to={`/league/teams/${team.id}`}>
+                                    <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
+                                    <span>{team.teamName}</span>
+                                </TeamLink>
                             </TeamNameCell>
                             <td>{team.played}</td>
                             <td>{team.wins}</td>
