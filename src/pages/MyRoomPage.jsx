@@ -381,31 +381,11 @@ const AccordionContent = styled.div`
     transition: all 0.5s ease-in-out;
 `;
 
-// ▼▼▼ [수정] 십자 방향키 컨트롤러 UI 디자인 개선 ▼▼▼
-const ControllerWrapper = styled.div`
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  width: 120px;
-  height: 120px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
-  gap: 5px;
-  z-index: 1000;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-
-  &:hover {
-    opacity: 1;
-  }
-`;
-
+// ▼▼▼ [수정] 컨트롤러 및 버튼 스타일 (좌/우 분리) ▼▼▼
 const ControllerButton = styled.button`
   background-color: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.8);
   color: white;
-  font-size: 1.5rem;
   font-weight: bold;
   cursor: pointer;
   border-radius: 50%;
@@ -420,18 +400,69 @@ const ControllerButton = styled.button`
   }
 `;
 
+// [신규] 왼쪽 컨트롤러 (레이어, 삭제)
+const LeftControllerWrapper = styled.div`
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 1000;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  &:hover { opacity: 1; }
+`;
+
+const LayerButton = styled(ControllerButton)`
+    width: 60px;
+    height: 40px;
+    font-size: 1rem;
+    border-radius: 8px; // 사각형 버튼으로 변경
+    background-color: rgba(40, 167, 69, 0.7);
+    &:hover {
+        background-color: rgba(40, 167, 69, 1);
+    }
+`;
+
+const DeleteItemButton = styled(ControllerButton)`
+    width: 50px;
+    height: 50px;
+    font-size: 1.8rem;
+    background-color: rgba(220, 53, 69, 0.7);
+    &:hover {
+        background-color: rgba(220, 53, 69, 1);
+    }
+`;
+
+// [신규] 오른쪽 컨트롤러 (방향키)
+const RightControllerWrapper = styled.div`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 120px;
+  height: 120px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 5px;
+  z-index: 1000;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  &:hover { opacity: 1; }
+`;
+
+const UpButton = styled(ControllerButton)` grid-area: 1 / 2 / 2 / 3; `;
+const LeftButton = styled(ControllerButton)` grid-area: 2 / 1 / 3 / 2; `;
 const CenterButton = styled(ControllerButton)`
     grid-area: 2 / 2 / 3 / 3;
     border-radius: 8px;
     font-size: 1rem;
 `;
-// ▲▲▲ [수정 완료] ▲▲▲
-
-
-const UpButton = styled(ControllerButton)` grid-area: 1 / 2 / 2 / 3; `;
-const LeftButton = styled(ControllerButton)` grid-area: 2 / 1 / 3 / 2; `;
 const RightButton = styled(ControllerButton)` grid-area: 2 / 3 / 3 / 4; `;
 const DownButton = styled(ControllerButton)` grid-area: 3 / 2 / 4 / 3; `;
+// ▲▲▲ [수정 완료] ▲▲▲
 
 
 function MyRoomPage() {
@@ -573,6 +604,53 @@ function MyRoomPage() {
     e.stopPropagation();
     if (!isMyRoom || !isEditing) return;
     setSelectedItemId(instanceId);
+  };
+
+  const handleDeleteSelectedItem = () => {
+    if (!isMyRoom || !isEditing || !selectedItemId) return;
+
+    if (selectedItemId === 'playerAvatar') {
+      alert("아바타는 삭제할 수 없습니다.");
+      return;
+    }
+
+    setRoomConfig(prev => ({
+      ...prev,
+      items: prev.items.filter(item => item.instanceId !== selectedItemId)
+    }));
+    setSelectedItemId(null);
+  };
+
+  // ▼▼▼ [추가] 레이어 순서 변경 함수 ▼▼▼
+  const handleLayerChange = (direction) => {
+    if (!selectedItemId) return;
+
+    setRoomConfig(prev => {
+      const newConfig = JSON.parse(JSON.stringify(prev));
+      const allZIndexes = newConfig.items.map(i => i.zIndex);
+      if (newConfig.playerAvatar) {
+        allZIndexes.push(newConfig.playerAvatar.zIndex);
+      }
+
+      const maxZ = allZIndexes.length > 0 ? Math.max(...allZIndexes) : 100;
+      const minZ = allZIndexes.length > 0 ? Math.min(...allZIndexes) : 100;
+
+      let target;
+      if (selectedItemId === 'playerAvatar') {
+        target = newConfig.playerAvatar;
+      } else {
+        target = newConfig.items.find(i => i.instanceId === selectedItemId);
+      }
+
+      if (target) {
+        if (direction === 'forward') {
+          target.zIndex = maxZ + 1;
+        } else if (direction === 'backward') {
+          target.zIndex = minZ - 1;
+        }
+      }
+      return newConfig;
+    });
   };
 
   const moveItem = (direction) => {
@@ -848,13 +926,21 @@ function MyRoomPage() {
         })}
 
         {isEditing && selectedItemId && (
-          <ControllerWrapper>
-            <UpButton onMouseDown={() => startMoving('up')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('up')} onTouchEnd={stopMoving}>▲</UpButton>
-            <LeftButton onMouseDown={() => startMoving('left')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('left')} onTouchEnd={stopMoving}>◀</LeftButton>
-            <CenterButton onClick={handleFlip}>반전</CenterButton>
-            <RightButton onMouseDown={() => startMoving('right')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('right')} onTouchEnd={stopMoving}>▶</RightButton>
-            <DownButton onMouseDown={() => startMoving('down')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('down')} onTouchEnd={stopMoving}>▼</DownButton>
-          </ControllerWrapper>
+          <>
+            <LeftControllerWrapper>
+              <DeleteItemButton onClick={handleDeleteSelectedItem}>🗑️</DeleteItemButton>
+              <LayerButton onClick={() => handleLayerChange('forward')} title="맨 앞으로 가져오기">위로</LayerButton>
+              <LayerButton onClick={() => handleLayerChange('backward')} title="맨 뒤로 보내기">아래로</LayerButton>
+            </LeftControllerWrapper>
+
+            <RightControllerWrapper>
+              <UpButton onMouseDown={() => startMoving('up')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('up')} onTouchEnd={stopMoving}>▲</UpButton>
+              <LeftButton onMouseDown={() => startMoving('left')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('left')} onTouchEnd={stopMoving}>◀</LeftButton>
+              <CenterButton onClick={handleFlip}>반전</CenterButton>
+              <RightButton onMouseDown={() => startMoving('right')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('right')} onTouchEnd={stopMoving}>▶</RightButton>
+              <DownButton onMouseDown={() => startMoving('down')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('down')} onTouchEnd={stopMoving}>▼</DownButton>
+            </RightControllerWrapper>
+          </>
         )}
       </RoomContainer>
 
