@@ -4,10 +4,28 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
-import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore'; // getDocs를 onSnapshot으로 변경
+import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { useParams, useNavigate } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
+// ▼▼▼ [수정] dnd-kit 관련 모듈 추가 및 수정 ▼▼▼
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core';
+
+// --- [추가] 드래그 기능을 위한 Draggable 컴포넌트 ---
+function Draggable({ id, children, style: customStyle }) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id });
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    ...customStyle,
+  } : customStyle;
+
+  return (
+    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+      {children}
+    </div>
+  );
+}
+
 
 // --- Styled Components (기존과 동일) ---
 
@@ -97,8 +115,7 @@ const DraggableItem = styled.img`
   left: ${props => props.$left}%;
   top: ${props => props.$top}%;
   transform: translate(-50%, -50%) ${props => props.$isFlipped ? 'scaleX(-1)' : 'scaleX(1)'};
-  transition: transform 0.2s;
-
+  
   &:active {
     cursor: ${props => props.$isEditing ? 'grabbing' : 'default'};
   }
@@ -113,7 +130,6 @@ const DraggableAvatarContainer = styled.div`
   left: ${props => props.$left}%;
   top: ${props => props.$top}%;
   transform: translate(-50%, -50%) ${props => props.$isFlipped ? 'scaleX(-1)' : 'scaleX(1)'};
-  transition: transform 0.2s;
   
   &:active {
     cursor: ${props => props.$isEditing ? 'grabbing' : 'default'};
@@ -405,7 +421,7 @@ function MyRoomPage() {
     backgroundId: null,
     playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false }
   });
-  const [draggingItem, setDraggingItem] = useState(null);
+
   const roomContainerRef = useRef(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
@@ -418,6 +434,11 @@ function MyRoomPage() {
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
+  );
 
   const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin'
@@ -480,7 +501,6 @@ function MyRoomPage() {
   useEffect(() => {
     if (!roomOwnerData) return;
 
-    // 방 설정 불러오기 (한 번만)
     const playerRef = doc(db, 'players', roomOwnerData.id);
     getDoc(playerRef).then(playerSnap => {
       if (playerSnap.exists()) {
@@ -510,51 +530,51 @@ function MyRoomPage() {
       }
     });
 
-    // 방명록 실시간 구독
     const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
     const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
       setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 좋아요 실시간 구독
     const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
     const unsubscribeLikes = onSnapshot(likesQuery, (snapshot) => {
       setLikes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 컴포넌트가 언마운트될 때 구독 해제
     return () => {
       unsubscribeComments();
       unsubscribeLikes();
     };
   }, [roomOwnerData]);
 
-  const handleMouseDown = (e, instanceId) => {
-    e.preventDefault();
+  // ▼▼▼ [수정] onDragEnd 이벤트 핸들러 추가 ▼▼▼
+  const handleDragEnd = ({ active, delta }) => {
     if (!isMyRoom || !isEditing) return;
-    setDraggingItem({ id: instanceId });
-  };
 
-  const handleMouseMove = (e) => {
-    if (!draggingItem || !isMyRoom || !isEditing) return;
     const roomRect = roomContainerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - roomRect.left) / roomRect.width) * 100;
-    const y = ((e.clientY - roomRect.top) / roomRect.height) * 100;
+    const xDeltaPercent = (delta.x / roomRect.width) * 100;
+    const yDeltaPercent = (delta.y / roomRect.height) * 100;
 
     setRoomConfig(prev => {
-      if (draggingItem.id === 'playerAvatar') {
-        return { ...prev, playerAvatar: { ...prev.playerAvatar, left: x, top: y } };
+      if (active.id === 'playerAvatar') {
+        return {
+          ...prev,
+          playerAvatar: {
+            ...prev.playerAvatar,
+            left: prev.playerAvatar.left + xDeltaPercent,
+            top: prev.playerAvatar.top + yDeltaPercent,
+          }
+        };
       }
       return {
         ...prev,
         items: prev.items.map(item =>
-          item.instanceId === draggingItem.id ? { ...item, left: x, top: y } : item
+          item.instanceId === active.id
+            ? { ...item, left: item.left + xDeltaPercent, top: item.top + yDeltaPercent }
+            : item
         )
       };
     });
   };
-
-  const handleMouseUp = () => setDraggingItem(null);
 
   const handleDoubleClick = (instanceId) => {
     if (!isMyRoom || !isEditing) return;
@@ -731,11 +751,7 @@ function MyRoomPage() {
   };
 
   return (
-    <Wrapper
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-    >
+    <Wrapper>
       <Header>
         <h1>{roomOwnerData?.name || '...'}의 마이룸</h1>
         {!isMyRoom && myPlayerData && (
@@ -745,39 +761,43 @@ function MyRoomPage() {
         )}
       </Header>
 
-      <RoomContainer ref={roomContainerRef}>
-        <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
-        {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
-        {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <RoomContainer ref={roomContainerRef}>
+          <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
+          {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
+          {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
 
-        {roomConfig.playerAvatar && (
-          <DraggableAvatarContainer
-            $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
-            $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
-            onMouseDown={(e) => handleMouseDown(e, 'playerAvatar')}
-            onDoubleClick={() => handleDoubleClick('playerAvatar')}
-            $isEditing={isEditing}
-          >
-            {ownerAvatarUrls.map(url => <img key={url} src={url} alt="" />)}
-          </DraggableAvatarContainer>
-        )}
+          {roomConfig.playerAvatar && (
+            <Draggable id="playerAvatar">
+              <DraggableAvatarContainer
+                $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
+                $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
+                onDoubleClick={() => handleDoubleClick('playerAvatar')}
+                $isEditing={isEditing}
+              >
+                {ownerAvatarUrls.map(url => <img key={url} src={url} alt="" />)}
+              </DraggableAvatarContainer>
+            </Draggable>
+          )}
 
-        {roomConfig.items.map((itemInstance) => {
-          const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
-          if (!itemInfo) return null;
+          {roomConfig.items.map((itemInstance) => {
+            const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
+            if (!itemInfo) return null;
 
-          return (
-            <DraggableItem
-              key={itemInstance.instanceId} src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id}
-              $width={itemInfo.width || 15}
-              $left={itemInstance.left} $top={itemInstance.top} $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
-              onMouseDown={(e) => handleMouseDown(e, itemInstance.instanceId)}
-              onDoubleClick={() => handleDoubleClick(itemInstance.instanceId)}
-              $isEditing={isEditing}
-            />
-          );
-        })}
-      </RoomContainer>
+            return (
+              <Draggable key={itemInstance.instanceId} id={itemInstance.instanceId}>
+                <DraggableItem
+                  src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id}
+                  $width={itemInfo.width || 15}
+                  $left={itemInstance.left} $top={itemInstance.top} $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
+                  onDoubleClick={() => handleDoubleClick(itemInstance.instanceId)}
+                  $isEditing={isEditing}
+                />
+              </Draggable>
+            );
+          })}
+        </RoomContainer>
+      </DndContext>
 
       {isMyRoom && (
         isEditing ? (
