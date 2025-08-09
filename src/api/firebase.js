@@ -186,38 +186,57 @@ export async function uploadMissionSubmissionFile(missionId, studentId, file) {
 export async function requestMissionApproval(missionId, studentId, studentName, submissionData = {}) {
   const submissionsRef = collection(db, 'missionSubmissions');
   const missionRef = doc(db, 'missions', missionId);
+
+  const missionSnap = await getDoc(missionRef);
+  if (!missionSnap.exists()) {
+    throw new Error("미션을 찾을 수 없습니다.");
+  }
+  const missionData = missionSnap.data();
+
+  // 모든 미션에 대해, '승인대기' 또는 '승인완료' 상태의 기록이 있는지 먼저 확인
   const q = query(
     submissionsRef,
     where("missionId", "==", missionId),
-    where("studentId", "==", studentId)
+    where("studentId", "==", studentId),
+    where("status", "in", ["pending", "approved"])
   );
 
   const querySnapshot = await getDocs(q);
+
   if (!querySnapshot.empty) {
     const existingDoc = querySnapshot.docs[0].data();
-    if (existingDoc.status === 'pending') {
-      throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
-    } else if (existingDoc.status === 'approved') {
-      throw new Error("이미 완료된 미션입니다.");
+
+    // 고정 미션의 경우, 오늘 날짜에 완료한 기록인지 추가로 확인
+    if (missionData.isFixed) {
+      if (existingDoc.approvedAt) {
+        const approvedDate = new Date(existingDoc.approvedAt.toDate()).toDateString();
+        const todayDate = new Date().toDateString();
+        if (approvedDate === todayDate) {
+          throw new Error("오늘 이미 완료한 미션입니다.");
+        }
+      } else if (existingDoc.status === 'pending') {
+        throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
+      }
+    } else {
+      // 일반 미션의 경우, 상태만 보고 바로 에러 처리
+      if (existingDoc.status === 'pending') throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
+      if (existingDoc.status === 'approved') throw new Error("이미 완료된 미션입니다.");
     }
   }
 
-  const docId = querySnapshot.empty ? null : querySnapshot.docs[0].id;
-  const submissionRef = docId ? doc(db, 'missionSubmissions', docId) : doc(collection(db, 'missionSubmissions'));
-
-  await setDoc(submissionRef, {
+  // 중복이 아니므로 새로운 제출 기록 생성
+  const newSubmissionRef = doc(collection(db, 'missionSubmissions'));
+  await setDoc(newSubmissionRef, {
     missionId,
     studentId,
     studentName,
     status: 'pending',
     requestedAt: serverTimestamp(),
     checkedBy: null,
-    ...submissionData // 글(text), 사진(photoUrl) 데이터 추가
+    ...submissionData
   });
 
-  const missionSnap = await getDoc(missionRef);
-  const missionTitle = missionSnap.exists() ? missionSnap.data().title : "알 수 없는 미션";
-
+  // 관리자/기록원에게 알림 전송
   const playersRef = collection(db, 'players');
   const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
@@ -226,11 +245,10 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
     const user = userDoc.data();
     if (user.authUid) {
       const link = user.role === 'recorder' ? '/recorder-dashboard' : '/admin/mission';
-
       createNotification(
         user.authUid,
         '미션 승인 요청',
-        `[${missionTitle}] ${studentName} 학생이 완료를 요청했습니다.`,
+        `[${missionData.title}] ${studentName} 학생이 완료를 요청했습니다.`,
         'mission_request',
         link
       );
@@ -240,7 +258,6 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
 
 export async function rejectMissionSubmission(submissionId, studentAuthUid, missionTitle) {
   const submissionRef = doc(db, 'missionSubmissions', submissionId);
-  // [수정] 문서를 삭제하는 대신, 상태를 'rejected'로 업데이트합니다.
   await updateDoc(submissionRef, {
     status: 'rejected'
   });
@@ -925,7 +942,9 @@ export async function checkMissionForStudent(missionId, studentId, recorderId) {
 
 export async function getMissionSubmissions() {
   const submissionsRef = collection(db, 'missionSubmissions');
-  const querySnapshot = await getDocs(submissionsRef);
+  // 최신순으로 정렬하는 로직 추가
+  const q = query(submissionsRef, orderBy("requestedAt", "desc"));
+  const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
@@ -1855,4 +1874,25 @@ export async function batchUpdateMyRoomItemCategory(itemIds, newCategory) {
     batch.update(itemRef, { category: newCategory });
   });
   await batch.commit();
+}
+
+export async function getAttendanceByDate(date) {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const historyRef = collection(db, 'point_history');
+  const q = query(
+    historyRef,
+    where('reason', '==', "출석 체크 보상"),
+    where('timestamp', '>=', startOfDay),
+    where('timestamp', '<=', endOfDay)
+  );
+
+  const querySnapshot = await getDocs(q);
+  // 중복된 authUid를 제거하여 한 학생이 여러 번 기록되었더라도 한 번만 표시되도록 합니다.
+  const attendedAuthUids = [...new Set(querySnapshot.docs.map(doc => doc.data().playerId))];
+  return attendedAuthUids;
 }

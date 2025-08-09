@@ -147,7 +147,7 @@ const SuggestionButton = styled(Link)`
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    text-align: center; /* 텍스트 가운데 정렬 추가 */
+    text-align: center;
     text-decoration: none;
     padding: 1rem;
     width: 140px;
@@ -287,6 +287,15 @@ const RankItem = styled.div`
     align-items: center;
     padding: 0.5rem 0;
     font-size: 1.1rem;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+    cursor: pointer;
+
+    &:hover {
+        background-color: #e9ecef;
+    }
 `;
 const Rank = styled.span`
     font-weight: bold;
@@ -382,7 +391,7 @@ const RequestButton = styled.button`
 
 
 function DashboardPage() {
-    const { players, missions, matches, teams, registerAsPlayer, submitMissionForApproval, missionSubmissions, avatarParts, standingsData } = useLeagueStore();
+    const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
@@ -497,17 +506,37 @@ function DashboardPage() {
         if (!myPlayerData) return {};
         const submissionsMap = {};
         missionSubmissions.filter(sub => sub.studentId === myPlayerData.id).forEach(sub => {
-            submissionsMap[sub.missionId] = sub.status;
+            if (!submissionsMap[sub.missionId]) {
+                submissionsMap[sub.missionId] = sub;
+            }
         });
         return submissionsMap;
     }, [missionSubmissions, myPlayerData]);
 
     const uncompletedMissionsCount = useMemo(() => {
-        return missions.filter(mission => mySubmissions[mission.id] !== 'approved').length;
+        return missions.filter(mission => {
+            const submission = mySubmissions[mission.id];
+            if (!submission || submission.status !== 'approved') return true;
+            if (mission.isFixed) {
+                const approvedDate = submission.approvedAt ? new Date(submission.approvedAt.toDate()).toDateString() : null;
+                const todayDate = new Date().toDateString();
+                return approvedDate !== todayDate;
+            }
+            return false;
+        }).length;
     }, [missions, mySubmissions]);
 
     const recentMissions = useMemo(() => {
-        return missions.filter(mission => mySubmissions[mission.id] !== 'approved').slice(0, 2);
+        return missions.filter(mission => {
+            const submission = mySubmissions[mission.id];
+            if (!submission || submission.status !== 'approved') return true;
+            if (mission.isFixed) {
+                const approvedDate = submission.approvedAt ? new Date(submission.approvedAt.toDate()).toDateString() : null;
+                const todayDate = new Date().toDateString();
+                return approvedDate !== todayDate;
+            }
+            return false;
+        }).slice(0, 2);
     }, [missions, mySubmissions]);
 
     const canSubmitMission = myPlayerData && ['player', 'recorder', 'admin'].includes(myPlayerData.role);
@@ -565,7 +594,15 @@ function DashboardPage() {
                         <TitleWrapper><Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title></TitleWrapper>
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {
-                                const submissionStatus = mySubmissions[mission.id];
+                                const submission = mySubmissions[mission.id];
+                                let submissionStatus = submission?.status;
+
+                                const isCompletedToday = mission.isFixed && submissionStatus === 'approved' && submission?.approvedAt && new Date(submission.approvedAt.toDate()).toDateString() === new Date().toDateString();
+
+                                if (mission.isFixed && submissionStatus === 'approved' && !isCompletedToday) {
+                                    submissionStatus = null;
+                                }
+
                                 const submissionType = mission.submissionType || ['simple'];
                                 const isSimpleMission = submissionType.includes('simple') && submissionType.length === 1;
 
@@ -603,13 +640,10 @@ function DashboardPage() {
                                         {canSubmitMission && (
                                             <RequestButton
                                                 onClick={handleButtonClick}
-                                                disabled={submissionStatus === 'pending' || submissionStatus === 'approved'}
-                                                $status={submissionStatus}
+                                                disabled={isCompletedToday || submissionStatus === 'pending' || (submissionStatus === 'approved' && !mission.isFixed)}
+                                                $status={isCompletedToday ? 'approved' : submissionStatus}
                                             >
-                                                {submissionStatus === 'pending' && '승인 대기중'}
-                                                {submissionStatus === 'approved' && '완료!'}
-                                                {submissionStatus === 'rejected' && '다시하기'}
-                                                {!submissionStatus && (isSimpleMission ? '다 했어요!' : '다 했어요!')}
+                                                {isCompletedToday ? '오늘 완료!' : (submissionStatus === 'pending' ? '승인 대기중' : (submissionStatus === 'rejected' ? '다시 제출' : '다 했어요!'))}
                                             </RequestButton>
                                         )}
                                     </Card>
@@ -642,9 +676,8 @@ function DashboardPage() {
                         <TitleWrapper><Title>🏆 실시간 리그 순위</Title></TitleWrapper>
                         {topRankedTeams.length > 0 ? (
                             topRankedTeams.map((team, index) => (
-                                <RankItem key={team.id}>
+                                <RankItem key={team.id} onClick={() => navigate(`/league/teams/${team.id}`)}>
                                     <Rank>{rankIcons[index] || `${team.rank}위`}</Rank>
-                                    {/* ▼▼▼ [수정] 엠블럼 src 경로 로직 수정 ▼▼▼ */}
                                     <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
                                     <span>{team.teamName} ({team.points}점)</span>
                                 </RankItem>
@@ -652,7 +685,6 @@ function DashboardPage() {
                         ) : (<p>아직 리그 순위가 없습니다.</p>)}
                     </Section>
                 </ClickableSection>
-
                 <Section>
                     <TitleWrapper><Title>🧠 오늘의 퀴즈</Title></TitleWrapper>
                     <QuizWidget />
@@ -678,7 +710,6 @@ function DashboardPage() {
                                     최고 기여자 👑: {topContributor[0]} ({topContributor[1].toLocaleString()}P)
                                 </ContributorInfo>
                             )}
-                            {/* ▼▼▼ [수정] DonationArea와 그 내부 요소들 수정 ▼▼▼ */}
                             <DonationArea title={activeGoal?.status === 'paused' ? "이 미션은 잠시 중지되었습니다." : ""}>
                                 <DonationInput
                                     type="number"

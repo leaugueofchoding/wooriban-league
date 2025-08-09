@@ -7,7 +7,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import PlayerProfile from '../components/PlayerProfile.jsx';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import {
@@ -44,6 +44,7 @@ import {
     deleteMyRoomComment,  // 댓글 삭제 함수 import
     deleteMyRoomReply,    // 답글 삭제 함수 import
     updateClassGoalStatus, // [추가] 목표 상태 업데이트 함수 import
+    getAttendanceByDate
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
@@ -872,6 +873,24 @@ function PendingMissionWidget() {
 
 function AttendanceChecker({ players }) {
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const [attendedPlayerIds, setAttendedPlayerIds] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchAttendance = async () => {
+            setIsLoading(true);
+            const uids = await getAttendanceByDate(selectedDate);
+            setAttendedPlayerIds(uids);
+            setIsLoading(false);
+        };
+        fetchAttendance();
+    }, [selectedDate]);
+
+    const attendedPlayers = useMemo(() => {
+        return players
+            .filter(p => attendedPlayerIds.includes(p.authUid))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [players, attendedPlayerIds]);
 
     const formatDate = (date) => {
         const year = date.getFullYear();
@@ -879,12 +898,6 @@ function AttendanceChecker({ players }) {
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     };
-
-    const attendedPlayers = useMemo(() => {
-        const dateString = formatDate(selectedDate);
-        return players.filter(p => p.lastAttendance === dateString)
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [players, selectedDate]);
 
     return (
         <FullWidthSection>
@@ -902,19 +915,21 @@ function AttendanceChecker({ players }) {
                 <h4>
                     {formatDate(selectedDate)} 출석: {attendedPlayers.length}명
                 </h4>
-                <List>
-                    {attendedPlayers.length > 0 ? (
-                        attendedPlayers.map(player => (
-                            <ListItem key={player.id} style={{ gridTemplateColumns: '1fr' }}>
-                                <Link to={`/profile/${player.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                                    <PlayerProfile player={player} />
-                                </Link>
-                            </ListItem>
-                        ))
-                    ) : (
-                        <p>해당 날짜에 출석한 학생이 없습니다.</p>
-                    )}
-                </List>
+                {isLoading ? <p>출석 기록을 불러오는 중...</p> : (
+                    <List>
+                        {attendedPlayers.length > 0 ? (
+                            attendedPlayers.map(player => (
+                                <ListItem key={player.id} style={{ gridTemplateColumns: '1fr' }}>
+                                    <Link to={`/profile/${player.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                        <PlayerProfile player={player} />
+                                    </Link>
+                                </ListItem>
+                            ))
+                        ) : (
+                            <p>해당 날짜에 출석한 학생이 없습니다.</p>
+                        )}
+                    </List>
+                )}
             </Section>
         </FullWidthSection>
     );
@@ -2687,7 +2702,7 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     );
 }
 
-function PlayerManager() {
+function PlayerManager({ onSendMessage }) {
     const { players, currentSeason, togglePlayerStatus } = useLeagueStore();
     const [showInactive, setShowInactive] = useState(false);
     const isNotPreparing = currentSeason?.status !== 'preparing';
@@ -2700,10 +2715,10 @@ function PlayerManager() {
     return (
         <FullWidthSection>
             <Section>
-                <SectionTitle>선수 관리</SectionTitle>
+                <SectionTitle>학생 목록</SectionTitle>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
                     <StyledButton onClick={() => setShowInactive(prev => !prev)}>
-                        {showInactive ? '활성 선수만 보기' : '비활성 선수 보기'}
+                        {showInactive ? '활성 학생만 보기' : '비활성 학생 보기'}
                     </StyledButton>
                 </div>
                 <List>
@@ -2713,13 +2728,14 @@ function PlayerManager() {
                             <ListItem key={player.id} style={{ gridTemplateColumns: '1fr auto', backgroundColor: isInactive ? '#f1f3f5' : 'transparent' }}>
                                 <PlayerProfile player={player} />
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <StyledButton onClick={() => onSendMessage(player.id)} style={{ backgroundColor: '#007bff' }}>메시지</StyledButton>
                                     <Link to={`/profile/${player.id}`}>
-                                        <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필 보기</StyledButton>
+                                        <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필</StyledButton>
                                     </Link>
                                     <StyledButton
                                         onClick={() => togglePlayerStatus(player.id, player.status)}
                                         disabled={isNotPreparing && !isInactive}
-                                        title={isNotPreparing && !isInactive ? "시즌 중에는 선수를 비활성화할 수 없습니다." : ""}
+                                        title={isNotPreparing && !isInactive ? "시즌 중에는 학생을 비활성화할 수 없습니다." : ""}
                                         style={{ backgroundColor: isInactive ? '#28a745' : '#dc3545' }}
                                     >
                                         {isInactive ? '활성화' : '비활성화'}
@@ -3006,10 +3022,29 @@ function LeagueManager() {
 function AdminPage() {
     const { players } = useLeagueStore();
     const { tab } = useParams();
+    const location = useLocation();
+    const navigate = useNavigate(); // [수정] navigate 훅 사용
     const [activeMenu, setActiveMenu] = useState(tab || 'mission');
-    const [activeSubMenu, setActiveSubMenu] = useState('messages'); // 소셜 관리의 기본 서브메뉴
-    const [studentSubMenu, setStudentSubMenu] = useState('point'); // 학생 관리의 기본 서브메뉴
+    const [activeSubMenu, setActiveSubMenu] = useState('messages');
+    const [studentSubMenu, setStudentSubMenu] = useState('point');
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
+    const [preselectedStudentId, setPreselectedStudentId] = useState(null);
+
+    useEffect(() => {
+        const studentIdFromState = location.state?.preselectedStudentId;
+        if (studentIdFromState) {
+            setActiveMenu('social');
+            setActiveSubMenu('messages');
+            setPreselectedStudentId(studentIdFromState);
+            // 상태 사용 후에는 history에서 제거하여 새로고침 시 유지되지 않도록 함
+            window.history.replaceState({}, document.title)
+        }
+    }, [location.state]);
+
+    // [수정] navigate 함수를 사용하여 상태와 함께 이동하도록 핸들러 수정
+    const handleSendMessageClick = (studentId) => {
+        navigate('/admin', { state: { preselectedStudentId: studentId } });
+    };
 
     const renderContent = () => {
         if (activeMenu === 'mission') {
@@ -3025,19 +3060,17 @@ function AdminPage() {
         }
         if (activeMenu === 'social') {
             switch (activeSubMenu) {
-                case 'messages': return <MessageManager />;
+                case 'messages': return <MessageManager preselectedStudentId={preselectedStudentId} onStudentSelect={setPreselectedStudentId} />;
                 case 'comments': return <MyRoomCommentMonitor />;
                 default: return <MessageManager />;
             }
         }
         if (activeMenu === 'student') {
             switch (studentSubMenu) {
-                case 'point':
-                    return <GridContainer><PointManager /><RoleManager /></GridContainer>;
-                case 'attendance':
-                    return <AttendanceChecker players={players} />;
-                default:
-                    return <GridContainer><PointManager /><RoleManager /></GridContainer>;
+                case 'list': return <PlayerManager onSendMessage={handleSendMessageClick} />;
+                case 'point': return <GridContainer><PointManager /><RoleManager /></GridContainer>;
+                case 'attendance': return <AttendanceChecker players={players} />;
+                default: return <PointManager />;
             }
         }
         if (activeMenu === 'shop') {
@@ -3050,7 +3083,7 @@ function AdminPage() {
         if (activeMenu === 'league') {
             switch (activeSubMenu) {
                 case 'league_manage': return <LeagueManager />;
-                case 'player_manage': return <PlayerManager />;
+                case 'player_manage': return <PlayerManager onSendMessage={handleSendMessageClick} />;
                 default: return <LeagueManager />;
             }
         }
@@ -3061,6 +3094,8 @@ function AdminPage() {
         setActiveMenu(menu);
         if (menu === 'social') {
             if (activeMenu !== 'social') setActiveSubMenu('messages');
+        } else if (menu === 'student') {
+            if (activeMenu !== 'student') setStudentSubMenu('point');
         } else if (menu === 'league') {
             if (activeMenu !== 'league') setActiveSubMenu('league_manage');
         } else {
@@ -3090,6 +3125,7 @@ function AdminPage() {
                         {activeMenu === 'student' && (
                             <SubNavList>
                                 <SubNavItem><SubNavButton $active={studentSubMenu === 'point'} onClick={() => setStudentSubMenu('point')}>포인트/역할</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={studentSubMenu === 'list'} onClick={() => setStudentSubMenu('list')}>학생 목록</SubNavButton></SubNavItem>
                                 <SubNavItem><SubNavButton $active={studentSubMenu === 'attendance'} onClick={() => setStudentSubMenu('attendance')}>출석 확인</SubNavButton></SubNavItem>
                             </SubNavList>
                         )}
@@ -3108,7 +3144,6 @@ function AdminPage() {
                         {activeMenu === 'league' && (
                             <SubNavList>
                                 <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={activeSubMenu === 'player_manage'} onClick={() => setActiveSubMenu('player_manage')}>선수 관리</SubNavButton></SubNavItem>
                             </SubNavList>
                         )}
                     </NavItem>
