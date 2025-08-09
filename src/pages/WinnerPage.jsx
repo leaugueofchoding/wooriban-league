@@ -5,10 +5,71 @@ import styled from 'styled-components';
 import confetti from 'canvas-confetti';
 import { useLeagueStore } from '../store/leagueStore';
 import baseAvatar from '../assets/base-avatar.png';
-import { bounce } from '../styles/GlobalStyle'; // bounce 애니메이션 import
+import { bounce } from '../styles/GlobalStyle';
+import { emblemMap } from '../utils/emblemMap';
+import defaultEmblem from '../assets/default-emblem.png';
+
+const WinnerWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100%;
+  background-color: #f8f9fa;
+  text-align: center;
+  padding: 2rem;
+  box-sizing: border-box;
+`;
+
+const Title = styled.h1`
+  font-size: 3rem;
+  color: #ffc107;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  margin-bottom: 1rem;
+`;
+
+const TeamInfoContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+`;
+
+const TeamEmblem = styled.img`
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 5px solid gold;
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.6);
+`;
+
+const TeamName = styled.h2`
+  font-size: 2.5rem;
+  margin-top: 0;
+`;
+
+const AvatarContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* 아이템 정렬 기준 변경 */
+  gap: 2rem;
+  margin-top: 3rem;
+  flex-wrap: wrap;
+`;
+
+// ▼▼▼ [추가] 아바타와 이름을 묶는 컨테이너 ▼▼▼
+const PlayerWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem; /* 아바타와 이름 사이 간격 */
+`;
 
 const AnimatedAvatar = styled.div`
-  width: 150px; /* 여러 명을 표시하기 위해 크기를 살짝 줄입니다. */
+  width: 150px;
   height: 150px;
   border-radius: 50%;
   background-color: #e9ecef;
@@ -17,20 +78,7 @@ const AnimatedAvatar = styled.div`
   box-shadow: 0 4px 15px rgba(255, 215, 0, 0.6);
   overflow: hidden;
   animation: ${bounce} 1.5s infinite;
-  
-  /* 팀원 이름 표시 */
-  & > span {
-    position: absolute;
-    bottom: -30px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.6);
-    color: white;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    font-weight: bold;
-  }
+  animation-delay: ${props => props.delay || 0}s;
 `;
 
 const PartImage = styled.img`
@@ -42,36 +90,16 @@ const PartImage = styled.img`
   object-fit: contain;
 `;
 
-const WinnerWrapper = styled.div`
-  text-align: center;
-  padding: 2rem;
-`;
-
-const Title = styled.h1`
-  font-size: 3rem;
-  color: #ffc107;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-`;
-
-const TeamName = styled.h2`
-  font-size: 2rem;
-  margin-top: 0;
-`;
-
-// 여러 아바타를 가로로 정렬하기 위한 컨테이너
-const AvatarContainer = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2rem;
-  margin-top: 3rem;
-  flex-wrap: wrap;
+// ▼▼▼ [추가] 이름 스타일 ▼▼▼
+const PlayerName = styled.span`
+  font-size: 1.2rem;
+  font-weight: bold;
 `;
 
 const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth', 'accessory'];
 
-// 아바타를 렌더링하는 부분을 별도의 컴포넌트로 분리
-function PlayerAvatar({ player }) {
+// ▼▼▼ [수정] PlayerAvatar 컴포넌트 구조 변경 ▼▼▼
+function PlayerAvatar({ player, delay }) {
     const { avatarParts } = useLeagueStore();
 
     const sortedPartUrls = useMemo(() => {
@@ -95,63 +123,65 @@ function PlayerAvatar({ player }) {
             });
         }
 
-        // baseAvatar가 중복 추가될 수 있으므로 Set으로 중복 제거 후 배열로 변환
         return Array.from(new Set(urls));
     }, [player, avatarParts]);
 
     return (
-        <AnimatedAvatar>
-            <PartImage src={baseAvatar} alt="기본 아바타" />
-            {sortedPartUrls.map(src => <PartImage key={src} src={src} />)}
-            <span>{player.name}</span>
-        </AnimatedAvatar>
+        <PlayerWrapper>
+            <AnimatedAvatar delay={delay}>
+                {sortedPartUrls.map(src => <PartImage key={src} src={src} />)}
+            </AnimatedAvatar>
+            <PlayerName>{player.name}</PlayerName>
+        </PlayerWrapper>
     );
 }
 
 
 function WinnerPage() {
-    const { players, teams } = useLeagueStore();
+    const { players, teams, standingsData } = useLeagueStore();
 
-    // 실제로는 우승팀 ID를 받아와야 합니다.
-    // 여기서는 임시로 첫 번째 팀을 우승팀으로 가정합니다.
-    const winningTeam = teams[0];
+    const winningTeamData = useMemo(() => {
+        const standings = standingsData();
+        if (!standings || standings.length === 0) return null;
+        return standings[0];
+    }, [standingsData]);
+
     const winningPlayers = useMemo(() => {
+        if (!winningTeamData) return [];
+        const winningTeam = teams.find(t => t.id === winningTeamData.id);
         if (!winningTeam) return [];
         return winningTeam.members.map(memberId => players.find(p => p.id === memberId)).filter(Boolean);
-    }, [winningTeam, players]);
+    }, [winningTeamData, teams, players]);
 
     useEffect(() => {
-        // 재사용할 수 있도록 꽃가루 발사 로직을 함수로 만듭니다.
         const fireConfetti = () => {
             confetti({
-                particleCount: 1000,
-                spread: 1500,
-                origin: { y: 0.4 },
+                particleCount: 200,
+                spread: 120,
+                origin: { y: 0.6 },
             });
         };
 
-        // 1. 페이지가 보이자마자 즉시 한 번 발사합니다.
         fireConfetti();
-
-        // 2. 그 후 3초마다 반복해서 발사하도록 설정합니다.
-        const interval = setInterval(fireConfetti, 4000);
-
-        // 3. 페이지를 벗어날 때 반복을 멈추도록 정리합니다. (메모리 누수 방지)
+        const interval = setInterval(fireConfetti, 3000);
         return () => clearInterval(interval);
     }, []);
 
 
-    if (!winningTeam) {
+    if (!winningTeamData) {
         return <WinnerWrapper><h2>우승팀 정보를 불러오는 중입니다...</h2></WinnerWrapper>;
     }
 
     return (
         <WinnerWrapper>
-            <Title>🎉 우승을 축하합니다! 🎉</Title>
-            <TeamName>{winningTeam.teamName}</TeamName>
+            <Title>🎉 시즌 우승을 축하합니다! 🎉</Title>
+            <TeamInfoContainer>
+                <TeamEmblem src={emblemMap[winningTeamData.emblemId] || winningTeamData.emblemUrl || defaultEmblem} alt="우승팀 엠블럼" />
+                <TeamName>{winningTeamData.teamName}</TeamName>
+            </TeamInfoContainer>
 
             <AvatarContainer>
-                {winningPlayers.map(player => <PlayerAvatar key={player.id} player={player} />)}
+                {winningPlayers.map((player, index) => <PlayerAvatar key={player.id} player={player} delay={index * 0.15} />)}
             </AvatarContainer>
         </WinnerWrapper>
     );

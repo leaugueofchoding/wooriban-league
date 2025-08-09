@@ -87,7 +87,7 @@ function QuizWidget() {
         const isCorrect = await submitQuizAnswer(dailyQuiz.id, userAnswer);
 
         if (isCorrect) {
-            setFeedback('정답입니다! 30P를 획득했습니다.');
+            setFeedback('정답입니다! 50P를 획득했습니다.');
         } else {
             setFeedback(`오답입니다. 정답은 '${currentQuizAnswer}' 입니다.`);
         }

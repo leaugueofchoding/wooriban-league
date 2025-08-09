@@ -9,6 +9,8 @@ import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
 import whistleSound from '../assets/whistle.mp3';
 import { emblemMap } from '../utils/emblemMap';
+// ▼▼▼ [추가] WinnerPage 컴포넌트 import ▼▼▼
+import WinnerPage from './WinnerPage';
 
 // --- Styled Components ---
 
@@ -74,11 +76,11 @@ const TeamSection = styled.section`
   color: #000;
   gap: ${props => props.$isMiniMode ? '1rem' : '2.5rem'};
   
-  ${props => props.side === 'left' && css`
+  ${props => props.$side === 'left' && css`
     background-color: #ccff00;
   `}
 
-  ${props => props.side === 'right' && css`
+  ${props => props.$side === 'right' && css`
     background-color: #ff9933;
   `}
 `;
@@ -203,10 +205,20 @@ function BroadcastPage({ isMiniMode = false }) {
   const audioRef = useRef(new Audio(whistleSound));
   const confettiCanvasRef = useRef(null);
   const prevMatchesRef = useRef([]);
+  const [showWinnerPage, setShowWinnerPage] = useState(false); // [추가] 우승 페이지 표시 상태
 
   const playWhistle = () => {
     audioRef.current.play().catch(error => console.error("오디오 재생 오류:", error));
   };
+
+  useEffect(() => {
+    // [추가] 시즌이 종료되면 우승 페이지를 표시
+    if (currentSeason?.status === 'completed') {
+      setShowWinnerPage(true);
+    } else {
+      setShowWinnerPage(false);
+    }
+  }, [currentSeason]);
 
   useEffect(() => {
     if (!currentSeason) return;
@@ -343,6 +355,11 @@ function BroadcastPage({ isMiniMode = false }) {
     }
   }, [matchForDisplay, timeLeft]);
 
+  // ▼▼▼ [수정] showWinnerPage가 true이면 WinnerPage를 렌더링 ▼▼▼
+  if (showWinnerPage) {
+    return <WinnerPage />;
+  }
+
   if (!currentSeason && !isMiniMode) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>시즌 정보를 불러오는 중입니다...</BroadcastWrapper>;
   if (!matchForDisplay) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>경기를 불러오는 중...</BroadcastWrapper>;
 
@@ -355,7 +372,7 @@ function BroadcastPage({ isMiniMode = false }) {
       <MainContent>
         {matchForDisplay.status !== '종료' ? (
           <>
-            <TeamSection side="left" $isMiniMode={isMiniMode}>
+            <TeamSection $side="left" $isMiniMode={isMiniMode}>
               <Scoreboard>
                 <TeamInfoContainer $isMiniMode={isMiniMode}>
                   <TeamEmblem src={emblemMap[teamA?.emblemId] || teamA?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
@@ -368,11 +385,10 @@ function BroadcastPage({ isMiniMode = false }) {
                 {teamAMembers.map(p => <PlayerNameplate key={p.id} player={p} isCaptain={teamA?.captainId === p.id} goals={scorers[p.id] || 0} isHighlight={lastScorerId === p.id} />)}
               </LineupGrid>
             </TeamSection>
-            <TeamSection side="right" $isMiniMode={isMiniMode}>
+            <TeamSection $side="right" $isMiniMode={isMiniMode}>
               <Scoreboard>
                 <Score $isMiniMode={isMiniMode}>{matchForDisplay.teamB_score ?? '...'}</Score>
                 <TeamInfoContainer $isMiniMode={isMiniMode}>
-                  {/* ▼▼▼ [수정] src 경로 로직 변경 ▼▼▼ */}
                   <TeamEmblem src={emblemMap[teamB?.emblemId] || teamB?.emblemUrl || defaultEmblem} $isMiniMode={isMiniMode} />
                   <TeamName $isMiniMode={isMiniMode}>{teamB?.teamName}</TeamName>
                 </TeamInfoContainer>

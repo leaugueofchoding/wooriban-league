@@ -678,10 +678,20 @@ function DashboardPage() {
                                     최고 기여자 👑: {topContributor[0]} ({topContributor[1].toLocaleString()}P)
                                 </ContributorInfo>
                             )}
-                            <DonationArea>
-                                <DonationInput type="number" value={donationAmount} onChange={e => setDonationAmount(e.target.value)} placeholder="기부할 포인트" disabled={isGoalAchieved} />
-                                <DonationButton onClick={handleDonate} disabled={!myPlayerData || !donationAmount || Number(donationAmount) <= 0 || isGoalAchieved}>
-                                    {isGoalAchieved ? "달성 완료!" : "기부하기"}
+                            {/* ▼▼▼ [수정] DonationArea와 그 내부 요소들 수정 ▼▼▼ */}
+                            <DonationArea title={activeGoal?.status === 'paused' ? "이 미션은 잠시 중지되었습니다." : ""}>
+                                <DonationInput
+                                    type="number"
+                                    value={donationAmount}
+                                    onChange={e => setDonationAmount(e.target.value)}
+                                    placeholder="기부할 포인트"
+                                    disabled={isGoalAchieved || activeGoal?.status === 'paused'}
+                                />
+                                <DonationButton
+                                    onClick={handleDonate}
+                                    disabled={!myPlayerData || !donationAmount || Number(donationAmount) <= 0 || isGoalAchieved || activeGoal?.status === 'paused'}
+                                >
+                                    {isGoalAchieved ? "달성 완료!" : (activeGoal?.status === 'paused' ? "일시중단됨" : "기부하기")}
                                 </DonationButton>
                             </DonationArea>
                         </ThermometerWrapper>

@@ -869,7 +869,7 @@ export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAns
   if (isCorrect) {
     const playerDoc = await getDoc(doc(db, 'players', studentId));
     if (playerDoc.exists()) {
-      await adjustPlayerPoints(studentId, 30, `'${quizId}' 퀴즈 정답`);
+      await adjustPlayerPoints(studentId, 50, `'${quizId}' 퀴즈 정답`);
     }
   }
 
@@ -1061,7 +1061,8 @@ export async function createClassGoal(goalData) {
 
 export async function getActiveGoals() {
   const goalsRef = collection(db, "classGoals");
-  const q = query(goalsRef, where("status", "==", "active"), orderBy("createdAt"));
+  // ▼▼▼ [수정] 'active' 와 'paused' 상태의 목표를 모두 가져오도록 변경 ▼▼▼
+  const q = query(goalsRef, where("status", "in", ["active", "paused"]), orderBy("createdAt"));
   const querySnapshot = await getDocs(q);
 
   const goals = [];
@@ -1094,7 +1095,11 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
     const playerData = playerDoc.data();
     const goalData = goalDoc.data();
 
-    if (goalData.currentPoints >= goalData.targetPoints) {
+    // ▼▼▼ [수정] 목표 상태 확인 로직 추가 ▼▼▼
+    if (goalData.status === 'paused') {
+      throw new Error("현재 기부가 일시중단된 목표입니다.");
+    }
+    if (goalData.status === 'completed' || goalData.currentPoints >= goalData.targetPoints) {
       throw new Error("이미 달성된 목표입니다.");
     }
     if (playerData.points < amount) {
@@ -1132,6 +1137,14 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
         }
       });
     }
+  });
+}
+
+// ▼▼▼ [추가] 목표 상태를 변경하는 함수 추가 ▼▼▼
+export async function updateClassGoalStatus(goalId, newStatus) {
+  const goalRef = doc(db, "classGoals", goalId);
+  await updateDoc(goalRef, {
+    status: newStatus
   });
 }
 

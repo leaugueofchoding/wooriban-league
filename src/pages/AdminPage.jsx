@@ -42,7 +42,8 @@ import {
     updateMyRoomItemDisplayName,
     getAllMyRoomComments, // 댓글 모니터링 함수 import
     deleteMyRoomComment,  // 댓글 삭제 함수 import
-    deleteMyRoomReply     // 답글 삭제 함수 import
+    deleteMyRoomReply,    // 답글 삭제 함수 import
+    updateClassGoalStatus, // [추가] 목표 상태 업데이트 함수 import
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
@@ -1096,8 +1097,11 @@ function MessageManager() {
                     <StudentListPanel>
                         {isLoading ? <p style={{ padding: '1rem' }}>로딩 중...</p> :
                             studentThreads.map(thread => {
-                                const lastMessage = thread.messages[thread.messages.length - 1];
-                                const lastContent = lastMessage?.conversation ? lastMessage.conversation[lastMessage.conversation.length - 1]?.content : lastMessage?.message;
+                                // ▼▼▼ [수정] 마지막 메시지를 찾는 로직 수정 ▼▼▼
+                                const allMessages = thread.messages.flatMap(item => item.conversation || []);
+                                const lastMessage = allMessages.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())[0];
+                                const lastContent = lastMessage?.content || thread.messages[0]?.message; // Fallback to original message
+
                                 return (
                                     <StudentListItem
                                         key={thread.studentId}
@@ -1182,6 +1186,20 @@ function GoalManager() {
         }
     };
 
+    const handleGoalStatusToggle = async (goal) => {
+        const newStatus = goal.status === 'paused' ? 'active' : 'paused';
+        const actionText = newStatus === 'paused' ? '일시중단' : '다시시작';
+        if (window.confirm(`'${goal.title}' 목표를 '${actionText}' 상태로 변경하시겠습니까?`)) {
+            try {
+                await updateClassGoalStatus(goal.id, newStatus);
+                alert(`목표가 ${actionText} 처리되었습니다.`);
+                fetchGoals();
+            } catch (error) {
+                alert(`상태 변경 실패: ${error.message}`);
+            }
+        }
+    };
+
     const handleGoalDelete = async (goalId) => {
         if (window.confirm("정말로 이 목표를 삭제하시겠습니까? 기부 내역도 함께 사라집니다.")) {
             try {
@@ -1236,11 +1254,18 @@ function GoalManager() {
                                 <ListItem key={goal.id} style={{ gridTemplateColumns: '1fr auto' }}>
                                     <div>
                                         <span>{goal.title}</span>
+                                        {goal.status === 'paused' && <span style={{ marginLeft: '1rem', color: '#ffc107', fontWeight: 'bold' }}>[일시중단됨]</span>}
                                         <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
                                             ({goal.currentPoints.toLocaleString()} / {goal.targetPoints.toLocaleString()} P)
                                         </span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <SaveButton
+                                            onClick={() => handleGoalStatusToggle(goal)}
+                                            style={{ backgroundColor: goal.status === 'paused' ? '#17a2b8' : '#ffc107', color: goal.status === 'paused' ? 'white' : 'black' }}
+                                        >
+                                            {goal.status === 'paused' ? '다시시작' : '일시중단'}
+                                        </SaveButton>
                                         <SaveButton
                                             onClick={() => handleGoalComplete(goal.id)}
                                             style={{ backgroundColor: '#28a745' }}
