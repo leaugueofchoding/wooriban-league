@@ -46,7 +46,8 @@ import {
     batchUpdateAvatarPartCategory, // [추가]
     batchUpdateMyRoomItemCategory, // [추가]
     buyMultipleAvatarParts as firebaseBuyMultipleAvatarParts, // [수정] 이름 충돌 방지를 위해 별칭 사용
-
+    deleteNotification, // 개별 삭제 함수 (혹시 모를 경우 대비)
+    deleteAllNotifications, // ▼▼▼ [추가] 전체 삭제 함수 import ▼▼▼
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -387,6 +388,24 @@ export const useLeagueStore = create((set, get) => ({
         await updatePlayerProfile(myPlayerData.id, profileData);
         await get().fetchInitialData();
     },
+
+    // ▼▼▼ [수정] 알림 전체 삭제 액션 ▼▼▼
+    removeAllNotifications: async (userId) => {
+        if (!userId) return;
+        try {
+            // Firestore에서 모든 알림 삭제
+            await deleteAllNotifications(userId);
+            // 로컬 상태(Store)를 비워서 UI 즉시 업데이트
+            set({
+                notifications: [],
+                unreadNotificationCount: 0,
+            });
+        } catch (error) {
+            console.error("알림 전체 삭제 중 오류 발생:", error);
+            alert("알림을 삭제하는 데 실패했습니다.");
+        }
+    },
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     subscribeToPlayerData: (userId) => {
         const playerDocRef = doc(db, 'players', userId);

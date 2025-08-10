@@ -393,8 +393,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
 }
 
 function RecorderDashboardPage() {
-    const { players, missions, matches } = useLeagueStore();
-    const [pendingSubmissions, setPendingSubmissions] = useState([]);
+    const { players, missions, matches, missionSubmissions } = useLeagueStore();
     const [processingIds, setProcessingIds] = useState(new Set());
     const [mainTab, setMainTab] = useState('mission');
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
@@ -420,19 +419,19 @@ function RecorderDashboardPage() {
         return nextUpcomingMatch?.id || null;
     }, [sortedMatches]);
 
+    // ▼▼▼ [수정] 필터링 로직 수정 ▼▼▼
+    const pendingSubmissions = useMemo(() => {
+        const myRole = myPlayerData?.role;
+        const pending = missionSubmissions.filter(sub => sub.status === 'pending');
 
-    useEffect(() => {
-        const submissionsRef = collection(db, "missionSubmissions");
-        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const validSubmissions = submissions.filter(sub =>
-                missions.some(m => m.id === sub.missionId)
-            );
-            setPendingSubmissions(validSubmissions);
+        return pending.filter(sub => {
+            const mission = missions.find(m => m.id === sub.missionId);
+            if (!mission) return false;
+            if (mission.adminOnly && myRole !== 'admin') return false;
+            return true;
         });
-        return () => unsubscribe();
-    }, [missions]);
+    }, [missionSubmissions, missions, myPlayerData]);
+    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const handleAction = async (action, submission, reward) => {
         setProcessingIds(prev => new Set(prev).add(submission.id));
@@ -479,7 +478,7 @@ function RecorderDashboardPage() {
                                 const isMyOwnSubmission = myPlayerData?.id === sub.studentId;
                                 const isOpen = expandedSubmissionId === sub.id;
 
-                                if (!mission || (mission.adminOnly && myPlayerData?.role !== 'admin')) {
+                                if (!mission) {
                                     return null;
                                 }
 

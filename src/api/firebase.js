@@ -777,12 +777,30 @@ export async function updateMatchStartTime(matchId) {
   await updateDoc(matchRef, { startTime: serverTimestamp() });
 }
 
-// ▼▼▼ [신규] 경기 상태(status)만 변경하는 함수 추가 ▼▼▼
 export async function updateMatchStatus(matchId, newStatus) {
   const matchRef = doc(db, 'matches', matchId);
   await updateDoc(matchRef, { status: newStatus });
 }
-// ▲▲▲ 여기까지 추가 ▲▲▲
+
+export async function deleteNotification(notificationId) {
+  const notificationRef = doc(db, 'notifications', notificationId);
+  await deleteDoc(notificationRef);
+}
+
+export async function deleteAllNotifications(userId) {
+  if (!userId) return;
+
+  const batch = writeBatch(db);
+  const notificationsRef = collection(db, 'notifications');
+  const q = query(notificationsRef, where('userId', '==', userId));
+
+  const querySnapshot = await getDocs(q);
+  querySnapshot.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+
+  await batch.commit();
+}
 
 export async function deleteMatchesBySeason(seasonId) {
   const matchesRef = collection(db, 'matches');

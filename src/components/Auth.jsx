@@ -108,6 +108,23 @@ const NotificationList = styled.div`
     overflow-y: auto;
 `;
 
+const NotificationHeader = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #f1f3f5;
+`;
+
+const ClearButton = styled.button`
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: bold;
+`;
+
 const NotificationItem = styled.div`
     padding: 1rem;
     border-bottom: 1px solid #f1f3f5;
@@ -143,7 +160,7 @@ const BonusNotificationItem = styled(NotificationItem)`
 
 
 function Auth({ user }) {
-    const { players, notifications, unreadNotificationCount, markAsRead, approvalBonus } = useLeagueStore();
+    const { players, notifications, unreadNotificationCount, markAsRead, approvalBonus, removeAllNotifications } = useLeagueStore();
     const navigate = useNavigate();
     const [showNotifications, setShowNotifications] = useState(false);
     const notificationRef = useRef(null);
@@ -229,6 +246,11 @@ function Auth({ user }) {
         }
     }
 
+    // ▼▼▼ [수정] 확인 팝업 제거 ▼▼▼
+    const handleClearAll = () => {
+        removeAllNotifications(user.uid);
+    };
+
     return (
         <AuthWrapper>
             {user ? (
@@ -244,6 +266,11 @@ function Auth({ user }) {
                             </IconButton>
                             {showNotifications && (
                                 <NotificationList>
+                                    <NotificationHeader>
+                                        <h5 style={{ margin: 0 }}>알림</h5>
+                                        <ClearButton onClick={handleClearAll}>전체 삭제</ClearButton>
+                                    </NotificationHeader>
+
                                     {isRecorderOrAdmin && approvalBonus > 0 && (
                                         <BonusNotificationItem>
                                             <h5>💰 오늘의 기록 보너스</h5>
