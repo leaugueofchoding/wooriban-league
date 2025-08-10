@@ -193,35 +193,34 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
   }
   const missionData = missionSnap.data();
 
-  const baseQuery = query(
+  // 1. Firestore에 단순하게 "해당 학생의 해당 미션 기록 전체"를 요청합니다.
+  const q = query(
     submissionsRef,
     where("missionId", "==", missionId),
     where("studentId", "==", studentId)
   );
+  const querySnapshot = await getDocs(q);
+  const submissions = querySnapshot.docs.map(doc => doc.data());
 
-  // 고정 미션인 경우, 오늘 날짜로 이미 제출/완료한 기록이 있는지 확인
+  // 2. 가져온 데이터를 코드(Javascript)에서 직접 필터링합니다.
+  let existingSubmission = null;
   if (missionData.isFixed) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const q = query(
-      baseQuery,
-      where("requestedAt", ">=", today),
-      where("requestedAt", "<", tomorrow),
-      where("status", "in", ["pending", "approved"])
-    );
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
+    existingSubmission = submissions.find(sub => {
+      const subDate = sub.requestedAt?.toDate();
+      return subDate && subDate >= today && ['pending', 'approved'].includes(sub.status);
+    });
+
+    if (existingSubmission) {
       throw new Error("오늘 이미 완료한 미션입니다.");
     }
   } else {
-    // 일반 미션의 경우, 기존 중복 제출 검사 로직 유지
-    const q = query(baseQuery, where("status", "in", ["pending", "approved"]));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const status = querySnapshot.docs[0].data().status;
+    existingSubmission = submissions.find(sub => ['pending', 'approved'].includes(sub.status));
+
+    if (existingSubmission) {
+      const status = existingSubmission.status;
       if (status === 'pending') throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
       if (status === 'approved') throw new Error("이미 완료된 미션입니다.");
     }
