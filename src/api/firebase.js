@@ -193,34 +193,37 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
   }
   const missionData = missionSnap.data();
 
-  // 모든 미션에 대해, '승인대기' 또는 '승인완료' 상태의 기록이 있는지 먼저 확인
-  const q = query(
+  const baseQuery = query(
     submissionsRef,
     where("missionId", "==", missionId),
-    where("studentId", "==", studentId),
-    where("status", "in", ["pending", "approved"])
+    where("studentId", "==", studentId)
   );
 
-  const querySnapshot = await getDocs(q);
+  // 고정 미션인 경우, 오늘 날짜로 이미 제출/완료한 기록이 있는지 확인
+  if (missionData.isFixed) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-  if (!querySnapshot.empty) {
-    const existingDoc = querySnapshot.docs[0].data();
-
-    // 고정 미션의 경우, 오늘 날짜에 완료한 기록인지 추가로 확인
-    if (missionData.isFixed) {
-      if (existingDoc.approvedAt) {
-        const approvedDate = new Date(existingDoc.approvedAt.toDate()).toDateString();
-        const todayDate = new Date().toDateString();
-        if (approvedDate === todayDate) {
-          throw new Error("오늘 이미 완료한 미션입니다.");
-        }
-      } else if (existingDoc.status === 'pending') {
-        throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
-      }
-    } else {
-      // 일반 미션의 경우, 상태만 보고 바로 에러 처리
-      if (existingDoc.status === 'pending') throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
-      if (existingDoc.status === 'approved') throw new Error("이미 완료된 미션입니다.");
+    const q = query(
+      baseQuery,
+      where("requestedAt", ">=", today),
+      where("requestedAt", "<", tomorrow),
+      where("status", "in", ["pending", "approved"])
+    );
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      throw new Error("오늘 이미 완료한 미션입니다.");
+    }
+  } else {
+    // 일반 미션의 경우, 기존 중복 제출 검사 로직 유지
+    const q = query(baseQuery, where("status", "in", ["pending", "approved"]));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const status = querySnapshot.docs[0].data().status;
+      if (status === 'pending') throw new Error("이미 승인을 요청했습니다. 잠시만 기다려주세요.");
+      if (status === 'approved') throw new Error("이미 완료된 미션입니다.");
     }
   }
 

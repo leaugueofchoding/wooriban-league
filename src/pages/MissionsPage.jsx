@@ -220,6 +220,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const { submitMissionForApproval } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photo: null });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [missionHistory, setMissionHistory] = useState([]);
 
@@ -238,11 +239,14 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   useEffect(() => {
     if (submissionStatus === 'rejected' && submission) {
       setSubmissionContent({ text: submission.text || '', photo: null });
+    } else if (submissionStatus !== 'rejected') {
+      setSubmissionContent({ text: '', photo: null });
     }
   }, [submissionStatus, submission]);
 
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
+  const hasViewableContent = submission && (submission.text || submission.photoUrl);
 
   const isPrerequisiteSubmitted = useMemo(() => {
     if (!mission.prerequisiteMissionId) return true;
@@ -326,7 +330,16 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       );
     }
 
-    if (currentStatus === 'approved') return <RequestButton $status="approved" disabled>승인 완료!</RequestButton>;
+    if (currentStatus === 'approved') {
+      if (hasViewableContent) {
+        return (
+          <RequestButton $status="approved" onClick={() => setIsDetailsOpen(prev => !prev)}>
+            {isDetailsOpen ? '숨기기' : '제출물 보기'}
+          </RequestButton>
+        );
+      }
+      return <RequestButton $status="approved" disabled>승인 완료!</RequestButton>;
+    }
     if (currentStatus === 'pending') return <RequestButton $status="pending" disabled>승인 대기중</RequestButton>;
 
     return (
@@ -391,6 +404,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
             )}
           </SubmissionArea>
         )}
+        <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
       </MissionCard>
       <MissionHistoryModal
         isOpen={isHistoryModalOpen}

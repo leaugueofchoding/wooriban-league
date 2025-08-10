@@ -2010,7 +2010,7 @@ function MyRoomItemManager() {
         }, {});
     }, [myRoomItems]);
 
-    const sortedCategories = ['하우스', '배경', '가구', '소품', '미니카페']; // 카테고리 목록 수정
+    const sortedCategories = ['하우스', '배경', '가구', '가전', '소품']; // 카테고리 목록 수정
     const [activeTab, setActiveTab] = useState('가구');
 
     useEffect(() => {
@@ -2203,8 +2203,8 @@ function MyRoomItemManager() {
                         <option value="배경">배경</option>
                         <option value="하우스">하우스</option>
                         <option value="가구">가구</option>
+                        <option value="가전">가전</option>
                         <option value="소품">소품</option>
-                        <option value="미니카페">미니카페</option>
 
                     </select>
                     <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
