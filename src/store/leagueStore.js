@@ -270,6 +270,7 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
+    // ▼▼▼ [핵심 수정] submitMissionForApproval 함수 수정 ▼▼▼
     submitMissionForApproval: async (missionId, submissionData) => {
         const { players } = get();
         const user = auth.currentUser;
@@ -288,13 +289,20 @@ export const useLeagueStore = create((set, get) => ({
         }
 
         try {
+            // Firestore에 제출 요청만 보냅니다.
+            // 데이터 갱신은 실시간 리스너(onSnapshot)가 자동으로 처리해 줄 것입니다.
             await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name, dataToSend);
-            const submissionsData = await getMissionSubmissions();
-            set({ missionSubmissions: submissionsData });
+
+            // [삭제] 아래 두 줄의 성급한 데이터 재요청 코드를 삭제합니다.
+            // const submissionsData = await getMissionSubmissions();
+            // set({ missionSubmissions: submissionsData });
+
         } catch (error) {
+            // 에러가 발생하면 그대로 throw하여 호출한 쪽에서 처리하도록 합니다.
             throw error;
         }
     },
+    // ▲▲▲ [수정 완료] ▲▲▲
 
     buyMultipleAvatarParts: async (partsToBuy) => {
         const user = auth.currentUser;
@@ -878,7 +886,7 @@ export const useLeagueStore = create((set, get) => ({
             const maleTeams = teams.filter(t => t.gender === '남');
             const femaleTeams = teams.filter(t => t.gender === '여');
             const maleMatches = createRoundRobinSchedule(maleTeams);
-            const femaleMatches = createRoundRobinSchedule(femaleMatches);
+            const femaleMatches = createRoundRobinSchedule(femaleTeams);
 
             let i = 0, j = 0;
             while (i < maleMatches.length || j < femaleMatches.length) {
