@@ -499,7 +499,7 @@ function MyRoomPage() {
       ? myRoomItems
       : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
 
-    const categories = { '하우스': [], '배경': [], '가구': [], '소품': [], '미니카페': [] };
+    const categories = { '하우스': [], '배경': [], '가구': [], '가전': [], '소품': [] };
 
     itemsToDisplay.forEach(item => {
       if (item && categories[item.category]) {
@@ -953,7 +953,7 @@ function MyRoomPage() {
             </div>
 
             <TabContainer style={{ justifyContent: 'flex-start', borderBottom: '1px solid #dee2e6' }}>
-              {['하우스', '배경', '가구', '소품', '미니카페'].map(category => (
+              {['하우스', '배경', '가구', '가전', '소품'].map(category => (
                 <TabButton
                   key={category}
                   $active={activeInventoryTab === category}
