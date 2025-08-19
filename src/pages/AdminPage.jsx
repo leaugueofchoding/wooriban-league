@@ -1622,17 +1622,22 @@ function AvatarPartManager() {
         if (files.length === 0) return alert('파일을 선택해주세요.');
         setIsUploading(true);
         try {
-            const newItems = await Promise.all(files.map(file => uploadMyRoomItem(file, uploadCategory)));
+            // [수정] 올바른 아바타 파츠 업로드 함수를 호출합니다.
+            const newItems = await Promise.all(files.map(file => uploadAvatarPart(file, uploadCategory)));
+            // [수정] 스토어의 avatarParts 상태를 업데이트합니다.
             useLeagueStore.setState(state => ({
-                myRoomItems: [...state.myRoomItems, ...newItems]
+                avatarParts: [...state.avatarParts, ...newItems]
             }));
-            alert(`${files.length}개의 아이템이 업로드되었습니다!`);
+            alert(`${files.length}개의 아바타 아이템이 업로드되었습니다!`);
             setFiles([]);
-            document.getElementById('myroom-file-input').value = "";
-            // refreshItems(); // 전체 데이터 새로고침 제거
+            // [수정] 올바른 파일 입력창 ID를 참조하여 초기화합니다.
+            document.getElementById('avatar-file-input').value = "";
         } catch (error) {
-            alert('아이템 업로드 중 오류가 발생했습니다.');
-        } finally { setIsUploading(false); }
+            console.error("아바타 아이템 업로드 오류:", error);
+            alert('아바타 아이템 업로드 중 오류가 발생했습니다.');
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleToggleStatus = async (part) => {
