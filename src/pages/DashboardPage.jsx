@@ -89,6 +89,11 @@ const MyInfoCard = styled.div`
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   transition: all 0.2s ease-in-out;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
 `;
 
 const ProfileLink = styled(Link)`
@@ -107,6 +112,11 @@ const ProfileLink = styled(Link)`
 const ActionButtonsWrapper = styled.div`
   display: flex;
   gap: 1rem;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: center;
+  }
 `;
 
 const VisitButton = styled.button`
@@ -139,6 +149,14 @@ const VisitButton = styled.button`
     &:hover {
         background-color: #e9ecef;
         border-color: #adb5bd;
+    }
+
+    @media (max-width: 768px) {
+      width: 0;
+      flex-grow: 1;
+      height: auto;
+      padding: 1rem 0.5rem;
+      font-size: 0.9rem;
     }
 `;
 
@@ -173,6 +191,14 @@ const SuggestionButton = styled(Link)`
         background-color: #e9ecef;
         border-color: #adb5bd;
     }
+
+    @media (max-width: 768px) {
+      width: 0;
+      flex-grow: 1;
+      height: auto;
+      padding: 1rem 0.5rem;
+      font-size: 0.9rem;
+    }
 `;
 
 
@@ -197,7 +223,12 @@ const PartImage = styled.img`
 
 const InfoText = styled.div`
   text-align: left;
+
+  @media (max-width: 768px) {
+    text-align: center;
+  }
 `;
+
 
 const WelcomeMessage = styled.p`
   margin: 0;

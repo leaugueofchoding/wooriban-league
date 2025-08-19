@@ -44,6 +44,7 @@ const Header = styled.div`
   justify-content: center;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap; /* [추가] 화면이 작아질 때 줄바꿈을 위함 */
 `;
 
 const RoomContainer = styled.div`
@@ -335,8 +336,8 @@ const EditRoomButton = styled(SaveButton)`
 `;
 
 const VisitButton = styled.button`
-    padding: 0.8rem 2rem;
-    font-size: 1.1rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
     font-weight: bold;
     color: white;
     background-color: #17a2b8;
@@ -881,12 +882,14 @@ function MyRoomPage() {
       <Header>
         <h1>{roomOwnerData?.name || '...'}의 마이룸</h1>
         {!isMyRoom && myPlayerData && (
-          <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} title={hasLikedThisMonth ? "이번 달에 이미 좋아했습니다." : "이 방 좋아요!"}>
-            {hasLikedThisMonth ? '❤️' : '🤍'} {likes.length}
-          </LikeButton>
+          <>
+            <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} title={hasLikedThisMonth ? "이번 달에 이미 좋아했습니다." : "이 방 좋아요!"}>
+              {hasLikedThisMonth ? '❤️' : '🤍'} {likes.length}
+            </LikeButton>
+            <VisitButton onClick={handleRandomVisit}>계속 놀러가기</VisitButton>
+          </>
         )}
       </Header>
-      {/* ▼▼▼ [수정] onClick 핸들러 추가 ▼▼▼ */}
       <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
         <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
         {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
@@ -1046,7 +1049,6 @@ function MyRoomPage() {
       </SocialFeaturesContainer>
 
       <ButtonContainer>
-        {!isMyRoom && myPlayerData && <VisitButton onClick={handleRandomVisit}>계속 놀러가기</VisitButton>}
         <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
       </ButtonContainer>
     </Wrapper>
