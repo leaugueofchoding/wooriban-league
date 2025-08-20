@@ -788,22 +788,59 @@ export const useLeagueStore = create((set, get) => ({
 
     autoAssignTeams: async () => {
         if (!confirm('팀원을 자동 배정하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
-        const { players, teams, currentSeason } = get();
+        const { players, teams, matches, currentSeason } = get();
         if (players.length === 0 || teams.length === 0) return alert('선수와 팀이 모두 필요합니다.');
 
         try {
-            // ▼▼▼ [핵심 수정] 각 선수 목록을 만들 때, status가 'inactive'가 아닌 선수만 포함하도록 조건을 추가합니다. ▼▼▼
-            const malePlayers = players.filter(p => p.status !== 'inactive' && p.gender === '남').sort(() => 0.5 - Math.random());
-            const femalePlayers = players.filter(p => p.status !== 'inactive' && p.gender === '여').sort(() => 0.5 - Math.random());
-            const unassignedPlayers = players.filter(p => p.status !== 'inactive' && (!p.gender || (p.gender !== '남' && p.gender !== '여'))).sort(() => 0.5 - Math.random());
+            // 1. 모든 '활성' 선수들의 통산 득점을 계산합니다.
+            const playerGoals = players.reduce((acc, player) => {
+                acc[player.id] = 0;
+                return acc;
+            }, {});
 
-            const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null }));
-
-            [...malePlayers, ...femalePlayers, ...unassignedPlayers].forEach((player, index) => {
-                //... (이하 코드 생략)
-                teamUpdates[index % teams.length].members.push(player.id);
+            matches.forEach(match => {
+                if (match.scorers) {
+                    Object.entries(match.scorers).forEach(([playerId, goals]) => {
+                        if (playerGoals.hasOwnProperty(playerId)) {
+                            playerGoals[playerId] += goals;
+                        }
+                    });
+                }
             });
 
+            const activePlayers = players.filter(p => p.status !== 'inactive');
+
+            // 2. 성별에 따라 선수를 나누고, 각 그룹 내에서 득점 순으로 정렬합니다.
+            const sortedMalePlayers = activePlayers
+                .filter(p => p.gender === '남')
+                .sort((a, b) => playerGoals[b.id] - playerGoals[a.id]);
+
+            const sortedFemalePlayers = activePlayers
+                .filter(p => p.gender === '여')
+                .sort((a, b) => playerGoals[b.id] - playerGoals[a.id]);
+
+            const maleTeams = teams.filter(t => t.gender === '남');
+            const femaleTeams = teams.filter(t => t.gender === '여');
+
+            const teamUpdates = teams.map(team => ({ id: team.id, members: [] }));
+
+            // 3. '스네이크 드래프트' 방식으로 득점 상위 선수를 분배합니다.
+            const distributePlayers = (playersToDistribute, targetTeams) => {
+                if (targetTeams.length === 0) return;
+                playersToDistribute.forEach((player, index) => {
+                    const teamIndex = index % targetTeams.length;
+                    const targetTeamId = targetTeams[teamIndex].id;
+                    const teamToUpdate = teamUpdates.find(t => t.id === targetTeamId);
+                    if (teamToUpdate) {
+                        teamToUpdate.members.push(player.id);
+                    }
+                });
+            };
+
+            distributePlayers(sortedMalePlayers, maleTeams);
+            distributePlayers(sortedFemalePlayers, femaleTeams);
+
+            // 4. 주장 자동 임명 (각 팀의 첫 번째 멤버)
             teamUpdates.forEach(update => {
                 if (update.members.length > 0) {
                     update.captainId = update.members[0];
@@ -813,7 +850,8 @@ export const useLeagueStore = create((set, get) => ({
             await batchUpdateTeams(teamUpdates);
             const updatedTeams = await getTeams(currentSeason.id);
             set({ teams: updatedTeams });
-            alert('성비 균등 자동 배정이 완료되었습니다.');
+            alert('득점 기록과 성비를 고려한 자동 배정이 완료되었습니다.');
+
         } catch (error) {
             console.error("자동 배정 중 오류 발생:", error);
             alert("자동 배정 중 오류가 발생했습니다.");

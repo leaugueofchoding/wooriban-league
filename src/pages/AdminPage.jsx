@@ -1206,6 +1206,9 @@ function MessageManager() {
                                                     {showDateSeparator && <DateSeparator>{currentMessageDate}</DateSeparator>}
                                                     <MessageBubble className={message.sender}>
                                                         {message.content}
+                                                        <Timestamp $align={message.sender === 'student' ? 'right' : 'left'}>
+                                                            {message.createdAt?.toDate().toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                                        </Timestamp>
                                                     </MessageBubble>
                                                 </React.Fragment>
                                             );

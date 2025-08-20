@@ -5,7 +5,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
 import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from "firebase/firestore";
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
 
@@ -187,6 +187,11 @@ const CommentContent = styled.div`
     flex-grow: 1;
     p { margin: 0; }
     small { color: #6c757d; }
+`;
+
+const Timestamp = styled.small`
+  margin-left: 0.5rem;
+  font-size: 0.8em;
 `;
 
 const CommentActions = styled.div`
@@ -1015,7 +1020,10 @@ function MyRoomPage() {
               <CommentCard>
                 <CommentContent>
                   <p>{comment.text}</p>
-                  <small>{comment.commenterName} - {comment.createdAt?.toDate().toLocaleDateString()}</small>
+                  <div>
+                    <Link to={`/my-room/${comment.commenterId}`} style={{ textDecoration: 'none', color: '#6c757d', fontWeight: 'bold' }}>{comment.commenterName}</Link>
+                    <Timestamp>{comment.createdAt?.toDate().toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })}</Timestamp>
+                  </div>
                 </CommentContent>
                 <CommentActions>
                   {isMyRoom && (<DeleteButton onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}>답글</DeleteButton>)}
@@ -1035,7 +1043,10 @@ function MyRoomPage() {
                 <ReplyCard key={index}>
                   <CommentContent>
                     <p>{reply.text}</p>
-                    <small>{reply.replierName} - {reply.createdAt?.toDate().toLocaleDateString()}</small>
+                    <div>
+                      <Link to={`/my-room/${reply.replierId}`} style={{ textDecoration: 'none', color: '#6c757d', fontWeight: 'bold' }}>{reply.replierName}</Link>
+                      <Timestamp>{reply.createdAt?.toDate().toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })}</Timestamp>
+                    </div>
                   </CommentContent>
                   <CommentActions>
                     {myPlayerData?.role === 'admin' && (<DeleteButton onClick={() => handleDeleteReply(comment.id, reply)}>삭제</DeleteButton>)}
@@ -1049,7 +1060,7 @@ function MyRoomPage() {
       </SocialFeaturesContainer>
 
       <ButtonContainer>
-        <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
+        <ExitButton onClick={() => navigate('/')}>홈 화면으로</ExitButton>
       </ButtonContainer>
     </Wrapper>
   );
