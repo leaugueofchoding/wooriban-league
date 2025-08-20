@@ -14,7 +14,7 @@ const AvatarWrapper = styled.div`
   position: relative;
   width: 150px;
   height: 150px;
-  margin: 2.5rem auto 1rem; /* 상단 여백 추가 */
+  margin: 2rem auto 1rem; /* 칭호가 들어갈 상단 여백 확보 */
 `;
 
 const AvatarDisplay = styled.div`
@@ -228,7 +228,7 @@ const AccordionContent = styled.div`
 
 const EquippedTitle = styled.div`
   position: absolute;
-  top: -33px; /* 아바타 위로 더 올리기 */
+  top: -10px;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
@@ -243,23 +243,24 @@ const EquippedTitle = styled.div`
   border: 1px solid rgba(0, 0, 0, 0.1);
 `;
 
-const OwnedTitleList = styled.div`
+const TitleGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1rem;
 `;
 
-const OwnedTitleCard = styled.div`
+const TitleCard = styled.div`
   padding: 1rem;
   border: 2px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
   border-radius: 8px;
   text-align: center;
-  cursor: pointer;
+  cursor: ${props => props.$isOwned ? 'pointer' : 'default'};
   transition: all 0.2s;
+  opacity: ${props => props.$isOwned ? 1 : 0.5};
 
   &:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    transform: translateY(-3px);
+    box-shadow: ${props => props.$isOwned ? '0 4px 8px rgba(0,0,0,0.1)' : 'none'};
+    transform: ${props => props.$isOwned ? 'translateY(-3px)' : 'none'};
   }
 
   strong {
@@ -269,6 +270,15 @@ const OwnedTitleCard = styled.div`
     font-size: 0.85rem;
     color: #6c757d;
     margin: 0.5rem 0 0;
+  }
+`;
+
+const Subtitle = styled.h4`
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  text-align: left;
+  &:first-child {
+    margin-top: 0;
   }
 `;
 
@@ -315,6 +325,12 @@ function ProfilePage() {
   const ownedTitles = useMemo(() => {
     if (!playerData?.ownedTitles || !titles.length) return [];
     return playerData.ownedTitles.map(titleId => titles.find(t => t.id === titleId)).filter(Boolean);
+  }, [playerData, titles]);
+
+  const unownedTitles = useMemo(() => {
+    if (!playerData || !titles.length) return [];
+    const ownedIds = new Set(playerData.ownedTitles || []);
+    return titles.filter(title => !ownedIds.has(title.id));
   }, [playerData, titles]);
 
   const handleSaveEquippedTitle = async () => {
@@ -478,24 +494,42 @@ function ProfilePage() {
           </ButtonRow>
         </ButtonGroup>
 
-        {(isMyProfile && ownedTitles.length > 0) && (
+        {isMyProfile && (
           <AccordionSection>
             <AccordionContent $isOpen={isTitleAccordionOpen}>
-              <OwnedTitleList>
-                {ownedTitles.map(title => (
-                  <OwnedTitleCard
+              <Subtitle>획득한 칭호 ✨</Subtitle>
+              <TitleGrid>
+                {ownedTitles.length > 0 ? ownedTitles.map(title => (
+                  <TitleCard
                     key={title.id}
                     $isSelected={selectedTitleId === title.id}
                     onClick={() => setSelectedTitleId(prev => prev === title.id ? null : title.id)}
+                    $isOwned={true}
+                    title="클릭하여 장착/해제"
                   >
                     <strong style={{ color: title.color }}>{title.icon} {title.name}</strong>
                     <p>{title.description}</p>
-                  </OwnedTitleCard>
-                ))}
-              </OwnedTitleList>
+                  </TitleCard>
+                )) : <p>아직 획득한 칭호가 없습니다.</p>}
+              </TitleGrid>
+
               <SaveTitlesButton onClick={handleSaveEquippedTitle}>
                 선택한 칭호로 저장하기
               </SaveTitlesButton>
+
+              <Subtitle>미획득 칭호 🔒</Subtitle>
+              <TitleGrid>
+                {unownedTitles.map(title => (
+                  <TitleCard
+                    key={title.id}
+                    $isOwned={false}
+                    title={title.description} // 툴팁으로 획득 조건 표시
+                  >
+                    <strong style={{ color: title.color }}>{title.icon} {title.name}</strong>
+                    <p>{title.description}</p>
+                  </TitleCard>
+                ))}
+              </TitleGrid>
             </AccordionContent>
           </AccordionSection>
         )}

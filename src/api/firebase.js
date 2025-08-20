@@ -8,6 +8,7 @@ import {
   updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc,
   runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp, limit, collectionGroup
 } from "firebase/firestore";
+import initialTitles from '../assets/titles.json'; // [추가] titles.json 파일 import
 
 // Firebase 구성 정보
 const firebaseConfig = {
@@ -24,6 +25,28 @@ const app = initializeApp(firebaseConfig);
 const storage = getStorage(app);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// =================================================================
+// ▼▼▼ [신규] 칭호 데이터 자동 등록(seeding) 함수 ▼▼▼
+// =================================================================
+export async function seedInitialTitles() {
+  const titlesRef = collection(db, "titles");
+  const snapshot = await getDocs(query(titlesRef, limit(1))); // 1개만 가져와서 비어있는지 확인
+
+  if (snapshot.empty) {
+    console.log("칭호 데이터가 비어있어, titles.json의 기본값으로 자동 등록을 시작합니다.");
+    const batch = writeBatch(db);
+    initialTitles.forEach(title => {
+      const docRef = doc(titlesRef, title.id); // JSON에 정의된 id를 문서 ID로 사용
+      batch.set(docRef, {
+        ...title,
+        createdAt: serverTimestamp() // 생성 시간 추가
+      });
+    });
+    await batch.commit();
+    console.log("기본 칭호 데이터 자동 등록 완료.");
+  }
+}
 
 
 // --- 포인트 기록 헬퍼 함수 ---

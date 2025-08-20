@@ -24,7 +24,7 @@ import {
     getMissionSubmissions,
     updateMissionStatus,
     deleteMission,
-    batchUpdateMissionOrder, // 새로운 함수를 import 합니다.
+    batchUpdateMissionOrder,
     createPlayerFromUser,
     markNotificationsAsRead,
     getTodaysQuizHistory,
@@ -38,22 +38,23 @@ import {
     updatePlayerStatus,
     createNewSeason,
     saveAvatarMemorials,
-    getMyRoomItems, // 마이룸 아이템 함수 추가
+    getMyRoomItems,
     updateMyRoomItemDisplayName,
     buyMyRoomItem,
-    updatePlayerProfile, // [복원] 누락되었던 함수 import
+    updatePlayerProfile,
     updateMatchStatus,
-    batchUpdateAvatarPartCategory, // [추가]
-    batchUpdateMyRoomItemCategory, // [추가]
-    buyMultipleAvatarParts as firebaseBuyMultipleAvatarParts, // [수정] 이름 충돌 방지를 위해 별칭 사용
-    deleteNotification, // 개별 삭제 함수 (혹시 모를 경우 대비)
-    deleteAllNotifications, // ▼▼▼ [추가] 전체 삭제 함수 import ▼▼▼
+    batchUpdateAvatarPartCategory,
+    batchUpdateMyRoomItemCategory,
+    buyMultipleAvatarParts as firebaseBuyMultipleAvatarParts,
+    deleteNotification,
+    deleteAllNotifications,
     getTitles,
+    seedInitialTitles, // [추가] 칭호 자동 등록 함수 import
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
-import defaultEmblem from '../assets/default-emblem.png'; // [수정] defaultEmblem 경로 수정
+import defaultEmblem from '../assets/default-emblem.png';
 
 export const useLeagueStore = create((set, get) => ({
     // --- State ---
@@ -64,8 +65,8 @@ export const useLeagueStore = create((set, get) => ({
     matches: [],
     users: [],
     avatarParts: [],
-    myRoomItems: [], // 마이룸 아이템 상태 추가
-    titles: [], // [추가] 칭호 목록을 저장할 상태
+    myRoomItems: [],
+    titles: [],
     missions: [],
     archivedMissions: [],
     missionSubmissions: [],
@@ -109,7 +110,6 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    // ▼▼▼ [신규] 마이룸 아이템 이름 로컬 업데이트 함수 ▼▼▼
     updateLocalMyRoomItemDisplayName: (itemId, newName) => {
         set(state => ({
             myRoomItems: state.myRoomItems.map(item =>
@@ -121,6 +121,10 @@ export const useLeagueStore = create((set, get) => ({
     fetchInitialData: async () => {
         try {
             set({ isLoading: true });
+
+            // ▼▼▼ [추가] 데이터 로딩 전, 칭호 자동 등록 함수를 먼저 실행합니다. ▼▼▼
+            await seedInitialTitles();
+
             const currentUser = auth.currentUser;
             set({ currentUser });
 
@@ -155,16 +159,16 @@ export const useLeagueStore = create((set, get) => ({
             get().subscribeToMatches(activeSeason.id);
             const [
                 playersData, teamsData, usersData,
-                avatarPartsData, myRoomItemsData, // myRoomItemsData 추가
-                titlesData, // [추가]
+                avatarPartsData, myRoomItemsData,
+                titlesData,
                 activeMissionsData, archivedMissionsData, submissionsData
             ] = await Promise.all([
                 get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(),
                 getTeams(activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
-                getMyRoomItems(), // getMyRoomItems 호출 추가
-                getTitles(), // [추가]
+                getMyRoomItems(),
+                getTitles(),
                 getMissions('active'),
                 getMissions('archived'),
                 getMissionSubmissions()
@@ -181,8 +185,8 @@ export const useLeagueStore = create((set, get) => ({
             set({
                 players: playersData, teams: teamsData, users: usersData,
                 avatarParts: avatarPartsData,
-                myRoomItems: myRoomItemsData, // 상태 업데이트
-                titles: titlesData, // [추가]
+                myRoomItems: myRoomItemsData,
+                titles: titlesData,
                 missions: sortMissions(activeMissionsData),
                 archivedMissions: sortMissions(archivedMissionsData),
                 missionSubmissions: submissionsData,
@@ -194,6 +198,7 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
+    // ... (이하 나머지 코드는 기존과 동일) ...
     subscribeToMatches: (seasonId) => {
         const matchesRef = collection(db, 'matches');
         const q = query(matchesRef, where("seasonId", "==", seasonId));
@@ -275,7 +280,6 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ▼▼▼ [핵심 수정] submitMissionForApproval 함수 수정 ▼▼▼
     submitMissionForApproval: async (missionId, submissionData) => {
         const { players } = get();
         const user = auth.currentUser;
@@ -294,20 +298,11 @@ export const useLeagueStore = create((set, get) => ({
         }
 
         try {
-            // Firestore에 제출 요청만 보냅니다.
-            // 데이터 갱신은 실시간 리스너(onSnapshot)가 자동으로 처리해 줄 것입니다.
             await requestMissionApproval(missionId, myPlayerData.id, myPlayerData.name, dataToSend);
-
-            // [삭제] 아래 두 줄의 성급한 데이터 재요청 코드를 삭제합니다.
-            // const submissionsData = await getMissionSubmissions();
-            // set({ missionSubmissions: submissionsData });
-
         } catch (error) {
-            // 에러가 발생하면 그대로 throw하여 호출한 쪽에서 처리하도록 합니다.
             throw error;
         }
     },
-    // ▲▲▲ [수정 완료] ▲▲▲
 
     buyMultipleAvatarParts: async (partsToBuy) => {
         const user = auth.currentUser;
@@ -315,10 +310,8 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        // 1. Firebase 데이터 업데이트 (기존과 동일)
         await firebaseBuyMultipleAvatarParts(myPlayerData.id, partsToBuy);
 
-        // 2. fetchInitialData() 대신 로컬 상태 즉시 업데이트
         const totalCost = partsToBuy.reduce((sum, part) => sum + part.price, 0);
         const newPartIds = partsToBuy.map(part => part.id);
 
@@ -341,10 +334,8 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        // 1. Firebase 데이터 업데이트 (기존과 동일)
         await buyMyRoomItem(myPlayerData.id, item);
 
-        // 2. fetchInitialData() 대신 로컬 상태 즉시 업데이트
         const now = new Date();
         const isCurrentlyOnSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
         const finalPrice = isCurrentlyOnSale ? item.salePrice : item.price;
@@ -364,7 +355,6 @@ export const useLeagueStore = create((set, get) => ({
     batchMoveAvatarPartCategory: async (partIds, newCategory) => {
         try {
             await batchUpdateAvatarPartCategory(partIds, newCategory);
-            // 로컬 상태를 즉시 업데이트하여 빠른 UI 반응성 제공
             set(state => ({
                 avatarParts: state.avatarParts.map(part =>
                     partIds.includes(part.id) ? { ...part, category: newCategory } : part
@@ -372,7 +362,6 @@ export const useLeagueStore = create((set, get) => ({
             }));
         } catch (error) {
             alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`);
-            // 에러 발생 시 데이터 동기화를 위해 전체 데이터를 다시 불러옴
             get().fetchInitialData();
         }
     },
@@ -390,7 +379,6 @@ export const useLeagueStore = create((set, get) => ({
             get().fetchInitialData();
         }
     },
-    // ▲▲▲ 여기까지 추가 ▲▲▲
 
     updatePlayerProfile: async (profileData) => {
         const user = auth.currentUser;
@@ -402,13 +390,10 @@ export const useLeagueStore = create((set, get) => ({
         await get().fetchInitialData();
     },
 
-    // ▼▼▼ [수정] 알림 전체 삭제 액션 ▼▼▼
     removeAllNotifications: async (userId) => {
         if (!userId) return;
         try {
-            // Firestore에서 모든 알림 삭제
             await deleteAllNotifications(userId);
-            // 로컬 상태(Store)를 비워서 UI 즉시 업데이트
             set({
                 notifications: [],
                 unreadNotificationCount: 0,
@@ -418,7 +403,6 @@ export const useLeagueStore = create((set, get) => ({
             alert("알림을 삭제하는 데 실패했습니다.");
         }
     },
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     subscribeToPlayerData: (userId) => {
         const playerDocRef = doc(db, 'players', userId);
@@ -550,11 +534,9 @@ export const useLeagueStore = create((set, get) => ({
         return isCorrect;
     },
 
-    // ▼▼▼ [핵심 수정] batchAdjustPoints를 스토어 액션으로 추가 ▼▼▼
     batchAdjustPoints: async (playerIds, amount, reason) => {
         try {
             await batchAdjustPlayerPoints(playerIds, amount, reason);
-            // 성공 후 로컬 상태 업데이트
             set(state => ({
                 players: state.players.map(player => {
                     if (playerIds.includes(player.id)) {
@@ -568,7 +550,6 @@ export const useLeagueStore = create((set, get) => ({
             alert("포인트 조정 중 오류가 발생했습니다.");
         }
     },
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     createSeason: async (seasonName) => {
         await createNewSeason(seasonName);
@@ -599,8 +580,8 @@ export const useLeagueStore = create((set, get) => ({
             let stats = teams.map(team => ({
                 id: team.id,
                 teamName: team.teamName,
-                emblemId: team.emblemId,      // 프리셋 엠블럼 ID
-                emblemUrl: team.emblemUrl,    // 직접 올린 엠블럼 URL
+                emblemId: team.emblemId,
+                emblemUrl: team.emblemUrl,
                 played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
             }));
 
@@ -797,7 +778,6 @@ export const useLeagueStore = create((set, get) => ({
         if (players.length === 0 || teams.length === 0) return alert('선수와 팀이 모두 필요합니다.');
 
         try {
-            // 1. 모든 '활성' 선수들의 통산 득점을 계산합니다.
             const playerGoals = players.reduce((acc, player) => {
                 acc[player.id] = 0;
                 return acc;
@@ -815,7 +795,6 @@ export const useLeagueStore = create((set, get) => ({
 
             const activePlayers = players.filter(p => p.status !== 'inactive');
 
-            // 2. 성별에 따라 선수를 나누고, 각 그룹 내에서 득점 순으로 정렬합니다.
             const sortedMalePlayers = activePlayers
                 .filter(p => p.gender === '남')
                 .sort((a, b) => playerGoals[b.id] - playerGoals[a.id]);
@@ -829,7 +808,6 @@ export const useLeagueStore = create((set, get) => ({
 
             const teamUpdates = teams.map(team => ({ id: team.id, members: [] }));
 
-            // 3. '스네이크 드래프트' 방식으로 득점 상위 선수를 분배합니다.
             const distributePlayers = (playersToDistribute, targetTeams) => {
                 if (targetTeams.length === 0) return;
                 playersToDistribute.forEach((player, index) => {
@@ -845,7 +823,6 @@ export const useLeagueStore = create((set, get) => ({
             distributePlayers(sortedMalePlayers, maleTeams);
             distributePlayers(sortedFemalePlayers, femaleTeams);
 
-            // 4. 주장 자동 임명 (각 팀의 첫 번째 멤버)
             teamUpdates.forEach(update => {
                 if (update.members.length > 0) {
                     update.captainId = update.members[0];
@@ -875,7 +852,6 @@ export const useLeagueStore = create((set, get) => ({
             if (teamList.length < 2) return [];
 
             let teams = [...teamList];
-            // 팀 수가 홀수면 'BYE'라는 가상의 팀을 추가하여 짝수로 맞춥니다.
             if (teams.length % 2 !== 0) {
                 teams.push({ id: 'BYE', teamName: 'BYE' });
             }
@@ -885,17 +861,15 @@ export const useLeagueStore = create((set, get) => ({
             const half = numTeams / 2;
 
             const teamIndexes = teams.map((_, i) => i);
-            const fixedTeam = teamIndexes.shift(); // 1번 팀은 고정
+            const fixedTeam = teamIndexes.shift();
 
             for (let round = 0; round < numTeams - 1; round++) {
                 const roundMatches = [];
-                // 고정된 1번 팀과 마지막 팀의 경기를 추가
                 const matchUp = [teams[fixedTeam], teams[teamIndexes[0]]];
                 if (matchUp[0].id !== 'BYE' && matchUp[1].id !== 'BYE') {
                     roundMatches.push({ teamA_id: matchUp[0].id, teamB_id: matchUp[1].id });
                 }
 
-                // 나머지 팀들의 경기를 추가
                 for (let i = 1; i < half; i++) {
                     const matchUp = [teams[teamIndexes[i]], teams[teamIndexes[teamIndexes.length - i]]];
                     if (matchUp[0].id !== 'BYE' && matchUp[1].id !== 'BYE') {
@@ -904,11 +878,9 @@ export const useLeagueStore = create((set, get) => ({
                 }
                 rounds.push(roundMatches);
 
-                // 다음 라운드를 위해 팀들을 회전시킵니다.
                 teamIndexes.unshift(teamIndexes.pop());
             }
 
-            // 홈 & 어웨이 경기를 추가합니다.
             const homeAndAwayRounds = [...rounds, ...rounds.map(round => round.map(match => ({ teamA_id: match.teamB_id, teamB_id: match.teamA_id })))];
             const finalSchedule = homeAndAwayRounds.flat();
 
@@ -999,19 +971,17 @@ export const useLeagueStore = create((set, get) => ({
         set({ pointAdjustmentNotification: null });
     },
 
-    // --- Selectors ---
     standingsData: () => {
         const { teams, matches } = get();
         if (!teams || teams.length === 0) return [];
 
         const completedMatches = matches.filter(m => m.status === '완료');
 
-        // ▼▼▼ [수정] emblemId와 emblemUrl을 모두 포함하도록 수정 ▼▼▼
         let stats = teams.map(team => ({
             id: team.id,
             teamName: team.teamName,
-            emblemId: team.emblemId,      // 프리셋 엠블럼 ID
-            emblemUrl: team.emblemUrl,    // 직접 올린 엠블럼 URL
+            emblemId: team.emblemId,
+            emblemUrl: team.emblemUrl,
             played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
         }));
 

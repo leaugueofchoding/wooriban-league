@@ -1,0 +1,110 @@
+[
+    {
+        "id": "icon_of_diligence",
+        "name": "성실의 아이콘",
+        "description": "미션 누적 완료 30회 이상",
+        "icon": "🏆",
+        "color": "#d4af37",
+        "type": "auto",
+        "conditionId": "mission_30_completed"
+    },
+    {
+        "id": "classroom_intellectual",
+        "name": "우리반 지식인",
+        "description": "퀴즈 누적 정답 50회 이상",
+        "icon": "🧠",
+        "color": "#8a2be2",
+        "type": "auto",
+        "conditionId": "quiz_50_correct"
+    },
+    {
+        "id": "ruler_of_the_league",
+        "name": "리그의 지배자",
+        "description": "가가볼 리그 시즌 우승",
+        "icon": "👑",
+        "color": "#ffc107",
+        "type": "auto",
+        "conditionId": "league_winner"
+    },
+    {
+        "id": "goal_machine",
+        "name": "득점 기계",
+        "description": "가가볼 리그 시즌 득점왕",
+        "icon": "⚽",
+        "color": "#28a745",
+        "type": "auto",
+        "conditionId": "top_scorer"
+    },
+    {
+        "id": "diligent_giver",
+        "name": "성실한 기부천사",
+        "description": "학급 목표 누적 기부 5,000P 이상",
+        "icon": "🕊️",
+        "color": "#17a2b8",
+        "type": "auto",
+        "conditionId": "donation_5000_points"
+    },
+    {
+        "id": "popular_star",
+        "name": "인기스타",
+        "description": "마이룸 누적 '좋아요' 20개 이상",
+        "icon": "⭐",
+        "color": "#ff69b4",
+        "type": "auto",
+        "conditionId": "myroom_20_likes"
+    },
+    {
+        "id": "diligent_tree",
+        "name": "성실한 나무",
+        "description": "30일 연속 출석",
+        "icon": "🌳",
+        "color": "#228b22",
+        "type": "auto",
+        "conditionId": "attendance_30_consecutive"
+    },
+    {
+        "id": "daily_helper",
+        "name": "일일 헬퍼",
+        "description": "오늘의 도우미, 학습 도우미 활동",
+        "icon": "💡",
+        "color": "#fd7e14",
+        "type": "manual",
+        "conditionId": null
+    },
+    {
+        "id": "star_of_compliments",
+        "name": "칭찬의 주인공",
+        "description": "칭찬 샤워, 롤링페이퍼 등에서 긍정적 평가",
+        "icon": "🎤",
+        "color": "#6f42c1",
+        "type": "manual",
+        "conditionId": null
+    },
+    {
+        "id": "idea_bank",
+        "name": "아이디어 뱅크",
+        "description": "좋은 의견이나 건의사항을 제시했을 때",
+        "icon": "📓",
+        "color": "#007bff",
+        "type": "manual",
+        "conditionId": null
+    },
+    {
+        "id": "class_dj",
+        "name": "클래스 DJ",
+        "description": "학급에 좋은 음악이나 분위기를 선물했을 때",
+        "icon": "🎵",
+        "color": "#e83e8c",
+        "type": "manual",
+        "conditionId": null
+    },
+    {
+        "id": "god_of_tidiness",
+        "name": "정리 정돈의 신",
+        "description": "교실 환경 미화에 기여했을 때",
+        "icon": "🧹",
+        "color": "#20c997",
+        "type": "manual",
+        "conditionId": null
+    }
+]
