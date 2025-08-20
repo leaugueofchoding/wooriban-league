@@ -32,6 +32,7 @@ import {
     createNewSeason,
     replyToSuggestion,
     adminInitiateConversation,
+    sendBulkMessageToAllStudents,
     uploadMyRoomItem,
     getMyRoomItems,
     batchUpdateMyRoomItemDetails,
@@ -324,6 +325,32 @@ const MonitorReply = styled.div`
     padding-left: 1rem;
     margin-left: 1rem;
     font-size: 0.95rem;
+`;
+
+// [추가] 날짜 표시줄 스타일
+const DateSeparator = styled.div`
+  text-align: center;
+  margin: 1rem 0;
+  color: #6c757d;
+  font-size: 0.8rem;
+  font-weight: bold;
+`;
+
+// [추가] 전체 메시지 발송 버튼 스타일
+const BulkMessageButton = styled.button`
+  width: calc(100% - 2rem);
+  margin: 0 1rem 1rem 1rem;
+  padding: 0.75rem;
+  font-size: 1rem;
+  font-weight: bold;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  &:hover {
+    background-color: #218838;
+  }
 `;
 
 const StudentListPanel = styled.div`
@@ -1029,6 +1056,22 @@ function MessageManager() {
     const [isLoading, setIsLoading] = useState(true);
     const messageAreaRef = useRef(null);
 
+    // [추가] 데이터 구조 차이를 해결하기 위한 헬퍼 함수
+    const getConversationFromDoc = (doc) => {
+        if (doc.conversation) {
+            return doc.conversation;
+        }
+        // 옛날 데이터 구조를 위한 하위 호환성 코드
+        const oldConversation = [];
+        if (doc.message) {
+            oldConversation.push({ sender: 'student', content: doc.message, createdAt: doc.createdAt });
+        }
+        if (doc.reply) {
+            oldConversation.push({ sender: 'admin', content: doc.reply, createdAt: doc.repliedAt });
+        }
+        return oldConversation;
+    };
+
     useEffect(() => {
         const q = query(collection(db, "suggestions"), orderBy("createdAt", "desc"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -1047,23 +1090,37 @@ function MessageManager() {
 
     const studentThreads = useMemo(() => {
         return allSuggestions.reduce((acc, msg) => {
-            if (!acc[msg.studentId]) {
-                acc[msg.studentId] = [];
-            }
+            if (!acc[msg.studentId]) acc[msg.studentId] = [];
             acc[msg.studentId].push(msg);
             return acc;
         }, {});
     }, [allSuggestions]);
 
-    // [수정] 모든 학생 목록을 이름순으로 정렬하여 사용합니다.
-    const sortedPlayers = useMemo(() => [...players].sort((a, b) => a.name.localeCompare(b.name)), [players]);
+    const sortedPlayers = useMemo(() => {
+        const getLatestMessageTime = (playerId) => {
+            const thread = studentThreads[playerId];
+            if (!thread) return 0; // 대화 없으면 0
+            const lastMessageDoc = thread.sort((a, b) => (b.lastMessageAt || b.createdAt).toMillis() - (a.lastMessageAt || a.createdAt).toMillis())[0];
+            return (lastMessageDoc.lastMessageAt || lastMessageDoc.createdAt).toMillis();
+        };
+
+        return [...players]
+            .filter(p => p.role === 'player')
+            .sort((a, b) => {
+                const timeA = getLatestMessageTime(a.id);
+                const timeB = getLatestMessageTime(b.id);
+                if (timeA !== timeB) return timeB - timeA; // 1. 최신 메시지 순
+                return a.name.localeCompare(b.name);      // 2. 이름 가나다 순
+            });
+    }, [players, studentThreads]);
 
     const selectedThreadMessages = useMemo(() => {
         if (!selectedStudentId) return [];
         const thread = studentThreads[selectedStudentId];
-        if (!thread) return []; // 대화가 없으면 빈 배열 반환
+        if (!thread) return [];
 
-        return thread.flatMap(item => item.conversation || [])
+        // [수정] 헬퍼 함수를 사용하여 모든 대화 기록을 가져옵니다.
+        return thread.flatMap(item => getConversationFromDoc(item))
             .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
     }, [selectedStudentId, studentThreads]);
 
@@ -1075,10 +1132,10 @@ function MessageManager() {
         const thread = studentThreads[selectedStudentId];
 
         try {
-            if (thread) { // 기존 대화가 있는 경우
+            if (thread) {
                 const lastMessageDoc = thread.sort((a, b) => (b.lastMessageAt || b.createdAt).toMillis() - (a.lastMessageAt || a.createdAt).toMillis())[0];
                 await replyToSuggestion(lastMessageDoc.id, replyContent, student.authUid);
-            } else { // [추가] 새 대화를 시작하는 경우
+            } else {
                 await adminInitiateConversation(student.id, student.name, replyContent, student.authUid);
             }
             setReplyContent('');
@@ -1087,9 +1144,24 @@ function MessageManager() {
         }
     };
 
+    const handleBulkMessageSend = async () => {
+        const message = prompt("모든 학생에게 보낼 메시지 내용을 입력하세요:");
+        if (message && message.trim()) {
+            if (window.confirm(`정말로 모든 학생에게 "${message}" 메시지를 보내시겠습니까?`)) {
+                try {
+                    await sendBulkMessageToAllStudents(message);
+                    alert("전체 메시지를 성공적으로 보냈습니다.");
+                } catch (error) {
+                    alert(`전송 실패: ${error.message}`);
+                }
+            }
+        }
+    };
+
     const formatDate = (timestamp) => {
         if (!timestamp || typeof timestamp.toDate !== 'function') return '';
-        return timestamp.toDate().toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        const date = timestamp.toDate();
+        return date.toLocaleString('ko-KR', { month: 'long', day: 'numeric' });
     };
 
     return (
@@ -1098,11 +1170,12 @@ function MessageManager() {
                 <SectionTitle>학생 메시지 확인 및 답변</SectionTitle>
                 <ChatLayout>
                     <StudentListPanel>
+                        <BulkMessageButton onClick={handleBulkMessageSend}>📢 전체 메시지 발송</BulkMessageButton>
                         {isLoading ? <p style={{ padding: '1rem' }}>로딩 중...</p> :
-                            // [수정] 모든 학생 목록을 렌더링합니다.
                             sortedPlayers.map(player => {
                                 const thread = studentThreads[player.id];
-                                const lastMessage = thread ? (thread.flatMap(item => item.conversation).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())[0]) : null;
+                                // [수정] 헬퍼 함수를 사용하여 마지막 메시지를 찾습니다.
+                                const lastMessage = thread ? (thread.flatMap(item => getConversationFromDoc(item)).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())[0]) : null;
 
                                 return (
                                     <StudentListItem
@@ -1123,14 +1196,20 @@ function MessageManager() {
                                 <ChatHeader>{players.find(p => p.id === selectedStudentId)?.name} 학생과의 대화</ChatHeader>
                                 <MessageArea ref={messageAreaRef}>
                                     {selectedThreadMessages.length > 0 ? (
-                                        selectedThreadMessages.map((message, index) => (
-                                            <MessageBubble key={index} className={message.sender}>
-                                                {message.content}
-                                                <Timestamp $align={message.sender === 'admin' ? 'right' : 'left'}>
-                                                    {formatDate(message.createdAt)}
-                                                </Timestamp>
-                                            </MessageBubble>
-                                        ))
+                                        selectedThreadMessages.map((message, index) => {
+                                            const currentMessageDate = formatDate(message.createdAt);
+                                            const prevMessageDate = index > 0 ? formatDate(selectedThreadMessages[index - 1].createdAt) : null;
+                                            const showDateSeparator = currentMessageDate !== prevMessageDate;
+
+                                            return (
+                                                <React.Fragment key={index}>
+                                                    {showDateSeparator && <DateSeparator>{currentMessageDate}</DateSeparator>}
+                                                    <MessageBubble className={message.sender}>
+                                                        {message.content}
+                                                    </MessageBubble>
+                                                </React.Fragment>
+                                            );
+                                        })
                                     ) : (
                                         <p style={{ textAlign: 'center', color: '#6c757d' }}>아직 나눈 대화가 없습니다.<br />메시지를 보내 대화를 시작해보세요.</p>
                                     )}
@@ -1161,7 +1240,6 @@ function MessageManager() {
         </FullWidthSection>
     );
 }
-
 
 function GoalManager() {
     const [title, setTitle] = useState('');
