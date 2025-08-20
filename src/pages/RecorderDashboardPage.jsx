@@ -239,6 +239,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
 
     useEffect(() => {
         if (match.status === '예정' && (match.teamA_score == null || match.teamB_score == null)) {
+            // [수정] 팀원 수 중 더 많은 수를 기준으로 기본 점수를 설정합니다.
             const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
             const defaultScoreA = match.teamA_score ?? maxMembers;
             const defaultScoreB = match.teamB_score ?? maxMembers;

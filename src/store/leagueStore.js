@@ -829,53 +829,47 @@ export const useLeagueStore = create((set, get) => ({
         let matchesToCreate = [];
 
         const createRoundRobinSchedule = (teamList) => {
-            const schedule = [];
-            if (teamList.length < 2) return schedule;
+            if (teamList.length < 2) return [];
 
-            const localTeams = [...teamList];
-            if (localTeams.length % 2 !== 0) {
-                localTeams.push({ id: 'BYE', teamName: 'BYE' });
+            let teams = [...teamList];
+            // 팀 수가 홀수면 'BYE'라는 가상의 팀을 추가하여 짝수로 맞춥니다.
+            if (teams.length % 2 !== 0) {
+                teams.push({ id: 'BYE', teamName: 'BYE' });
             }
 
-            const numTeams = localTeams.length;
-            const numRounds = numTeams - 1;
+            const numTeams = teams.length;
+            const rounds = [];
             const half = numTeams / 2;
 
-            const teamIndexes = localTeams.map((_, i) => i);
-            const rounds = [];
+            const teamIndexes = teams.map((_, i) => i);
+            const fixedTeam = teamIndexes.shift(); // 1번 팀은 고정
 
-            for (let round = 0; round < numRounds; round++) {
+            for (let round = 0; round < numTeams - 1; round++) {
                 const roundMatches = [];
-                for (let i = 0; i < half; i++) {
-                    const team1Index = teamIndexes[i];
-                    const team2Index = teamIndexes[numTeams - 1 - i];
-                    if (localTeams[team1Index].id !== 'BYE' && localTeams[team2Index].id !== 'BYE') {
-                        roundMatches.push({
-                            teamA_id: localTeams[team1Index].id,
-                            teamB_id: localTeams[team2Index].id,
-                        });
+                // 고정된 1번 팀과 마지막 팀의 경기를 추가
+                const matchUp = [teams[fixedTeam], teams[teamIndexes[0]]];
+                if (matchUp[0].id !== 'BYE' && matchUp[1].id !== 'BYE') {
+                    roundMatches.push({ teamA_id: matchUp[0].id, teamB_id: matchUp[1].id });
+                }
+
+                // 나머지 팀들의 경기를 추가
+                for (let i = 1; i < half; i++) {
+                    const matchUp = [teams[teamIndexes[i]], teams[teamIndexes[teamIndexes.length - i]]];
+                    if (matchUp[0].id !== 'BYE' && matchUp[1].id !== 'BYE') {
+                        roundMatches.push({ teamA_id: matchUp[0].id, teamB_id: matchUp[1].id });
                     }
                 }
                 rounds.push(roundMatches);
 
-                const lastTeamIndex = teamIndexes.pop();
-                teamIndexes.splice(1, 0, lastTeamIndex);
+                // 다음 라운드를 위해 팀들을 회전시킵니다.
+                teamIndexes.unshift(teamIndexes.pop());
             }
 
-            const homeAndAway = [];
-            rounds.forEach(round => {
-                round.forEach(match => {
-                    homeAndAway.push({ ...match });
-                    homeAndAway.push({ teamA_id: match.teamB_id, teamB_id: match.teamA_id });
-                });
-            });
+            // 홈 & 어웨이 경기를 추가합니다.
+            const homeAndAwayRounds = [...rounds, ...rounds.map(round => round.map(match => ({ teamA_id: match.teamB_id, teamB_id: match.teamA_id })))];
+            const finalSchedule = homeAndAwayRounds.flat();
 
-            for (let i = homeAndAway.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [homeAndAway[i], homeAndAway[j]] = [homeAndAway[j], homeAndAway[i]];
-            }
-
-            return homeAndAway.map(match => ({
+            return finalSchedule.map(match => ({
                 ...match,
                 seasonId: currentSeason.id,
                 teamA_score: null,
