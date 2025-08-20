@@ -1916,3 +1916,49 @@ export async function getAttendanceByDate(date) {
   const attendedAuthUids = [...new Set(querySnapshot.docs.map(doc => doc.data().playerId))];
   return attendedAuthUids;
 }
+
+// =================================================================
+// ▼▼▼ [신규] 관리자가 1:1 대화를 시작하는 함수 ▼▼▼
+// =================================================================
+
+/**
+ * 관리자가 학생에게 첫 메시지를 보내 대화를 시작합니다.
+ * @param {string} studentId - 메시지를 받을 학생의 ID
+ * @param {string} studentName - 메시지를 받을 학생의 이름
+ * @param {string} adminMessage - 관리자가 보내는 첫 메시지 내용
+ * @param {string} studentAuthUid - 학생의 Firebase Auth UID (알림 전송용)
+ */
+export async function adminInitiateConversation(studentId, studentName, adminMessage, studentAuthUid) {
+  if (!adminMessage.trim()) {
+    throw new Error("메시지 내용을 입력해야 합니다.");
+  }
+  const now = new Date();
+
+  // 새로운 대화 문서를 생성합니다.
+  await addDoc(collection(db, "suggestions"), {
+    studentId,
+    studentName,
+    message: `(선생님이 보낸 메시지) ${adminMessage}`, // 원본 메시지 필드 형식 유지
+    conversation: [
+      {
+        sender: 'admin',
+        content: adminMessage,
+        createdAt: now
+      }
+    ],
+    status: "replied", // 관리자가 시작했으므로 바로 'replied' 상태
+    createdAt: now,
+    lastMessageAt: now,
+  });
+
+  // 학생에게 알림을 보냅니다.
+  if (studentAuthUid) {
+    createNotification(
+      studentAuthUid,
+      "💌 선생님께 메시지가 도착했습니다.",
+      "선생님께서 보낸 메시지를 확인해보세요!",
+      "suggestion",
+      "/suggestions"
+    );
+  }
+}

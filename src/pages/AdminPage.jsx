@@ -31,7 +31,7 @@ import {
     completeClassGoal,
     createNewSeason,
     replyToSuggestion,
-    // ▼▼▼ [신규] 마이룸 아이템 관련 함수 import ▼▼▼
+    adminInitiateConversation,
     uploadMyRoomItem,
     getMyRoomItems,
     batchUpdateMyRoomItemDetails,
@@ -1055,7 +1055,7 @@ function MessageManager() {
         }, {});
     }, [allSuggestions]);
 
-    // [추가] 모든 학생 목록을 이름순으로 정렬하여 사용합니다.
+    // [수정] 모든 학생 목록을 이름순으로 정렬하여 사용합니다.
     const sortedPlayers = useMemo(() => [...players].sort((a, b) => a.name.localeCompare(b.name)), [players]);
 
     const selectedThreadMessages = useMemo(() => {
@@ -1088,7 +1088,6 @@ function MessageManager() {
     };
 
     const formatDate = (timestamp) => {
-        // [수정] timestamp가 null이거나 toDate가 없는 경우를 안전하게 처리
         if (!timestamp || typeof timestamp.toDate !== 'function') return '';
         return timestamp.toDate().toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     };
@@ -1121,16 +1120,20 @@ function MessageManager() {
                     <ChatPanel>
                         {selectedStudentId ? (
                             <>
-                                <ChatHeader>{studentThreads.find(t => t.studentId === selectedStudentId)?.studentName} 학생과의 대화</ChatHeader>
+                                <ChatHeader>{players.find(p => p.id === selectedStudentId)?.name} 학생과의 대화</ChatHeader>
                                 <MessageArea ref={messageAreaRef}>
-                                    {selectedThreadMessages.map((message, index) => (
-                                        <MessageBubble key={index} className={message.sender}>
-                                            {message.content}
-                                            <Timestamp $align={message.sender === 'admin' ? 'right' : 'left'}>
-                                                {formatDate(message.createdAt)}
-                                            </Timestamp>
-                                        </MessageBubble>
-                                    ))}
+                                    {selectedThreadMessages.length > 0 ? (
+                                        selectedThreadMessages.map((message, index) => (
+                                            <MessageBubble key={index} className={message.sender}>
+                                                {message.content}
+                                                <Timestamp $align={message.sender === 'admin' ? 'right' : 'left'}>
+                                                    {formatDate(message.createdAt)}
+                                                </Timestamp>
+                                            </MessageBubble>
+                                        ))
+                                    ) : (
+                                        <p style={{ textAlign: 'center', color: '#6c757d' }}>아직 나눈 대화가 없습니다.<br />메시지를 보내 대화를 시작해보세요.</p>
+                                    )}
                                 </MessageArea>
                                 <InputArea>
                                     <TextArea
@@ -2151,13 +2154,13 @@ function MyRoomItemManager() {
                         if (checkedItems.has(item.id)) {
                             const originalPrice = item.price;
                             const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
-                            return { 
-                                ...item, 
-                                isSale: true, 
-                                originalPrice, 
-                                salePrice, 
-                                saleStartDate: { toDate: () => startDate }, 
-                                saleEndDate: { toDate: () => endDate } 
+                            return {
+                                ...item,
+                                isSale: true,
+                                originalPrice,
+                                salePrice,
+                                saleStartDate: { toDate: () => startDate },
+                                saleEndDate: { toDate: () => endDate }
                             };
                         }
                         return item;
