@@ -915,14 +915,14 @@ export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAns
 
 export async function createMission(missionData) {
   const missionsRef = collection(db, 'missions');
-  // [수정] reward 필드를 삭제하고 rewards 배열을 사용하도록 변경
   const { reward, ...restOfData } = missionData;
   await addDoc(missionsRef, {
     ...restOfData,
-    reward: missionData.rewards[0],
+    reward: missionData.rewards[0] || 0, // [수정] 기본값 보장
     createdAt: new Date(),
     status: 'active',
-    displayOrder: Date.now() // 순서 값 추가
+    displayOrder: Date.now(),
+    placeholderText: missionData.placeholderText || '' // [추가] placeholderText 필드 추가
   });
 }
 

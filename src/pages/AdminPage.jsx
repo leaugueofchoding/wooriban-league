@@ -1334,6 +1334,7 @@ function MissionManager() {
 
     // ▼▼▼ [수정] 미션 생성을 위한 state 확장 ▼▼▼
     const [title, setTitle] = useState('');
+    const [placeholderText, setPlaceholderText] = useState(''); // [추가] 문제 텍스트 상태
     const [rewards, setRewards] = useState(['100', '', '']); // 차등 보상
     const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
     const [isFixed, setIsFixed] = useState(false); // 고정 미션
@@ -1371,12 +1372,14 @@ function MissionManager() {
                 rewards: finalRewards, // reward -> rewards 배열로 변경
                 submissionType: typeToSend,
                 isFixed: isFixed, // 고정 미션 여부
-                adminOnly: adminOnly, // 관리자 전용 여부
+                adminOnly: adminOnly, // 관리자 전용 여부D
                 prerequisiteMissionId: prerequisiteMissionId || null,
+                placeholderText: placeholderText.trim(), // [추가] 문제 텍스트 추가
             });
             alert('새로운 미션이 등록되었습니다!');
             // 모든 state 초기화
             setTitle('');
+            setPlaceholderText(''); // [추가] 문제 텍스트 상태 초기화
             setRewards(['100', '', '']);
             setSubmissionTypes({ text: false, photo: false });
             setIsFixed(false);
@@ -1417,6 +1420,15 @@ function MissionManager() {
                         <label title="글 제출 필요"><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} /> 글</label>
                         <label title="사진 제출 필요"><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} /> 사진</label>
                     </div>
+                </InputGroup>
+
+                <InputGroup>
+                    <TextArea
+                        value={placeholderText}
+                        onChange={(e) => setPlaceholderText(e.target.value)}
+                        placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요. (예: 책 이름, 줄거리, 느낀 점 10줄 이상 작성)"
+                        style={{ minHeight: '60px' }}
+                    />
                 </InputGroup>
 
                 {/* 2줄: 추가 설정 영역 (토글) */}
@@ -1658,13 +1670,21 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                // ▼▼▼ [핵심 수정] 로컬 상태 업데이트 시, JS Date 객체를 Firestore Timestamp처럼 보이게 만듭니다. ▼▼▼
                 useLeagueStore.setState(state => {
                     const updatedAvatarParts = state.avatarParts.map(part => {
                         if (checkedItems.has(part.id)) {
                             const originalPrice = part.price;
                             const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
-                            return { ...part, isSale: true, originalPrice, salePrice, saleStartDate: startDate, saleEndDate: endDate };
+                            return {
+                                ...part,
+                                isSale: true,
+                                originalPrice,
+                                salePrice,
+                                // .toDate() 메서드를 가진 객체로 감싸서 데이터 형식을 맞춥니다.
+                                saleStartDate: { toDate: () => startDate },
+                                saleEndDate: { toDate: () => endDate }
+                            };
                         }
                         return part;
                     });
@@ -2135,13 +2155,20 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateMyRoomItemSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
+                // ▼▼▼ [핵심 수정] 아바타 아이템과 동일하게 데이터 형식을 맞춥니다. ▼▼▼
                 useLeagueStore.setState(state => {
                     const updatedMyRoomItems = state.myRoomItems.map(item => {
                         if (checkedItems.has(item.id)) {
                             const originalPrice = item.price;
                             const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
-                            return { ...item, isSale: true, originalPrice, salePrice, saleStartDate: startDate, saleEndDate: endDate };
+                            return {
+                                ...item,
+                                isSale: true,
+                                originalPrice,
+                                salePrice,
+                                saleStartDate: { toDate: () => startDate },
+                                saleEndDate: { toDate: () => endDate }
+                            };
                         }
                         return item;
                     });

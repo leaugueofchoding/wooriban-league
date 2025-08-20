@@ -406,7 +406,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
               <TextArea
                 value={textAreaValue}
                 onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
-                placeholder="미션 내용을 여기에 입력하세요..."
+                placeholder={mission.placeholderText || "미션 내용을 여기에 입력하세요..."}
                 disabled={isInputDisabled}
               />
             )}
