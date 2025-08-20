@@ -1105,7 +1105,7 @@ function MessageManager() {
         };
 
         return [...players]
-            .filter(p => p.role === 'player')
+            .filter(p => p.role !== 'admin')
             .sort((a, b) => {
                 const timeA = getLatestMessageTime(a.id);
                 const timeB = getLatestMessageTime(b.id);
