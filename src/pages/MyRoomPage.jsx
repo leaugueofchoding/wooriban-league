@@ -21,6 +21,20 @@ const Wrapper = styled.div`
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 `;
 
+const EquippedTitle = styled.div`
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+ font-weight: bold;
+  font-size: 1.3rem;
+  margin: 0; /* [수정] 자체 여백 제거 */
+  display: inline-block;
+  color: ${props => props.color || '#343a40'};
+  background-color: #f8f9fa;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+`;
+// ▲▲▲ [추가 완료] ▲▲▲
+
 const TabContainer = styled.div`
   display: flex;
   margin-bottom: 1.5rem;
@@ -44,7 +58,19 @@ const Header = styled.div`
   justify-content: center;
   align-items: center;
   gap: 1rem;
-  flex-wrap: wrap; /* [추가] 화면이 작아질 때 줄바꿈을 위함 */
+  flex-wrap: wrap;
+`;
+
+// [추가] 칭호와 마이룸 제목을 묶는 컨테이너
+const TitleContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem; /* 칭호와 제목 사이의 간격을 좁힙니다. */
+
+  h1 {
+    margin: 0; /* h1 태그의 기본 여백 제거 */
+  }
 `;
 
 const RoomContainer = styled.div`
@@ -474,7 +500,7 @@ const DownButton = styled(ControllerButton)` grid-area: 3 / 2 / 4 / 3; `;
 function MyRoomPage() {
   const { playerId } = useParams();
   const navigate = useNavigate();
-  const { players, myRoomItems, avatarParts } = useLeagueStore();
+  const { players, myRoomItems, avatarParts, titles } = useLeagueStore(); // [수정] titles 추가
   const currentUser = auth.currentUser;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -499,6 +525,12 @@ function MyRoomPage() {
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+
+  const equippedTitle = useMemo(() => {
+    if (!roomOwnerData?.equippedTitle || !titles.length) return null;
+    return titles.find(t => t.id === roomOwnerData.equippedTitle);
+  }, [roomOwnerData, titles]);
+
 
   const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin'
@@ -885,7 +917,15 @@ function MyRoomPage() {
   return (
     <Wrapper>
       <Header>
-        <h1>{roomOwnerData?.name || '...'}의 마이룸</h1>
+        {/* ▼▼▼ [수정] TitleContainer로 칭호와 제목을 묶어 간격 조절 ▼▼▼ */}
+        <TitleContainer>
+          {equippedTitle && (
+            <EquippedTitle color={equippedTitle.color}>
+              {equippedTitle.icon} {equippedTitle.name}
+            </EquippedTitle>
+          )}
+          <h1>{roomOwnerData?.name || '...'}의 마이룸</h1>
+        </TitleContainer>
         {!isMyRoom && myPlayerData && (
           <>
             <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} title={hasLikedThisMonth ? "이번 달에 이미 좋아했습니다." : "이 방 좋아요!"}>

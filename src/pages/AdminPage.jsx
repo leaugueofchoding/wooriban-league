@@ -45,7 +45,12 @@ import {
     deleteMyRoomComment,  // 댓글 삭제 함수 import
     deleteMyRoomReply,    // 답글 삭제 함수 import
     updateClassGoalStatus, // [추가] 목표 상태 업데이트 함수 import
-    getAttendanceByDate
+    getAttendanceByDate,
+    getTitles,
+    createTitle,
+    updateTitle,
+    deleteTitle,
+    grantTitleToPlayer
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
@@ -3141,6 +3146,169 @@ function LeagueManager() {
     )
 }
 
+// =================================================================
+// ▼▼▼ [신규] 칭호 관리 컴포넌트 ▼▼▼
+// =================================================================
+function TitleManager() {
+    const { players } = useLeagueStore();
+    const [titles, setTitles] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [editingTitle, setEditingTitle] = useState(null); // 생성 또는 수정 중인 칭호 데이터
+    const [isAssignMode, setIsAssignMode] = useState(null); // 칭호 부여 모드인 칭호 ID
+    const [selectedPlayerId, setSelectedPlayerId] = useState('');
+
+    const fetchTitles = async () => {
+        setIsLoading(true);
+        const titlesData = await getTitles();
+        setTitles(titlesData);
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        fetchTitles();
+    }, []);
+
+    const handleCreateNew = () => {
+        setEditingTitle({ name: '', icon: '', description: '', type: 'manual' });
+        setIsAssignMode(null);
+    };
+
+    const handleSave = async () => {
+        if (!editingTitle.name) return alert('칭호 이름을 입력하세요.');
+
+        // [추가] 자동 획득 칭호일 경우, 조건 ID 입력을 강제합니다.
+        if (editingTitle.type === 'auto' && !editingTitle.conditionId) {
+            return alert('자동 획득 칭호는 반드시 조건 ID를 입력해야 합니다.');
+        }
+
+        try {
+            if (editingTitle.id) { // 수정
+                await updateTitle(editingTitle.id, editingTitle); // [수정] editingTitle 객체 전체를 전달
+                alert('칭호가 수정되었습니다.');
+            } else { // 생성
+                await createTitle(editingTitle);
+                alert('새로운 칭호가 생성되었습니다.');
+            }
+            setEditingTitle(null);
+            fetchTitles();
+        } catch (error) {
+            alert(`저장 실패: ${error.message}`);
+        }
+    };
+
+    const handleDelete = async (titleId, titleName) => {
+        if (window.confirm(`'${titleName}' 칭호를 정말로 삭제하시겠습니까?`)) {
+            try {
+                await deleteTitle(titleId);
+                alert('칭호가 삭제되었습니다.');
+                fetchTitles();
+            } catch (error) {
+                alert(`삭제 실패: ${error.message}`);
+            }
+        }
+    };
+
+    const handleAssignTitle = async () => {
+        if (!selectedPlayerId) return alert('학생을 선택하세요.');
+        try {
+            await grantTitleToPlayer(selectedPlayerId, isAssignMode);
+            alert('칭호를 부여했습니다.');
+            setSelectedPlayerId('');
+            setIsAssignMode(null);
+        } catch (error) {
+            alert(`부여 실패: ${error.message}`);
+        }
+    };
+
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>칭호 관리 🎖️</SectionTitle>
+                <StyledButton onClick={handleCreateNew} style={{ marginBottom: '1rem', alignSelf: 'flex-start' }}>
+                    새 칭호 만들기
+                </StyledButton>
+
+                {editingTitle && (
+                    <div style={{ border: '1px solid #ccc', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+                        {/* ▼▼▼ [수정] 아이콘 프리셋 선택 UI ▼▼▼ */}
+                        <InputGroup>
+                            <div style={{ flex: 1, border: '1px solid #ccc', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                {['🏆', '🧠', '👑', '⚽', '🕊️', '⭐', '🌳', '💡', '🎤', '🏦', '🎵', '🧹', '🥇', '🥈', '🥉'].map(icon => (
+                                    <button
+                                        key={icon}
+                                        onClick={() => setEditingTitle(p => ({ ...p, icon: icon }))}
+                                        style={{
+                                            fontSize: '1.5rem',
+                                            padding: '0.25rem',
+                                            border: editingTitle.icon === icon ? '2px solid #007bff' : '2px solid transparent',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {icon}
+                                    </button>
+                                ))}
+                            </div>
+                        </InputGroup>
+                        <InputGroup>
+                            <input type="text" placeholder="칭호 이름" value={editingTitle.name || ''} onChange={e => setEditingTitle(p => ({ ...p, name: e.target.value }))} style={{ flex: 3 }} />
+                            <input type="color" value={editingTitle.color || '#000000'} onChange={e => setEditingTitle(p => ({ ...p, color: e.target.value }))} />
+                        </InputGroup>
+                        <InputGroup>
+                            <input type="text" placeholder="칭호 설명 (획득 조건 등)" value={editingTitle.description || ''} onChange={e => setEditingTitle(p => ({ ...p, description: e.target.value }))} style={{ flex: 1 }} />
+                        </InputGroup>
+                        {/* ▼▼▼ [수정] 자동 획득 선택 시 '조건 ID' 입력란이 나타나도록 수정 ▼▼▼ */}
+                        {editingTitle.type === 'auto' && (
+                            <InputGroup>
+                                <input type="text" placeholder="조건 ID (예: mission_30_completed)" value={editingTitle.conditionId || ''} onChange={e => setEditingTitle(p => ({ ...p, conditionId: e.target.value }))} style={{ flex: 1, backgroundColor: '#fffde7' }} />
+                            </InputGroup>
+                        )}
+                        <InputGroup>
+                            <select value={editingTitle.type || 'manual'} onChange={e => setEditingTitle(p => ({ ...p, type: e.target.value }))}>
+                                <option value="manual">수동 획득</option>
+                                <option value="auto">자동 획득</option>
+                            </select>
+                            <SaveButton onClick={handleSave}>저장</SaveButton>
+                            <StyledButton onClick={() => setEditingTitle(null)}>취소</StyledButton>
+                        </InputGroup>
+                    </div>
+                )}
+
+                {isAssignMode && (
+                    <div style={{ border: '1px solid #007bff', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+                        <h4>'{titles.find(t => t.id === isAssignMode)?.name}' 칭호 부여하기</h4>
+                        <InputGroup>
+                            <select value={selectedPlayerId} onChange={e => setSelectedPlayerId(e.target.value)} style={{ flex: 1 }}>
+                                <option value="">-- 학생 선택 --</option>
+                                {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                            <SaveButton onClick={handleAssignTitle}>부여</SaveButton>
+                            <StyledButton onClick={() => setIsAssignMode(null)}>취소</StyledButton>
+                        </InputGroup>
+                    </div>
+                )}
+
+                <List style={{ maxHeight: 'none' }}>
+                    {isLoading ? <p>로딩 중...</p> : titles.map(title => (
+                        <ListItem key={title.id} style={{ gridTemplateColumns: 'auto 1fr auto' }}>
+                            <span style={{ fontSize: '1.5rem' }}>{title.icon}</span>
+                            <div>
+                                {/* ▼▼▼ [수정] 칭호 이름에 color 스타일 적용 ▼▼▼ */}
+                                <strong style={{ color: title.color || '#000000' }}>{title.name}</strong>
+                                <p style={{ fontSize: '0.9rem', color: '#6c757d', margin: 0 }}>{title.description}</p>
+                            </div>
+                            <MissionControls>
+                                <StyledButton onClick={() => setIsAssignMode(title.id)}>칭호 주기</StyledButton>
+                                <StyledButton onClick={() => setEditingTitle(title)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
+                                <StyledButton onClick={() => handleDelete(title.id, title.name)} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
+                            </MissionControls>
+                        </ListItem>
+                    ))}
+                </List>
+            </Section>
+        </FullWidthSection>
+    );
+}
 
 function AdminPage() {
     const { players } = useLeagueStore();
@@ -3210,6 +3378,9 @@ function AdminPage() {
                 default: return <LeagueManager />;
             }
         }
+        if (activeMenu === 'title') {
+            return <TitleManager />;
+        }
         return <PendingMissionWidget />;
     };
 
@@ -3269,6 +3440,9 @@ function AdminPage() {
                                 <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
                             </SubNavList>
                         )}
+                    </NavItem>
+                    <NavItem>
+                        <NavButton $active={activeMenu === 'title'} onClick={() => handleMenuClick('title')}>칭호 관리</NavButton>
                     </NavItem>
                 </NavList>
             </Sidebar>

@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, updatePlayerProfile } from '../api/firebase.js';
+import { auth, db, updatePlayerProfile, equipTitle } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
@@ -20,7 +20,7 @@ const AvatarDisplay = styled.div`
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   position: relative;
   overflow: hidden;
-  cursor: pointer; // [추가] 클릭 가능하도록 커서 변경
+  cursor: pointer;
 `;
 const PartImage = styled.img`
   position: absolute;
@@ -161,7 +161,6 @@ const GenderLabel = styled.label`
   }
 `;
 
-// ▼▼▼ [추가] 아바타 확대 모달 스타일 ▼▼▼
 const ModalBackground = styled.div`
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -203,10 +202,75 @@ const ItemList = styled.div`
     margin-bottom: 0.5rem;
   }
 `;
-// ▲▲▲ 여기까지 추가 ▲▲▲
+
+// ▼▼▼ [수정] 칭호 관련 스타일 컴포넌트 ▼▼▼
+const AccordionSection = styled.div`
+  width: 100%;
+  margin-top: 1rem;
+  transition: all 0.3s ease-in-out;
+`;
+
+const AccordionContent = styled.div`
+    max-height: ${props => props.$isOpen ? '1000px' : '0'};
+    opacity: ${props => props.$isOpen ? 1 : 0};
+    overflow: hidden;
+    transition: all 0.4s ease-in-out;
+    padding-top: ${props => props.$isOpen ? '1rem' : '0'};
+    border-top: ${props => props.$isOpen ? '1px solid #eee' : 'none'};
+`;
+
+const EquippedTitle = styled.div`
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px; /* 곡률 감소 */
+  font-weight: bold;
+  font-size: 1.3rem; /* 폰트 크기 미세 조정 */
+  margin: 0 auto 0.5rem; /* [수정] 하단 여백을 줄여 간격을 좁힙니다. */
+  display: inline-block;
+  color: ${props => props.color || '#343a40'};
+  background-color: #f8f9fa; /* 은은한 배경색 */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6); /* 입체감 효과 */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+`;
+
+const OwnedTitleList = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+`;
+
+const OwnedTitleCard = styled.div`
+  padding: 1rem;
+  border: 2px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
+  border-radius: 8px; /* 곡률 조정 */
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transform: translateY(-3px);
+  }
+
+  strong {
+    font-size: 1.3rem;
+  }
+  p {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin: 0.5rem 0 0;
+  }
+`;
+
+const SaveTitlesButton = styled(Button)`
+    background-color: #28a745;
+    color: white;
+    font-weight: bold;
+    margin-top: 1.5rem;
+`;
+// ▲▲▲ [수정 완료] ▲▲▲
 
 function ProfilePage() {
-  const { players, avatarParts, fetchInitialData, teams, currentSeason } = useLeagueStore();
+  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
@@ -216,24 +280,51 @@ function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedGender, setSelectedGender] = useState('');
-  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false); // [추가]
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+
+  // ▼▼▼ [수정] 칭호 관련 상태 관리 ▼▼▼
+  const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
+  const [selectedTitleId, setSelectedTitleId] = useState(null);
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
 
-  const myTeam = useMemo(() => {
-    if (!playerData || !currentSeason) return null;
-    return teams.find(team => team.seasonId === currentSeason.id && team.members.includes(playerData.id));
-  }, [teams, playerData, currentSeason]);
-
   useEffect(() => {
     if (playerData) {
       setNewName(playerData.name);
       setSelectedGender(playerData.gender || '');
+      setSelectedTitleId(playerData.equippedTitle || null); // [추가] 선택된 칭호 초기화
     }
   }, [playerData]);
+
+  const equippedTitle = useMemo(() => {
+    if (!playerData?.equippedTitle || !titles.length) return null;
+    return titles.find(t => t.id === playerData.equippedTitle);
+  }, [playerData, titles]);
+
+  const ownedTitles = useMemo(() => {
+    if (!playerData?.ownedTitles || !titles.length) return [];
+    return playerData.ownedTitles.map(titleId => titles.find(t => t.id === titleId)).filter(Boolean);
+  }, [playerData, titles]);
+
+  const handleSaveEquippedTitle = async () => {
+    try {
+      await equipTitle(playerData.id, selectedTitleId);
+      await fetchInitialData();
+      alert('칭호가 저장되었습니다!');
+      setIsTitleAccordionOpen(false);
+    } catch (error) {
+      alert('칭호 저장에 실패했습니다.');
+    }
+  };
+  // ▲▲▲ [수정 완료] ▲▲▲
+
+  const myTeam = useMemo(() => {
+    if (!playerData || !currentSeason) return null;
+    return teams.find(team => team.seasonId === currentSeason.id && team.members.includes(playerData.id));
+  }, [teams, playerData, currentSeason]);
 
   const { selectedPartUrls, equippedItems } = useMemo(() => {
     const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
@@ -316,10 +407,15 @@ function ProfilePage() {
   return (
     <>
       <ProfileWrapper>
-        {/* [추가] 아바타 클릭 시 모달 열기 */}
         <AvatarDisplay onClick={() => setIsAvatarModalOpen(true)}>
           {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
         </AvatarDisplay>
+
+        {equippedTitle && (
+          <EquippedTitle color={equippedTitle.color}>
+            {equippedTitle.icon} {equippedTitle.name}
+          </EquippedTitle>
+        )}
 
         <UserNameContainer>
           {isEditing ? (
@@ -364,14 +460,37 @@ function ProfilePage() {
           <ButtonRow>
             {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
             {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
-            <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>
+            {isMyProfile && <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>}
           </ButtonRow>
           <ButtonRow>
             {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
             <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
+            {isMyProfile && <Button onClick={() => setIsTitleAccordionOpen(prev => !prev)}>칭호 관리</Button>}
             <StyledLink to={`/my-room/${playerData.id}`} style={{ backgroundColor: '#fd7e14', color: 'white' }}>마이룸 가기</StyledLink>
           </ButtonRow>
         </ButtonGroup>
+
+        {(isMyProfile && ownedTitles.length > 0) && (
+          <AccordionSection>
+            <AccordionContent $isOpen={isTitleAccordionOpen}>
+              <OwnedTitleList>
+                {ownedTitles.map(title => (
+                  <OwnedTitleCard
+                    key={title.id}
+                    $isSelected={selectedTitleId === title.id}
+                    onClick={() => setSelectedTitleId(prev => prev === title.id ? null : title.id)}
+                  >
+                    <strong style={{ color: title.color }}>{title.icon} {title.name}</strong>
+                    <p>{title.description}</p>
+                  </OwnedTitleCard>
+                ))}
+              </OwnedTitleList>
+              <SaveTitlesButton onClick={handleSaveEquippedTitle}>
+                선택한 칭호로 저장하기
+              </SaveTitlesButton>
+            </AccordionContent>
+          </AccordionSection>
+        )}
 
         <PointHistoryModal
           isOpen={isHistoryModalOpen}
@@ -382,7 +501,6 @@ function ProfilePage() {
         <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
       </ProfileWrapper>
 
-      {/* ▼▼▼ [추가] 아바타 확대 모달 렌더링 ▼▼▼ */}
       {isAvatarModalOpen && (
         <ModalBackground onClick={() => setIsAvatarModalOpen(false)}>
           <ModalContent onClick={e => e.stopPropagation()}>

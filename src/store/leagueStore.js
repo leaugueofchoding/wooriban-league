@@ -48,6 +48,7 @@ import {
     buyMultipleAvatarParts as firebaseBuyMultipleAvatarParts, // [수정] 이름 충돌 방지를 위해 별칭 사용
     deleteNotification, // 개별 삭제 함수 (혹시 모를 경우 대비)
     deleteAllNotifications, // ▼▼▼ [추가] 전체 삭제 함수 import ▼▼▼
+    getTitles,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -64,6 +65,7 @@ export const useLeagueStore = create((set, get) => ({
     users: [],
     avatarParts: [],
     myRoomItems: [], // 마이룸 아이템 상태 추가
+    titles: [], // [추가] 칭호 목록을 저장할 상태
     missions: [],
     archivedMissions: [],
     missionSubmissions: [],
@@ -154,6 +156,7 @@ export const useLeagueStore = create((set, get) => ({
             const [
                 playersData, teamsData, usersData,
                 avatarPartsData, myRoomItemsData, // myRoomItemsData 추가
+                titlesData, // [추가]
                 activeMissionsData, archivedMissionsData, submissionsData
             ] = await Promise.all([
                 get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(),
@@ -161,6 +164,7 @@ export const useLeagueStore = create((set, get) => ({
                 getUsers(),
                 getAvatarParts(),
                 getMyRoomItems(), // getMyRoomItems 호출 추가
+                getTitles(), // [추가]
                 getMissions('active'),
                 getMissions('archived'),
                 getMissionSubmissions()
@@ -178,6 +182,7 @@ export const useLeagueStore = create((set, get) => ({
                 players: playersData, teams: teamsData, users: usersData,
                 avatarParts: avatarPartsData,
                 myRoomItems: myRoomItemsData, // 상태 업데이트
+                titles: titlesData, // [추가]
                 missions: sortMissions(activeMissionsData),
                 archivedMissions: sortMissions(archivedMissionsData),
                 missionSubmissions: submissionsData,

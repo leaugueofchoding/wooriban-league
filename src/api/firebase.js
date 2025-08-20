@@ -93,6 +93,55 @@ export async function buyAvatarPart(playerId, part) {
   return "구매에 성공했습니다!";
 }
 
+// =================================================================
+// ▼▼▼ [신규] 자동 칭호 획득 조건 검사 및 부여 헬퍼 함수 ▼▼▼
+// =================================================================
+async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
+  if (!studentId || !studentAuthUid) return;
+
+  const playerRef = doc(db, 'players', studentId);
+  const playerSnap = await getDoc(playerRef);
+  if (!playerSnap.exists()) return;
+  const playerData = playerSnap.data();
+
+  // 1. 모든 '자동 획득' 칭호 목록 가져오기
+  const titlesRef = collection(db, "titles");
+  const qTitles = query(titlesRef, where("type", "==", "auto"));
+  const titlesSnapshot = await getDocs(qTitles);
+  const autoTitles = titlesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // 2. 학생의 모든 '승인'된 미션 제출 기록 수 세기
+  const submissionsRef = collection(db, "missionSubmissions");
+  const qSubmissions = query(submissionsRef, where("studentId", "==", studentId), where("status", "==", "approved"));
+  const submissionsSnapshot = await getDocs(qSubmissions);
+  const approvedMissionCount = submissionsSnapshot.size;
+
+  // 3. 각 칭호의 획득 조건 확인 및 부여
+  for (const title of autoTitles) {
+    // 이미 보유한 칭호는 건너뛰기
+    if (playerData.ownedTitles && playerData.ownedTitles.includes(title.id)) {
+      continue;
+    }
+
+    let conditionMet = false;
+    // [수정] 칭호의 고유 ID가 아닌, '조건 ID' 필드를 기준으로 조건을 확인합니다.
+    if (title.conditionId === 'mission_30_completed' && approvedMissionCount >= 30) {
+      conditionMet = true;
+    }
+    // 추후 다른 자동 획득 칭호 조건을 여기에 추가 (예: quiz_50_correct, league_winner 등)
+
+    if (conditionMet) {
+      await grantTitleToPlayer(studentId, title.id);
+      createNotification(
+        studentAuthUid,
+        `✨ 칭호 획득! [${title.name}]`,
+        title.description,
+        "title_acquired"
+      );
+    }
+  }
+}
+
 // --- 미션 관리 ---
 export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
   const batch = writeBatch(db);
@@ -143,6 +192,9 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
         reward,
         `${missionData.title} 미션 완료`
       );
+
+      // [추가] 미션 승인 후, 자동 칭호 획득 조건을 확인합니다.
+      await checkAndGrantAutoTitles(studentId, playerData.authUid);
     }
   }
 
@@ -2024,4 +2076,77 @@ export async function sendBulkMessageToAllStudents(adminMessage) {
       );
     }
   }
+}
+
+// =================================================================
+// ▼▼▼ [신규] 칭호 시스템 관련 함수들 ▼▼▼
+// =================================================================
+
+/**
+ * 모든 칭호 목록을 가져옵니다.
+ * @returns {Promise<Array<object>>} 칭호 객체 배열
+ */
+export async function getTitles() {
+  const titlesRef = collection(db, "titles");
+  const q = query(titlesRef, orderBy("createdAt", "desc"));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+/**
+ * 새로운 칭호를 생성합니다.
+ * @param {object} titleData - 칭호 데이터 (name, description, icon, type 등)
+ */
+export async function createTitle(titleData) {
+  await addDoc(collection(db, "titles"), {
+    ...titleData,
+    color: titleData.color || '#000000', // [추가] 색상 필드 (기본값: 검정)
+    createdAt: serverTimestamp(),
+  });
+}
+
+/**
+ * 특정 칭호 정보를 업데이트합니다.
+  * @param {object} dataToUpdate - 수정할 데이터
+ */
+export async function updateTitle(titleId, dataToUpdate) {
+  const titleRef = doc(db, "titles", titleId);
+  // [수정] color 필드도 업데이트 목록에 포함시킵니다.
+  await updateDoc(titleRef, {
+    ...dataToUpdate,
+    color: dataToUpdate.color || '#000000'
+  });
+}
+
+/**
+ * 특정 칭호를 삭제합니다.
+ * @param {string} titleId - 삭제할 칭호의 ID
+ */
+export async function deleteTitle(titleId) {
+  const titleRef = doc(db, "titles", titleId);
+  await deleteDoc(titleRef);
+}
+
+/**
+ * 특정 학생에게 칭호를 수동으로 부여합니다.
+ * @param {string} playerId - 칭호를 받을 학생의 ID
+ * @param {string} titleId - 부여할 칭호의 ID
+ */
+export async function grantTitleToPlayer(playerId, titleId) {
+  const playerRef = doc(db, "players", playerId);
+  await updateDoc(playerRef, {
+    ownedTitles: arrayUnion(titleId)
+  });
+}
+
+/**
+ * 학생이 장착할 칭호를 설정합니다.
+ * @param {string} playerId - 학생 ID
+ * @param {string} titleId - 장착할 칭호 ID (해제는 null)
+ */
+export async function equipTitle(playerId, titleId) {
+  const playerRef = doc(db, "players", playerId);
+  await updateDoc(playerRef, {
+    equippedTitle: titleId
+  });
 }
