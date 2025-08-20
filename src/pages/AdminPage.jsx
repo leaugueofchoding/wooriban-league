@@ -1422,14 +1422,17 @@ function MissionManager() {
                     </div>
                 </InputGroup>
 
-                <InputGroup>
-                    <TextArea
-                        value={placeholderText}
-                        onChange={(e) => setPlaceholderText(e.target.value)}
-                        placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요. (예: 책 이름, 줄거리, 느낀 점 10줄 이상 작성)"
-                        style={{ minHeight: '60px' }}
-                    />
-                </InputGroup>
+                {/* [수정] '글' 체크박스가 선택된 경우에만 문제 내용 입력란 표시 */}
+                {submissionTypes.text && (
+                    <InputGroup>
+                        <TextArea
+                            value={placeholderText}
+                            onChange={(e) => setPlaceholderText(e.target.value)}
+                            placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요. (예: 책 이름, 줄거리, 느낀 점 10줄 이상 작성)"
+                            style={{ minHeight: '60px' }}
+                        />
+                    </InputGroup>
+                )}
 
                 {/* 2줄: 추가 설정 영역 (토글) */}
                 {showAdvanced.rewards && (

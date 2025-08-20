@@ -264,12 +264,16 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   }, [submission, mission.isFixed]);
 
   useEffect(() => {
+    // [수정] 반려되었을 때는 이전 답변을, 처음 시작할 때는 문제 텍스트를 기본값으로 설정합니다.
     if (submission?.status === 'rejected') {
       setSubmissionContent({ text: submission.text || '', photo: null });
+    } else if (mission.placeholderText) {
+      // 템플릿 마지막에 줄바꿈을 추가하여 학생이 바로 답변을 입력하기 편하게 합니다.
+      setSubmissionContent({ text: mission.placeholderText + '\n\n', photo: null });
     } else {
       setSubmissionContent({ text: '', photo: null });
     }
-  }, [submission]);
+  }, [submission, mission.placeholderText]);
 
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
@@ -406,7 +410,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
               <TextArea
                 value={textAreaValue}
                 onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
-                placeholder={mission.placeholderText || "미션 내용을 여기에 입력하세요..."}
                 disabled={isInputDisabled}
               />
             )}
