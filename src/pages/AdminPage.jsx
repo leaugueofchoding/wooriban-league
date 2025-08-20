@@ -59,6 +59,12 @@ const AdminWrapper = styled.div`
   margin: 0 auto;
   font-family: sans-serif;
   align-items: flex-start;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    padding: 1rem;
+    gap: 1.5rem;
+  }
 `;
 
 const Sidebar = styled.nav`
@@ -70,6 +76,12 @@ const Sidebar = styled.nav`
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   position: sticky;
   top: 2rem;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    position: static;
+    top: auto;
+  }
 `;
 
 const MainContent = styled.main`
@@ -142,7 +154,12 @@ const GridContainer = styled.div`
     grid-template-columns: repeat(2, 1fr);
     gap: 1.5rem;
     margin-bottom: 2.5rem;
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+    }
 `;
+
 
 const FullWidthSection = styled.section`
   margin-bottom: 2.5rem;
