@@ -792,13 +792,15 @@ export const useLeagueStore = create((set, get) => ({
         if (players.length === 0 || teams.length === 0) return alert('선수와 팀이 모두 필요합니다.');
 
         try {
-            const malePlayers = players.filter(p => p.gender === '남').sort(() => 0.5 - Math.random());
-            const femalePlayers = players.filter(p => p.gender === '여').sort(() => 0.5 - Math.random());
-            const unassignedPlayers = players.filter(p => !p.gender || (p.gender !== '남' && p.gender !== '여')).sort(() => 0.5 - Math.random());
+            // ▼▼▼ [핵심 수정] 각 선수 목록을 만들 때, status가 'inactive'가 아닌 선수만 포함하도록 조건을 추가합니다. ▼▼▼
+            const malePlayers = players.filter(p => p.status !== 'inactive' && p.gender === '남').sort(() => 0.5 - Math.random());
+            const femalePlayers = players.filter(p => p.status !== 'inactive' && p.gender === '여').sort(() => 0.5 - Math.random());
+            const unassignedPlayers = players.filter(p => p.status !== 'inactive' && (!p.gender || (p.gender !== '남' && p.gender !== '여'))).sort(() => 0.5 - Math.random());
 
             const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null }));
 
             [...malePlayers, ...femalePlayers, ...unassignedPlayers].forEach((player, index) => {
+                //... (이하 코드 생략)
                 teamUpdates[index % teams.length].members.push(player.id);
             });
 
