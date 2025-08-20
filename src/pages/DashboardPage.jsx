@@ -1,4 +1,4 @@
-// src/pages/DashboardPage.jsx
+// src/pages/DashboardPage.jsx 전체 코드
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 
 const DashboardWrapper = styled.div`
   max-width: 1000px;
-  margin: 2rem auto;
+  margin: 1rem auto;
   padding: 1rem;
 `;
 
@@ -39,7 +39,7 @@ const TopGrid = styled.div`
     display: grid;
     grid-template-columns: 1fr;
     gap: 1.5rem;
-    margin-bottom: 2.5rem;
+    margin-bottom: 1.5rem;
 `;
 
 const Section = styled.section`
@@ -99,14 +99,10 @@ const MyInfoCard = styled.div`
 const ProfileLink = styled(Link)`
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 2rem;
   text-decoration: none;
   color: inherit;
   flex-grow: 1;
-
-  &:hover {
-    /* Optional: add hover effect for profile part */
-  }
 `;
 
 const ActionButtonsWrapper = styled.div`
@@ -201,15 +197,23 @@ const SuggestionButton = styled(Link)`
     }
 `;
 
+const AvatarWrapper = styled.div`
+  position: relative;
+  margin-top: 0rem;
+  margin-bottom: -0.5rem;
+
+`;
 
 const AvatarDisplay = styled.div`
-  width: 80px;
-  height: 80px;
+  width: 130px;
+  height: 130px;
   border-radius: 50%;
   position: relative;
   overflow: hidden;
-  border: 3px solid #007bff;
+  border: 4px solid #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   flex-shrink: 0;
+  margin-top: 30px; /* 아바타만 아래로 살짝 내리기 */
 `;
 
 const PartImage = styled.img`
@@ -223,9 +227,14 @@ const PartImage = styled.img`
 
 const InfoText = styled.div`
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
 
   @media (max-width: 768px) {
     text-align: center;
+    align-items: center;
   }
 `;
 
@@ -237,22 +246,26 @@ const WelcomeMessage = styled.p`
 `;
 
 const PointDisplay = styled.p`
-  margin: 0.25rem 0 0;
+  margin: 0;
   font-size: 1.2rem;
   font-weight: bold;
   color: #28a745;
 `;
 
 const EquippedTitle = styled.div`
-  padding: 0.6rem 1.2rem;
-  border-radius: 8px; /* 곡률 감소 */
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
   font-weight: bold;
-  font-size: 1.3rem; /* 폰트 크기 미세 조정 */
-  margin: 0 auto 0.5rem; /* [수정] 하단 여백을 줄여 간격을 좁힙니다. */
-  display: inline-block;
+  font-size: 1rem;
+  white-space: nowrap;
   color: ${props => props.color || '#343a40'};
-  background-color: #f8f9fa; /* 은은한 배경색 */
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6); /* 입체감 효과 */
+  background-color: #f8f9fa;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(0, 0, 0, 0.1);
 `;
 
@@ -615,15 +628,17 @@ function DashboardPage() {
                 <TopGrid>
                     <MyInfoCard>
                         <ProfileLink to={`/profile`}>
-                            <AvatarDisplay>
-                                {myAvatarUrls.map(src => <PartImage key={src} src={src} />)}
-                            </AvatarDisplay>
-                            <InfoText>
+                            <AvatarWrapper>
                                 {equippedTitle && (
                                     <EquippedTitle color={equippedTitle.color}>
                                         {equippedTitle.icon} {equippedTitle.name}
                                     </EquippedTitle>
                                 )}
+                                <AvatarDisplay>
+                                    {myAvatarUrls.map(src => <PartImage key={src} src={src} />)}
+                                </AvatarDisplay>
+                            </AvatarWrapper>
+                            <InfoText>
                                 <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
                                 <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
                             </InfoText>

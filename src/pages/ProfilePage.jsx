@@ -10,18 +10,26 @@ import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
 
 // --- Styled Components ---
+const AvatarWrapper = styled.div`
+  position: relative;
+  width: 150px;
+  height: 150px;
+  margin: 2.5rem auto 1rem; /* 상단 여백 추가 */
+`;
+
 const AvatarDisplay = styled.div`
   width: 150px;
   height: 150px;
   border-radius: 50%;
   background-color: #e9ecef;
-  margin: 0 auto 1rem;
   border: 4px solid #fff;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   position: relative;
   overflow: hidden;
   cursor: pointer;
+  margin-top: 5px; /* 아바타를 아래로 살짝 이동 */
 `;
+
 const PartImage = styled.img`
   position: absolute;
   top: 0;
@@ -203,7 +211,6 @@ const ItemList = styled.div`
   }
 `;
 
-// ▼▼▼ [수정] 칭호 관련 스타일 컴포넌트 ▼▼▼
 const AccordionSection = styled.div`
   width: 100%;
   margin-top: 1rem;
@@ -220,15 +227,19 @@ const AccordionContent = styled.div`
 `;
 
 const EquippedTitle = styled.div`
+  position: absolute;
+  top: -33px; /* 아바타 위로 더 올리기 */
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
   padding: 0.6rem 1.2rem;
-  border-radius: 8px; /* 곡률 감소 */
+  border-radius: 8px;
   font-weight: bold;
-  font-size: 1.3rem; /* 폰트 크기 미세 조정 */
-  margin: 0 auto 0.5rem; /* [수정] 하단 여백을 줄여 간격을 좁힙니다. */
-  display: inline-block;
+  font-size: 1.3rem;
+  white-space: nowrap;
   color: ${props => props.color || '#343a40'};
-  background-color: #f8f9fa; /* 은은한 배경색 */
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6); /* 입체감 효과 */
+  background-color: #f8f9fa;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(0, 0, 0, 0.1);
 `;
 
@@ -241,7 +252,7 @@ const OwnedTitleList = styled.div`
 const OwnedTitleCard = styled.div`
   padding: 1rem;
   border: 2px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
-  border-radius: 8px; /* 곡률 조정 */
+  border-radius: 8px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
@@ -267,7 +278,6 @@ const SaveTitlesButton = styled(Button)`
     font-weight: bold;
     margin-top: 1.5rem;
 `;
-// ▲▲▲ [수정 완료] ▲▲▲
 
 function ProfilePage() {
   const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
@@ -281,8 +291,6 @@ function ProfilePage() {
   const [newName, setNewName] = useState('');
   const [selectedGender, setSelectedGender] = useState('');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-
-  // ▼▼▼ [수정] 칭호 관련 상태 관리 ▼▼▼
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
 
@@ -295,7 +303,7 @@ function ProfilePage() {
     if (playerData) {
       setNewName(playerData.name);
       setSelectedGender(playerData.gender || '');
-      setSelectedTitleId(playerData.equippedTitle || null); // [추가] 선택된 칭호 초기화
+      setSelectedTitleId(playerData.equippedTitle || null);
     }
   }, [playerData]);
 
@@ -319,7 +327,6 @@ function ProfilePage() {
       alert('칭호 저장에 실패했습니다.');
     }
   };
-  // ▲▲▲ [수정 완료] ▲▲▲
 
   const myTeam = useMemo(() => {
     if (!playerData || !currentSeason) return null;
@@ -407,15 +414,16 @@ function ProfilePage() {
   return (
     <>
       <ProfileWrapper>
-        <AvatarDisplay onClick={() => setIsAvatarModalOpen(true)}>
-          {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
-        </AvatarDisplay>
-
-        {equippedTitle && (
-          <EquippedTitle color={equippedTitle.color}>
-            {equippedTitle.icon} {equippedTitle.name}
-          </EquippedTitle>
-        )}
+        <AvatarWrapper>
+          {equippedTitle && (
+            <EquippedTitle color={equippedTitle.color}>
+              {equippedTitle.icon} {equippedTitle.name}
+            </EquippedTitle>
+          )}
+          <AvatarDisplay onClick={() => setIsAvatarModalOpen(true)}>
+            {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
+          </AvatarDisplay>
+        </AvatarWrapper>
 
         <UserNameContainer>
           {isEditing ? (
