@@ -751,6 +751,21 @@ const SubmissionDetails = styled.div`
     }
 `;
 
+const SaleBadge = styled.div`
+  position: absolute;
+  top: 10px;
+  right: -25px;
+  background-color: #dc3545;
+  color: white;
+  padding: 2px 25px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  transform: rotate(45deg);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  z-index: 2;
+`;
+
+
 // --- Components ---
 
 function PendingMissionWidget() {
@@ -1031,70 +1046,44 @@ function MessageManager() {
     }, [selectedStudentId, allSuggestions]);
 
     const studentThreads = useMemo(() => {
-        const threads = allSuggestions.reduce((acc, msg) => {
+        return allSuggestions.reduce((acc, msg) => {
             if (!acc[msg.studentId]) {
-                acc[msg.studentId] = {
-                    studentId: msg.studentId,
-                    studentName: msg.studentName,
-                    messages: [],
-                    lastMessageAt: msg.lastMessageAt || msg.createdAt,
-                };
+                acc[msg.studentId] = [];
             }
-            acc[msg.studentId].messages.push(msg);
-            const messageTime = msg.lastMessageAt || msg.createdAt;
-            if (messageTime > acc[msg.studentId].lastMessageAt) {
-                acc[msg.studentId].lastMessageAt = messageTime;
-            }
+            acc[msg.studentId].push(msg);
             return acc;
         }, {});
-
-        return Object.values(threads).sort((a, b) => b.lastMessageAt.toMillis() - a.lastMessageAt.toMillis());
     }, [allSuggestions]);
+
+    // [추가] 모든 학생 목록을 이름순으로 정렬하여 사용합니다.
+    const sortedPlayers = useMemo(() => [...players].sort((a, b) => a.name.localeCompare(b.name)), [players]);
 
     const selectedThreadMessages = useMemo(() => {
         if (!selectedStudentId) return [];
-        const thread = studentThreads.find(t => t.studentId === selectedStudentId);
-        if (!thread) return [];
+        const thread = studentThreads[selectedStudentId];
+        if (!thread) return []; // 대화가 없으면 빈 배열 반환
 
-        return thread.messages.flatMap(item => {
-            if (item.conversation) {
-                return item.conversation;
-            }
-            const oldConversation = [];
-            if (item.message) {
-                oldConversation.push({ sender: 'student', content: item.message, createdAt: item.createdAt });
-            }
-            if (item.reply) {
-                oldConversation.push({ sender: 'admin', content: item.reply, createdAt: item.repliedAt });
-            }
-            return oldConversation;
-        }).sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
-
+        return thread.flatMap(item => item.conversation || [])
+            .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
     }, [selectedStudentId, studentThreads]);
 
     const handleReplySubmit = async () => {
         if (!replyContent.trim() || !selectedStudentId) return;
-
-        const thread = studentThreads.find(s => s.studentId === selectedStudentId);
         const student = players.find(p => p.id === selectedStudentId);
+        if (!student) return alert("학생 정보를 찾을 수 없습니다.");
 
-        // [수정] lastMessageAt 또는 createdAt을 안전하게 비교하여 최신 메시지 문서를 찾습니다.
-        const lastMessageDoc = thread.messages.sort((a, b) => {
-            const timeA = a.lastMessageAt || a.createdAt;
-            const timeB = b.lastMessageAt || b.createdAt;
-            return timeB.toMillis() - timeA.toMillis();
-        })[0];
-
-        if (!lastMessageDoc || !student) {
-            alert("답변을 보낼 대상 정보를 찾을 수 없습니다.");
-            return;
-        }
+        const thread = studentThreads[selectedStudentId];
 
         try {
-            await replyToSuggestion(lastMessageDoc.id, replyContent, student.authUid);
+            if (thread) { // 기존 대화가 있는 경우
+                const lastMessageDoc = thread.sort((a, b) => (b.lastMessageAt || b.createdAt).toMillis() - (a.lastMessageAt || a.createdAt).toMillis())[0];
+                await replyToSuggestion(lastMessageDoc.id, replyContent, student.authUid);
+            } else { // [추가] 새 대화를 시작하는 경우
+                await adminInitiateConversation(student.id, student.name, replyContent, student.authUid);
+            }
             setReplyContent('');
         } catch (error) {
-            alert(`답변 전송 실패: ${error.message}`);
+            alert(`메시지 전송 실패: ${error.message}`);
         }
     };
 
@@ -1111,22 +1100,21 @@ function MessageManager() {
                 <ChatLayout>
                     <StudentListPanel>
                         {isLoading ? <p style={{ padding: '1rem' }}>로딩 중...</p> :
-                            studentThreads.map(thread => {
-                                // ▼▼▼ [수정] 마지막 메시지를 찾는 로직 수정 ▼▼▼
-                                const allMessages = thread.messages.flatMap(item => item.conversation || []);
-                                const lastMessage = allMessages.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())[0];
-                                const lastContent = lastMessage?.content || thread.messages[0]?.message; // Fallback to original message
+                            // [수정] 모든 학생 목록을 렌더링합니다.
+                            sortedPlayers.map(player => {
+                                const thread = studentThreads[player.id];
+                                const lastMessage = thread ? (thread.flatMap(item => item.conversation).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())[0]) : null;
 
                                 return (
                                     <StudentListItem
-                                        key={thread.studentId}
-                                        $active={selectedStudentId === thread.studentId}
-                                        onClick={() => setSelectedStudentId(thread.studentId)}
+                                        key={player.id}
+                                        $active={selectedStudentId === player.id}
+                                        onClick={() => setSelectedStudentId(player.id)}
                                     >
-                                        <p>{thread.studentName}</p>
-                                        <small>{lastContent}</small>
+                                        <p>{player.name}</p>
+                                        {lastMessage && <small>{lastMessage.content}</small>}
                                     </StudentListItem>
-                                )
+                                );
                             })
                         }
                     </StudentListPanel>
@@ -2158,19 +2146,18 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateMyRoomItemSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
-                // ▼▼▼ [핵심 수정] 아바타 아이템과 동일하게 데이터 형식을 맞춥니다. ▼▼▼
                 useLeagueStore.setState(state => {
                     const updatedMyRoomItems = state.myRoomItems.map(item => {
                         if (checkedItems.has(item.id)) {
                             const originalPrice = item.price;
                             const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
-                            return {
-                                ...item,
-                                isSale: true,
-                                originalPrice,
-                                salePrice,
-                                saleStartDate: { toDate: () => startDate },
-                                saleEndDate: { toDate: () => endDate }
+                            return { 
+                                ...item, 
+                                isSale: true, 
+                                originalPrice, 
+                                salePrice, 
+                                saleStartDate: { toDate: () => startDate }, 
+                                saleEndDate: { toDate: () => endDate } 
                             };
                         }
                         return item;
