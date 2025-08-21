@@ -3,9 +3,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, getMissionHistory } from '../api/firebase';
+import { auth, getMissionHistory, db } from '../api/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import MissionHistoryModal from '../components/MissionHistoryModal';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const MissionsWrapper = styled.div`
   max-width: 800px;
@@ -240,13 +241,11 @@ function SubmissionDetailsView({ submission, isOpen }) {
   );
 }
 
-function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission }) {
+function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView }) {
   const { submitMissionForApproval } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photo: null });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [missionHistory, setMissionHistory] = useState([]);
 
   const submission = mySubmissions[mission.id];
 
@@ -277,7 +276,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
-  const hasViewableContent = submission && (submission.text || submission.photoUrl);
 
   const isPrerequisiteSubmitted = useMemo(() => {
     if (!mission.prerequisiteMissionId) return true;
@@ -313,13 +311,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     }
   };
 
-  const handleHistoryView = async (e) => {
-    e.stopPropagation();
-    const history = await getMissionHistory(myPlayerData.id, mission.id);
-    setMissionHistory(history);
-    setIsHistoryModalOpen(true);
-  };
-
   const renderButtons = () => {
     if (!canSubmitMission) return null;
 
@@ -337,17 +328,19 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
         case 'APPROVED_TODAY': buttonText = '오늘 완료!'; buttonStatusStyle = 'approved'; break;
         case 'PENDING_TODAY': buttonText = '승인 대기중'; buttonStatusStyle = 'pending'; break;
         case 'REJECTED_TODAY': buttonText = '다시 제출하기'; buttonStatusStyle = 'rejected'; break;
-        case 'approved': buttonText = '승인 완료!'; buttonStatusStyle = 'approved'; break;
+        case 'approved': buttonText = '기록 및 댓글 보기'; buttonStatusStyle = 'approved'; break;
         case 'pending': buttonText = '승인 대기중'; buttonStatusStyle = 'pending'; break;
         case 'rejected': buttonText = '다시 제출하기'; buttonStatusStyle = 'rejected'; break;
         default: buttonText = '다 했어요!'; buttonStatusStyle = 'default'; break;
       }
     }
 
+    const handleClick = missionStatus === 'approved' ? () => onHistoryView(mission) : handleSubmit;
+
     if (mission.isFixed) {
       return (
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <RequestButton $status="approved" onClick={handleHistoryView}>기록 보기</RequestButton>
+          <RequestButton $status="approved" onClick={() => onHistoryView(mission)}>기록 보기</RequestButton>
           <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} $status={buttonStatusStyle}>
             {buttonText}
           </RequestButton>
@@ -355,19 +348,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       );
     }
 
-    if (missionStatus === 'approved') {
-      if (hasViewableContent) {
-        return (
-          <RequestButton $status="approved" onClick={() => setIsDetailsOpen(prev => !prev)}>
-            {isDetailsOpen ? '숨기기' : '제출물 보기'}
-          </RequestButton>
-        );
-      }
-      return <RequestButton $status="approved" disabled>{buttonText}</RequestButton>;
-    }
-
     return (
-      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} $status={buttonStatusStyle}>
+      <RequestButton onClick={handleClick} disabled={isButtonDisabled} $status={buttonStatusStyle}>
         {buttonText}
       </RequestButton>
     );
@@ -387,60 +369,52 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const textAreaValue = isInputDisabled ? (submission?.text || "") : submissionContent.text;
 
   return (
-    <>
-      <MissionCard $status={submission?.status}>
-        <MissionHeader>
-          <MissionInfo>
-            <MissionTitle>
-              {mission.title}
-              {mission.isFixed && <span title="고정 미션"> 🔄</span>}
-              {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
-              {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
-            </MissionTitle>
-            <MissionReward>{rewardText}</MissionReward>
-          </MissionInfo>
-          <div style={{ display: 'flex' }}>
-            {renderButtons()}
-          </div>
-        </MissionHeader>
+    <MissionCard $status={submission?.status}>
+      <MissionHeader>
+        <MissionInfo>
+          <MissionTitle>
+            {mission.title}
+            {mission.isFixed && <span title="고정 미션"> 🔄</span>}
+            {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
+            {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
+          </MissionTitle>
+          <MissionReward>{rewardText}</MissionReward>
+        </MissionInfo>
+        <div style={{ display: 'flex' }}>
+          {renderButtons()}
+        </div>
+      </MissionHeader>
 
-        {showSubmissionArea && (
-          <SubmissionArea>
-            {submissionType.includes('text') && (
-              <TextArea
-                value={textAreaValue}
-                onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
-                disabled={isInputDisabled}
-              />
-            )}
-            {submissionType.includes('photo') && (
-              <div>
-                <FileInputLabel htmlFor={`file-${mission.id}`} disabled={isInputDisabled}>
-                  📷 사진 첨부하기
-                  <input
-                    id={`file-${mission.id}`}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    style={{ display: 'none' }}
-                    disabled={isInputDisabled}
-                  />
-                </FileInputLabel>
-                {submissionContent.photo && <FileName>{submissionContent.photo.name}</FileName>}
-              </div>
-            )}
-          </SubmissionArea>
-        )}
+      {showSubmissionArea && (
+        <SubmissionArea>
+          {submissionType.includes('text') && (
+            <TextArea
+              value={textAreaValue}
+              onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
+              disabled={isInputDisabled}
+            />
+          )}
+          {submissionType.includes('photo') && (
+            <div>
+              <FileInputLabel htmlFor={`file-${mission.id}`} disabled={isInputDisabled}>
+                📷 사진 첨부하기
+                <input
+                  id={`file-${mission.id}`}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                  disabled={isInputDisabled}
+                />
+              </FileInputLabel>
+              {submissionContent.photo && <FileName>{submissionContent.photo.name}</FileName>}
+            </div>
+          )}
+        </SubmissionArea>
+      )}
 
-        <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
-      </MissionCard>
-      <MissionHistoryModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => setIsHistoryModalOpen(false)}
-        missionTitle={mission.title}
-        history={missionHistory}
-      />
-    </>
+      <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
+    </MissionCard>
   );
 }
 
@@ -448,13 +422,48 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 function MissionsPage() {
   const { players, missions, missionSubmissions } = useLeagueStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUser = auth.currentUser;
   const [hideCompleted, setHideCompleted] = useState(true);
+  const [historyModalState, setHistoryModalState] = useState({ isOpen: false, missionTitle: '', history: [], student: null });
 
   const myPlayerData = useMemo(() => {
     if (!currentUser) return null;
     return players.find(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
+
+  useEffect(() => {
+    const openModalFromLink = async () => {
+      const params = new URLSearchParams(location.search);
+      const submissionId = params.get('openHistoryForSubmission');
+      if (submissionId && myPlayerData) {
+        try {
+          const submissionDoc = await getDoc(doc(db, 'missionSubmissions', submissionId));
+          if (submissionDoc.exists()) {
+            const submissionData = submissionDoc.data();
+            const mission = missions.find(m => m.id === submissionData.missionId);
+            if (mission && submissionData.studentId === myPlayerData.id) {
+              const history = await getMissionHistory(myPlayerData.id, mission.id);
+              setHistoryModalState({
+                isOpen: true,
+                missionTitle: mission.title,
+                history: history,
+                student: myPlayerData
+              });
+              // URL에서 파라미터 제거
+              navigate(location.pathname, { replace: true });
+            }
+          }
+        } catch (error) {
+          console.error("Error opening history modal from link:", error);
+        }
+      }
+    };
+    if (myPlayerData && missions.length > 0) {
+      openModalFromLink();
+    }
+  }, [location, navigate, myPlayerData, missions]);
+
 
   const mySubmissionsMap = useMemo(() => {
     if (!myPlayerData) return {};
@@ -494,38 +503,54 @@ function MissionsPage() {
     });
   }, [missions, mySubmissionsMap, hideCompleted]);
 
+  const handleHistoryView = async (mission) => {
+    if (!myPlayerData) return;
+    const history = await getMissionHistory(myPlayerData.id, mission.id);
+    setHistoryModalState({ isOpen: true, missionTitle: mission.title, history, student: myPlayerData });
+  };
+
   const canSubmitMission = myPlayerData && ['player', 'recorder', 'admin'].includes(myPlayerData.role);
 
   return (
-    <MissionsWrapper>
-      <Title>오늘의 미션</Title>
+    <>
+      <MissionsWrapper>
+        <Title>오늘의 미션</Title>
 
-      <FilterContainer>
-        <ToggleButton onClick={() => setHideCompleted(prev => !prev)} $active={!hideCompleted}>
-          {hideCompleted ? '완료 미션 보이기' : '완료 미션 숨기기'}
-        </ToggleButton>
-      </FilterContainer>
+        <FilterContainer>
+          <ToggleButton onClick={() => setHideCompleted(prev => !prev)} $active={!hideCompleted}>
+            {hideCompleted ? '완료 미션 보이기' : '완료 미션 숨기기'}
+          </ToggleButton>
+        </FilterContainer>
 
-      <MissionList>
-        {filteredMissions.length > 0 ? (
-          filteredMissions.map(mission => (
-            <MissionItem
-              key={mission.id}
-              mission={mission}
-              myPlayerData={myPlayerData}
-              mySubmissions={mySubmissionsMap}
-              canSubmitMission={canSubmitMission}
-            />
-          ))
-        ) : (
-          <p style={{ textAlign: 'center' }}>{hideCompleted ? "남아있는 미션이 없습니다! 👍" : "현재 진행 중인 미션이 없습니다."}</p>
-        )}
-      </MissionList>
+        <MissionList>
+          {filteredMissions.length > 0 ? (
+            filteredMissions.map(mission => (
+              <MissionItem
+                key={mission.id}
+                mission={mission}
+                myPlayerData={myPlayerData}
+                mySubmissions={mySubmissionsMap}
+                canSubmitMission={canSubmitMission}
+                onHistoryView={handleHistoryView}
+              />
+            ))
+          ) : (
+            <p style={{ textAlign: 'center' }}>{hideCompleted ? "남아있는 미션이 없습니다! 👍" : "현재 진행 중인 미션이 없습니다."}</p>
+          )}
+        </MissionList>
 
-      <ExitButton onClick={() => navigate(-1)}>
-        나가기
-      </ExitButton>
-    </MissionsWrapper>
+        <ExitButton onClick={() => navigate(-1)}>
+          나가기
+        </ExitButton>
+      </MissionsWrapper>
+      <MissionHistoryModal
+        isOpen={historyModalState.isOpen}
+        onClose={() => setHistoryModalState({ isOpen: false, missionTitle: '', history: [], student: null })}
+        missionTitle={historyModalState.missionTitle}
+        history={historyModalState.history}
+        student={historyModalState.student}
+      />
+    </>
   );
 }
 

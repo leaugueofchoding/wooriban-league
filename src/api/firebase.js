@@ -423,6 +423,82 @@ export async function getMissionHistory(studentId, missionId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+// =================================================================
+// ▼▼▼ [수정] 미션 댓글/답글 관련 함수 ▼▼▼
+// =================================================================
+/**
+ * 미션 제출 기록에 댓글을 추가합니다.
+ * @param {string} submissionId - 댓글을 달 미션 제출 기록의 ID
+ * @param {object} commentData - 댓글 데이터 (작성자 ID, 이름, 내용 등)
+ * @param {string} studentAuthUid - 미션 제출 학생의 Auth UID (알림 전송용)
+ * @param {string} missionTitle - 미션 제목 (알림 내용용)
+ */
+export async function addMissionComment(submissionId, commentData, studentAuthUid, missionTitle) {
+  const commentsRef = collection(db, "missionSubmissions", submissionId, "comments");
+  await addDoc(commentsRef, {
+    ...commentData,
+    createdAt: serverTimestamp(),
+  });
+
+  // 학생에게 알림 전송 (관리자/기록원이 댓글을 달았을 경우)
+  if (studentAuthUid && commentData.commenterRole !== 'player') {
+    createNotification(
+      studentAuthUid,
+      `📝 '${missionTitle}' 미션에 댓글이 달렸어요!`,
+      `"${commentData.text}"`,
+      "mission_comment",
+      `/missions?openHistoryForSubmission=${submissionId}` // 링크 수정
+    );
+  }
+}
+
+/**
+ * 미션 댓글에 답글을 추가합니다.
+ * @param {string} submissionId - 댓글이 있는 미션 제출 기록의 ID
+ * @param {string} commentId - 답글을 달 댓글의 ID
+ * @param {object} replyData - 답글 데이터 (작성자 ID, 이름, 내용 등)
+ * @param {object} originalComment - 원본 댓글 데이터 (알림 전송용)
+ */
+export async function addMissionReply(submissionId, commentId, replyData, originalComment) {
+  const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", commentId, "replies");
+  await addDoc(repliesRef, {
+    ...replyData,
+    createdAt: serverTimestamp(),
+  });
+
+  const currentUser = auth.currentUser;
+  const link = `/missions?openHistoryForSubmission=${submissionId}`; // 링크 생성
+
+  if (currentUser?.uid === originalComment.commenterAuthUid) {
+    // 내가 쓴 댓글에 답글이 달렸을 때 -> 관리자/기록원에게 알림
+    const playersRef = collection(db, 'players');
+    const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
+    const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
+    adminRecorderSnapshot.forEach(userDoc => {
+      const user = userDoc.data();
+      if (user.authUid) {
+        createNotification(
+          user.authUid,
+          `RE: ${originalComment.missionTitle}`,
+          `${replyData.replierName} 학생이 댓글에 답장을 남겼습니다.`,
+          "mission_comment",
+          link // 수정된 링크 적용
+        );
+      }
+    });
+  } else {
+    // 다른 사람(관리자/기록원)의 댓글에 내가 답글을 달았을 때 -> 해당 댓글 작성자에게 알림
+    createNotification(
+      originalComment.commenterAuthUid,
+      `RE: ${originalComment.missionTitle}`,
+      `"${replyData.text}"`,
+      "mission_comment",
+      link // 수정된 링크 적용
+    );
+  }
+}
+
+
 // --- 포인트 수동 조정 ---
 export async function adjustPlayerPoints(playerId, amount, reason) {
   const playerRef = doc(db, "players", playerId);

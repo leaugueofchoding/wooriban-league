@@ -25,7 +25,7 @@ const MissionSelect = styled.select`
   width: 100%;
   padding: 0.75rem;
   font-size: 1.1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   border: 1px solid #ced4da;
   border-radius: 8px;
   background-color: #fff;
@@ -35,24 +35,25 @@ const StudentList = styled.ul`
   list-style: none;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
 `;
 
 const StudentListItem = styled.li`
   background-color: #fff;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
   transition: all 0.2s ease-in-out;
   display: flex;
   flex-direction: column;
+  border-left: 5px solid transparent;
 
   &.pending {
-    border-left: 5px solid #ffc107;
+    border-left-color: #ffc107;
   }
   
   &.approved {
-    border-left: 5px solid #28a745;
+    border-left-color: #28a745;
     background-color: #f8f9fa;
   }
 `;
@@ -61,38 +62,54 @@ const StudentSummary = styled.div`
     display: flex;
     align-items: center;
     padding: 1rem;
+    gap: 1rem;
+`;
+
+const CheckboxLabel = styled.label`
+    display: flex;
+    align-items: center;
     cursor: pointer;
 
     input[type="checkbox"] {
         width: 20px;
         height: 20px;
-        margin-right: 1rem;
-    }
-
-    label {
-        flex-grow: 1;
-    }
-
-    .status-badge {
-        font-size: 0.8rem;
-        font-weight: bold;
-        padding: 4px 8px;
-        border-radius: 12px;
-        margin-left: auto;
-        color: white;
-
-        &.pending { background-color: #ffc107; color: black; }
-        &.approved { background-color: #28a745; }
     }
 `;
 
+const StudentInfo = styled.div`
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+`;
+
+const StudentName = styled.span`
+    font-weight: bold;
+    font-size: 1.1rem;
+`;
+
+const StatusBadge = styled.span`
+    font-size: 0.8rem;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: 12px;
+    color: white;
+    align-self: flex-start; /* Make badge fit content */
+
+    &.pending { background-color: #ffc107; color: black; }
+    &.approved { background-color: #28a745; }
+`;
+
+
 const SubmissionDetails = styled.div`
-    padding: ${props => props.$isOpen ? '1rem' : '0 1rem'};
+    padding: ${props => props.$isOpen ? '0 1rem 1rem 1rem' : '0 1rem'};
     max-height: ${props => props.$isOpen ? '1000px' : '0'};
     opacity: ${props => props.$isOpen ? 1 : 0};
     overflow: hidden;
     transition: all 0.4s ease-in-out;
     border-top: ${props => props.$isOpen ? '1px solid #f0f0f0' : 'none'};
+    margin-top: ${props => props.$isOpen ? '0.5rem' : '0'};
 
     p {
         background-color: #f8f9fa;
@@ -149,20 +166,26 @@ const ExitButton = styled.button`
   }
 `;
 
-// ▼▼▼ [추가] 누락되었던 StyledButton 정의 ▼▼▼
 const StyledButton = styled.button`
     padding: 0.5rem 1rem;
     font-size: 0.9rem;
-    font-weight: 500;
+    font-weight: bold;
     border: 1px solid #ced4da;
     border-radius: 8px;
     cursor: pointer;
     background-color: #fff;
     transition: all 0.2s ease-in-out;
+    white-space: nowrap;
 
     &:hover {
         background-color: #e9ecef;
     }
+`;
+
+const TopControls = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
 `;
 
 
@@ -219,9 +242,8 @@ function RecorderPage() {
         navigate(`/recorder/${newMissionId}`);
     };
 
-    const handleStudentClick = (studentId, status) => {
+    const handleStudentCheck = (studentId, status) => {
         if (status === 'approved') return;
-
         setCheckedStudents(prev => {
             const newSet = new Set(prev);
             if (newSet.has(studentId)) {
@@ -253,7 +275,6 @@ function RecorderPage() {
         const eligiblePlayerIds = sortedPlayers
             .filter(player => studentSubmissionStatus.get(player.id)?.status !== 'approved')
             .map(player => player.id);
-
         const allSelected = eligiblePlayerIds.length > 0 && eligiblePlayerIds.every(id => checkedStudents.has(id));
 
         if (allSelected) {
@@ -298,9 +319,9 @@ function RecorderPage() {
 
             {selectedMissionId && (
                 <>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-                        <button onClick={handleSelectAll}>전체 선택/해제</button>
-                    </div>
+                    <TopControls>
+                        <StyledButton onClick={handleSelectAll}>전체 선택/해제</StyledButton>
+                    </TopControls>
                     <StudentList>
                         {sortedPlayers.map(player => {
                             const submission = studentSubmissionStatus.get(player.id);
@@ -309,37 +330,29 @@ function RecorderPage() {
                             const isOpen = expandedSubmissionId === player.id;
 
                             return (
-                                <StudentListItem
-                                    key={player.id}
-                                    className={status}
-                                >
+                                <StudentListItem key={player.id} className={status}>
                                     <StudentSummary onClick={() => handleRowClick(player.id)}>
-                                        <input
-                                            type="checkbox"
-                                            checked={checkedStudents.has(player.id)}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleStudentClick(player.id, status);
-                                            }}
-                                            onChange={() => { }} // onChange 핸들러 추가
-                                            disabled={status === 'approved'}
-                                        />
-                                        <label>{player.name}</label>
-
+                                        <CheckboxLabel>
+                                            <input
+                                                type="checkbox"
+                                                checked={checkedStudents.has(player.id)}
+                                                onChange={() => handleStudentCheck(player.id, status)}
+                                                disabled={status === 'approved'}
+                                            />
+                                        </CheckboxLabel>
+                                        <StudentInfo>
+                                            <StudentName>{player.name}</StudentName>
+                                            {status === 'pending' && <StatusBadge className="pending">승인 대기중</StatusBadge>}
+                                            {status === 'approved' && (
+                                                <StatusBadge className="approved">
+                                                    완료 {approver ? `(승인: ${approver.name})` : ''}
+                                                </StatusBadge>
+                                            )}
+                                        </StudentInfo>
                                         {selectedMission?.isFixed && (
-                                            <StyledButton
-                                                onClick={(e) => handleHistoryView(e, player)}
-                                                style={{ marginLeft: '1rem' }}
-                                            >
+                                            <StyledButton onClick={(e) => handleHistoryView(e, player)}>
                                                 기록 보기
                                             </StyledButton>
-                                        )}
-
-                                        {status === 'pending' && <span className="status-badge pending">승인 대기중</span>}
-                                        {status === 'approved' && (
-                                            <span className="status-badge approved">
-                                                완료 {approver ? `(승인: ${approver.name})` : ''}
-                                            </span>
                                         )}
                                     </StudentSummary>
                                     {submission && (
@@ -367,6 +380,7 @@ function RecorderPage() {
                     onClose={() => setIsHistoryModalOpen(false)}
                     missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
                     history={missionHistory}
+                    student={selectedStudentForHistory}
                 />
             )}
         </RecorderWrapper>
