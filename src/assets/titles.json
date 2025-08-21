@@ -65,7 +65,7 @@
     {
         "id": "daily_helper",
         "name": "일일 헬퍼",
-        "description": "오늘의 도우미, 학습 도우미 활동",
+        "description": "눈에 보이지 않는 곳에서도 다른 사람 돕기를 즐기는군요!",
         "icon": "💡",
         "color": "#fd7e14",
         "type": "manual",
@@ -74,7 +74,7 @@
     {
         "id": "star_of_compliments",
         "name": "칭찬의 주인공",
-        "description": "칭찬 샤워, 롤링페이퍼 등에서 긍정적 평가",
+        "description": "월별 쪽지상담에서 긍정적 평가",
         "icon": "🎤",
         "color": "#6f42c1",
         "type": "manual",
@@ -91,8 +91,8 @@
     },
     {
         "id": "class_dj",
-        "name": "클래스 DJ",
-        "description": "학급에 좋은 음악이나 분위기를 선물했을 때",
+        "name": "평화사절단",
+        "description": "학급에 좋은 분위기를 선물했을 때",
         "icon": "🎵",
         "color": "#e83e8c",
         "type": "manual",
@@ -101,10 +101,19 @@
     {
         "id": "god_of_tidiness",
         "name": "정리 정돈의 신",
-        "description": "교실 환경 미화에 기여했을 때",
+        "description": "교실 환경 미화에 꾸준히 기여했을 때",
         "icon": "🧹",
         "color": "#20c997",
         "type": "manual",
         "conditionId": null
-    }
+    },
+    {
+        "id": "point_rich",
+        "name": "포인트 부자",
+        "description": "현재 보유 포인트 10,000P 이상 달성",
+        "icon": "💰",
+        "color": "#f0ad4e",
+        "type": "auto",
+        "conditionId": "point_10000_owned"
+      }
 ]

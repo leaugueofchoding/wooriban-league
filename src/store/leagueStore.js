@@ -50,6 +50,7 @@ import {
     deleteAllNotifications,
     getTitles,
     seedInitialTitles, // [추가] 칭호 자동 등록 함수 import
+    grantTitleToPlayer,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -603,6 +604,18 @@ export const useLeagueStore = create((set, get) => ({
                 return b.goalsFor - a.goalsFor;
             });
 
+            // --- [수정 시작] 칭호 부여 로직 추가 ---
+            // 1. 우승팀에게 '리그의 지배자' 칭호 부여
+            if (stats.length > 0) {
+                const winningTeamId = stats[0].id;
+                const winningTeam = teams.find(t => t.id === winningTeamId);
+                if (winningTeam && winningTeam.members.length > 0) {
+                    for (const memberId of winningTeam.members) {
+                        await grantTitleToPlayer(memberId, 'ruler_of_the_league');
+                    }
+                }
+            }
+
             const prizeConfig = [
                 { rank: 1, prize: season.winningPrize || 0, label: "우승" },
                 { rank: 2, prize: season.secondPlacePrize || 0, label: "준우승" },
@@ -619,26 +632,31 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
+            // 2. 득점왕에게 '득점 기계' 칭호 부여
             const topScorerPrize = season.topScorerPrize || 0;
-            if (topScorerPrize > 0) {
-                const scorerPoints = {};
-                completedMatches.forEach(match => {
-                    if (match.scorers) {
-                        Object.entries(match.scorers).forEach(([playerId, goals]) => {
-                            scorerPoints[playerId] = (scorerPoints[playerId] || 0) + goals;
-                        });
-                    }
-                });
+            const scorerPoints = {};
+            completedMatches.forEach(match => {
+                if (match.scorers) {
+                    Object.entries(match.scorers).forEach(([playerId, goals]) => {
+                        scorerPoints[playerId] = (scorerPoints[playerId] || 0) + goals;
+                    });
+                }
+            });
 
-                const maxGoals = Math.max(0, ...Object.values(scorerPoints));
+            const maxGoals = Math.max(0, ...Object.values(scorerPoints));
 
-                if (maxGoals > 0) {
-                    const topScorers = Object.keys(scorerPoints).filter(playerId => scorerPoints[playerId] === maxGoals);
-                    if (topScorers.length > 0) {
+            if (maxGoals > 0) {
+                const topScorers = Object.keys(scorerPoints).filter(playerId => scorerPoints[playerId] === maxGoals);
+                if (topScorers.length > 0) {
+                    if (topScorerPrize > 0) {
                         await get().batchAdjustPoints(topScorers, topScorerPrize, `${season.seasonName} 득점왕 보상`);
+                    }
+                    for (const scorerId of topScorers) {
+                        await grantTitleToPlayer(scorerId, 'goal_machine');
                     }
                 }
             }
+            // --- [수정 끝] ---
 
             const playersInSeason = teams.flatMap(team => team.members)
                 .map(playerId => players.find(p => p.id === playerId))
@@ -650,16 +668,17 @@ export const useLeagueStore = create((set, get) => ({
 
             await updateSeason(season.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));
-            alert('시즌이 종료되고 순위별 보상이 지급되었습니다.');
+            alert('시즌이 종료되고 순위별 보상 및 칭호가 지급되었습니다.');
 
         } catch (error) {
             console.error("시즌 종료 및 보상 지급 오류:", error);
             alert("시즌 종료 중 오류가 발생했습니다.");
         }
     },
-
+    // 교체할 부분의 아랫 한 줄 코드
     updateSeasonDetails: async (seasonId, dataToUpdate) => {
         try {
+
             await updateSeason(seasonId, dataToUpdate);
             set(state => ({
                 seasons: state.seasons.map(s => s.id === seasonId ? { ...s, ...dataToUpdate } : s),

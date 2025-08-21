@@ -50,7 +50,8 @@ import {
     createTitle,
     updateTitle,
     deleteTitle,
-    grantTitleToPlayer
+    grantTitleToPlayerManually,
+    adjustPlayerPoints
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
@@ -3211,10 +3212,11 @@ function TitleManager() {
     const handleAssignTitle = async () => {
         if (!selectedPlayerId) return alert('학생을 선택하세요.');
         try {
-            await grantTitleToPlayer(selectedPlayerId, isAssignMode);
-            alert('칭호를 부여했습니다.');
+            await grantTitleToPlayerManually(selectedPlayerId, isAssignMode);
+            alert('칭호를 성공적으로 부여하고 500P 보상을 지급했습니다.');
             setSelectedPlayerId('');
             setIsAssignMode(null);
+            fetchInitialData(); // 학생 데이터를 새로고침하여 포인트 변경사항을 반영
         } catch (error) {
             alert(`부여 실패: ${error.message}`);
         }

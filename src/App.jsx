@@ -21,8 +21,8 @@ import RecorderDashboardPage from './pages/RecorderDashboardPage';
 import PlayerStatsPage from './pages/PlayerStatsPage';
 import TeamDetailPage from './pages/TeamDetailPage';
 import SuggestionPage from './pages/SuggestionPage';
-import MyRoomPage from './pages/MyRoomPage'; // [신규] 마이룸 페이지 import
-import BroadcastPage from './pages/BroadcastPage'; // [신규] TV 송출용 페이지 import
+import MyRoomPage from './pages/MyRoomPage';
+import BroadcastPage from './pages/BroadcastPage';
 
 
 // Common Components
@@ -69,12 +69,13 @@ function AccessDenied() {
   return (
     <AccessDeniedWrapper>
       <AccessDeniedMessage>🚫 접근 권한이 없습니다.</AccessDeniedMessage>
-      <p>로그인 후 리그에 참가해야 이용할 수 있는 페이지입니다.</p>
+      <p>이 페이지에 접근할 수 있는 권한이 없거나, 로그인이 필요합니다.</p>
       <GoToHomeButton to="/">대시보드로 돌아가기</GoToHomeButton>
     </AccessDeniedWrapper>
   );
 }
 
+// [신규] 모든 리그 참가자를 위한 접근 제어
 const ProtectedRoute = ({ children }) => {
   const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -96,11 +97,33 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+// [신규] 관리자 전용 접근 제어
+const AdminRoute = ({ children }) => {
+  const { players, isLoading } = useLeagueStore();
+  const currentUser = auth.currentUser;
+  const location = useLocation();
+
+  const myPlayerData = useMemo(() => {
+    if (!currentUser || players.length === 0) return null;
+    return players.find(p => p.authUid === currentUser.uid);
+  }, [players, currentUser]);
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!currentUser || !myPlayerData || myPlayerData.role !== 'admin') {
+    return <Navigate to="/access-denied" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
 
 function App() {
   const {
     isLoading, setLoading, fetchInitialData, cleanupListeners,
-    checkAttendance, pointAdjustmentNotification // <-- [추가] pointAdjustmentNotification state 가져오기
+    checkAttendance, pointAdjustmentNotification
   } = useLeagueStore();
   const [authChecked, setAuthChecked] = useState(false);
   const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false);
@@ -132,7 +155,6 @@ function App() {
       <AppWrapper>
         <Auth user={auth.currentUser} />
         <AttendanceModal />
-        {/* ▼▼▼ [수정] pointAdjustmentNotification이 있을 때만 모달 렌더링 ▼▼▼ */}
         {pointAdjustmentNotification && <PointAdjustmentModal />}
         <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>
@@ -144,11 +166,12 @@ function App() {
             <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="/league/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
 
-
             <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
             <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-            <Route path="/admin/:tab" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+
+            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+            <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
+
             <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
 
             <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />

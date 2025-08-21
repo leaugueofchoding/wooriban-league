@@ -139,7 +139,24 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
   const submissionsSnapshot = await getDocs(qSubmissions);
   const approvedMissionCount = submissionsSnapshot.size;
 
-  // 3. 각 칭호의 획득 조건 확인 및 부여
+  // 3. 학생의 모든 '정답' 퀴즈 기록 수 세기
+  const quizHistoryRef = collection(db, "quiz_history");
+  const qQuiz = query(quizHistoryRef, where("studentId", "==", studentId), where("isCorrect", "==", true));
+  const quizSnapshot = await getDocs(qQuiz);
+  const correctQuizCount = quizSnapshot.size;
+
+  // 4. 학생의 누적 기부액 계산
+  const contributionsQuery = query(collectionGroup(db, 'contributions'), where('playerId', '==', studentId));
+  const contributionsSnapshot = await getDocs(contributionsQuery);
+  const totalDonation = contributionsSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+
+  // 5. 학생의 마이룸 '좋아요' 수 계산
+  const likesQuery = query(collection(db, "players", studentId, "myRoomLikes"));
+  const likesSnapshot = await getDocs(likesQuery);
+  const myRoomLikesCount = likesSnapshot.size;
+
+
+  // 각 칭호의 획득 조건 확인 및 부여
   for (const title of autoTitles) {
     // 이미 보유한 칭호는 건너뛰기
     if (playerData.ownedTitles && playerData.ownedTitles.includes(title.id)) {
@@ -153,6 +170,20 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
     }
     // 추후 다른 자동 획득 칭호 조건을 여기에 추가 (예: quiz_50_correct, league_winner 등)
 
+    if (title.conditionId === 'mission_30_completed' && approvedMissionCount >= 30) {
+      conditionMet = true;
+    } else if (title.conditionId === 'quiz_50_correct' && correctQuizCount >= 50) {
+      conditionMet = true;
+    } else if (title.conditionId === 'point_10000_owned' && playerData.points >= 10000) {
+      conditionMet = true;
+    } else if (title.conditionId === 'donation_5000_points' && totalDonation >= 5000) {
+      conditionMet = true;
+    } else if (title.conditionId === 'myroom_20_likes' && myRoomLikesCount >= 20) {
+      conditionMet = true;
+    } else if (title.conditionId === 'attendance_30_consecutive' && (playerData.consecutiveAttendanceDays || 0) >= 30) {
+      conditionMet = true;
+    }
+
     if (conditionMet) {
       await grantTitleToPlayer(studentId, title.id);
       createNotification(
@@ -162,6 +193,22 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
         "title_acquired"
       );
     }
+    if (conditionMet) {
+      await grantTitleToPlayer(studentId, title.id);
+
+      // 칭호 획득 알림 생성
+      createNotification(
+        studentAuthUid,
+        `✨ 칭호 획득! [${title.name}]`,
+        title.description,
+        "title_acquired",
+        "/profile"
+      );
+
+      // [추가] 칭호 획득 보상 500P 지급 및 모달 호출
+      await adjustPlayerPoints(studentId, 500, `칭호 [${title.name}] 획득 보상`);
+    }
+    // 교체할 부분의 아랫 한 줄 코드
   }
 }
 
@@ -511,7 +558,7 @@ export async function submitSuggestion(suggestionData) {
 
   // [추가] 관리자 및 기록원에게 알림 전송
   const playersRef = collection(db, 'players');
-  const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
+  const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
   adminRecorderSnapshot.forEach(userDoc => {
     const user = userDoc.data();
@@ -985,6 +1032,16 @@ export async function submitQuizAnswer(studentId, quizId, userAnswer, correctAns
     }
   }
 
+  if (isCorrect) {
+    const playerDoc = await getDoc(doc(db, 'players', studentId));
+    if (playerDoc.exists()) {
+      const playerData = playerDoc.data();
+      await adjustPlayerPoints(studentId, 50, `'${quizId}' 퀴즈 정답`);
+      // [추가] 퀴즈 정답 후, 자동 칭호 획득 조건을 확인합니다.
+      await checkAndGrantAutoTitles(studentId, playerData.authUid);
+    }
+  }
+
   return isCorrect;
 }
 
@@ -1209,7 +1266,6 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
     const playerData = playerDoc.data();
     const goalData = goalDoc.data();
 
-    // ▼▼▼ [수정] 목표 상태 확인 로직 추가 ▼▼▼
     if (goalData.status === 'paused') {
       throw new Error("현재 기부가 일시중단된 목표입니다.");
     }
@@ -1251,8 +1307,12 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
         }
       });
     }
+
+    // [위치 수정] 이 줄을 runTransaction 안으로 이동했습니다.
+    await checkAndGrantAutoTitles(playerId, playerData.authUid);
   });
 }
+
 
 // ▼▼▼ [추가] 목표 상태를 변경하는 함수 추가 ▼▼▼
 export async function updateClassGoalStatus(goalId, newStatus) {
@@ -1422,13 +1482,28 @@ export async function grantAttendanceReward(playerId, rewardAmount) {
   const playerRef = doc(db, "players", playerId);
   const todayStr = getTodayDateString();
 
+  // 어제 날짜 계산
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+  const playerDoc = await getDoc(playerRef);
+  if (!playerDoc.exists()) return;
+  const playerData = playerDoc.data();
+
+  // 연속 출석일 계산
+  let consecutiveDays = playerData.consecutiveAttendanceDays || 0;
+  if (playerData.lastAttendance === yesterdayStr) {
+    consecutiveDays += 1; // 어제도 출석했으면 +1
+  } else {
+    consecutiveDays = 1; // 연속 출석이 끊겼으면 1로 초기화
+  }
+
   await updateDoc(playerRef, {
     points: increment(rewardAmount),
     lastAttendance: todayStr,
+    consecutiveAttendanceDays: consecutiveDays,
   });
-
-  const playerDoc = await getDoc(playerRef);
-  const playerData = playerDoc.data();
 
   await addPointHistory(
     playerData.authUid,
@@ -1440,9 +1515,12 @@ export async function grantAttendanceReward(playerId, rewardAmount) {
   createNotification(
     playerData.authUid,
     "🎉 출석 체크 완료!",
-    `오늘의 출석 보상으로 ${rewardAmount}P를 획득했습니다.`,
+    `오늘의 출석 보상으로 ${rewardAmount}P를 획득했습니다. (${consecutiveDays}일 연속 출석)`,
     'attendance'
   );
+
+  // [추가] 출석 보상 지급 후, 자동 칭호 획득 조건을 확인합니다.
+  await checkAndGrantAutoTitles(playerId, playerData.authUid);
 }
 
 export async function getAvatarMemorials(seasonId) {
@@ -1550,7 +1628,7 @@ export async function likeMyRoom(roomId, likerId, likerName) {
   const likerRef = doc(db, "players", likerId);
   const likeHistoryRef = doc(db, "players", roomId, "myRoomLikes", likerId);
 
-  const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM' 형식
+  const currentMonth = new Date().toISOString().slice(0, 7);
 
   return runTransaction(db, async (transaction) => {
     const likeHistorySnap = await transaction.get(likeHistoryRef);
@@ -1558,29 +1636,30 @@ export async function likeMyRoom(roomId, likerId, likerName) {
       throw new Error("이번 달에는 이미 '좋아요'를 눌렀습니다.");
     }
 
-    // 1. 좋아요 누른 사람에게 100P 보상
     transaction.update(likerRef, { points: increment(100) });
-
-    // 2. 마이룸 주인의 likes 필드 업데이트 (누가, 언제 눌렀는지 기록)
     transaction.set(likeHistoryRef, {
       likerName: likerName,
       lastLikedMonth: currentMonth,
       timestamp: serverTimestamp()
     }, { merge: true });
 
-    // 3. 포인트 변동 내역 기록
     const roomOwnerSnap = await transaction.get(roomOwnerRef);
     const roomOwnerName = roomOwnerSnap.data()?.name || '친구';
     await addPointHistory(likerId, likerName, 100, `${roomOwnerName}의 마이룸 '좋아요' 보상`);
 
-    // 4. 마이룸 주인에게 알림 전송
     createNotification(
-      roomId, // 알림을 받을 사람 (마이룸 주인)
+      roomId,
       `❤️ ${likerName}님이 내 마이룸을 좋아합니다!`,
       "내 마이룸을 방문해서 확인해보세요!",
       "myroom_like",
       `/my-room/${roomId}`
     );
+
+    // [위치 수정] '좋아요'를 받은 후, 방 주인의 자동 칭호 획득 조건을 확인합니다.
+    if (roomOwnerSnap.exists()) {
+      const roomOwnerData = roomOwnerSnap.data();
+      await checkAndGrantAutoTitles(roomId, roomOwnerData.authUid);
+    }
   });
 }
 
@@ -2162,6 +2241,43 @@ export async function grantTitleToPlayer(playerId, titleId) {
   });
 }
 
+// 교체할 내용
+/**
+ * [신규] 관리자가 학생에게 칭호를 수동으로 부여하고 보상을 지급합니다.
+ * @param {string} playerId - 칭호를 받을 학생의 ID
+ * @param {string} titleId - 부여할 칭호의 ID
+ */
+export async function grantTitleToPlayerManually(playerId, titleId) {
+  const playerRef = doc(db, "players", playerId);
+  const playerSnap = await getDoc(playerRef);
+
+  if (!playerSnap.exists()) {
+    throw new Error("플레이어를 찾을 수 없습니다.");
+  }
+  const playerData = playerSnap.data();
+
+  // 이미 칭호를 소유하고 있는지 확인
+  if (playerData.ownedTitles && playerData.ownedTitles.includes(titleId)) {
+    throw new Error("이미 소유하고 있는 칭호입니다.");
+  }
+
+  // 칭호 정보 가져오기 (보상 메시지에 사용)
+  const titleRef = doc(db, "titles", titleId);
+  const titleSnap = await getDoc(titleRef);
+  if (!titleSnap.exists()) {
+    throw new Error("칭호 정보를 찾을 수 없습니다.");
+  }
+  const title = titleSnap.data();
+
+  // 1. 칭호 부여
+  await updateDoc(playerRef, {
+    ownedTitles: arrayUnion(titleId)
+  });
+
+  // 2. 보상 지급 (adjustPlayerPoints 재활용)
+  await adjustPlayerPoints(playerId, 500, `칭호 [${title.name}] 획득 보상`);
+}
+// 교체할 부분의 아랫 한 줄 코드
 /**
  * 학생이 장착할 칭호를 설정합니다.
  * @param {string} playerId - 학생 ID
