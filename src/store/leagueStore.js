@@ -438,17 +438,34 @@ export const useLeagueStore = create((set, get) => ({
     subscribeToNotifications: (userId) => {
         const notifsRef = collection(db, 'notifications');
         const q = query(notifsRef, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(20));
+
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const notifications = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const unreadCount = notifications.filter(n => !n.isRead).length;
+            const notifications = [];
+            let unreadCount = 0;
 
+            querySnapshot.forEach(doc => {
+                const notification = { id: doc.id, ...doc.data() };
+                notifications.push(notification);
+                if (!notification.isRead) {
+                    unreadCount++;
+                }
+            });
+
+            // 가장 최근의 읽지 않은 포인트 조정 알림을 찾습니다.
             const latestPointNotification = notifications.find(n => n.type === 'point' && !n.isRead && n.data);
-            if (latestPointNotification) {
-                set({ pointAdjustmentNotification: latestPointNotification });
-            }
 
-            set({ notifications, unreadNotificationCount: unreadCount });
+            // 상태를 업데이트합니다.
+            set(state => {
+                // 새로운 포인트 조정 알림이 있고, 현재 표시된 알림과 다를 경우에만 상태를 업데이트합니다.
+                if (latestPointNotification && latestPointNotification.id !== state.pointAdjustmentNotification?.id) {
+                    return { notifications, unreadNotificationCount: unreadCount, pointAdjustmentNotification: latestPointNotification };
+                }
+                // 그 외의 경우에는 일반 알림 목록과 카운트만 업데이트합니다.
+                return { notifications, unreadNotificationCount: unreadCount };
+            });
+
         }, (error) => console.error("알림 실시간 수신 오류:", error));
+
         set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
     subscribeToRecorderBonus: (userId) => {
