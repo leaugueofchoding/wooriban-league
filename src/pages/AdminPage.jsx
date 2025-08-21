@@ -3151,7 +3151,7 @@ function LeagueManager() {
 // ▼▼▼ [신규] 칭호 관리 컴포넌트 ▼▼▼
 // =================================================================
 function TitleManager() {
-    const { players } = useLeagueStore();
+    const { players, fetchInitialData } = useLeagueStore(); // fetchInitialData 추가
     const [titles, setTitles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editingTitle, setEditingTitle] = useState(null); // 생성 또는 수정 중인 칭호 데이터
@@ -3232,9 +3232,8 @@ function TitleManager() {
 
                 {editingTitle && (
                     <div style={{ border: '1px solid #ccc', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                        {/* ▼▼▼ [수정] 아이콘 프리셋 선택 UI ▼▼▼ */}
                         <InputGroup>
-                            <div style={{ flex: 1, border: '1px solid #ccc', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, border: '1px solid #ccc', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                                 {['🏆', '🧠', '👑', '⚽', '🕊️', '⭐', '🌳', '💡', '🎤', '🏦', '🎵', '🧹', '🥇', '🥈', '🥉'].map(icon => (
                                     <button
                                         key={icon}
@@ -3250,6 +3249,14 @@ function TitleManager() {
                                         {icon}
                                     </button>
                                 ))}
+                                <input
+                                    type="text"
+                                    value={editingTitle.icon || ''}
+                                    onChange={e => setEditingTitle(p => ({ ...p, icon: e.target.value }))}
+                                    placeholder="직접 입력"
+                                    style={{ width: '100px', padding: '0.5rem', fontSize: '1rem' }}
+                                    maxLength="2"
+                                />
                             </div>
                         </InputGroup>
                         <InputGroup>

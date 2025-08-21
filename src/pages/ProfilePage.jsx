@@ -228,7 +228,7 @@ const AccordionContent = styled.div`
 
 const EquippedTitle = styled.div`
   position: absolute;
-  top: -10px;
+  top: -30px;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;

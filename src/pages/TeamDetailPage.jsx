@@ -6,7 +6,6 @@ import { useLeagueStore } from '../store/leagueStore';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { auth, updateTeamInfo, uploadTeamEmblem } from '../api/firebase';
-// ▼▼▼ [수정] emblemMap, presetEmblems, defaultEmblem을 모두 import ▼▼▼
 import { emblemMap, presetEmblems } from '../utils/emblemMap';
 import defaultEmblem from '../assets/default-emblem.png';
 
@@ -36,7 +35,7 @@ const TeamEmblem = styled.img`
   background-color: #fff;
   border: 4px solid #fff;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  cursor: pointer; /* [추가] 클릭 가능하도록 커서 변경 */
+  cursor: pointer;
 `;
 
 const TeamInfo = styled.div`
@@ -119,7 +118,9 @@ const MemberCard = styled(Link)`
   text-align: center;
   text-decoration: none;
   color: inherit;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 `;
 
 const AvatarDisplay = styled.div`
@@ -127,7 +128,7 @@ const AvatarDisplay = styled.div`
   height: 80px;
   border-radius: 50%;
   background-color: #e9ecef;
-  margin: 0 auto 0.5rem;
+  margin: 0 auto;
   position: relative;
   overflow: hidden;
   border: 3px solid #fff;
@@ -170,14 +171,13 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
-// ▼▼▼ [수정] max-height와 overflow-y 속성 추가 ▼▼▼
 const MatchHistoryList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 300px; /* 최대 높이를 300px로 제한 */
-  overflow-y: auto; /* 내용이 넘칠 경우 세로 스크롤 생성 */
-  padding-right: 0.5rem; /* 스크롤바 공간 확보 */
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 `;
 
 const MatchHistoryItem = styled.div`
@@ -237,10 +237,22 @@ const ModalEmblem = styled.img`
     object-fit: contain;
 `;
 
+const MemberTitle = styled.div`
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  display: inline-block;
+  color: ${props => props.color || '#343a40'};
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+`;
+
+
 function TeamDetailPage() {
     const { teamId } = useParams();
     const navigate = useNavigate();
-    const { teams, players, matches, avatarParts, currentSeason, fetchInitialData } = useLeagueStore();
+    const { teams, players, matches, avatarParts, currentSeason, fetchInitialData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
 
     const [isEditing, setIsEditing] = useState(false);
@@ -261,6 +273,8 @@ function TeamDetailPage() {
             const player = players.find(p => p.id === id);
             if (!player) return null;
 
+            const equippedTitle = player.equippedTitle ? titles.find(t => t.id === player.equippedTitle) : null;
+
             const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const urls = [baseAvatar];
             const config = player.avatarConfig || {};
@@ -280,9 +294,9 @@ function TeamDetailPage() {
                 });
             }
 
-            return { ...player, avatarUrls: urls };
+            return { ...player, avatarUrls: urls, equippedTitle };
         }).filter(Boolean);
-    }, [teamData, players, avatarParts]);
+    }, [teamData, players, avatarParts, titles]);
 
     const { teamStats, teamMatches } = useMemo(() => {
         if (!teamData || !currentSeason) return { teamStats: { wins: 0, draws: 0, losses: 0 }, teamMatches: [] };
@@ -344,7 +358,7 @@ function TeamDetailPage() {
         const file = e.target.files[0];
         if (file) {
             setNewEmblemFile(file);
-            setNewEmblemId(''); // 프리셋 선택 해제
+            setNewEmblemId('');
         }
     }
 
@@ -429,6 +443,11 @@ function TeamDetailPage() {
                                             <PartImage key={`${url}-${index}`} src={url} alt={`player-avatar-part-${index}`} />
                                         ))}
                                     </AvatarDisplay>
+                                    {player.equippedTitle && (
+                                        <MemberTitle color={player.equippedTitle.color}>
+                                            {player.equippedTitle.icon} {player.equippedTitle.name}
+                                        </MemberTitle>
+                                    )}
                                     <PlayerName>{player.name}</PlayerName>
                                     {teamData.captainId === player.id && <CaptainBadge>Ⓒ</CaptainBadge>}
                                 </MemberCard>
