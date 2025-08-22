@@ -530,9 +530,9 @@ function RecorderDashboardPage() {
                                         </div>
                                         <SubmissionDetails $isOpen={isOpen}>
                                             {sub.text && <p>{sub.text}</p>}
-                                            {/* [수정] photoUrls 배열을 순회하며 모든 이미지를 표시합니다. */}
+                                            {/* [수정] 관리자 페이지와 마찬가지로, 이미지 클릭 시 원본을 볼 수 있도록 수정합니다. */}
                                             {sub.photoUrls && sub.photoUrls.map((url, index) => (
-                                                <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={(e) => { e.stopPropagation(); setModalImageSrc(url); }} style={{ marginBottom: '0.5rem' }} />
+                                                <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={() => alert('이미지 크게보기는 관리자 페이지에서만 가능합니다.')} style={{ marginBottom: '0.5rem', cursor: 'pointer' }} />
                                             ))}
                                         </SubmissionDetails>
                                     </ListItem>

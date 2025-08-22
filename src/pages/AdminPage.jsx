@@ -54,7 +54,7 @@ import {
     adjustPlayerPoints
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
-
+import ImageModal from '../components/ImageModal'; // [추가] 이미지 모달 컴포넌트 import
 
 // --- Styled Components ---
 const AdminWrapper = styled.div`
@@ -818,7 +818,7 @@ const SaleBadge = styled.div`
 
 // --- Components ---
 
-function PendingMissionWidget() {
+function PendingMissionWidget({ setModalImageSrc }) {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
@@ -827,7 +827,7 @@ function PendingMissionWidget() {
 
     useEffect(() => {
         const submissionsRef = collection(db, "missionSubmissions");
-        const q = query(submissionsRef, where("status", "==", "pending"));
+        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -840,7 +840,7 @@ function PendingMissionWidget() {
         return () => unsubscribe();
     }, [missions]);
 
-    const handleAction = async (action, submission, reward) => { // reward 파라미터 추가
+    const handleAction = async (action, submission, reward) => {
         setProcessingIds(prev => new Set(prev.add(submission.id)));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
@@ -857,7 +857,6 @@ function PendingMissionWidget() {
 
         try {
             if (action === 'approve') {
-                // 전달받은 reward 값을 사용
                 await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
             } else if (action === 'reject') {
                 await rejectMissionSubmission(submission.id, student.authUid, mission.title);
@@ -880,8 +879,8 @@ function PendingMissionWidget() {
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
                         const isOpen = expandedSubmissionId === sub.id;
-                        const hasContent = sub.text || sub.photoUrl;
-                        const isTieredReward = mission?.rewards && mission.rewards.length > 1; // 이 줄을 추가했습니다.
+                        const hasContent = sub.text || (sub.photoUrls && sub.photoUrls.length > 0);
+                        const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
                         if (!mission) return null;
 
@@ -891,7 +890,7 @@ function PendingMissionWidget() {
                                     <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {student?.name} - [{mission?.title}]
                                         {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
-                                        {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
+                                        {sub.photoUrls && sub.photoUrls.length > 0 && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
                                     </span>
                                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                         {isTieredReward ? (
@@ -925,9 +924,8 @@ function PendingMissionWidget() {
                                 </div>
                                 <SubmissionDetails $isOpen={isOpen}>
                                     {sub.text && <p>{sub.text}</p>}
-                                    {/* [수정] photoUrls 배열을 순회하며 모든 이미지를 표시합니다. */}
                                     {sub.photoUrls && sub.photoUrls.map((url, index) => (
-                                        <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={(e) => { e.stopPropagation(); setModalImageSrc(url); }} style={{ marginBottom: '0.5rem' }} />
+                                        <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={(e) => { e.stopPropagation(); setModalImageSrc(url); }} style={{ marginBottom: '0.5rem', cursor: 'pointer' }} />
                                     ))}
                                 </SubmissionDetails>
                             </ListItem>
@@ -3326,12 +3324,13 @@ function AdminPage() {
     const { players } = useLeagueStore();
     const { tab } = useParams();
     const location = useLocation();
-    const navigate = useNavigate(); // [수정] navigate 훅 사용
+    const navigate = useNavigate();
     const [activeMenu, setActiveMenu] = useState(tab || 'mission');
     const [activeSubMenu, setActiveSubMenu] = useState('messages');
     const [studentSubMenu, setStudentSubMenu] = useState('point');
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
     const [preselectedStudentId, setPreselectedStudentId] = useState(null);
+    const [modalImageSrc, setModalImageSrc] = useState(null); // [추가] 이미지 모달 상태
 
     useEffect(() => {
         const studentIdFromState = location.state?.preselectedStudentId;
@@ -3354,7 +3353,8 @@ function AdminPage() {
             return (
                 <>
                     <GridContainer>
-                        <PendingMissionWidget />
+                        {/* [수정] setModalImageSrc 함수를 props로 전달합니다. */}
+                        <PendingMissionWidget setModalImageSrc={setModalImageSrc} />
                         <MissionManager />
                     </GridContainer>
                     <GoalManager />
@@ -3408,61 +3408,63 @@ function AdminPage() {
             setActiveSubMenu('');
         }
     };
-
     return (
-        <AdminWrapper>
-            <Sidebar>
-                <BroadcastButton to="/broadcast" target="_blank">📺 방송 송출 화면</BroadcastButton>
-                <NavList>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
-                    </NavItem>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'social'} onClick={() => handleMenuClick('social')}>소셜 관리</NavButton>
-                        {activeMenu === 'social' && (
-                            <SubNavList>
-                                <SubNavItem><SubNavButton $active={activeSubMenu === 'messages'} onClick={() => setActiveSubMenu('messages')}>1:1 메시지</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={activeSubMenu === 'comments'} onClick={() => setActiveSubMenu('comments')}>마이룸 댓글 모음</SubNavButton></SubNavItem>
-                            </SubNavList>
-                        )}
-                    </NavItem>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
-                        {activeMenu === 'student' && (
-                            <SubNavList>
-                                <SubNavItem><SubNavButton $active={studentSubMenu === 'point'} onClick={() => setStudentSubMenu('point')}>포인트/역할</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={studentSubMenu === 'list'} onClick={() => setStudentSubMenu('list')}>학생 목록</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={studentSubMenu === 'attendance'} onClick={() => setStudentSubMenu('attendance')}>출석 확인</SubNavButton></SubNavItem>
-                            </SubNavList>
-                        )}
-                    </NavItem>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'shop'} onClick={() => handleMenuClick('shop')}>상점 관리</NavButton>
-                        {activeMenu === 'shop' && (
-                            <SubNavList>
-                                <SubNavItem><SubNavButton $active={shopSubMenu === 'avatar'} onClick={() => setShopSubMenu('avatar')}>아바타 아이템</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={shopSubMenu === 'myroom'} onClick={() => setShopSubMenu('myroom')}>마이룸 아이템</SubNavButton></SubNavItem>
-                            </SubNavList>
-                        )}
-                    </NavItem>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'league'} onClick={() => handleMenuClick('league')}>가가볼 리그 관리</NavButton>
-                        {activeMenu === 'league' && (
-                            <SubNavList>
-                                <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
-                            </SubNavList>
-                        )}
-                    </NavItem>
-                    <NavItem>
-                        <NavButton $active={activeMenu === 'title'} onClick={() => handleMenuClick('title')}>칭호 관리</NavButton>
-                    </NavItem>
-                </NavList>
-            </Sidebar>
-            <MainContent>
-                <Title>👑 관리자 대시보드</Title>
-                {renderContent()}
-            </MainContent>
-        </AdminWrapper>
+        <>
+            <ImageModal src={modalImageSrc} onClose={() => setModalImageSrc(null)} />
+            <AdminWrapper>
+                <Sidebar>
+                    <BroadcastButton to="/broadcast" target="_blank">📺 방송 송출 화면</BroadcastButton>
+                    <NavList>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'social'} onClick={() => handleMenuClick('social')}>소셜 관리</NavButton>
+                            {activeMenu === 'social' && (
+                                <SubNavList>
+                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'messages'} onClick={() => setActiveSubMenu('messages')}>1:1 메시지</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'comments'} onClick={() => setActiveSubMenu('comments')}>마이룸 댓글 모음</SubNavButton></SubNavItem>
+                                </SubNavList>
+                            )}
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
+                            {activeMenu === 'student' && (
+                                <SubNavList>
+                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'point'} onClick={() => setStudentSubMenu('point')}>포인트/역할</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'list'} onClick={() => setStudentSubMenu('list')}>학생 목록</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'attendance'} onClick={() => setStudentSubMenu('attendance')}>출석 확인</SubNavButton></SubNavItem>
+                                </SubNavList>
+                            )}
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'shop'} onClick={() => handleMenuClick('shop')}>상점 관리</NavButton>
+                            {activeMenu === 'shop' && (
+                                <SubNavList>
+                                    <SubNavItem><SubNavButton $active={shopSubMenu === 'avatar'} onClick={() => setShopSubMenu('avatar')}>아바타 아이템</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={shopSubMenu === 'myroom'} onClick={() => setShopSubMenu('myroom')}>마이룸 아이템</SubNavButton></SubNavItem>
+                                </SubNavList>
+                            )}
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'league'} onClick={() => handleMenuClick('league')}>가가볼 리그 관리</NavButton>
+                            {activeMenu === 'league' && (
+                                <SubNavList>
+                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
+                                </SubNavList>
+                            )}
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'title'} onClick={() => handleMenuClick('title')}>칭호 관리</NavButton>
+                        </NavItem>
+                    </NavList>
+                </Sidebar>
+                <MainContent>
+                    <Title>👑 관리자 대시보드</Title>
+                    {renderContent()}
+                </MainContent>
+            </AdminWrapper>
+        </>
     );
 }
 
