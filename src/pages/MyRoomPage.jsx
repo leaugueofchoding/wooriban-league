@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
-import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
@@ -590,6 +590,21 @@ function MyRoomPage() {
     }, {});
   }, [roomConfig.items]);
 
+  // [추가] 댓글과 좋아요 데이터를 한 번만 불러오는 함수를 만듭니다.
+  const fetchRoomSocialData = async () => {
+    if (!roomOwnerData) return;
+
+    // 댓글 불러오기 (getDocs 사용)
+    const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
+    const commentsSnapshot = await getDocs(commentsQuery);
+    setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+    // 좋아요 불러오기 (getDocs 사용)
+    const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
+    const likesSnapshot = await getDocs(likesQuery);
+    setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  };
+
   useEffect(() => {
     if (!roomOwnerData) return;
 
@@ -622,20 +637,9 @@ function MyRoomPage() {
       }
     });
 
-    const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
-    const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
-      setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    // [수정] onSnapshot 대신 위에서 만든 함수를 호출하여 데이터를 한 번만 불러옵니다.
+    fetchRoomSocialData();
 
-    const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
-    const unsubscribeLikes = onSnapshot(likesQuery, (snapshot) => {
-      setLikes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => {
-      unsubscribeComments();
-      unsubscribeLikes();
-    };
   }, [roomOwnerData]);
 
   const handleSelect = (e, instanceId) => {
@@ -813,6 +817,8 @@ function MyRoomPage() {
         text: newComment,
       });
       setNewComment("");
+      // [추가] 댓글을 성공적으로 등록한 후, 방명록 데이터를 새로고침합니다.
+      fetchRoomSocialData();
     } catch (error) {
       alert(`댓글 작성 실패: ${error.message}`);
     }

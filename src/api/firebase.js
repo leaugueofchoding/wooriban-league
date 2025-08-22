@@ -1623,6 +1623,12 @@ export async function getPlayerSeasonStats(playerId) {
     const playerTeam = allTeamsInSeason.find(t => t.members.includes(playerId));
 
     if (playerTeam) {
+      // [수정 시작] 해당 시즌의 '모든' 박제 정보를 한 번에 불러옵니다.
+      const memorialsRef = collection(db, 'seasons', seasonId, 'memorials');
+      const memorialsSnap = await getDocs(memorialsRef);
+      const memorialsMap = new Map(memorialsSnap.docs.map(doc => [doc.id, doc.data().avatarConfig]));
+      // [수정 끝]
+
       const allMatchesInSeason = await getMatches(seasonId);
       const completedMatches = allMatchesInSeason.filter(m => m.status === '완료');
 
@@ -1676,11 +1682,7 @@ export async function getPlayerSeasonStats(playerId) {
         else stats.draws++;
       });
 
-      // [추가] 해당 시즌의 아바타 메모리얼 정보 가져오기
-      const memorialRef = doc(db, 'seasons', seasonId, 'memorials', playerId);
-      const memorialSnap = await getDoc(memorialRef);
-      const memorialAvatarConfig = memorialSnap.exists() ? memorialSnap.data().avatarConfig : null;
-
+      // [수정] 불러온 모든 박제 정보를 statsBySeason 객체에 포함시킵니다.
       statsBySeason[seasonId] = {
         season,
         team: playerTeam,
@@ -1688,7 +1690,7 @@ export async function getPlayerSeasonStats(playerId) {
         isTopScorer,
         stats,
         matches: myCompletedMatches,
-        memorialAvatarConfig, // [추가] 박제된 아바타 정보 포함
+        memorialsMap, // memorialsMap을 여기에 포함
       };
     }
   }

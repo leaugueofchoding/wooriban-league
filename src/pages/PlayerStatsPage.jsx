@@ -230,8 +230,9 @@ function SeasonStatsCard({ seasonData }) {
             const memberData = players.find(p => p.id === memberId);
             if (!memberData) return null;
 
-            // [수정] 시즌 종료 시점의 아바타(memorial)가 있으면 그것을, 없으면 현재 아바타를 사용
-            const config = seasonData.memorialAvatarConfig || memberData.avatarConfig || {};
+            // [수정] memorialsMap에서 해당 팀원의 박제된 아바타 정보를 찾아 사용합니다.
+            const memorialConfig = seasonData.memorialsMap?.get(memberId);
+            const config = memorialConfig || memberData.avatarConfig || {};
 
             const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const urls = [baseAvatar];
