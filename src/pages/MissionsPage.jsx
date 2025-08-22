@@ -102,10 +102,11 @@ const FileInputLabel = styled.label`
     }
 `;
 
-const FileName = styled.span`
+const FileName = styled.div`
     font-size: 0.9rem;
     color: #6c757d;
-    margin-left: 1rem;
+    margin-top: 0.5rem;
+    padding-left: 1rem;
 `;
 
 
@@ -229,21 +230,26 @@ const isDateToday = (timestamp) => {
 
 
 function SubmissionDetailsView({ submission, isOpen }) {
-  if (!submission || (!submission.text && !submission.photoUrl)) {
+  // [수정] photoUrl을 photoUrls 배열로 변경하여 처리합니다.
+  if (!submission || (!submission.text && !submission.photoUrls)) {
     return null;
   }
 
   return (
     <SubmissionDetails $isOpen={isOpen}>
       {submission.text && <p>{submission.text}</p>}
-      {submission.photoUrl && <img src={submission.photoUrl} alt="제출된 사진" />}
+      {/* [수정] photoUrls 배열을 순회하며 모든 이미지를 보여줍니다. */}
+      {submission.photoUrls && submission.photoUrls.map((url, index) => (
+        <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} style={{ marginBottom: '0.5rem' }} />
+      ))}
     </SubmissionDetails>
   );
 }
 
-function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView }) {
+function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission }) {
   const { submitMissionForApproval } = useLeagueStore();
-  const [submissionContent, setSubmissionContent] = useState({ text: '', photo: null });
+  // [수정] photo를 photos 배열로 변경하여 여러 파일을 관리합니다.
+  const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [] });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
@@ -263,14 +269,13 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
   }, [submission, mission.isFixed]);
 
   useEffect(() => {
-    // [수정] 반려되었을 때는 이전 답변을, 처음 시작할 때는 문제 텍스트를 기본값으로 설정합니다.
+    // [수정] photos를 빈 배열로 초기화하도록 변경합니다.
     if (submission?.status === 'rejected') {
-      setSubmissionContent({ text: submission.text || '', photo: null });
+      setSubmissionContent({ text: submission.text || '', photos: [] });
     } else if (mission.placeholderText) {
-      // 템플릿 마지막에 줄바꿈을 추가하여 학생이 바로 답변을 입력하기 편하게 합니다.
-      setSubmissionContent({ text: mission.placeholderText + '\n\n', photo: null });
+      setSubmissionContent({ text: mission.placeholderText + '\n\n', photos: [] });
     } else {
-      setSubmissionContent({ text: '', photo: null });
+      setSubmissionContent({ text: '', photos: [] });
     }
   }, [submission, mission.placeholderText]);
 
@@ -285,9 +290,10 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
 
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSubmissionContent(prev => ({ ...prev, photo: file }));
+    // [수정] 여러 파일을 배열로 받아 처리합니다.
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      setSubmissionContent(prev => ({ ...prev, photos: files }));
     }
   };
 
@@ -297,7 +303,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
 
     if (isSubmissionRequired) {
       if (submissionType.includes('text') && !submissionContent.text.trim()) return alert('글 내용을 입력해주세요.');
-      if (submissionType.includes('photo') && !submissionContent.photo) return alert('사진 파일을 첨부해주세요.');
+      // [수정] photo를 photos 배열의 길이로 확인합니다.
+      if (submissionType.includes('photo') && submissionContent.photos.length === 0) return alert('사진 파일을 한 장 이상 첨부해주세요.');
     }
 
     setIsSubmitting(true);
@@ -397,17 +404,23 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
           {submissionType.includes('photo') && (
             <div>
               <FileInputLabel htmlFor={`file-${mission.id}`} disabled={isInputDisabled}>
-                📷 사진 첨부하기
+                📷 사진 첨부하기 (여러 장 가능)
                 <input
                   id={`file-${mission.id}`}
                   type="file"
                   accept="image/*"
+                  multiple // [추가] multiple 속성을 추가하여 여러 파일 선택을 활성화합니다.
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
                   disabled={isInputDisabled}
                 />
               </FileInputLabel>
-              {submissionContent.photo && <FileName>{submissionContent.photo.name}</FileName>}
+              {/* [수정] 선택된 파일 목록을 보여줍니다. */}
+              {submissionContent.photos.length > 0 && (
+                <FileName>
+                  {submissionContent.photos.map(f => f.name).join(', ')}
+                </FileName>
+              )}
             </div>
           )}
         </SubmissionArea>

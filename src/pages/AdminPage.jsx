@@ -925,7 +925,10 @@ function PendingMissionWidget() {
                                 </div>
                                 <SubmissionDetails $isOpen={isOpen}>
                                     {sub.text && <p>{sub.text}</p>}
-                                    {sub.photoUrl && <img src={sub.photoUrl} alt="제출된 사진" />}
+                                    {/* [수정] photoUrls 배열을 순회하며 모든 이미지를 표시합니다. */}
+                                    {sub.photoUrls && sub.photoUrls.map((url, index) => (
+                                        <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={(e) => { e.stopPropagation(); setModalImageSrc(url); }} style={{ marginBottom: '0.5rem' }} />
+                                    ))}
                                 </SubmissionDetails>
                             </ListItem>
                         )

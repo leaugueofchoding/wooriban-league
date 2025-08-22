@@ -300,34 +300,31 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   await batch.commit();
 }
 
-export async function uploadMissionSubmissionFile(missionId, studentId, file) {
-
-  // [추가] 이미지 압축 옵션 설정
-  const options = {
-    maxSizeMB: 1,          // 최대 1MB로 제한
-    maxWidthOrHeight: 1280, // 최대 가로/세로 1280px
-    useWebWorker: true,
-  }
-
-  try {
-    // [추가] 파일 업로드 전에 압축 실행
+export async function uploadMissionSubmissionFile(missionId, studentId, files) {
+  const uploadPromises = files.map(async (file) => {
+    // 이미지 압축 로직을 여기에 포함하여 개별 파일에 적용합니다.
+    const options = {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1280,
+      useWebWorker: true,
+    };
     const compressedFile = await imageCompression(file, options);
-
-    // [수정] 원본 파일(file) 대신 압축된 파일(compressedFile)을 업로드
-    const storageRef = ref(storage, `mission-submissions/${missionId}/${studentId}/${compressedFile.name}`);
+    const storageRef = ref(storage, `mission-submissions/${missionId}/${studentId}/${Date.now()}_${compressedFile.name}`);
     const uploadResult = await uploadBytes(storageRef, compressedFile);
-    return await getDownloadURL(uploadResult.ref);
-
-  } catch (error) {
-    console.error('이미지 압축 실패:', error);
-    // 압축 실패 시 원본 파일이라도 올릴지, 아니면 에러를 반환할지 결정할 수 있습니다.
-    throw new Error('이미지 처리 중 오류가 발생했습니다.');
-  }
+    return getDownloadURL(uploadResult.ref);
+  });
+  return await Promise.all(uploadPromises);
 }
 
 export async function requestMissionApproval(missionId, studentId, studentName, submissionData = {}) {
   const submissionsRef = collection(db, 'missionSubmissions');
   const missionRef = doc(db, 'missions', missionId);
+
+  // [수정] photoUrl 필드 대신 photoUrls 필드를 사용하도록 합니다.
+  if (submissionData.photoUrl) {
+    submissionData.photoUrls = [submissionData.photoUrl];
+    delete submissionData.photoUrl;
+  }
 
   const missionSnap = await getDoc(missionRef);
   if (!missionSnap.exists()) {

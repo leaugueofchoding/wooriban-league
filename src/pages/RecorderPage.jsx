@@ -358,7 +358,10 @@ function RecorderPage() {
                                     {submission && (
                                         <SubmissionDetails $isOpen={isOpen}>
                                             {submission.text && <p>{submission.text}</p>}
-                                            {submission.photoUrl && <img src={submission.photoUrl} alt="제출된 사진" />}
+                                            {/* [수정] photoUrls 배열을 순회하며 모든 이미지를 표시합니다. */}
+                                            {submission.photoUrls && submission.photoUrls.map((url, index) => (
+                                                <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} style={{ marginBottom: '0.5rem' }} />
+                                            ))}
                                         </SubmissionDetails>
                                     )}
                                 </StudentListItem>

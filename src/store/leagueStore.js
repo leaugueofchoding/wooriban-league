@@ -293,9 +293,11 @@ export const useLeagueStore = create((set, get) => ({
         if (submissionData.text) {
             dataToSend.text = submissionData.text;
         }
-        if (submissionData.photo) {
-            const photoUrl = await uploadMissionSubmissionFile(missionId, myPlayerData.id, submissionData.photo);
-            dataToSend.photoUrl = photoUrl;
+        // [수정] 'photo'가 아닌 'photos' 배열을 처리하고, 여러 파일 업로드 함수를 호출합니다.
+        if (submissionData.photos && submissionData.photos.length > 0) {
+            // uploadMissionSubmissionFile -> uploadMissionSubmissionFiles (새로 만들 함수)
+            const photoUrls = await uploadMissionSubmissionFile(missionId, myPlayerData.id, submissionData.photos);
+            dataToSend.photoUrls = photoUrls; // photoUrl -> photoUrls 배열
         }
 
         try {
