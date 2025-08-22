@@ -592,7 +592,11 @@ export const useLeagueStore = create((set, get) => ({
         if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
 
         try {
-            const { teams, matches, players } = get();
+            // [수정] 시즌 종료 로직 실행 직전에 모든 관련 데이터를 Firestore에서 새로고침합니다.
+            const players = await getPlayers();
+            const teams = await getTeams(season.id);
+            const matches = await getMatches(season.id);
+
             const completedMatches = matches.filter(m => m.status === '완료');
 
             let stats = teams.map(team => ({
@@ -680,7 +684,15 @@ export const useLeagueStore = create((set, get) => ({
                 .filter(Boolean);
 
             if (playersInSeason.length > 0) {
-                await saveAvatarMemorials(season.id, playersInSeason);
+                // [수정] saveAvatarMemorials 호출 시 오류를 잡아내도록 로직을 보강합니다.
+                try {
+                    await saveAvatarMemorials(season.id, playersInSeason);
+                } catch (error) {
+                    console.error("아바타 박제 중 오류 발생:", error);
+                    alert("시즌 종료 시 아바타 박제에 실패했습니다. (관리자 콘솔을 확인하세요)");
+                }
+            } else {
+                console.warn("시즌에 참가한 플레이어가 없어 아바타를 박제하지 못했습니다.");
             }
 
             await updateSeason(season.id, { status: 'completed' });
