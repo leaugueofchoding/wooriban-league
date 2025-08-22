@@ -9,6 +9,7 @@ import {
   runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp, limit, collectionGroup
 } from "firebase/firestore";
 import initialTitles from '../assets/titles.json'; // [추가] titles.json 파일 import
+import imageCompression from 'browser-image-compression'; // 라이브러리 import
 
 // Firebase 구성 정보
 const firebaseConfig = {
@@ -300,9 +301,28 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
 }
 
 export async function uploadMissionSubmissionFile(missionId, studentId, file) {
-  const storageRef = ref(storage, `mission-submissions/${missionId}/${studentId}/${file.name}`);
-  const uploadResult = await uploadBytes(storageRef, file);
-  return await getDownloadURL(uploadResult.ref);
+
+  // [추가] 이미지 압축 옵션 설정
+  const options = {
+    maxSizeMB: 1,          // 최대 1MB로 제한
+    maxWidthOrHeight: 1280, // 최대 가로/세로 1280px
+    useWebWorker: true,
+  }
+
+  try {
+    // [추가] 파일 업로드 전에 압축 실행
+    const compressedFile = await imageCompression(file, options);
+
+    // [수정] 원본 파일(file) 대신 압축된 파일(compressedFile)을 업로드
+    const storageRef = ref(storage, `mission-submissions/${missionId}/${studentId}/${compressedFile.name}`);
+    const uploadResult = await uploadBytes(storageRef, compressedFile);
+    return await getDownloadURL(uploadResult.ref);
+
+  } catch (error) {
+    console.error('이미지 압축 실패:', error);
+    // 압축 실패 시 원본 파일이라도 올릴지, 아니면 에러를 반환할지 결정할 수 있습니다.
+    throw new Error('이미지 처리 중 오류가 발생했습니다.');
+  }
 }
 
 export async function requestMissionApproval(missionId, studentId, studentName, submissionData = {}) {
