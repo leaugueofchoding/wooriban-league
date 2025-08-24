@@ -3359,6 +3359,7 @@ function AdminPage() {
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
     const [preselectedStudentId, setPreselectedStudentId] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null); // [추가] 이미지 모달 상태
+    const [missionSubMenu, setMissionSubMenu] = useState('approval'); // [추가]
 
     useEffect(() => {
         const studentIdFromState = location.state?.preselectedStudentId;
@@ -3378,16 +3379,26 @@ function AdminPage() {
 
     const renderContent = () => {
         if (activeMenu === 'mission') {
-            return (
-                <>
-                    <GridContainer>
-                        {/* [수정] setModalImageSrc 함수를 props로 전달합니다. */}
-                        <PendingMissionWidget setModalImageSrc={setModalImageSrc} />
-                        <MissionManager />
-                    </GridContainer>
-                    <GoalManager />
-                </>
-            );
+            // [수정] missionSubMenu 값에 따라 다른 컴포넌트를 보여줍니다.
+            switch (missionSubMenu) {
+                case 'approval':
+                    return (
+                        <GridContainer style={{ gridTemplateColumns: '1fr' }}>
+                            <PendingMissionWidget setModalImageSrc={setModalImageSrc} />
+                        </GridContainer>
+                    );
+                case 'creation':
+                    return (
+                        <>
+                            <GridContainer style={{ gridTemplateColumns: '1fr' }}>
+                                <MissionManager />
+                            </GridContainer>
+                            <GoalManager />
+                        </>
+                    );
+                default:
+                    return null;
+            }
         }
         if (activeMenu === 'social') {
             switch (activeSubMenu) {
@@ -3445,6 +3456,13 @@ function AdminPage() {
                     <NavList>
                         <NavItem>
                             <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
+                            {/* [추가] activeMenu가 'mission'일 때 하위 메뉴를 보여줍니다. */}
+                            {activeMenu === 'mission' && (
+                                <SubNavList>
+                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>미션 승인</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'creation'} onClick={() => setMissionSubMenu('creation')}>미션 출제</SubNavButton></SubNavItem>
+                                </SubNavList>
+                            )}
                         </NavItem>
                         <NavItem>
                             <NavButton $active={activeMenu === 'social'} onClick={() => handleMenuClick('social')}>소셜 관리</NavButton>
