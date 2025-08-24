@@ -302,9 +302,23 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     if (isSubmitting || isDoneOrPending || !isPrerequisiteSubmitted) return;
 
     if (isSubmissionRequired) {
-      if (submissionType.includes('text') && !submissionContent.text.trim()) return alert('글 내용을 입력해주세요.');
-      // [수정] photo를 photos 배열의 길이로 확인합니다.
-      if (submissionType.includes('photo') && submissionContent.photos.length === 0) return alert('사진 파일을 한 장 이상 첨부해주세요.');
+      const requiresText = submissionType.includes('text');
+      const requiresPhoto = submissionType.includes('photo');
+      const hasText = submissionContent.text.trim() !== '';
+      const hasPhotos = submissionContent.photos.length > 0;
+
+      // 둘 다 요구하는데, 둘 다 없는 경우에만 막기
+      if (requiresText && requiresPhoto && !hasText && !hasPhotos) {
+        return alert('글을 작성하거나 사진을 한 장 이상 첨부해주세요.');
+      }
+      // 글만 요구하는데 글이 없는 경우
+      if (requiresText && !requiresPhoto && !hasText) {
+        return alert('글 내용을 입력해주세요.');
+      }
+      // 사진만 요구하는데 사진이 없는 경우
+      if (!requiresText && requiresPhoto && !hasPhotos) {
+        return alert('사진 파일을 한 장 이상 첨부해주세요.');
+      }
     }
 
     setIsSubmitting(true);

@@ -25,6 +25,7 @@ import {
     updateMissionStatus,
     deleteMission,
     batchUpdateMissionOrder,
+    updateMission,
     createPlayerFromUser,
     markNotificationsAsRead,
     getTodaysQuizHistory,
@@ -264,6 +265,19 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) {
             alert('미션 삭제 중 오류가 발생했습니다.');
         }
+    },
+
+    // [추가] 미션 수정 액션
+    editMission: async (missionId, missionData) => {
+        await updateMission(missionId, missionData);
+        // 로컬 상태를 업데이트하여 UI에 즉시 반영
+        set(state => {
+            const updateInList = (list) => list.map(m => m.id === missionId ? { ...m, ...missionData } : m);
+            return {
+                missions: updateInList(state.missions),
+                archivedMissions: updateInList(state.archivedMissions)
+            };
+        });
     },
 
     registerAsPlayer: async () => {

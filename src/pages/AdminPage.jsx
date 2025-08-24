@@ -264,7 +264,7 @@ const DragHandle = styled.div`
   }
 `;
 
-function SortableListItem({ id, mission, navigate, unarchiveMission, archiveMission, removeMission }) {
+function SortableListItem({ id, mission, navigate, unarchiveMission, archiveMission, removeMission, handleEditClick }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
     const style = {
@@ -273,21 +273,21 @@ function SortableListItem({ id, mission, navigate, unarchiveMission, archiveMiss
         touchAction: 'none',
     };
 
-    // ▼▼▼ [수정] ListItem의 렌더링 방식과 이벤트 적용 위치 변경 ▼▼▼
     return (
         <ListItem ref={setNodeRef} style={style} {...attributes}>
             <DragHandle {...listeners}>⋮⋮</DragHandle>
             <div style={{ flex: 1, marginRight: '1rem' }}>
                 <strong>{mission.title}</strong>
-                <span style={{ marginLeft: '1rem', color: '#6c757d' }}>(보상: {mission.reward}P)</span>
+                <span style={{ marginLeft: '1rem', color: '#6c757d' }}>(보상: {Array.isArray(mission.rewards) ? mission.rewards.join('/') : mission.reward}P)</span>
             </div>
             <MissionControls>
-                {/* e.stopPropagation() 더 이상 필요 없으므로 제거 */}
                 <StyledButton onClick={() => navigate(`/recorder/${mission.id}`)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
+                {/* [수정] 아래 '수정' 버튼을 추가했습니다. */}
+                <StyledButton onClick={() => handleEditClick(mission)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
                 {mission.status === 'archived' ? (
                     <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
                 ) : (
-                    <StyledButton onClick={() => archiveMission(mission.id)} style={{ backgroundColor: '#ffc107', color: 'black' }}>숨김</StyledButton>
+                    <StyledButton onClick={() => archiveMission(mission.id)} style={{ backgroundColor: '#6c757d' }}>숨김</StyledButton>
                 )}
                 <StyledButton onClick={() => removeMission(mission.id)} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
             </MissionControls>
@@ -1410,44 +1410,79 @@ function MissionManager() {
         archiveMission,
         unarchiveMission,
         removeMission,
-        fetchInitialData,
-        reorderMissions
+        reorderMissions,
+        editMission // [수정] editMission 액션을 스토어에서 가져옵니다.
     } = useLeagueStore();
     const navigate = useNavigate();
-    const sensors = useSensors(useSensor(PointerSensor)); // 드래그 센서 추가
+    const sensors = useSensors(useSensor(PointerSensor));
 
-    const handleDragEnd = (event) => {
-        const { active, over } = event;
-        if (active.id !== over.id) {
-            const listKey = showArchived ? 'archivedMissions' : 'missions';
-            const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
-            const newIndex = missionsToDisplay.findIndex(m => m.id === over.id);
-            const newList = arrayMove(missionsToDisplay, oldIndex, newIndex);
-
-            reorderMissions(newList, listKey);
-        }
-    };
-
-    // ▼▼▼ [수정] 미션 생성을 위한 state 확장 ▼▼▼
+    // [수정] 생성/수정 모드를 관리하는 state 추가
+    const [editMode, setEditMode] = useState(null); // null이면 생성, mission 객체가 있으면 수정 모드
     const [title, setTitle] = useState('');
-    const [placeholderText, setPlaceholderText] = useState(''); // [추가] 문제 텍스트 상태
-    const [rewards, setRewards] = useState(['100', '', '']); // 차등 보상
+    const [placeholderText, setPlaceholderText] = useState('');
+    const [rewards, setRewards] = useState(['100', '', '']);
     const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
-    const [isFixed, setIsFixed] = useState(false); // 고정 미션
-    const [adminOnly, setAdminOnly] = useState(false); // 관리자 전용
+    const [isFixed, setIsFixed] = useState(false);
+    const [adminOnly, setAdminOnly] = useState(false);
     const [prerequisiteMissionId, setPrerequisiteMissionId] = useState('');
     const [showArchived, setShowArchived] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState({
         rewards: false,
         prerequisite: false,
     });
-    // ▲▲▲ 여기까지 수정 ▲▲▲
+
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        if (active.id !== over.id) {
+            const listKey = showArchived ? 'archivedMissions' : 'missions';
+            const missionsToDisplay = showArchived ? archivedMissions : missions;
+            const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
+            const newIndex = missionsToDisplay.findIndex(m => m.id === over.id);
+            const newList = arrayMove(missionsToDisplay, oldIndex, newIndex);
+            reorderMissions(newList, listKey);
+        }
+    };
+
     const handleSubmissionTypeChange = (type) => {
         setSubmissionTypes(prev => ({ ...prev, [type]: !prev[type] }));
     };
 
-    const handleCreateMission = async () => {
-        // ▼▼▼ [수정] 새로운 UI state를 기반으로 데이터 처리 ▼▼▼
+    // [추가] 수정 버튼 클릭 시 호출될 함수
+    const handleEditClick = (mission) => {
+        setEditMode(mission);
+        setTitle(mission.title);
+        setPlaceholderText(mission.placeholderText || '');
+        const missionRewards = Array.isArray(mission.rewards) ? mission.rewards : [mission.reward || ''];
+        setRewards([
+            missionRewards[0]?.toString() || '',
+            missionRewards[1]?.toString() || '',
+            missionRewards[2]?.toString() || ''
+        ]);
+        setSubmissionTypes({
+            text: mission.submissionType?.includes('text') || false,
+            photo: mission.submissionType?.includes('photo') || false,
+        });
+        setIsFixed(mission.isFixed || false);
+        setAdminOnly(mission.adminOnly || false);
+        setPrerequisiteMissionId(mission.prerequisiteMissionId || '');
+        window.scrollTo(0, 0); // 페이지 상단으로 스크롤하여 수정 폼이 보이게 함
+    };
+
+    // [추가] 수정/생성 취소 함수
+    const handleCancel = () => {
+        setEditMode(null);
+        setTitle('');
+        setPlaceholderText('');
+        setRewards(['100', '', '']);
+        setSubmissionTypes({ text: false, photo: false });
+        setIsFixed(false);
+        setAdminOnly(false);
+        setPrerequisiteMissionId('');
+        setShowAdvanced({ rewards: false, prerequisite: false });
+    };
+
+    // [수정] 생성과 수정을 모두 처리하는 저장 함수
+    const handleSaveMission = async () => {
         if (!title.trim() || !rewards[0]) {
             return alert('미션 이름과 기본 보상 포인트를 모두 입력해주세요.');
         }
@@ -1457,35 +1492,31 @@ function MissionManager() {
             .map(([type]) => type);
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
 
-        // 차등 보상 배열 정리 (숫자 변환 및 빈 값 제거)
-        const finalRewards = rewards
-            .map(r => Number(r))
-            .filter(r => r > 0);
+        const finalRewards = rewards.map(r => Number(r)).filter(r => r > 0);
+
+        const missionData = {
+            title,
+            rewards: finalRewards,
+            reward: finalRewards[0] || 0,
+            submissionType: typeToSend,
+            isFixed,
+            adminOnly,
+            prerequisiteMissionId: prerequisiteMissionId || null,
+            placeholderText: placeholderText.trim(),
+        };
 
         try {
-            await createMission({
-                title,
-                rewards: finalRewards, // reward -> rewards 배열로 변경
-                submissionType: typeToSend,
-                isFixed: isFixed, // 고정 미션 여부
-                adminOnly: adminOnly, // 관리자 전용 여부D
-                prerequisiteMissionId: prerequisiteMissionId || null,
-                placeholderText: placeholderText.trim(), // [추가] 문제 텍스트 추가
-            });
-            alert('새로운 미션이 등록되었습니다!');
-            // 모든 state 초기화
-            setTitle('');
-            setPlaceholderText(''); // [추가] 문제 텍스트 상태 초기화
-            setRewards(['100', '', '']);
-            setSubmissionTypes({ text: false, photo: false });
-            setIsFixed(false);
-            setAdminOnly(false);
-            setPrerequisiteMissionId('');
-            setShowAdvanced({ rewards: false, prerequisite: false });
-            await fetchInitialData();
+            if (editMode) { // 수정 모드일 때
+                await editMission(editMode.id, missionData);
+                alert('미션이 성공적으로 수정되었습니다!');
+            } else { // 생성 모드일 때
+                await createMission(missionData);
+                alert('새로운 미션이 등록되었습니다!');
+            }
+            handleCancel(); // 폼 초기화
         } catch (error) {
-            console.error("미션 생성 오류:", error);
-            alert('미션 생성 중 오류가 발생했습니다.');
+            console.error("미션 저장 오류:", error);
+            alert('미션 저장 중 오류가 발생했습니다.');
         }
     };
 
@@ -1493,10 +1524,8 @@ function MissionManager() {
 
     return (
         <Section>
-            <SectionTitle>미션 관리 📜</SectionTitle>
-            {/* ▼▼▼ [재수정] 미션 출제 UI 레이아웃 변경 ▼▼▼ */}
+            <SectionTitle>{editMode ? `미션 수정: ${editMode.title}` : '미션 관리 📜'}</SectionTitle>
             <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-                {/* 1줄: 기본 정보 */}
                 <InputGroup>
                     <input
                         type="text"
@@ -1518,19 +1547,17 @@ function MissionManager() {
                     </div>
                 </InputGroup>
 
-                {/* [수정] '글' 체크박스가 선택된 경우에만 문제 내용 입력란 표시 */}
                 {submissionTypes.text && (
                     <InputGroup>
                         <TextArea
                             value={placeholderText}
                             onChange={(e) => setPlaceholderText(e.target.value)}
-                            placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요. (예: 책 이름, 줄거리, 느낀 점 10줄 이상 작성)"
+                            placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요."
                             style={{ minHeight: '60px' }}
                         />
                     </InputGroup>
                 )}
 
-                {/* 2줄: 추가 설정 영역 (토글) */}
                 {showAdvanced.rewards && (
                     <InputGroup>
                         <label>차등 보상:</label>
@@ -1548,13 +1575,13 @@ function MissionManager() {
                     </InputGroup>
                 )}
 
-                {/* 3줄: 액션 버튼 */}
                 <InputGroup style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem' }}>
                     <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }}>차등 보상</StyledButton>
                     <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }}>연계 미션</StyledButton>
                     <StyledButton onClick={() => setIsFixed(p => !p)} style={{ backgroundColor: isFixed ? '#17a2b8' : '#6c757d' }}>{isFixed ? '반복(활성)' : '반복 미션'}</StyledButton>
                     <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }}>{adminOnly ? ' 관리(활성)' : '관리자만'}</StyledButton>
-                    <SaveButton onClick={handleCreateMission}>미션 출제</SaveButton>
+                    <SaveButton onClick={handleSaveMission}>{editMode ? '수정 완료' : '미션 출제'}</SaveButton>
+                    {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
                 </InputGroup>
             </div>
 
@@ -1567,7 +1594,7 @@ function MissionManager() {
                     <SortableContext items={missionsToDisplay.map(m => m.id)} strategy={verticalListSortingStrategy}>
                         <List>
                             {missionsToDisplay.length > 0 ? (
-                                missionsToDisplay.map((mission) => ( // [수정] index prop 제거
+                                missionsToDisplay.map((mission) => (
                                     <SortableListItem
                                         key={mission.id}
                                         id={mission.id}
@@ -1576,6 +1603,7 @@ function MissionManager() {
                                         unarchiveMission={unarchiveMission}
                                         archiveMission={archiveMission}
                                         removeMission={removeMission}
+                                        handleEditClick={handleEditClick}
                                     />
                                 ))
                             ) : (

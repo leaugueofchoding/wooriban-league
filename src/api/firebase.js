@@ -1188,6 +1188,12 @@ export async function checkMissionForStudent(missionId, studentId, recorderId) {
   });
 }
 
+// 미션 수정 함수
+export async function updateMission(missionId, missionData) {
+  const missionRef = doc(db, 'missions', missionId);
+  await updateDoc(missionRef, missionData);
+}
+
 export async function getMissionSubmissions() {
   const submissionsRef = collection(db, 'missionSubmissions');
   // 최신순으로 정렬하는 로직 추가
