@@ -325,11 +325,18 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       const hasRealText = currentText.trim() !== '' && currentText.trim() !== mission.placeholderText?.trim();
       const hasPhotos = currentPhotos.length > 0;
 
-      if (requiresPhoto && !hasPhotos) {
+      // [수정] 요청하신 제출 조건 로직으로 변경합니다.
+      // 1. 글만 필요한 경우
+      if (requiresText && !requiresPhoto && !hasRealText) {
+        return alert('글 내용을 입력해주세요.');
+      }
+      // 2. 사진만 필요한 경우
+      if (requiresPhoto && !requiresText && !hasPhotos) {
         return alert('사진 파일을 한 장 이상 첨부해주세요.');
       }
-      if (requiresText && !hasRealText) {
-        return alert('글 내용을 입력해주세요.');
+      // 3. 글과 사진 모두 필요한 경우 (둘 중 하나만 있어도 통과)
+      if (requiresText && requiresPhoto && !hasRealText && !hasPhotos) {
+        return alert('글을 작성하거나 사진을 한 장 이상 첨부해주세요.');
       }
     }
 
