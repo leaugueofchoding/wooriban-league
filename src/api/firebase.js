@@ -2241,12 +2241,11 @@ export async function sendBulkMessageToAllStudents(adminMessage) {
   }
   const now = new Date();
 
-  // 1. 모든 학생 정보를 가져옵니다.
   const allPlayers = await getPlayers();
-  const students = allPlayers.filter(p => p.role === 'player' && p.status !== 'inactive');
+  // [수정] 'admin' 역할을 제외한 모든 학생에게 메시지를 보내도록 필터를 수정합니다.
+  const students = allPlayers.filter(p => p.role !== 'admin' && p.status !== 'inactive');
 
   for (const student of students) {
-    // 2. 각 학생별로 기존 대화가 있는지 확인합니다.
     const suggestionsRef = collection(db, "suggestions");
     const q = query(suggestionsRef, where("studentId", "==", student.id), orderBy("createdAt", "desc"), limit(1));
     const querySnapshot = await getDocs(q);
@@ -2258,14 +2257,12 @@ export async function sendBulkMessageToAllStudents(adminMessage) {
     };
 
     if (!querySnapshot.empty) {
-      // 3a. 기존 대화가 있으면, 해당 대화에 메시지를 추가합니다 (답장).
       const lastMessageDocRef = querySnapshot.docs[0].ref;
       await updateDoc(lastMessageDocRef, {
         conversation: arrayUnion(adminMessageData),
         lastMessageAt: now
       });
     } else {
-      // 3b. 기존 대화가 없으면, 새로운 대화를 시작합니다.
       await addDoc(collection(db, "suggestions"), {
         studentId: student.id,
         studentName: student.name,
@@ -2277,7 +2274,6 @@ export async function sendBulkMessageToAllStudents(adminMessage) {
       });
     }
 
-    // 4. 학생에게 알림을 보냅니다.
     if (student.authUid) {
       createNotification(
         student.authUid,
