@@ -1735,11 +1735,22 @@ export async function likeMyRoom(roomId, likerId, likerName) {
   const currentMonth = new Date().toISOString().slice(0, 7);
 
   return runTransaction(db, async (transaction) => {
+    // --- 모든 읽기 작업을 위로 이동 ---
     const likeHistorySnap = await transaction.get(likeHistoryRef);
+    const roomOwnerSnap = await transaction.get(roomOwnerRef);
+
+    // --- 읽은 데이터를 기반으로 로직 처리 ---
     if (likeHistorySnap.exists() && likeHistorySnap.data().lastLikedMonth === currentMonth) {
       throw new Error("이번 달에는 이미 '좋아요'를 눌렀습니다.");
     }
+    if (!roomOwnerSnap.exists()) {
+      throw new Error("방 주인의 정보를 찾을 수 없습니다.");
+    }
 
+    const roomOwnerData = roomOwnerSnap.data();
+    const roomOwnerName = roomOwnerData.name || '친구';
+
+    // --- 모든 쓰기 작업을 아래로 이동 ---
     transaction.update(likerRef, { points: increment(100) });
     transaction.set(likeHistoryRef, {
       likerName: likerName,
@@ -1747,8 +1758,7 @@ export async function likeMyRoom(roomId, likerId, likerName) {
       timestamp: serverTimestamp()
     }, { merge: true });
 
-    const roomOwnerSnap = await transaction.get(roomOwnerRef);
-    const roomOwnerName = roomOwnerSnap.data()?.name || '친구';
+    // --- 트랜잭션이 아닌 작업들은 순서에 영향 없음 ---
     await addPointHistory(likerId, likerName, 100, `${roomOwnerName}의 마이룸 '좋아요' 보상`);
 
     createNotification(
@@ -1759,11 +1769,7 @@ export async function likeMyRoom(roomId, likerId, likerName) {
       `/my-room/${roomId}`
     );
 
-    // [위치 수정] '좋아요'를 받은 후, 방 주인의 자동 칭호 획득 조건을 확인합니다.
-    if (roomOwnerSnap.exists()) {
-      const roomOwnerData = roomOwnerSnap.data();
-      await checkAndGrantAutoTitles(roomId, roomOwnerData.authUid);
-    }
+    await checkAndGrantAutoTitles(roomId, roomOwnerData.authUid);
   });
 }
 
