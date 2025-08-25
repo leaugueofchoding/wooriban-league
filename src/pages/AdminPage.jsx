@@ -51,7 +51,8 @@ import {
     updateTitle,
     deleteTitle,
     grantTitleToPlayerManually,
-    adjustPlayerPoints
+    adjustPlayerPoints,
+    grantTitleToPlayersBatch
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import ImageModal from '../components/ImageModal'; // [추가] 이미지 모달 컴포넌트 import
