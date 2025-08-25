@@ -2381,6 +2381,32 @@ export async function grantTitleToPlayerManually(playerId, titleId) {
   // 2. 보상 지급 (adjustPlayerPoints 재활용)
   await adjustPlayerPoints(playerId, 500, `칭호 [${title.name}] 획득 보상`);
 }
+
+// [추가] 여러 학생에게 칭호를 일괄 부여하는 함수
+export async function grantTitleToPlayersBatch(playerIds, titleId) {
+  const titleRef = doc(db, "titles", titleId);
+  const titleSnap = await getDoc(titleRef);
+  if (!titleSnap.exists()) {
+    throw new Error("칭호 정보를 찾을 수 없습니다.");
+  }
+  const title = titleSnap.data();
+
+  for (const playerId of playerIds) {
+    const playerRef = doc(db, "players", playerId);
+    const playerSnap = await getDoc(playerRef);
+
+    if (playerSnap.exists()) {
+      const playerData = playerSnap.data();
+      if (!playerData.ownedTitles || !playerData.ownedTitles.includes(titleId)) {
+        await updateDoc(playerRef, {
+          ownedTitles: arrayUnion(titleId)
+        });
+        await adjustPlayerPoints(playerId, 500, `칭호 [${title.name}] 획득 보상`);
+      }
+    }
+  }
+}
+
 // 교체할 부분의 아랫 한 줄 코드
 /**
  * 학생이 장착할 칭호를 설정합니다.

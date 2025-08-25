@@ -109,6 +109,15 @@ const FileName = styled.div`
     padding-left: 1rem;
 `;
 
+const ClearButton = styled.button`
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-left: 0.5rem;
+`;
 
 const RequestButton = styled.button`
     padding: 0.6rem 1.2rem;
@@ -248,28 +257,26 @@ function SubmissionDetailsView({ submission, isOpen }) {
 
 function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission }) {
   const { submitMissionForApproval } = useLeagueStore();
-  // [수정] photo를 photos 배열로 변경하여 여러 파일을 관리합니다.
   const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [] });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [missionHistory, setMissionHistory] = useState([]);
 
   const submission = mySubmissions[mission.id];
 
   const missionStatus = useMemo(() => {
     if (!submission) return 'NOT_SUBMITTED';
-
     if (mission.isFixed) {
       if (submission.status === 'approved' && isDateToday(submission.approvedAt)) return 'APPROVED_TODAY';
       if (submission.status === 'pending' && isDateToday(submission.requestedAt)) return 'PENDING_TODAY';
       if (submission.status === 'rejected' && isDateToday(submission.requestedAt)) return 'REJECTED_TODAY';
-      return 'SUBMITTABLE'; // 어제 완료했거나 오늘 아직 안 한 상태
+      return 'SUBMITTABLE';
     }
-
-    return submission.status; // 일반 미션
+    return submission.status;
   }, [submission, mission.isFixed]);
 
   useEffect(() => {
-    // [수정] photos를 빈 배열로 초기화하도록 변경합니다.
     if (submission?.status === 'rejected') {
       setSubmissionContent({ text: submission.text || '', photos: [] });
     } else if (mission.placeholderText) {
@@ -277,10 +284,11 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     } else {
       setSubmissionContent({ text: '', photos: [] });
     }
-  }, [submission, mission.placeholderText]);
+  }, [submission, mission.placeholderText, mission.id]);
 
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
+  const hasViewableContent = submission && (submission.text || (submission.photoUrls && submission.photoUrls.length > 0));
 
   const isPrerequisiteSubmitted = useMemo(() => {
     if (!mission.prerequisiteMissionId) return true;
@@ -288,43 +296,50 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     return prerequisiteSubmission?.status === 'approved';
   }, [mission.prerequisiteMissionId, mySubmissions]);
 
-
   const handleFileChange = (e) => {
-    // [수정] 여러 파일을 배열로 받아 처리합니다.
     const files = Array.from(e.target.files);
     if (files.length > 0) {
-      setSubmissionContent(prev => ({ ...prev, photos: files }));
+      // [수정] 기존 사진 목록에 새로 선택한 사진을 추가합니다.
+      setSubmissionContent(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
+      // [추가] 파일을 추가한 후 input의 값을 초기화하여 같은 파일을 또 추가할 수 있게 합니다.
+      e.target.value = null;
     }
+  };
+
+  // [추가] 선택한 사진 목록을 초기화하는 함수
+  const handleClearPhotos = () => {
+    setSubmissionContent(prev => ({ ...prev, photos: [] }));
   };
 
   const handleSubmit = async () => {
     const isDoneOrPending = ['APPROVED_TODAY', 'PENDING_TODAY', 'approved', 'pending'].includes(missionStatus);
     if (isSubmitting || isDoneOrPending || !isPrerequisiteSubmitted) return;
 
+    // [수정] 제출 직전에 submissionContent의 최신 상태를 한 번 더 확인하여 이중으로 방어합니다.
+    const currentPhotos = submissionContent.photos;
+    const currentText = submissionContent.text;
+
     if (isSubmissionRequired) {
       const requiresText = submissionType.includes('text');
       const requiresPhoto = submissionType.includes('photo');
-      const hasText = submissionContent.text.trim() !== '';
-      const hasPhotos = submissionContent.photos.length > 0;
+      const hasRealText = currentText.trim() !== '' && currentText.trim() !== mission.placeholderText?.trim();
+      const hasPhotos = currentPhotos.length > 0;
 
-      // 둘 다 요구하는데, 둘 다 없는 경우에만 막기
-      if (requiresText && requiresPhoto && !hasText && !hasPhotos) {
-        return alert('글을 작성하거나 사진을 한 장 이상 첨부해주세요.');
-      }
-      // 글만 요구하는데 글이 없는 경우
-      if (requiresText && !requiresPhoto && !hasText) {
-        return alert('글 내용을 입력해주세요.');
-      }
-      // 사진만 요구하는데 사진이 없는 경우
-      if (!requiresText && requiresPhoto && !hasPhotos) {
+      if (requiresPhoto && !hasPhotos) {
         return alert('사진 파일을 한 장 이상 첨부해주세요.');
+      }
+      if (requiresText && !hasRealText) {
+        return alert('글 내용을 입력해주세요.');
       }
     }
 
     setIsSubmitting(true);
     try {
-      await submitMissionForApproval(mission.id, submissionContent);
+      // [수정] handleSubmit 스코프 내의 최신 데이터를 전달합니다.
+      await submitMissionForApproval(mission.id, { text: currentText, photos: currentPhotos });
       alert('미션 완료를 성공적으로 요청했습니다!');
+      // 성공적으로 제출 후, 입력 상태 초기화
+      setSubmissionContent({ text: mission.placeholderText ? mission.placeholderText + '\n\n' : '', photos: [] });
     } catch (error) {
       alert(`요청 실패: ${error.message}`);
     } finally {
@@ -332,12 +347,17 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     }
   };
 
+  const handleHistoryView = async (e) => {
+    e.stopPropagation();
+    const history = await getMissionHistory(myPlayerData.id, mission.id);
+    setMissionHistory(history);
+    setIsHistoryModalOpen(true);
+  };
+
   const renderButtons = () => {
     if (!canSubmitMission) return null;
-
     const isDoneOrPending = ['APPROVED_TODAY', 'PENDING_TODAY', 'approved', 'pending'].includes(missionStatus);
     const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || isDoneOrPending;
-
     let buttonText;
     let buttonStatusStyle;
 
@@ -349,19 +369,17 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
         case 'APPROVED_TODAY': buttonText = '오늘 완료!'; buttonStatusStyle = 'approved'; break;
         case 'PENDING_TODAY': buttonText = '승인 대기중'; buttonStatusStyle = 'pending'; break;
         case 'REJECTED_TODAY': buttonText = '다시 제출하기'; buttonStatusStyle = 'rejected'; break;
-        case 'approved': buttonText = '기록 및 댓글 보기'; buttonStatusStyle = 'approved'; break;
+        case 'approved': buttonText = '승인 완료!'; buttonStatusStyle = 'approved'; break;
         case 'pending': buttonText = '승인 대기중'; buttonStatusStyle = 'pending'; break;
         case 'rejected': buttonText = '다시 제출하기'; buttonStatusStyle = 'rejected'; break;
         default: buttonText = '다 했어요!'; buttonStatusStyle = 'default'; break;
       }
     }
 
-    const handleClick = missionStatus === 'approved' ? () => onHistoryView(mission) : handleSubmit;
-
     if (mission.isFixed) {
       return (
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <RequestButton $status="approved" onClick={() => onHistoryView(mission)}>기록 보기</RequestButton>
+          <RequestButton $status="approved" onClick={handleHistoryView}>기록 보기</RequestButton>
           <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} $status={buttonStatusStyle}>
             {buttonText}
           </RequestButton>
@@ -369,8 +387,19 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       );
     }
 
+    if (missionStatus === 'approved') {
+      if (hasViewableContent) {
+        return (
+          <RequestButton $status="approved" onClick={() => setIsDetailsOpen(prev => !prev)}>
+            {isDetailsOpen ? '숨기기' : '제출물 보기'}
+          </RequestButton>
+        );
+      }
+      return <RequestButton $status="approved" disabled>{buttonText}</RequestButton>;
+    }
+
     return (
-      <RequestButton onClick={handleClick} disabled={isButtonDisabled} $status={buttonStatusStyle}>
+      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} $status={buttonStatusStyle}>
         {buttonText}
       </RequestButton>
     );
@@ -390,58 +419,70 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const textAreaValue = isInputDisabled ? (submission?.text || "") : submissionContent.text;
 
   return (
-    <MissionCard $status={submission?.status}>
-      <MissionHeader>
-        <MissionInfo>
-          <MissionTitle>
-            {mission.title}
-            {mission.isFixed && <span title="고정 미션"> 🔄</span>}
-            {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
-            {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
-          </MissionTitle>
-          <MissionReward>{rewardText}</MissionReward>
-        </MissionInfo>
-        <div style={{ display: 'flex' }}>
-          {renderButtons()}
-        </div>
-      </MissionHeader>
+    <>
+      <MissionCard $status={submission?.status}>
+        <MissionHeader>
+          <MissionInfo>
+            <MissionTitle>
+              {mission.title}
+              {mission.isFixed && <span title="고정 미션"> 🔄</span>}
+              {submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
+              {submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
+            </MissionTitle>
+            <MissionReward>{rewardText}</MissionReward>
+          </MissionInfo>
+          <div style={{ display: 'flex' }}>
+            {renderButtons()}
+          </div>
+        </MissionHeader>
 
-      {showSubmissionArea && (
-        <SubmissionArea>
-          {submissionType.includes('text') && (
-            <TextArea
-              value={textAreaValue}
-              onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
-              disabled={isInputDisabled}
-            />
-          )}
-          {submissionType.includes('photo') && (
-            <div>
-              <FileInputLabel htmlFor={`file-${mission.id}`} disabled={isInputDisabled}>
-                📷 사진 첨부하기 (여러 장 가능)
-                <input
-                  id={`file-${mission.id}`}
-                  type="file"
-                  accept="image/*"
-                  multiple // [추가] multiple 속성을 추가하여 여러 파일 선택을 활성화합니다.
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                  disabled={isInputDisabled}
-                />
-              </FileInputLabel>
-              {/* [수정] 선택된 파일 목록을 보여줍니다. */}
-              {submissionContent.photos.length > 0 && (
-                <FileName>
-                  {submissionContent.photos.map(f => f.name).join(', ')}
-                </FileName>
-              )}
-            </div>
-          )}
-        </SubmissionArea>
-      )}
+        {showSubmissionArea && (
+          <SubmissionArea>
+            {submissionType.includes('text') && (
+              <TextArea
+                value={textAreaValue}
+                onChange={(e) => setSubmissionContent(prev => ({ ...prev, text: e.target.value }))}
+                disabled={isInputDisabled}
+              />
+            )}
+            {submissionType.includes('photo') && (
+              <div>
+                <FileInputLabel htmlFor={`file-${mission.id}`} disabled={isInputDisabled}>
+                  📷 사진 추가하기
+                  <input
+                    id={`file-${mission.id}`}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                    disabled={isInputDisabled}
+                  />
+                </FileInputLabel>
+                {/* [수정] 선택된 파일 목록을 리스트 형태로 보여주고, 초기화 버튼을 추가합니다. */}
+                {submissionContent.photos.length > 0 && (
+                  <FileName>
+                    <strong>첨부된 파일 ({submissionContent.photos.length}개):</strong>
+                    <ClearButton onClick={handleClearPhotos}>[전체 삭제]</ClearButton>
+                    <ul>
+                      {submissionContent.photos.map((f, i) => <li key={i}>{f.name}</li>)}
+                    </ul>
+                  </FileName>
+                )}
+              </div>
+            )}
+          </SubmissionArea>
+        )}
 
-      <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
-    </MissionCard>
+        <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
+      </MissionCard>
+      <MissionHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        missionTitle={mission.title}
+        history={missionHistory}
+      />
+    </>
   );
 }
 
