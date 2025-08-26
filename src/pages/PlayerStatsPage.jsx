@@ -218,6 +218,17 @@ const HeaderCell = styled.div`
     &:first-child { text-align: left; }
 `;
 
+const EquippedTitleBadge = styled.span`
+  font-size: 0.8rem;
+  font-weight: bold;
+  margin-left: 0.5rem;
+  padding: 2px 6px;
+  border-radius: 8px;
+  color: ${props => props.color || '#343a40'};
+  background-color: #f1f3f5;
+  border: 1px solid #dee2e6;
+  white-space: nowrap;
+`;
 
 function SeasonStatsCard({ seasonData }) {
     const { players, avatarParts } = useLeagueStore();
@@ -301,7 +312,8 @@ function SeasonStatsCard({ seasonData }) {
 }
 
 function PlayerStatsPage() {
-    const { players } = useLeagueStore();
+    // [수정] useLeagueStore에서 titles를 함께 가져옵니다.
+    const { players, titles } = useLeagueStore();
     const { playerId } = useParams();
     const navigate = useNavigate();
     const [allSeasonStats, setAllSeasonStats] = useState([]);
@@ -392,15 +404,28 @@ function PlayerStatsPage() {
                         <HeaderCell onClick={() => handleSort('wins')}>승리{getSortIndicator('wins')}</HeaderCell>
                         <HeaderCell onClick={() => handleSort('goals')}>득점{getSortIndicator('goals')}</HeaderCell>
                     </RankHeader>
-                    {sortedPlayers.map((p, index) => (
-                        <PlayerRankItem key={p.id} to={`/profile/${p.id}`}>
-                            <span>{index + 1}</span>
-                            <span>{p.name}</span>
-                            <span style={{ textAlign: 'center' }}>{p.championships}</span>
-                            <span style={{ textAlign: 'center' }}>{p.wins}</span>
-                            <span style={{ textAlign: 'center' }}>{p.goals}</span>
-                        </PlayerRankItem>
-                    ))}
+                    {sortedPlayers.map((p, index) => {
+                        // [추가] 각 선수의 장착 칭호 정보를 찾습니다.
+                        const equippedTitle = p.equippedTitle ? titles.find(t => t.id === p.equippedTitle) : null;
+
+                        return (
+                            <PlayerRankItem key={p.id} to={`/profile/${p.id}`}>
+                                <span>{index + 1}</span>
+                                {/* [수정] 이름과 칭호를 함께 표시합니다. */}
+                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                    <span>{p.name}</span>
+                                    {equippedTitle && (
+                                        <EquippedTitleBadge color={equippedTitle.color}>
+                                            {equippedTitle.icon} {equippedTitle.name}
+                                        </EquippedTitleBadge>
+                                    )}
+                                </div>
+                                <span style={{ textAlign: 'center' }}>{p.championships}</span>
+                                <span style={{ textAlign: 'center' }}>{p.wins}</span>
+                                <span style={{ textAlign: 'center' }}>{p.goals}</span>
+                            </PlayerRankItem>
+                        );
+                    })}
                 </PlayerRankingSection>
             )}
 
