@@ -56,6 +56,7 @@ import {
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import ImageModal from '../components/ImageModal'; // [추가] 이미지 모달 컴포넌트 import
+import RecorderPage from './RecorderPage'; // [추가] 이 줄을 추가해주세요.
 
 // --- Styled Components ---
 const AdminWrapper = styled.div`
@@ -3461,6 +3462,9 @@ function AdminPage() {
                             <GoalManager />
                         </>
                     );
+                // ▼▼▼ [추가] 기록 확인 탭 컨텐츠 렌더링 ▼▼▼
+                case 'history':
+                    return <RecorderPage isAdminView={true} />;
                 default:
                     return null;
             }
@@ -3526,6 +3530,7 @@ function AdminPage() {
                                 <SubNavList>
                                     <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>미션 승인</SubNavButton></SubNavItem>
                                     <SubNavItem><SubNavButton $active={missionSubMenu === 'creation'} onClick={() => setMissionSubMenu('creation')}>미션 출제</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'history'} onClick={() => setMissionSubMenu('history')}>기록 확인</SubNavButton></SubNavItem>
                                 </SubNavList>
                             )}
                         </NavItem>

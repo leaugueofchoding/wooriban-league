@@ -189,7 +189,7 @@ const TopControls = styled.div`
 `;
 
 
-function RecorderPage() {
+function RecorderPage({ isAdminView = false }) {
     const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
     const { missionId } = useParams();
     const navigate = useNavigate();
@@ -239,7 +239,9 @@ function RecorderPage() {
         setSelectedMissionId(newMissionId);
         setCheckedStudents(new Set());
         setExpandedSubmissionId(null);
-        navigate(`/recorder/${newMissionId}`);
+        if (!isAdminView) {
+            navigate(`/recorder/${newMissionId}`);
+        }
     };
 
     const handleStudentCheck = (studentId, status) => {
@@ -307,7 +309,7 @@ function RecorderPage() {
 
     return (
         <RecorderWrapper>
-            <Title>기록원 미션 확인</Title>
+            {!isAdminView && <Title>기록 확인</Title>}
             <MissionSelect value={selectedMissionId} onChange={handleMissionSelect}>
                 <option value="">-- 미션 선택 --</option>
                 {missions.map(mission => (
@@ -373,7 +375,7 @@ function RecorderPage() {
                         {checkedStudents.size}명 포인트 지급 승인하기
                     </SubmitButton>
 
-                    <ExitButton onClick={() => navigate('/')}>대시보드로 이동</ExitButton>
+                    {!isAdminView && <ExitButton onClick={() => navigate('/')}>대시보드로 이동</ExitButton>}
                 </>
             )}
 
