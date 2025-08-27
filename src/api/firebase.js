@@ -213,6 +213,39 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
   }
 }
 
+// =================================================================
+// ▼▼▼ [신규] 관리자용 댓글/답글 수정 및 삭제 함수 ▼▼▼
+// =================================================================
+export async function updateMissionComment(submissionId, commentId, newText) {
+  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+  await updateDoc(commentRef, { text: newText });
+}
+
+export async function deleteMissionComment(submissionId, commentId) {
+  // 먼저 댓글 하위의 모든 답글을 삭제합니다.
+  const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", commentId, "replies");
+  const repliesSnap = await getDocs(repliesRef);
+  const batch = writeBatch(db);
+  repliesSnap.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+
+  // 그 다음 댓글 자체를 삭제합니다.
+  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+  await deleteDoc(commentRef);
+}
+
+export async function updateMissionReply(submissionId, commentId, replyId, newText) {
+  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+  await updateDoc(replyRef, { text: newText });
+}
+
+export async function deleteMissionReply(submissionId, commentId, replyId) {
+  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+  await deleteDoc(replyRef);
+}
+
 // --- 미션 관리 ---
 export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
   const batch = writeBatch(db);

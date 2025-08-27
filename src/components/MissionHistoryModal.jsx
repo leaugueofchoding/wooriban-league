@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, addMissionComment, addMissionReply } from '../api/firebase';
+import { auth, db, addMissionComment, addMissionReply, updateMissionComment, deleteMissionComment, updateMissionReply, deleteMissionReply } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 const ModalBackground = styled.div`
@@ -123,6 +123,24 @@ const CommentText = styled.p`
     margin: 0.25rem 0;
 `;
 
+const CommentActions = styled.div`
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    
+    button {
+        background: none;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        &:hover {
+            background: #e9ecef;
+        }
+    }
+`;
+
 const ReplyList = styled.div`
     margin-left: 1.5rem;
     margin-top: 0.5rem;
@@ -146,14 +164,78 @@ const CloseButton = styled.button`
     }
 `;
 
+function ReplyItem({ submissionId, commentId, reply, missionTitle }) {
+    const { players } = useLeagueStore();
+    const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
+    const isAdmin = myPlayerData?.role === 'admin';
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedText, setEditedText] = useState(reply.text);
+
+    const handleUpdate = async () => {
+        if (editedText.trim() === reply.text || !editedText.trim()) {
+            setIsEditing(false);
+            return;
+        }
+        try {
+            await updateMissionReply(submissionId, commentId, reply.id, editedText.trim());
+            setIsEditing(false);
+        } catch (error) {
+            alert("답글 수정에 실패했습니다.");
+        }
+    };
+
+    const handleDelete = async () => {
+        if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
+            try {
+                await deleteMissionReply(submissionId, commentId, reply.id);
+            } catch (error) {
+                alert("답글 삭제에 실패했습니다.");
+            }
+        }
+    };
+
+    return (
+        <CommentCard style={{ backgroundColor: '#e9ecef', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+                <CommentAuthor>{reply.replierName}</CommentAuthor>
+                {isEditing ? (
+                    <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="2" />
+                ) : (
+                    <CommentText>{reply.text}</CommentText>
+                )}
+            </div>
+            {isAdmin && (
+                <CommentActions>
+                    {isEditing ? (
+                        <>
+                            <button onClick={handleUpdate}>저장</button>
+                            <button onClick={() => setIsEditing(false)}>취소</button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={() => setIsEditing(true)}>수정</button>
+                            <button onClick={handleDelete}>삭제</button>
+                        </>
+                    )}
+                </CommentActions>
+            )}
+        </CommentCard>
+    );
+}
+
 function Comment({ submissionId, comment, studentAuthUid, missionTitle }) {
     const { players } = useLeagueStore();
+    const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
+    const isAdmin = myPlayerData?.role === 'admin';
+
     const [replyContent, setReplyContent] = useState('');
     const [isReplying, setIsReplying] = useState(false);
     const [replies, setReplies] = useState([]);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedText, setEditedText] = useState(comment.text);
 
     const currentUser = auth.currentUser;
-    const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
 
     useEffect(() => {
         const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", comment.id, "replies");
@@ -190,31 +272,79 @@ function Comment({ submissionId, comment, studentAuthUid, missionTitle }) {
         }
     };
 
-    return (
-        <CommentCard>
-            <CommentAuthor>{comment.commenterName}</CommentAuthor>
-            <CommentText>{comment.text}</CommentText>
+    const handleUpdateComment = async () => {
+        if (editedText.trim() === comment.text || !editedText.trim()) {
+            setIsEditing(false);
+            return;
+        }
+        try {
+            await updateMissionComment(submissionId, comment.id, editedText.trim());
+            setIsEditing(false);
+        } catch (error) {
+            alert("댓글 수정에 실패했습니다.");
+        }
+    };
 
+    const handleDeleteComment = async () => {
+        if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
+            try {
+                await deleteMissionComment(submissionId, comment.id);
+            } catch (error) {
+                alert("댓글 삭제에 실패했습니다.");
+            }
+        }
+    };
+
+    return (
+        <>
+            <CommentCard style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                    <CommentAuthor>{comment.commenterName}</CommentAuthor>
+                    {isEditing ? (
+                        <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="3" />
+                    ) : (
+                        <CommentText>{comment.text}</CommentText>
+                    )}
+                </div>
+                {isAdmin && (
+                    <CommentActions>
+                        {isEditing ? (
+                            <>
+                                <button onClick={handleUpdateComment}>저장</button>
+                                <button onClick={() => { setIsEditing(false); setEditedText(comment.text); }}>취소</button>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={() => setIsEditing(true)}>수정</button>
+                                <button onClick={handleDeleteComment}>삭제</button>
+                            </>
+                        )}
+                    </CommentActions>
+                )}
+            </CommentCard>
             <ReplyList>
                 {replies.map(reply => (
-                    <CommentCard key={reply.id} style={{ backgroundColor: '#e9ecef', marginTop: '0.5rem' }}>
-                        <CommentAuthor>{reply.replierName}</CommentAuthor>
-                        <CommentText>{reply.text}</CommentText>
-                    </CommentCard>
+                    <ReplyItem
+                        key={reply.id}
+                        submissionId={submissionId}
+                        commentId={comment.id}
+                        reply={reply}
+                        missionTitle={missionTitle}
+                    />
                 ))}
             </ReplyList>
-
-            <button onClick={() => setIsReplying(prev => !prev)}>
-                {isReplying ? '취소' : '답글'}
-            </button>
-
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                <button onClick={() => setIsReplying(prev => !prev)}>
+                    {isReplying ? '답글 취소' : '답글 달기'}
+                </button>
+            </div>
             {isReplying && (
                 <CommentInputContainer>
                     <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows="2" placeholder="답글을 입력하세요..." />
                     <CommentSubmitButton onClick={handleReplySubmit}>등록</CommentSubmitButton>
                 </CommentInputContainer>
             )}
-        </CommentCard>
+        </>
     );
 }
 
