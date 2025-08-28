@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, addMissionComment, addMissionReply, updateMissionComment, deleteMissionComment, updateMissionReply, deleteMissionReply } from '../api/firebase';
+import { auth, db, addMissionComment, addMissionReply, updateMissionComment, deleteMissionComment, updateMissionReply, deleteMissionReply, toggleAdminFeedbackLike } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 const ModalBackground = styled.div`
@@ -49,6 +49,30 @@ const HistoryItemWrapper = styled.div`
     border-bottom: none;
     margin-bottom: 0;
   }
+`;
+
+const FeedbackSection = styled.div`
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #e7f5ff;
+  border-radius: 8px;
+  border-left: 5px solid #007bff;
+`;
+
+const FeedbackHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+`;
+
+const LikeButton = styled.button`
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.5rem;
+    transition: transform 0.2s;
+    &:hover { transform: scale(1.2); }
 `;
 
 const HistoryHeader = styled.div`
@@ -391,6 +415,19 @@ function HistoryItem({ item, student, missionTitle }) {
         return timestamp.toDate().toLocaleString('ko-KR');
     };
 
+    const handleLikeFeedback = async () => {
+        if (!student) return;
+        try {
+            await toggleAdminFeedbackLike(item.id, student.id);
+            // Note: UI will update automatically via onSnapshot listener in parent if set up,
+            // otherwise a manual refresh of `history` prop would be needed.
+            // For now, we assume a listener will handle the update.
+        } catch (error) {
+            console.error("Failed to like feedback:", error);
+            alert("좋아요 처리에 실패했습니다.");
+        }
+    };
+
     return (
         <HistoryItemWrapper>
             <HistoryHeader>{formatDate(item.approvedAt || item.requestedAt)} 제출</HistoryHeader>
@@ -398,6 +435,18 @@ function HistoryItem({ item, student, missionTitle }) {
                 {item.text && <p>{item.text}</p>}
                 {item.photoUrl && <img src={item.photoUrl} alt="제출 이미지" />}
             </SubmissionDetails>
+
+            {item.adminFeedback && (
+                <FeedbackSection>
+                    <FeedbackHeader>
+                        <span>💬 선생님의 댓글</span>
+                        <LikeButton onClick={handleLikeFeedback} title="좋아요!">
+                            {item.adminFeedbackLikes?.includes(student?.id) ? '❤️' : '🤍'}
+                        </LikeButton>
+                    </FeedbackHeader>
+                    <p style={{ margin: '0.5rem 0 0' }}>{item.adminFeedback}</p>
+                </FeedbackSection>
+            )}
 
             <CommentSection>
                 <CommentList>

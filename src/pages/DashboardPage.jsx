@@ -75,6 +75,21 @@ const TitleWrapper = styled.div`
   margin-bottom: 1.5rem;
 `;
 
+const GalleryButton = styled(Link)`
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: bold;
+  background-color: #6c757d;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #5a6268;
+  }
+`;
+
 const Title = styled.h2`
   margin: 0;
 `;
@@ -660,7 +675,10 @@ function DashboardPage() {
             <MainGrid>
                 <ClickableSection to="/missions">
                     <Section>
-                        <TitleWrapper><Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title></TitleWrapper>
+                        <TitleWrapper>
+                            <Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title>
+                            <GalleryButton to="/mission-gallery">갤러리 보기</GalleryButton>
+                        </TitleWrapper>
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {
                                 const submission = mySubmissions[mission.id];

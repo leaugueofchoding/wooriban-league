@@ -24,6 +24,14 @@ import SuggestionPage from './pages/SuggestionPage';
 import MyRoomPage from './pages/MyRoomPage';
 import BroadcastPage from './pages/BroadcastPage';
 
+// [임시] 미션 갤러리 페이지
+const MissionGalleryPage = () => (
+  <div style={{ padding: '2rem', textAlign: 'center' }}>
+    <h2>🎨 미션 갤러리 (제작 중)</h2>
+    <p>다른 친구들의 멋진 미션 결과물을 구경하고 응원의 댓글을 남겨주세요!</p>
+    <Link to="/">홈으로 돌아가기</Link>
+  </div>
+);
 
 // Common Components
 import Auth from './components/Auth';
@@ -185,7 +193,7 @@ function App() {
             <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
 
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
-
+            <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
           </Routes>
         </MainContent>
         <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} />

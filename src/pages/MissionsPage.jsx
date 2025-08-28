@@ -363,52 +363,43 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const renderButtons = () => {
     if (!canSubmitMission) return null;
+
+    const hasSubmission = !!submission;
+    const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE'].includes(missionStatus);
     const isDoneOrPending = ['APPROVED_TODAY', 'PENDING_TODAY', 'approved', 'pending'].includes(missionStatus);
     const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || isDoneOrPending;
-    let buttonText;
-    let buttonStatusStyle;
+
+    let actionButtonText;
+    let actionButtonStyle;
 
     if (isSubmitting) {
-      buttonText = '요청 중...';
-      buttonStatusStyle = 'pending';
+      actionButtonText = '요청 중...';
+      actionButtonStyle = 'pending';
     } else {
       switch (missionStatus) {
-        case 'APPROVED_TODAY': buttonText = '오늘 완료!'; buttonStatusStyle = 'approved'; break;
-        case 'PENDING_TODAY': buttonText = '승인 대기중'; buttonStatusStyle = 'pending'; break;
-        case 'REJECTED_TODAY': buttonText = '다시 제출하기'; buttonStatusStyle = 'rejected'; break;
-        case 'approved': buttonText = '승인 완료!'; buttonStatusStyle = 'approved'; break;
-        case 'pending': buttonText = '승인 대기중'; buttonStatusStyle = 'pending'; break;
-        case 'rejected': buttonText = '다시 제출하기'; buttonStatusStyle = 'rejected'; break;
-        default: buttonText = '다 했어요!'; buttonStatusStyle = 'default'; break;
+        case 'APPROVED_TODAY': actionButtonText = '오늘 완료!'; actionButtonStyle = 'approved'; break;
+        case 'PENDING_TODAY': actionButtonText = '승인 대기중'; actionButtonStyle = 'pending'; break;
+        case 'REJECTED_TODAY': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
+        case 'approved': actionButtonText = '승인 완료!'; actionButtonStyle = 'approved'; break;
+        case 'pending': actionButtonText = '승인 대기중'; actionButtonStyle = 'pending'; break;
+        case 'rejected': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
+        default: actionButtonText = '다 했어요!'; actionButtonStyle = 'default'; break;
       }
-    }
-
-    if (mission.isFixed) {
-      return (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <RequestButton $status="approved" onClick={handleHistoryView}>기록 보기</RequestButton>
-          <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} $status={buttonStatusStyle}>
-            {buttonText}
-          </RequestButton>
-        </div>
-      );
-    }
-
-    if (missionStatus === 'approved') {
-      if (hasViewableContent) {
-        return (
-          <RequestButton $status="approved" onClick={() => setIsDetailsOpen(prev => !prev)}>
-            {isDetailsOpen ? '숨기기' : '제출물 보기'}
-          </RequestButton>
-        );
-      }
-      return <RequestButton $status="approved" disabled>{buttonText}</RequestButton>;
     }
 
     return (
-      <RequestButton onClick={handleSubmit} disabled={isButtonDisabled} $status={buttonStatusStyle}>
-        {buttonText}
-      </RequestButton>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        {hasSubmission && (
+          <RequestButton $status="approved" onClick={handleHistoryView}>
+            기록 보기
+          </RequestButton>
+        )}
+        {(isActionable || isDoneOrPending) && (
+          <RequestButton onClick={isActionable ? handleSubmit : null} disabled={isButtonDisabled} $status={actionButtonStyle}>
+            {actionButtonText}
+          </RequestButton>
+        )}
+      </div>
     );
   };
 

@@ -246,6 +246,49 @@ export async function deleteMissionReply(submissionId, commentId, replyId) {
   await deleteDoc(replyRef);
 }
 
+// [신규] 미션 제출물에 관리자 피드백(댓글)을 추가/수정하는 함수
+export async function upsertAdminFeedback(submissionId, feedbackText) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  await updateDoc(submissionRef, {
+    adminFeedback: feedbackText,
+    feedbackUpdatedAt: serverTimestamp()
+  });
+}
+
+// [신규] 미션 제출물에서 관리자 피드백(댓글)을 삭제하는 함수
+export async function deleteAdminFeedback(submissionId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  await updateDoc(submissionRef, {
+    adminFeedback: null,
+    feedbackUpdatedAt: null
+  });
+}
+
+// [신규] 학생이 관리자 피드백에 '좋아요'를 누르는 기능
+export async function toggleAdminFeedbackLike(submissionId, studentId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+
+  if (!submissionSnap.exists()) {
+    throw new Error("Submission not found");
+  }
+
+  const submissionData = submissionSnap.data();
+  const likes = submissionData.adminFeedbackLikes || [];
+
+  if (likes.includes(studentId)) {
+    // 이미 '좋아요'를 눌렀다면 취소
+    await updateDoc(submissionRef, {
+      adminFeedbackLikes: likes.filter(id => id !== studentId)
+    });
+  } else {
+    // '좋아요'를 누르지 않았다면 추가
+    await updateDoc(submissionRef, {
+      adminFeedbackLikes: [...likes, studentId]
+    });
+  }
+}
+
 // --- 미션 관리 ---
 export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
   const batch = writeBatch(db);
@@ -465,8 +508,7 @@ export async function getMissionHistory(studentId, missionId) {
     collection(db, "missionSubmissions"),
     where("studentId", "==", studentId),
     where("missionId", "==", missionId),
-    where("status", "==", "approved"),
-    orderBy("approvedAt", "desc")
+    orderBy("requestedAt", "desc") // 모든 기록을 최신순으로 정렬
   );
 
   const querySnapshot = await getDocs(q);
@@ -2454,3 +2496,4 @@ export async function equipTitle(playerId, titleId) {
     equippedTitle: titleId
   });
 }
+

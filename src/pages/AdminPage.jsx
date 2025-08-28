@@ -56,7 +56,8 @@ import {
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import ImageModal from '../components/ImageModal'; // [추가] 이미지 모달 컴포넌트 import
-import RecorderPage from './RecorderPage'; // [추가] 이 줄을 추가해주세요.
+import RecorderPage from './RecorderPage';
+import ApprovalModal from '../components/ApprovalModal'; // [추가] 승인 모달 컴포넌트 import
 
 // --- Styled Components ---
 const AdminWrapper = styled.div`
@@ -239,8 +240,7 @@ const List = styled.ul`
 
 const ListItem = styled.li`
   display: grid;
-  /* ▼▼▼ [수정] 드래그 핸들을 위한 칼럼 추가 ▼▼▼ */
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr auto; /* [수정] 2단 그리드로 변경 */
   gap: 1rem;
   align-items: center;
   padding: 0.75rem;
@@ -824,13 +824,12 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
+    const [selectedSubmissionIndex, setSelectedSubmissionIndex] = useState(null);
     const currentUser = auth.currentUser;
 
-    useEffect(() => {
+    const refreshPendingSubmissions = async () => {
         const submissionsRef = collection(db, "missionSubmissions");
         const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
-
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const validSubmissions = submissions.filter(sub =>
@@ -838,9 +837,34 @@ function PendingMissionWidget({ setModalImageSrc }) {
             );
             setPendingSubmissions(validSubmissions);
         });
+        return unsubscribe;
+    };
 
-        return () => unsubscribe();
+    useEffect(() => {
+        const unsubscribe = refreshPendingSubmissions();
+        return () => unsubscribe;
     }, [missions]);
+
+
+    const handleModalOpen = (index) => {
+        setSelectedSubmissionIndex(index);
+    };
+
+    const handleModalClose = () => {
+        setSelectedSubmissionIndex(null);
+    };
+
+    const handleNext = () => {
+        setSelectedSubmissionIndex(prev => (prev < pendingSubmissions.length - 1 ? prev + 1 : prev));
+    };
+
+    const handlePrev = () => {
+        setSelectedSubmissionIndex(prev => (prev > 0 ? prev - 1 : prev));
+    };
+
+    const handleActionInModal = () => {
+        refreshPendingSubmissions(); // 모달 내에서 승인/반려 후 목록 새로고침
+    };
 
     const handleAction = async (action, submission, reward) => {
         setProcessingIds(prev => new Set(prev.add(submission.id)));
@@ -876,64 +900,68 @@ function PendingMissionWidget({ setModalImageSrc }) {
                 <p>현재 승인을 기다리는 미션이 없습니다.</p>
             ) : (
                 <List>
-                    {pendingSubmissions.map(sub => {
+                    {pendingSubmissions.map((sub, index) => {
                         const student = players.find(p => p.id === sub.studentId);
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
-                        const isOpen = expandedSubmissionId === sub.id;
                         const hasContent = sub.text || (sub.photoUrls && sub.photoUrls.length > 0);
                         const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
                         if (!mission) return null;
 
                         return (
-                            <ListItem key={sub.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', width: '100%', cursor: hasContent ? 'pointer' : 'default' }} onClick={() => hasContent && setExpandedSubmissionId(prev => prev === sub.id ? null : sub.id)}>
-                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {student?.name} - [{mission?.title}]
-                                        {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
-                                        {sub.photoUrls && sub.photoUrls.length > 0 && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
-                                    </span>
-                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                        {isTieredReward ? (
-                                            mission.rewards.map(reward => (
-                                                <StyledButton
-                                                    key={reward}
-                                                    onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, reward); }}
-                                                    style={{ backgroundColor: '#28a745' }}
-                                                    disabled={isProcessing}
-                                                >
-                                                    {isProcessing ? '...' : `${reward}P`}
-                                                </StyledButton>
-                                            ))
-                                        ) : (
+                            <ListItem key={sub.id} style={{ cursor: 'pointer' }} onClick={() => handleModalOpen(index)}>
+                                {/* [수정] 컨텐츠를 div로 묶어 왼쪽 정렬 적용 */}
+                                <div>
+                                    {student?.name} - [{mission?.title}]
+                                    {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
+                                    {sub.photoUrls && sub.photoUrls.length > 0 && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    {isTieredReward ? (
+                                        mission.rewards.map(reward => (
                                             <StyledButton
-                                                onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, mission.reward); }}
+                                                key={reward}
+                                                onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, reward); }}
                                                 style={{ backgroundColor: '#28a745' }}
                                                 disabled={isProcessing}
                                             >
-                                                {isProcessing ? '처리중...' : `${mission.reward}P`}
+                                                {isProcessing ? '...' : `${reward}P`}
                                             </StyledButton>
-                                        )}
+                                        ))
+                                    ) : (
                                         <StyledButton
-                                            onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
-                                            style={{ backgroundColor: '#dc3545' }}
+                                            onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, mission.reward); }}
+                                            style={{ backgroundColor: '#28a745' }}
                                             disabled={isProcessing}
                                         >
-                                            거절
+                                            {isProcessing ? '처리중...' : `${mission.reward}P`}
                                         </StyledButton>
-                                    </div>
+                                    )}
+                                    <StyledButton
+                                        onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
+                                        style={{ backgroundColor: '#dc3545' }}
+                                        disabled={isProcessing}
+                                    >
+                                        거절
+                                    </StyledButton>
                                 </div>
-                                <SubmissionDetails $isOpen={isOpen}>
-                                    {sub.text && <p>{sub.text}</p>}
-                                    {sub.photoUrls && sub.photoUrls.map((url, index) => (
-                                        <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={(e) => { e.stopPropagation(); setModalImageSrc(url); }} style={{ marginBottom: '0.5rem', cursor: 'pointer' }} />
-                                    ))}
-                                </SubmissionDetails>
                             </ListItem>
                         )
                     })}
                 </List>
+            )}
+            {selectedSubmissionIndex !== null && (
+                <ApprovalModal
+                    submission={pendingSubmissions[selectedSubmissionIndex]}
+                    onClose={handleModalClose}
+                    onNext={handleNext}
+                    onPrev={handlePrev}
+                    currentIndex={selectedSubmissionIndex}
+                    totalCount={pendingSubmissions.length}
+                    onAction={handleActionInModal}
+                    onImageClick={(url) => setModalImageSrc(url)}
+                />
             )}
         </Section>
     );
