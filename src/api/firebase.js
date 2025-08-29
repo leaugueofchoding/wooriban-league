@@ -289,6 +289,31 @@ export async function toggleAdminFeedbackLike(submissionId, studentId) {
   }
 }
 
+// [신규] 미션 제출물 자체에 '좋아요'를 누르는 기능 (관리자, 학생 공용)
+export async function toggleSubmissionLike(submissionId, likerId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+
+  if (!submissionSnap.exists()) {
+    throw new Error("Submission not found");
+  }
+
+  const submissionData = submissionSnap.data();
+  const likes = submissionData.likes || [];
+
+  if (likes.includes(likerId)) {
+    // 이미 '좋아요'를 눌렀다면 취소
+    await updateDoc(submissionRef, {
+      likes: likes.filter(id => id !== likerId)
+    });
+  } else {
+    // '좋아요'를 누르지 않았다면 추가
+    await updateDoc(submissionRef, {
+      likes: [...likes, likerId]
+    });
+  }
+}
+
 // --- 미션 관리 ---
 export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
   const batch = writeBatch(db);

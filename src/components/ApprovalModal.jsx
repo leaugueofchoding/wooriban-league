@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { approveMissionsInBatch, rejectMissionSubmission, upsertAdminFeedback, deleteAdminFeedback } from '../api/firebase';
+import { approveMissionsInBatch, rejectMissionSubmission, upsertAdminFeedback, deleteAdminFeedback, toggleSubmissionLike } from '../api/firebase';
 import { auth } from '../api/firebase';
 
 const ModalBackground = styled.div`
@@ -81,10 +81,23 @@ const ContentArea = styled.div`
   padding-right: 1rem;
 `;
 
-const StudentInfo = styled.p`
+const StudentInfo = styled.div`
     font-weight: bold;
     font-size: 1.2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 `;
+
+const LikeButton = styled.button`
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 2rem;
+    transition: transform 0.2s;
+    &:hover { transform: scale(1.2); }
+`;
+
 
 const SubmissionDetails = styled.div`
     padding: 1rem;
@@ -101,9 +114,35 @@ const SubmissionDetails = styled.div`
         max-width: 100%;
         height: auto;
         border-radius: 8px;
-        margin-top: 0.5rem;
         cursor: pointer;
+        transition: transform 0.2s ease-in-out;
     }
+`;
+
+const ImageContainer = styled.div`
+  position: relative;
+  margin-top: 0.5rem;
+`;
+
+const RotateButton = styled.button`
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  &:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
 `;
 
 const CommentSection = styled.div`
@@ -136,6 +175,7 @@ const SaveButton = styled.button`
     font-weight: bold;
     &:hover { background-color: #0056b3; }
 `;
+
 
 const ButtonGroup = styled.div`
     display: flex;
@@ -190,6 +230,8 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     const [status, setStatus] = useState(submission.status);
     const [feedback, setFeedback] = useState(submission.adminFeedback || '');
     const [isEditingFeedback, setIsEditingFeedback] = useState(!submission.adminFeedback);
+    const [likes, setLikes] = useState(submission.likes || []);
+    const [rotations, setRotations] = useState({}); // [추가] 이미지 회전 상태
 
     const student = useMemo(() => players.find(p => p.id === submission.studentId), [players, submission]);
     const mission = useMemo(() => missions.find(m => m.id === submission.missionId), [missions, submission]);
@@ -197,10 +239,19 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
 
     useEffect(() => {
         setStatus(submission.status);
+        setFeedback(submission.adminFeedback || '');
+        setIsEditingFeedback(!submission.adminFeedback);
+        setLikes(submission.likes || []);
+        setRotations({}); // [추가] 다음 제출물로 넘어가면 회전 상태 초기화
     }, [submission]);
 
     const handleAction = async (action, reward) => {
         try {
+            // [추가] 승인/반려 시 피드백이 있으면 함께 저장
+            if (feedback.trim()) {
+                await upsertAdminFeedback(submission.id, feedback.trim());
+            }
+
             if (action === 'approve') {
                 await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
                 setStatus('approved');
@@ -238,38 +289,69 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
         }
     };
 
+    const handleLike = async () => {
+        try {
+            await toggleSubmissionLike(submission.id, currentUser.uid);
+            // Optimistic UI update
+            setLikes(prev =>
+                prev.includes(currentUser.uid)
+                    ? prev.filter(id => id !== currentUser.uid)
+                    : [...prev, currentUser.uid]
+            );
+        } catch (error) {
+            alert("좋아요 처리에 실패했습니다.");
+        }
+    };
+
+    const handleRotate = (url) => {
+        setRotations(prev => ({
+            ...prev,
+            [url]: (prev[url] || 0) + 90
+        }));
+    };
+
     return (
         <ModalBackground onClick={onClose}>
             <ModalContainer onClick={e => e.stopPropagation()}>
                 <CloseButton onClick={onClose}>✕</CloseButton>
                 <ModalTitle>미션 승인 요청 확인</ModalTitle>
                 <ContentArea>
-                    <StudentInfo>{student?.name} - "{mission?.title}"</StudentInfo>
+                    <StudentInfo>
+                        <span>{student?.name} - "{mission?.title}"</span>
+                        <LikeButton onClick={handleLike}>
+                            {likes.includes(currentUser.uid) ? '❤️' : '🤍'}
+                            <span style={{ fontSize: '1rem', marginLeft: '0.5rem' }}>{likes.length}</span>
+                        </LikeButton>
+                    </StudentInfo>
                     <SubmissionDetails>
                         {submission.text && <p>{submission.text}</p>}
                         {submission.photoUrls && submission.photoUrls.map((url, index) => (
-                            <img key={index} src={url} alt={`제출사진 ${index + 1}`} onClick={() => onImageClick(url)} />
+                            <ImageContainer key={index}>
+                                <img
+                                    src={url}
+                                    alt={`제출사진 ${index + 1}`}
+                                    onClick={() => onImageClick(url)}
+                                    style={{ transform: `rotate(${rotations[url] || 0}deg)` }}
+                                />
+                                <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>
+                            </ImageContainer>
                         ))}
                     </SubmissionDetails>
 
                     <CommentSection>
-                        <h4>댓글 달기</h4>
-                        {isEditingFeedback ? (
+                        <h4>▼ 관리자 댓글 (학생에게 보여집니다)</h4>
+                        {status === 'pending' && (
                             <FeedbackInputContainer>
                                 <CommentTextarea
                                     value={feedback}
                                     onChange={(e) => setFeedback(e.target.value)}
                                     placeholder="피드백을 입력하세요..."
                                 />
-                                <SaveButton onClick={handleSaveFeedback}>저장</SaveButton>
                             </FeedbackInputContainer>
-                        ) : (
+                        )}
+                        {status !== 'pending' && feedback && (
                             <SubmissionDetails style={{ background: '#e9ecef' }}>
                                 <p>{feedback}</p>
-                                <div style={{ textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                    <button onClick={() => setIsEditingFeedback(true)}>수정</button>
-                                    <button onClick={handleDeleteFeedback}>삭제</button>
-                                </div>
                             </SubmissionDetails>
                         )}
                     </CommentSection>

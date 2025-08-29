@@ -64,9 +64,9 @@
     },
     {
         "id": "daily_helper",
-        "name": "일일 헬퍼",
-        "description": "눈에 보이지 않는 곳에서도 다른 사람 돕기를 즐기는군요!",
-        "icon": "💡",
+        "name": "일타강사",
+        "description": "이렇게 쉽게 공부를 가르쳐 주다니 대단해요!",
+        "icon": "👨",
         "color": "#fd7e14",
         "type": "manual",
         "conditionId": null
@@ -84,15 +84,15 @@
         "id": "idea_bank",
         "name": "아이디어 뱅크",
         "description": "좋은 의견이나 건의사항을 제시했을 때",
-        "icon": "📓",
+        "icon": "💡",
         "color": "#007bff",
         "type": "manual",
         "conditionId": null
     },
     {
         "id": "class_dj",
-        "name": "평화사절단",
-        "description": "학급에 좋은 분위기를 선물했을 때",
+        "name": "우리반 오르페우스",
+        "description": "학급에 좋은 음악(연주)를 선물했을 때",
         "icon": "🎵",
         "color": "#e83e8c",
         "type": "manual",
@@ -100,9 +100,9 @@
     },
     {
         "id": "god_of_tidiness",
-        "name": "정리 정돈의 신",
-        "description": "교실 환경 미화에 꾸준히 기여했을 때",
-        "icon": "🧹",
+        "name": "숨은 영웅",
+        "description": "묵묵히 돕는 당신의 모습이 아름답군요!",
+        "icon": "💪",
         "color": "#20c997",
         "type": "manual",
         "conditionId": null
