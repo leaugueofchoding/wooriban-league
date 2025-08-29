@@ -838,61 +838,86 @@ export const useLeagueStore = create((set, get) => ({
 
     autoAssignTeams: async () => {
         if (!confirm('팀원을 자동 배정하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
-        const { players, teams, matches, currentSeason } = get();
+        const { players, teams, currentSeason } = get();
         const numTeams = teams.length;
         if (players.length === 0 || numTeams === 0) return alert('선수와 팀이 모두 필요합니다.');
 
         try {
-            // 1. 선수별 득점 기록 계산
+            // 1. 모든 과거 시즌의 경기 기록을 가져와 선수별 '통산 누적 득점'을 계산합니다.
+            const allSeasons = await getSeasons();
+            const pastSeasons = allSeasons.filter(s => s.id !== currentSeason.id && s.status === 'completed');
+            const pastMatchesPromises = pastSeasons.map(s => getMatches(s.id));
+            const pastMatchesBySeason = await Promise.all(pastMatchesPromises);
+            const allPastMatches = pastMatchesBySeason.flat();
+
             const playerGoals = players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {});
-            matches.forEach(match => {
+            allPastMatches.forEach(match => {
                 if (match.scorers) {
                     Object.entries(match.scorers).forEach(([playerId, goals]) => {
-                        if (playerGoals.hasOwnProperty(playerId)) playerGoals[playerId] += goals;
+                        if (playerGoals.hasOwnProperty(playerId)) {
+                            playerGoals[playerId] += goals;
+                        }
                     });
                 }
             });
 
-            // 2. 배정 대상 선수 필터링 및 실력순 정렬
+            // 2. 배정 대상 선수 필터링 및 통산 득점순 정렬
             const activePlayers = players.filter(p => p.status !== 'inactive' && p.role !== 'admin');
             const scoreSorter = (a, b) => (playerGoals[b.id] || 0) - (playerGoals[a.id] || 0);
             const sortedPlayers = [...activePlayers].sort(scoreSorter);
 
-            // 3. 팀 업데이트를 위한 배열 초기화 (기존 팀원 모두 삭제)
-            const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null }));
+            // 3. 팀 업데이트를 위한 배열 초기화 (성별 카운트 포함)
+            const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null, genderCount: { '남': 0, '여': 0 } }));
 
-            // 4. [핵심] 상위 득점자(팀 수만큼)를 각 팀에 주장으로 '무조건' 분리하여 배정
+            // 4. 상위 득점자(팀 수만큼)를 각 팀에 분리 배정 (주장 지정 없이)
             const topPlayers = sortedPlayers.splice(0, numTeams);
-            // 팀 순서를 랜덤화하여 매번 다른 팀에 최상위 득점자가 배정되도록 함
             const shuffledTeamUpdates = [...teamUpdates].sort(() => 0.5 - Math.random());
             topPlayers.forEach((player, index) => {
-                if (shuffledTeamUpdates[index]) {
-                    shuffledTeamUpdates[index].members.push(player.id);
-                    shuffledTeamUpdates[index].captainId = player.id;
-                }
-            });
-
-            // 5. 남은 선수들을 랜덤으로 섞어 배정 준비
-            const remainingPlayers = sortedPlayers.sort(() => 0.5 - Math.random());
-
-            // 6. 남은 선수들을 가장 인원이 적은 팀에 우선적으로 배정
-            remainingPlayers.forEach(player => {
-                // 매번 팀 인원 수를 기준으로 정렬하여 가장 적은 팀을 찾음
-                // members.length가 같은 경우, 팀 ID로 정렬하여 일관성 유지
-                teamUpdates.sort((a, b) => {
-                    if (a.members.length !== b.members.length) {
-                        return a.members.length - b.members.length;
+                const team = shuffledTeamUpdates[index];
+                if (team) {
+                    team.members.push(player.id);
+                    if (player.gender) {
+                        team.genderCount[player.gender]++;
                     }
-                    return a.id.localeCompare(b.id);
-                });
-                const targetTeam = teamUpdates[0];
-                if (targetTeam) {
-                    targetTeam.members.push(player.id);
                 }
             });
 
-            // 7. DB 업데이트
-            await batchUpdateTeams(teamUpdates);
+            // 5. 남은 선수들을 성별로 분리 후 랜덤으로 섞기
+            const remainingMalePlayers = sortedPlayers.filter(p => p.gender === '남').sort(() => 0.5 - Math.random());
+            const remainingFemalePlayers = sortedPlayers.filter(p => p.gender === '여').sort(() => 0.5 - Math.random());
+
+            // 6. 성별을 고려하여 남은 선수 배정
+            const assignRemainingPlayers = (playersToAssign, gender) => {
+                playersToAssign.forEach(player => {
+                    teamUpdates.sort((a, b) => {
+                        if (a.genderCount[gender] !== b.genderCount[gender]) {
+                            return a.genderCount[gender] - b.genderCount[gender];
+                        }
+                        return a.members.length - b.members.length;
+                    });
+                    const targetTeam = teamUpdates[0];
+                    if (targetTeam) {
+                        targetTeam.members.push(player.id);
+                        targetTeam.genderCount[gender]++;
+                    }
+                });
+            };
+
+            assignRemainingPlayers(remainingMalePlayers, '남');
+            assignRemainingPlayers(remainingFemalePlayers, '여');
+
+            // 7. [핵심 수정] 모든 팀원 배정이 끝난 후, 각 팀에서 랜덤으로 주장을 선출합니다.
+            teamUpdates.forEach(team => {
+                if (team.members.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * team.members.length);
+                    team.captainId = team.members[randomIndex];
+                }
+            });
+
+            // 8. DB 업데이트 (임시 데이터 genderCount 제외)
+            const finalTeamUpdates = teamUpdates.map(({ id, members, captainId }) => ({ id, members, captainId }));
+            await batchUpdateTeams(finalTeamUpdates);
+
             const updatedTeams = await getTeams(currentSeason.id);
             set({ teams: updatedTeams });
             alert('자동 배정이 완료되었습니다.');
