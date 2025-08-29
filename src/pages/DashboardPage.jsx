@@ -1,10 +1,10 @@
-// src/pages/DashboardPage.jsx 전체 코드
+// src/pages/DashboardPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // useNavigate 추가
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
 import { emblemMap } from '../utils/emblemMap';
@@ -75,15 +75,18 @@ const TitleWrapper = styled.div`
   margin-bottom: 1.5rem;
 `;
 
-const GalleryButton = styled(Link)`
+// [수정된 부분] GalleryButton을 Link가 아닌 일반 button으로 변경
+const GalleryButton = styled.button`
   padding: 0.4rem 0.8rem;
   font-size: 0.9rem;
   font-weight: bold;
   background-color: #6c757d;
   color: white;
   text-decoration: none;
+  border: none;
   border-radius: 6px;
   transition: background-color 0.2s;
+  cursor: pointer;
 
   &:hover {
     background-color: #5a6268;
@@ -94,6 +97,7 @@ const Title = styled.h2`
   margin: 0;
 `;
 
+// ... (이하 모든 styled-component는 기존과 동일하게 유지) ...
 const MyInfoCard = styled.div`
   display: flex;
   align-items: center;
@@ -461,7 +465,7 @@ const RequestButton = styled.button`
     }
 `;
 
-
+// [수정된 부분] DashboardPage 함수 전체 교체
 function DashboardPage() {
     const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
@@ -677,7 +681,9 @@ function DashboardPage() {
                     <Section>
                         <TitleWrapper>
                             <Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title>
-                            <GalleryButton to="/mission-gallery">갤러리 보기</GalleryButton>
+                            <GalleryButton onClick={(e) => { e.stopPropagation(); navigate('/mission-gallery'); }}>
+                                갤러리 보기
+                            </GalleryButton>
                         </TitleWrapper>
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {

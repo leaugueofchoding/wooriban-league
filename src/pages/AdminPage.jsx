@@ -893,6 +893,9 @@ function PendingMissionWidget({ setModalImageSrc }) {
         }
     };
 
+    // [수정된 부분] 렌더링할 특정 제출물을 변수로 선언합니다.
+    const submissionToShow = selectedSubmissionIndex !== null ? pendingSubmissions[selectedSubmissionIndex] : null;
+
     return (
         <Section>
             <SectionTitle>승인 대기중인 미션 ✅ ({pendingSubmissions.length}건)</SectionTitle>
@@ -911,7 +914,6 @@ function PendingMissionWidget({ setModalImageSrc }) {
 
                         return (
                             <ListItem key={sub.id} style={{ cursor: 'pointer' }} onClick={() => handleModalOpen(index)}>
-                                {/* [수정] 컨텐츠를 div로 묶어 왼쪽 정렬 적용 */}
                                 <div>
                                     {student?.name} - [{mission?.title}]
                                     {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
@@ -951,9 +953,10 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     })}
                 </List>
             )}
-            {selectedSubmissionIndex !== null && (
+            {/* [수정된 부분] submissionToShow 변수가 유효할 때만 모달을 렌더링합니다. */}
+            {submissionToShow && (
                 <ApprovalModal
-                    submission={pendingSubmissions[selectedSubmissionIndex]}
+                    submission={submissionToShow}
                     onClose={handleModalClose}
                     onNext={handleNext}
                     onPrev={handlePrev}
