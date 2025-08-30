@@ -189,12 +189,13 @@ const TopControls = styled.div`
 `;
 
 
-function RecorderPage({ isAdminView = false }) {
+function RecorderPage({ isAdminView = false, initialMissionId = null }) {
     const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
     const { missionId } = useParams();
     const navigate = useNavigate();
 
-    const [selectedMissionId, setSelectedMissionId] = useState(missionId || '');
+    // [수정] props로 받은 initialMissionId를 초기값으로 사용
+    const [selectedMissionId, setSelectedMissionId] = useState(initialMissionId || missionId || '');
     const [checkedStudents, setCheckedStudents] = useState(new Set());
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
     const currentUser = auth.currentUser;
@@ -202,6 +203,13 @@ function RecorderPage({ isAdminView = false }) {
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [missionHistory, setMissionHistory] = useState([]);
     const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
+
+    // [신규] AdminPage에서 탭 전환 시, 선택된 미션을 업데이트하기 위한 useEffect
+    useEffect(() => {
+        if (initialMissionId) {
+            setSelectedMissionId(initialMissionId);
+        }
+    }, [initialMissionId]);
 
     useEffect(() => {
         if (missionId) {

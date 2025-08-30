@@ -280,7 +280,7 @@ const DragHandle = styled.div`
   }
 `;
 
-function SortableListItem({ id, mission, navigate, unarchiveMission, archiveMission, removeMission, handleEditClick }) {
+function SortableListItem({ id, mission, onNavigate, unarchiveMission, archiveMission, removeMission, handleEditClick }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
     const style = {
@@ -297,8 +297,8 @@ function SortableListItem({ id, mission, navigate, unarchiveMission, archiveMiss
                 <span style={{ marginLeft: '1rem', color: '#6c757d' }}>(보상: {Array.isArray(mission.rewards) ? mission.rewards.join('/') : mission.reward}P)</span>
             </div>
             <MissionControls>
-                <StyledButton onClick={() => navigate(`/recorder/${mission.id}`)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
-                {/* [수정] 아래 '수정' 버튼을 추가했습니다. */}
+                {/* [수정] onClick 핸들러를 onNavigate로 변경 */}
+                <StyledButton onClick={() => onNavigate(mission.id)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
                 <StyledButton onClick={() => handleEditClick(mission)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
                 {mission.status === 'archived' ? (
                     <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
@@ -1450,7 +1450,7 @@ function GoalManager() {
     );
 }
 
-function MissionManager() {
+function MissionManager({ onNavigate }) {
     const {
         missions,
         archivedMissions,
@@ -1651,6 +1651,7 @@ function MissionManager() {
                                         archiveMission={archiveMission}
                                         removeMission={removeMission}
                                         handleEditClick={handleEditClick}
+                                        onNavigate={onNavigate} // 이 부분을 추가/수정합니다.
                                     />
                                 ))
                             ) : (
@@ -3471,6 +3472,7 @@ function AdminPage() {
     const [preselectedStudentId, setPreselectedStudentId] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null); // [추가] 이미지 모달 상태
     const [missionSubMenu, setMissionSubMenu] = useState('approval'); // [추가]
+    const [preselectedMissionId, setPreselectedMissionId] = useState(null);
 
     useEffect(() => {
         const studentIdFromState = location.state?.preselectedStudentId;
@@ -3488,6 +3490,13 @@ function AdminPage() {
         navigate('/admin', { state: { preselectedStudentId: studentId } });
     };
 
+    const handleNavigateToHistory = (missionId) => {
+        setActiveMenu('mission');
+        setMissionSubMenu('history');
+        setPreselectedMissionId(missionId);
+    };
+
+
     const renderContent = () => {
         if (activeMenu === 'mission') {
             // [수정] missionSubMenu 값에 따라 다른 컴포넌트를 보여줍니다.
@@ -3502,14 +3511,15 @@ function AdminPage() {
                     return (
                         <>
                             <GridContainer style={{ gridTemplateColumns: '1fr' }}>
-                                <MissionManager />
+                                {/* [수정] MissionManager에 핸들러 함수를 prop으로 전달 */}
+                                <MissionManager onNavigate={handleNavigateToHistory} />
                             </GridContainer>
                             <GoalManager />
                         </>
                     );
-                // ▼▼▼ [추가] 기록 확인 탭 컨텐츠 렌더링 ▼▼▼
                 case 'history':
-                    return <RecorderPage isAdminView={true} />;
+                    // [수정] RecorderPage에 preselectedMissionId를 prop으로 전달
+                    return <RecorderPage isAdminView={true} initialMissionId={preselectedMissionId} />;
                 default:
                     return null;
             }
