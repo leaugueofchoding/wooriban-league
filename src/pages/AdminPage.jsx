@@ -251,6 +251,20 @@ const ListItem = styled.li`
   }
 `;
 
+const PendingListItem = styled.li`
+  display: grid;
+  grid-template-columns: 1fr auto; /* 내용, 버튼 */
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem;
+  border-bottom: 1px solid #eee;
+  background-color: #fff;
+  cursor: pointer;
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
 const DragHandle = styled.div`
   display: flex;
   align-items: center;
@@ -913,7 +927,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                         if (!mission) return null;
 
                         return (
-                            <ListItem key={sub.id} style={{ cursor: 'pointer' }} onClick={() => handleModalOpen(index)}>
+                            <PendingListItem key={sub.id} onClick={() => handleModalOpen(index)}>
                                 <div>
                                     {student?.name} - [{mission?.title}]
                                     {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
@@ -948,7 +962,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                                         거절
                                     </StyledButton>
                                 </div>
-                            </ListItem>
+                            </PendingListItem>
                         )
                     })}
                 </List>

@@ -118,7 +118,7 @@ export async function buyAvatarPart(playerId, part) {
 }
 
 // =================================================================
-// ▼▼▼ [신규] 자동 칭호 획득 조건 검사 및 부여 헬퍼 함수 ▼▼▼
+// ▼▼▼ [수정] 자동 칭호 획득 조건 검사 및 부여 헬퍼 함수 ▼▼▼
 // =================================================================
 async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
   if (!studentId || !studentAuthUid) return;
@@ -128,76 +128,44 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
   if (!playerSnap.exists()) return;
   const playerData = playerSnap.data();
 
-  // 1. 모든 '자동 획득' 칭호 목록 가져오기
   const titlesRef = collection(db, "titles");
   const qTitles = query(titlesRef, where("type", "==", "auto"));
   const titlesSnapshot = await getDocs(qTitles);
   const autoTitles = titlesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  // 2. 학생의 모든 '승인'된 미션 제출 기록 수 세기
   const submissionsRef = collection(db, "missionSubmissions");
   const qSubmissions = query(submissionsRef, where("studentId", "==", studentId), where("status", "==", "approved"));
   const submissionsSnapshot = await getDocs(qSubmissions);
   const approvedMissionCount = submissionsSnapshot.size;
 
-  // 3. 학생의 모든 '정답' 퀴즈 기록 수 세기
   const quizHistoryRef = collection(db, "quiz_history");
   const qQuiz = query(quizHistoryRef, where("studentId", "==", studentId), where("isCorrect", "==", true));
   const quizSnapshot = await getDocs(qQuiz);
   const correctQuizCount = quizSnapshot.size;
 
-  // 4. 학생의 누적 기부액 계산
   const contributionsQuery = query(collectionGroup(db, 'contributions'), where('playerId', '==', studentId));
   const contributionsSnapshot = await getDocs(contributionsQuery);
   const totalDonation = contributionsSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
 
-  // 5. 학생의 마이룸 '좋아요' 수 계산
   const likesQuery = query(collection(db, "players", studentId, "myRoomLikes"));
   const likesSnapshot = await getDocs(likesQuery);
   const myRoomLikesCount = likesSnapshot.size;
 
-
-  // 각 칭호의 획득 조건 확인 및 부여
   for (const title of autoTitles) {
-    // 이미 보유한 칭호는 건너뛰기
     if (playerData.ownedTitles && playerData.ownedTitles.includes(title.id)) {
       continue;
     }
 
     let conditionMet = false;
-    // [수정] 칭호의 고유 ID가 아닌, '조건 ID' 필드를 기준으로 조건을 확인합니다.
-    if (title.conditionId === 'mission_30_completed' && approvedMissionCount >= 30) {
-      conditionMet = true;
-    }
-    // 추후 다른 자동 획득 칭호 조건을 여기에 추가 (예: quiz_50_correct, league_winner 등)
-
-    if (title.conditionId === 'mission_30_completed' && approvedMissionCount >= 30) {
-      conditionMet = true;
-    } else if (title.conditionId === 'quiz_50_correct' && correctQuizCount >= 50) {
-      conditionMet = true;
-    } else if (title.conditionId === 'point_10000_owned' && playerData.points >= 10000) {
-      conditionMet = true;
-    } else if (title.conditionId === 'donation_5000_points' && totalDonation >= 5000) {
-      conditionMet = true;
-    } else if (title.conditionId === 'myroom_20_likes' && myRoomLikesCount >= 20) {
-      conditionMet = true;
-    } else if (title.conditionId === 'attendance_30_consecutive' && (playerData.consecutiveAttendanceDays || 0) >= 30) {
-      conditionMet = true;
-    }
+    if (title.conditionId === 'mission_30_completed' && approvedMissionCount >= 30) conditionMet = true;
+    else if (title.conditionId === 'quiz_50_correct' && correctQuizCount >= 50) conditionMet = true;
+    else if (title.conditionId === 'point_10000_owned' && playerData.points >= 10000) conditionMet = true;
+    else if (title.conditionId === 'donation_5000_points' && totalDonation >= 5000) conditionMet = true;
+    else if (title.conditionId === 'myroom_20_likes' && myRoomLikesCount >= 20) conditionMet = true;
+    else if (title.conditionId === 'attendance_30_consecutive' && (playerData.consecutiveAttendanceDays || 0) >= 30) conditionMet = true;
 
     if (conditionMet) {
       await grantTitleToPlayer(studentId, title.id);
-      createNotification(
-        studentAuthUid,
-        `✨ 칭호 획득! [${title.name}]`,
-        title.description,
-        "title_acquired"
-      );
-    }
-    if (conditionMet) {
-      await grantTitleToPlayer(studentId, title.id);
-
-      // 칭호 획득 알림 생성
       createNotification(
         studentAuthUid,
         `✨ 칭호 획득! [${title.name}]`,
@@ -205,112 +173,8 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
         "title_acquired",
         "/profile"
       );
-
-      // [추가] 칭호 획득 보상 500P 지급 및 모달 호출
       await adjustPlayerPoints(studentId, 500, `칭호 [${title.name}] 획득 보상`);
     }
-    // 교체할 부분의 아랫 한 줄 코드
-  }
-}
-
-// =================================================================
-// ▼▼▼ [신규] 관리자용 댓글/답글 수정 및 삭제 함수 ▼▼▼
-// =================================================================
-export async function updateMissionComment(submissionId, commentId, newText) {
-  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
-  await updateDoc(commentRef, { text: newText });
-}
-
-export async function deleteMissionComment(submissionId, commentId) {
-  // 먼저 댓글 하위의 모든 답글을 삭제합니다.
-  const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", commentId, "replies");
-  const repliesSnap = await getDocs(repliesRef);
-  const batch = writeBatch(db);
-  repliesSnap.forEach(doc => {
-    batch.delete(doc.ref);
-  });
-  await batch.commit();
-
-  // 그 다음 댓글 자체를 삭제합니다.
-  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
-  await deleteDoc(commentRef);
-}
-
-export async function updateMissionReply(submissionId, commentId, replyId, newText) {
-  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
-  await updateDoc(replyRef, { text: newText });
-}
-
-export async function deleteMissionReply(submissionId, commentId, replyId) {
-  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
-  await deleteDoc(replyRef);
-}
-
-// [신규] 미션 제출물에 관리자 피드백(댓글)을 추가/수정하는 함수
-export async function upsertAdminFeedback(submissionId, feedbackText) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  await updateDoc(submissionRef, {
-    adminFeedback: feedbackText,
-    feedbackUpdatedAt: serverTimestamp()
-  });
-}
-
-// [신규] 미션 제출물에서 관리자 피드백(댓글)을 삭제하는 함수
-export async function deleteAdminFeedback(submissionId) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  await updateDoc(submissionRef, {
-    adminFeedback: null,
-    feedbackUpdatedAt: null
-  });
-}
-
-// [신규] 학생이 관리자 피드백에 '좋아요'를 누르는 기능
-export async function toggleAdminFeedbackLike(submissionId, studentId) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  const submissionSnap = await getDoc(submissionRef);
-
-  if (!submissionSnap.exists()) {
-    throw new Error("Submission not found");
-  }
-
-  const submissionData = submissionSnap.data();
-  const likes = submissionData.adminFeedbackLikes || [];
-
-  if (likes.includes(studentId)) {
-    // 이미 '좋아요'를 눌렀다면 취소
-    await updateDoc(submissionRef, {
-      adminFeedbackLikes: likes.filter(id => id !== studentId)
-    });
-  } else {
-    // '좋아요'를 누르지 않았다면 추가
-    await updateDoc(submissionRef, {
-      adminFeedbackLikes: [...likes, studentId]
-    });
-  }
-}
-
-// [신규] 미션 제출물 자체에 '좋아요'를 누르는 기능 (관리자, 학생 공용)
-export async function toggleSubmissionLike(submissionId, likerId) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  const submissionSnap = await getDoc(submissionRef);
-
-  if (!submissionSnap.exists()) {
-    throw new Error("Submission not found");
-  }
-
-  const submissionData = submissionSnap.data();
-  const likes = submissionData.likes || [];
-
-  if (likes.includes(likerId)) {
-    // 이미 '좋아요'를 눌렀다면 취소
-    await updateDoc(submissionRef, {
-      likes: likes.filter(id => id !== likerId)
-    });
-  } else {
-    // '좋아요'를 누르지 않았다면 추가
-    await updateDoc(submissionRef, {
-      likes: [...likes, likerId]
-    });
   }
 }
 
@@ -2453,6 +2317,109 @@ export async function grantTitleToPlayer(playerId, titleId) {
  * @param {string} playerId - 칭호를 받을 학생의 ID
  * @param {string} titleId - 부여할 칭호의 ID
  */
+export async function updateMissionComment(submissionId, commentId, newText) {
+  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+  await updateDoc(commentRef, { text: newText });
+}
+
+export async function deleteMissionComment(submissionId, commentId) {
+  // 먼저 댓글 하위의 모든 답글을 삭제합니다.
+  const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", commentId, "replies");
+  const repliesSnap = await getDocs(repliesRef);
+  const batch = writeBatch(db);
+  repliesSnap.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+
+  // 그 다음 댓글 자체를 삭제합니다.
+  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+  await deleteDoc(commentRef);
+}
+
+export async function updateMissionReply(submissionId, commentId, replyId, newText) {
+  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+  await updateDoc(replyRef, { text: newText });
+}
+
+export async function deleteMissionReply(submissionId, commentId, replyId) {
+  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+  await deleteDoc(replyRef);
+}
+
+// [신규] 미션 제출물에 관리자 피드백(댓글)을 추가/수정하는 함수
+export async function upsertAdminFeedback(submissionId, feedbackText) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  await updateDoc(submissionRef, {
+    adminFeedback: feedbackText,
+    feedbackUpdatedAt: serverTimestamp()
+  });
+}
+
+// [신규] 미션 제출물에서 관리자 피드백(댓글)을 삭제하는 함수
+export async function deleteAdminFeedback(submissionId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  await updateDoc(submissionRef, {
+    adminFeedback: null,
+    feedbackUpdatedAt: null
+  });
+}
+
+// [신규] 학생이 관리자 피드백에 '좋아요'를 누르는 기능
+export async function toggleAdminFeedbackLike(submissionId, studentId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+
+  if (!submissionSnap.exists()) {
+    throw new Error("Submission not found");
+  }
+
+  const submissionData = submissionSnap.data();
+  const likes = submissionData.adminFeedbackLikes || [];
+
+  if (likes.includes(studentId)) {
+    // 이미 '좋아요'를 눌렀다면 취소
+    await updateDoc(submissionRef, {
+      adminFeedbackLikes: likes.filter(id => id !== studentId)
+    });
+  } else {
+    // '좋아요'를 누르지 않았다면 추가
+    await updateDoc(submissionRef, {
+      adminFeedbackLikes: [...likes, studentId]
+    });
+  }
+}
+
+// [신규] 미션 제출물 자체에 '좋아요'를 누르는 기능 (관리자, 학생 공용)
+export async function toggleSubmissionLike(submissionId, likerId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+
+  if (!submissionSnap.exists()) {
+    throw new Error("Submission not found");
+  }
+
+  const submissionData = submissionSnap.data();
+  const likes = submissionData.likes || [];
+
+  if (likes.includes(likerId)) {
+    // 이미 '좋아요'를 눌렀다면 취소
+    await updateDoc(submissionRef, {
+      likes: likes.filter(id => id !== likerId)
+    });
+  } else {
+    // '좋아요'를 누르지 않았다면 추가
+    await updateDoc(submissionRef, {
+      likes: [...likes, likerId]
+    });
+  }
+}
+
+/**
+ * [신규] 관리자가 학생에게 칭호를 수동으로 부여하고 보상을 지급합니다.
+ * @param {string} playerId - 칭호를 받을 학생의 ID
+ * @param {string} titleId - 부여할 칭호의 ID
+ */
 export async function grantTitleToPlayerManually(playerId, titleId) {
   const playerRef = doc(db, "players", playerId);
   const playerSnap = await getDoc(playerRef);
@@ -2483,6 +2450,7 @@ export async function grantTitleToPlayerManually(playerId, titleId) {
   // 2. 보상 지급 (adjustPlayerPoints 재활용)
   await adjustPlayerPoints(playerId, 500, `칭호 [${title.name}] 획득 보상`);
 }
+
 
 // [추가] 여러 학생에게 칭호를 일괄 부여하는 함수
 export async function grantTitleToPlayersBatch(playerIds, titleId) {

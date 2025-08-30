@@ -3,8 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { approveMissionsInBatch, rejectMissionSubmission, upsertAdminFeedback, deleteAdminFeedback, toggleSubmissionLike } from '../api/firebase';
-import { auth } from '../api/firebase';
+import { approveMissionsInBatch, rejectMissionSubmission, addMissionComment, toggleSubmissionLike } from '../api/firebase';
+import { auth, db } from '../api/firebase';
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import CommentThread from './CommentThread'; // 공통 컴포넌트 사용
 
 const ModalBackground = styled.div`
   position: fixed;
@@ -150,6 +152,12 @@ const CommentSection = styled.div`
     h4 { margin-bottom: 0.5rem; }
 `;
 
+const CommentInputContainer = styled.div`
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+`;
+
 const CommentTextarea = styled.textarea`
     width: 100%;
     min-height: 80px;
@@ -157,12 +165,6 @@ const CommentTextarea = styled.textarea`
     border: 1px solid #ced4da;
     border-radius: 8px;
     resize: vertical;
-`;
-
-const FeedbackInputContainer = styled.div`
-    display: flex;
-    gap: 0.5rem;
-    align-items: flex-start;
 `;
 
 const SaveButton = styled.button`
@@ -202,14 +204,14 @@ const ActionButton = styled.button`
 const RejectButton = styled(ActionButton)`
     background-color: #ffc107;
     color: black;
-    padding: 0.6rem 1rem; /* [수정] 버튼 크기 축소 */
+    padding: 0.6rem 1rem;
     font-size: 0.9rem;
 `;
 
 const ApproveButton = styled(ActionButton)`
     background-color: #28a745;
     color: white;
-    padding: 0.6rem 1rem; /* [수정] 버튼 크기 축소 */
+    padding: 0.6rem 1rem;
     font-size: 0.9rem;
 `;
 
@@ -224,51 +226,43 @@ const StatusMessage = styled.div`
     color: ${props => props.status === 'approved' ? '#28a745' : '#dc3545'};
 `;
 
-// [추가] MissionHistoryModal에서 가져온 스타일
-const FeedbackSection = styled.div`
-  margin-top: 1rem;
-  padding: 1rem;
-  background-color: #e7f5ff;
-  border-radius: 8px;
-  border-left: 5px solid #007bff;
+const CommentList = styled.div`
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 `;
-
-const FeedbackHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: bold;
-`;
-
 
 const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, totalCount, onAction, onImageClick }) => {
     const { players, missions } = useLeagueStore();
     const [status, setStatus] = useState(submission.status);
-    const [feedback, setFeedback] = useState(submission.adminFeedback || '');
-    const [isEditingFeedback, setIsEditingFeedback] = useState(!submission.adminFeedback);
+    const [newComment, setNewComment] = useState('');
+    const [comments, setComments] = useState([]);
     const [likes, setLikes] = useState(submission.likes || []);
     const [rotations, setRotations] = useState({});
 
     const student = useMemo(() => players.find(p => p.id === submission.studentId), [players, submission]);
     const mission = useMemo(() => missions.find(m => m.id === submission.missionId), [missions, submission]);
-    const currentUser = auth.currentUser;
+    const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
     useEffect(() => {
         setStatus(submission.status);
-        setFeedback(submission.adminFeedback || '');
-        setIsEditingFeedback(!submission.adminFeedback);
         setLikes(submission.likes || []);
         setRotations({});
+
+        const commentsRef = collection(db, "missionSubmissions", submission.id, "comments");
+        const q = query(commentsRef, orderBy("createdAt", "asc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => unsubscribe();
+
     }, [submission]);
 
     const handleAction = async (action, reward) => {
         try {
-            if (feedback.trim() && isEditingFeedback) {
-                await upsertAdminFeedback(submission.id, feedback.trim());
-            }
-
             if (action === 'approve') {
-                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
+                await approveMissionsInBatch(mission.id, [student.id], myPlayerData.id, reward);
                 setStatus('approved');
             } else if (action === 'reject') {
                 await rejectMissionSubmission(submission.id, student.authUid, mission.title);
@@ -282,36 +276,29 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
 
     const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
-    const handleSaveFeedback = async () => {
-        if (!feedback.trim()) return;
+    const handleCommentSubmit = async () => {
+        if (!newComment.trim() || !myPlayerData) return;
         try {
-            await upsertAdminFeedback(submission.id, feedback);
-            setIsEditingFeedback(false);
+            await addMissionComment(
+                submission.id,
+                {
+                    commenterId: myPlayerData.id,
+                    commenterName: myPlayerData.name,
+                    commenterRole: myPlayerData.role,
+                    text: newComment,
+                },
+                student.authUid,
+                mission.title
+            );
+            setNewComment('');
         } catch (error) {
             alert('댓글 저장에 실패했습니다.');
         }
     };
 
-    const handleDeleteFeedback = async () => {
-        if (window.confirm("정말로 댓글을 삭제하시겠습니까?")) {
-            try {
-                await deleteAdminFeedback(submission.id);
-                setFeedback('');
-                setIsEditingFeedback(true);
-            } catch (error) {
-                alert('댓글 삭제에 실패했습니다.');
-            }
-        }
-    };
-
     const handleLike = async () => {
         try {
-            await toggleSubmissionLike(submission.id, currentUser.uid);
-            setLikes(prev =>
-                prev.includes(currentUser.uid)
-                    ? prev.filter(id => id !== currentUser.uid)
-                    : [...prev, currentUser.uid]
-            );
+            await toggleSubmissionLike(submission.id, myPlayerData.id);
         } catch (error) {
             alert("좋아요 처리에 실패했습니다.");
         }
@@ -333,7 +320,7 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
                     <StudentInfo>
                         <span>{student?.name} - "{mission?.title}"</span>
                         <LikeButton onClick={handleLike}>
-                            {likes.includes(currentUser.uid) ? '❤️' : '🤍'}
+                            {likes.includes(myPlayerData?.id) ? '❤️' : '🤍'}
                             <span style={{ fontSize: '1rem', marginLeft: '0.5rem' }}>{likes.length}</span>
                         </LikeButton>
                     </StudentInfo>
@@ -353,30 +340,27 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
                     </SubmissionDetails>
 
                     <CommentSection>
-                        <h4>▼ 관리자 댓글 (학생에게 보여집니다)</h4>
-                        {isEditingFeedback ? (
-                            <FeedbackInputContainer>
-                                <CommentTextarea
-                                    value={feedback}
-                                    onChange={(e) => setFeedback(e.target.value)}
-                                    placeholder="피드백을 입력하세요..."
+                        <h4>▼ 댓글</h4>
+                        <CommentList>
+                            {comments.map(comment => (
+                                <CommentThread
+                                    key={comment.id}
+                                    submissionId={submission.id}
+                                    comment={comment}
+                                    missionTitle={mission.title}
+                                    permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' }}
                                 />
-                                <SaveButton onClick={handleSaveFeedback}>댓글 저장</SaveButton>
-                            </FeedbackInputContainer>
-                        ) : (
-                            <FeedbackSection>
-                                <FeedbackHeader>
-                                    <span>💬 선생님의 댓글</span>
-                                    <LikeButton disabled>
-                                        🤍 {submission.adminFeedbackLikes?.length || 0}
-                                    </LikeButton>
-                                </FeedbackHeader>
-                                <p style={{ margin: '0.5rem 0 0' }}>{feedback}</p>
-                                <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
-                                    <button onClick={() => setIsEditingFeedback(true)}>수정</button>
-                                    <button onClick={handleDeleteFeedback} style={{ marginLeft: '0.5rem' }}>삭제</button>
-                                </div>
-                            </FeedbackSection>
+                            ))}
+                        </CommentList>
+                        {status === 'pending' && (
+                            <CommentInputContainer>
+                                <CommentTextarea
+                                    value={newComment}
+                                    onChange={(e) => setNewComment(e.target.value)}
+                                    placeholder="피드백 댓글을 입력하세요..."
+                                />
+                                <SaveButton onClick={handleCommentSubmit}>댓글 저장</SaveButton>
+                            </CommentInputContainer>
                         )}
                     </CommentSection>
 
