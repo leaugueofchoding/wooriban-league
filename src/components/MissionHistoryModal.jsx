@@ -133,10 +133,19 @@ const CommentList = styled.div`
     gap: 1rem;
 `;
 
+// [수정] CommentCard 스타일을 FeedbackSection과 유사하게 변경
 const CommentCard = styled.div`
-    background-color: #f1f3f5;
-    padding: 0.75rem;
+    background-color: #e7f5ff;
+    padding: 1rem;
     border-radius: 8px;
+    border-left: 5px solid #007bff;
+`;
+
+const CommentHeader = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
 `;
 
 const CommentAuthor = styled.strong`
@@ -160,16 +169,18 @@ const CommentActions = styled.div`
         font-size: 0.8rem;
         cursor: pointer;
         &:hover {
-            background: #e9ecef;
+            background: #e0eaff;
         }
     }
 `;
 
 const ReplyList = styled.div`
-    margin-left: 1.5rem;
-    margin-top: 0.5rem;
-    border-left: 2px solid #dee2e6;
-    padding-left: 1rem;
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-left: 1.5rem;
+    border-left: 3px solid #bce0fd;
 `;
 
 const CloseButton = styled.button`
@@ -188,6 +199,7 @@ const CloseButton = styled.button`
     }
 `;
 
+// [수정] ReplyItem 컴포넌트 구조 변경
 function ReplyItem({ submissionId, commentId, reply, missionTitle }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
@@ -220,34 +232,35 @@ function ReplyItem({ submissionId, commentId, reply, missionTitle }) {
     };
 
     return (
-        <CommentCard style={{ backgroundColor: '#e9ecef', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
+        <CommentCard style={{ backgroundColor: '#d0eaff' }}>
+            <CommentHeader>
                 <CommentAuthor>{reply.replierName}</CommentAuthor>
-                {isEditing ? (
-                    <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="2" />
-                ) : (
-                    <CommentText>{reply.text}</CommentText>
+                {isAdmin && (
+                    <CommentActions>
+                        {isEditing ? (
+                            <>
+                                <button onClick={handleUpdate}>저장</button>
+                                <button onClick={() => setIsEditing(false)}>취소</button>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={() => setIsEditing(true)}>수정</button>
+                                <button onClick={handleDelete}>삭제</button>
+                            </>
+                        )}
+                    </CommentActions>
                 )}
-            </div>
-            {isAdmin && (
-                <CommentActions>
-                    {isEditing ? (
-                        <>
-                            <button onClick={handleUpdate}>저장</button>
-                            <button onClick={() => setIsEditing(false)}>취소</button>
-                        </>
-                    ) : (
-                        <>
-                            <button onClick={() => setIsEditing(true)}>수정</button>
-                            <button onClick={handleDelete}>삭제</button>
-                        </>
-                    )}
-                </CommentActions>
+            </CommentHeader>
+            {isEditing ? (
+                <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="2" />
+            ) : (
+                <CommentText>{reply.text}</CommentText>
             )}
         </CommentCard>
     );
 }
 
+// [수정] Comment 컴포넌트 구조 변경
 function Comment({ submissionId, comment, studentAuthUid, missionTitle }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
@@ -258,8 +271,6 @@ function Comment({ submissionId, comment, studentAuthUid, missionTitle }) {
     const [replies, setReplies] = useState([]);
     const [isEditing, setIsEditing] = useState(false);
     const [editedText, setEditedText] = useState(comment.text);
-
-    const currentUser = auth.currentUser;
 
     useEffect(() => {
         const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", comment.id, "replies");
@@ -278,15 +289,8 @@ function Comment({ submissionId, comment, studentAuthUid, missionTitle }) {
             await addMissionReply(
                 submissionId,
                 comment.id,
-                {
-                    replierId: myPlayerData.id,
-                    replierName: myPlayerData.name,
-                    text: replyContent,
-                },
-                {
-                    missionTitle,
-                    commenterAuthUid: originalCommenter?.authUid
-                }
+                { replierId: myPlayerData.id, replierName: myPlayerData.name, text: replyContent, },
+                { missionTitle, commenterAuthUid: originalCommenter?.authUid }
             );
             setReplyContent('');
             setIsReplying(false);
@@ -320,58 +324,58 @@ function Comment({ submissionId, comment, studentAuthUid, missionTitle }) {
     };
 
     return (
-        <>
-            <CommentCard style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
+        <div>
+            <CommentCard>
+                <CommentHeader>
                     <CommentAuthor>{comment.commenterName}</CommentAuthor>
-                    {isEditing ? (
-                        <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="3" />
-                    ) : (
-                        <CommentText>{comment.text}</CommentText>
+                    {isAdmin && (
+                        <CommentActions>
+                            {isEditing ? (
+                                <>
+                                    <button onClick={handleUpdateComment}>저장</button>
+                                    <button onClick={() => { setIsEditing(false); setEditedText(comment.text); }}>취소</button>
+                                </>
+                            ) : (
+                                <>
+                                    <button onClick={() => setIsEditing(true)}>수정</button>
+                                    <button onClick={handleDeleteComment}>삭제</button>
+                                </>
+                            )}
+                        </CommentActions>
                     )}
-                </div>
-                {isAdmin && (
-                    <CommentActions>
-                        {isEditing ? (
-                            <>
-                                <button onClick={handleUpdateComment}>저장</button>
-                                <button onClick={() => { setIsEditing(false); setEditedText(comment.text); }}>취소</button>
-                            </>
-                        ) : (
-                            <>
-                                <button onClick={() => setIsEditing(true)}>수정</button>
-                                <button onClick={handleDeleteComment}>삭제</button>
-                            </>
-                        )}
-                    </CommentActions>
+                </CommentHeader>
+                {isEditing ? (
+                    <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="3" />
+                ) : (
+                    <CommentText>{comment.text}</CommentText>
                 )}
             </CommentCard>
-            <ReplyList>
-                {replies.map(reply => (
-                    <ReplyItem
-                        key={reply.id}
-                        submissionId={submissionId}
-                        commentId={comment.id}
-                        reply={reply}
-                        missionTitle={missionTitle}
-                    />
-                ))}
-            </ReplyList>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+
+            {replies.length > 0 && (
+                <ReplyList>
+                    {replies.map(reply => (
+                        <ReplyItem key={reply.id} submissionId={submissionId} commentId={comment.id} reply={reply} missionTitle={missionTitle} />
+                    ))}
+                </ReplyList>
+            )}
+
+            <CommentActions style={{ marginTop: '0.75rem' }}>
                 <button onClick={() => setIsReplying(prev => !prev)}>
                     {isReplying ? '답글 취소' : '답글 달기'}
                 </button>
-            </div>
+            </CommentActions>
+
             {isReplying && (
                 <CommentInputContainer>
                     <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows="2" placeholder="답글을 입력하세요..." />
                     <CommentSubmitButton onClick={handleReplySubmit}>등록</CommentSubmitButton>
                 </CommentInputContainer>
             )}
-        </>
+        </div>
     );
 }
 
+// HistoryItem, MissionHistoryModal 컴포넌트는 기존과 동일하게 유지됩니다...
 function HistoryItem({ item, student, missionTitle }) {
     const { players } = useLeagueStore();
     const [comments, setComments] = useState([]);
@@ -419,9 +423,6 @@ function HistoryItem({ item, student, missionTitle }) {
         if (!student) return;
         try {
             await toggleAdminFeedbackLike(item.id, student.id);
-            // Note: UI will update automatically via onSnapshot listener in parent if set up,
-            // otherwise a manual refresh of `history` prop would be needed.
-            // For now, we assume a listener will handle the update.
         } catch (error) {
             console.error("Failed to like feedback:", error);
             alert("좋아요 처리에 실패했습니다.");

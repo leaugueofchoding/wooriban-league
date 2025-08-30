@@ -224,6 +224,22 @@ const StatusMessage = styled.div`
     color: ${props => props.status === 'approved' ? '#28a745' : '#dc3545'};
 `;
 
+// [추가] MissionHistoryModal에서 가져온 스타일
+const FeedbackSection = styled.div`
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #e7f5ff;
+  border-radius: 8px;
+  border-left: 5px solid #007bff;
+`;
+
+const FeedbackHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+`;
+
 
 const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, totalCount, onAction, onImageClick }) => {
     const { players, missions } = useLeagueStore();
@@ -231,7 +247,7 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     const [feedback, setFeedback] = useState(submission.adminFeedback || '');
     const [isEditingFeedback, setIsEditingFeedback] = useState(!submission.adminFeedback);
     const [likes, setLikes] = useState(submission.likes || []);
-    const [rotations, setRotations] = useState({}); // [추가] 이미지 회전 상태
+    const [rotations, setRotations] = useState({});
 
     const student = useMemo(() => players.find(p => p.id === submission.studentId), [players, submission]);
     const mission = useMemo(() => missions.find(m => m.id === submission.missionId), [missions, submission]);
@@ -242,13 +258,12 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
         setFeedback(submission.adminFeedback || '');
         setIsEditingFeedback(!submission.adminFeedback);
         setLikes(submission.likes || []);
-        setRotations({}); // [추가] 다음 제출물로 넘어가면 회전 상태 초기화
+        setRotations({});
     }, [submission]);
 
     const handleAction = async (action, reward) => {
         try {
-            // [추가] 승인/반려 시 피드백이 있으면 함께 저장
-            if (feedback.trim()) {
+            if (feedback.trim() && isEditingFeedback) {
                 await upsertAdminFeedback(submission.id, feedback.trim());
             }
 
@@ -259,7 +274,7 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
                 await rejectMissionSubmission(submission.id, student.authUid, mission.title);
                 setStatus('rejected');
             }
-            onAction(); // 부모 컴포넌트에 상태 변경 알림
+            onAction();
         } catch (error) {
             alert(`처리 중 오류 발생: ${error.message}`);
         }
@@ -292,7 +307,6 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     const handleLike = async () => {
         try {
             await toggleSubmissionLike(submission.id, currentUser.uid);
-            // Optimistic UI update
             setLikes(prev =>
                 prev.includes(currentUser.uid)
                     ? prev.filter(id => id !== currentUser.uid)
@@ -340,19 +354,29 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
 
                     <CommentSection>
                         <h4>▼ 관리자 댓글 (학생에게 보여집니다)</h4>
-                        {status === 'pending' && (
+                        {isEditingFeedback ? (
                             <FeedbackInputContainer>
                                 <CommentTextarea
                                     value={feedback}
                                     onChange={(e) => setFeedback(e.target.value)}
                                     placeholder="피드백을 입력하세요..."
                                 />
+                                <SaveButton onClick={handleSaveFeedback}>댓글 저장</SaveButton>
                             </FeedbackInputContainer>
-                        )}
-                        {status !== 'pending' && feedback && (
-                            <SubmissionDetails style={{ background: '#e9ecef' }}>
-                                <p>{feedback}</p>
-                            </SubmissionDetails>
+                        ) : (
+                            <FeedbackSection>
+                                <FeedbackHeader>
+                                    <span>💬 선생님의 댓글</span>
+                                    <LikeButton disabled>
+                                        🤍 {submission.adminFeedbackLikes?.length || 0}
+                                    </LikeButton>
+                                </FeedbackHeader>
+                                <p style={{ margin: '0.5rem 0 0' }}>{feedback}</p>
+                                <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+                                    <button onClick={() => setIsEditingFeedback(true)}>수정</button>
+                                    <button onClick={handleDeleteFeedback} style={{ marginLeft: '0.5rem' }}>삭제</button>
+                                </div>
+                            </FeedbackSection>
                         )}
                     </CommentSection>
 

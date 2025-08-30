@@ -240,12 +240,12 @@ const List = styled.ul`
 
 const ListItem = styled.li`
   display: grid;
-  grid-template-columns: 1fr auto; /* [수정] 2단 그리드로 변경 */
+  grid-template-columns: auto 1fr auto; /* 3단 그리드로 변경 (드래그 핸들, 내용, 버튼) */
   gap: 1rem;
   align-items: center;
   padding: 0.75rem;
   border-bottom: 1px solid #eee;
-  background-color: #fff; /* 배경색 추가하여 dnd-kit 배경과 구분 */
+  background-color: #fff;
   &:last-child {
     border-bottom: none;
   }
