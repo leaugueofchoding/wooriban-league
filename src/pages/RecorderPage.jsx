@@ -5,6 +5,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, approveMissionsInBatch, getMissionHistory } from '../api/firebase';
 import MissionHistoryModal from '../components/MissionHistoryModal';
+import ImageModal from '../components/ImageModal'; // 이미지 모달 import 추가
 import { useParams, useNavigate } from 'react-router-dom';
 
 const RecorderWrapper = styled.div`
@@ -194,7 +195,6 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
     const { missionId } = useParams();
     const navigate = useNavigate();
 
-    // [수정] props로 받은 initialMissionId를 초기값으로 사용
     const [selectedMissionId, setSelectedMissionId] = useState(initialMissionId || missionId || '');
     const [checkedStudents, setCheckedStudents] = useState(new Set());
     const [expandedSubmissionId, setExpandedSubmissionId] = useState(null);
@@ -203,8 +203,8 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [missionHistory, setMissionHistory] = useState([]);
     const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
+    const [modalImageSrc, setModalImageSrc] = useState(null); // 이미지 모달 state 추가
 
-    // [신규] AdminPage에서 탭 전환 시, 선택된 미션을 업데이트하기 위한 useEffect
     useEffect(() => {
         if (initialMissionId) {
             setSelectedMissionId(initialMissionId);
@@ -265,13 +265,6 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
         });
     };
 
-    const handleRowClick = (studentId) => {
-        const submission = studentSubmissionStatus.get(studentId);
-        if (submission && (submission.text || submission.photoUrl)) {
-            setExpandedSubmissionId(prev => (prev === studentId ? null : studentId));
-        }
-    };
-
     const handleHistoryView = async (e, student) => {
         e.stopPropagation();
         if (!selectedMissionId) return;
@@ -316,87 +309,89 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
     };
 
     return (
-        <RecorderWrapper>
-            {!isAdminView && <Title>기록 확인</Title>}
-            <MissionSelect value={selectedMissionId} onChange={handleMissionSelect}>
-                <option value="">-- 미션 선택 --</option>
-                {missions.map(mission => (
-                    <option key={mission.id} value={mission.id}>
-                        {mission.title} (보상: {mission.reward}P)
-                    </option>
-                ))}
-            </MissionSelect>
+        <>
+            <RecorderWrapper>
+                {!isAdminView && <Title>기록 확인</Title>}
+                <MissionSelect value={selectedMissionId} onChange={handleMissionSelect}>
+                    <option value="">-- 미션 선택 --</option>
+                    {missions.map(mission => (
+                        <option key={mission.id} value={mission.id}>
+                            {mission.title} (보상: {mission.reward}P)
+                        </option>
+                    ))}
+                </MissionSelect>
 
-            {selectedMissionId && (
-                <>
-                    <TopControls>
-                        <StyledButton onClick={handleSelectAll}>전체 선택/해제</StyledButton>
-                    </TopControls>
-                    <StudentList>
-                        {sortedPlayers.map(player => {
-                            const submission = studentSubmissionStatus.get(player.id);
-                            const status = submission?.status;
-                            const approver = players.find(p => p.authUid === submission?.checkedBy);
-                            const isOpen = expandedSubmissionId === player.id;
+                {selectedMissionId && (
+                    <>
+                        <TopControls>
+                            <StyledButton onClick={handleSelectAll}>전체 선택/해제</StyledButton>
+                        </TopControls>
+                        <StudentList>
+                            {sortedPlayers.map(player => {
+                                const submission = studentSubmissionStatus.get(player.id);
+                                const status = submission?.status;
+                                const approver = players.find(p => p.authUid === submission?.checkedBy);
+                                const isOpen = expandedSubmissionId === player.id;
 
-                            return (
-                                <StudentListItem key={player.id} className={status}>
-                                    <StudentSummary onClick={() => handleRowClick(player.id)}>
-                                        <CheckboxLabel>
-                                            <input
-                                                type="checkbox"
-                                                checked={checkedStudents.has(player.id)}
-                                                onChange={() => handleStudentCheck(player.id, status)}
-                                                disabled={status === 'approved'}
-                                            />
-                                        </CheckboxLabel>
-                                        <StudentInfo>
-                                            <StudentName>{player.name}</StudentName>
-                                            {status === 'pending' && <StatusBadge className="pending">승인 대기중</StatusBadge>}
-                                            {status === 'approved' && (
-                                                <StatusBadge className="approved">
-                                                    완료 {approver ? `(승인: ${approver.name})` : ''}
-                                                </StatusBadge>
+                                return (
+                                    <StudentListItem key={player.id} className={status}>
+                                        <StudentSummary>
+                                            <CheckboxLabel>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checkedStudents.has(player.id)}
+                                                    onChange={() => handleStudentCheck(player.id, status)}
+                                                    disabled={status === 'approved'}
+                                                />
+                                            </CheckboxLabel>
+                                            <StudentInfo>
+                                                <StudentName>{player.name}</StudentName>
+                                                {status === 'pending' && <StatusBadge className="pending">승인 대기중</StatusBadge>}
+                                                {status === 'approved' && (
+                                                    <StatusBadge className="approved">
+                                                        완료 {approver ? `(승인: ${approver.name})` : ''}
+                                                    </StatusBadge>
+                                                )}
+                                            </StudentInfo>
+                                            {submission && (
+                                                <StyledButton onClick={(e) => handleHistoryView(e, player)}>
+                                                    기록 보기
+                                                </StyledButton>
                                             )}
-                                        </StudentInfo>
-                                        {selectedMission?.isFixed && (
-                                            <StyledButton onClick={(e) => handleHistoryView(e, player)}>
-                                                기록 보기
-                                            </StyledButton>
+                                        </StudentSummary>
+                                        {submission && (
+                                            <SubmissionDetails $isOpen={isOpen}>
+                                                {submission.text && <p>{submission.text}</p>}
+                                                {submission.photoUrls && submission.photoUrls.map((url, index) => (
+                                                    <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={() => setModalImageSrc(url)} style={{ marginBottom: '0.5rem', cursor: 'pointer' }} />
+                                                ))}
+                                            </SubmissionDetails>
                                         )}
-                                    </StudentSummary>
-                                    {submission && (
-                                        <SubmissionDetails $isOpen={isOpen}>
-                                            {submission.text && <p>{submission.text}</p>}
-                                            {/* [수정] 이미지 클릭 시 경고창을 띄우도록 수정합니다. */}
-                                            {submission.photoUrls && submission.photoUrls.map((url, index) => (
-                                                <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={() => alert('이미지 크게보기는 관리자 페이지에서만 가능합니다.')} style={{ marginBottom: '0.5rem', cursor: 'pointer' }} />
-                                            ))}
-                                        </SubmissionDetails>
-                                    )}
-                                </StudentListItem>
-                            );
-                        })}
-                    </StudentList>
+                                    </StudentListItem>
+                                );
+                            })}
+                        </StudentList>
 
-                    <SubmitButton onClick={handleSubmit} disabled={checkedStudents.size === 0}>
-                        {checkedStudents.size}명 포인트 지급 승인하기
-                    </SubmitButton>
+                        <SubmitButton onClick={handleSubmit} disabled={checkedStudents.size === 0}>
+                            {checkedStudents.size}명 포인트 지급 승인하기
+                        </SubmitButton>
 
-                    {!isAdminView && <ExitButton onClick={() => navigate('/')}>대시보드로 이동</ExitButton>}
-                </>
-            )}
+                        {!isAdminView && <ExitButton onClick={() => navigate(-1)}>대시보드로 이동</ExitButton>}
+                    </>
+                )}
 
-            {selectedStudentForHistory && (
-                <MissionHistoryModal
-                    isOpen={isHistoryModalOpen}
-                    onClose={() => setIsHistoryModalOpen(false)}
-                    missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
-                    history={missionHistory}
-                    student={selectedStudentForHistory}
-                />
-            )}
-        </RecorderWrapper>
+                {selectedStudentForHistory && (
+                    <MissionHistoryModal
+                        isOpen={isHistoryModalOpen}
+                        onClose={() => setIsHistoryModalOpen(false)}
+                        missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
+                        history={missionHistory}
+                        student={selectedStudentForHistory}
+                    />
+                )}
+            </RecorderWrapper>
+            <ImageModal src={modalImageSrc} onClose={() => setModalImageSrc(null)} />
+        </>
     );
 }
 
