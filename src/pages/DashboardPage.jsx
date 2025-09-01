@@ -75,8 +75,7 @@ const TitleWrapper = styled.div`
   margin-bottom: 1.5rem;
 `;
 
-// [수정된 부분] GalleryButton을 Link가 아닌 일반 button으로 변경
-const GalleryButton = styled.button`
+const GalleryButton = styled(Link)`
   padding: 0.4rem 0.8rem;
   font-size: 0.9rem;
   font-weight: bold;
@@ -681,7 +680,7 @@ function DashboardPage() {
                     <Section>
                         <TitleWrapper>
                             <Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title>
-                            <GalleryButton onClick={(e) => { e.stopPropagation(); navigate('/mission-gallery'); }}>
+                            <GalleryButton to="/mission-gallery" onClick={(e) => e.stopPropagation()}>
                                 갤러리 보기
                             </GalleryButton>
                         </TitleWrapper>

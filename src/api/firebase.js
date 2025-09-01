@@ -1118,9 +1118,17 @@ export async function createMission(missionData) {
   });
 }
 
-export async function getMissions(status = 'active') {
+export async function getMissions() {
   const missionsRef = collection(db, 'missions');
-  const q = query(missionsRef, where("status", "==", status));
+  // '활성'과 '숨김' 상태의 모든 미션을 가져옵니다. (삭제된 미션 제외)
+  const q = query(missionsRef, where("status", "in", ["active", "archived"]));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function getApprovedSubmissions() {
+  const submissionsRef = collection(db, "missionSubmissions");
+  const q = query(submissionsRef, where("status", "==", "approved"), orderBy("approvedAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
