@@ -1477,6 +1477,8 @@ function MissionManager({ onNavigate }) {
         rewards: false,
         prerequisite: false,
     });
+    const [defaultPrivate, setDefaultPrivate] = useState(false);
+
 
     const handleDragEnd = (event) => {
         const { active, over } = event;
@@ -1512,6 +1514,7 @@ function MissionManager({ onNavigate }) {
         setIsFixed(mission.isFixed || false);
         setAdminOnly(mission.adminOnly || false);
         setPrerequisiteMissionId(mission.prerequisiteMissionId || '');
+        setDefaultPrivate(mission.defaultPrivate || false);
         window.scrollTo(0, 0); // 페이지 상단으로 스크롤하여 수정 폼이 보이게 함
     };
 
@@ -1525,6 +1528,7 @@ function MissionManager({ onNavigate }) {
         setIsFixed(false);
         setAdminOnly(false);
         setPrerequisiteMissionId('');
+        setDefaultPrivate(false);
         setShowAdvanced({ rewards: false, prerequisite: false });
     };
 
@@ -1550,6 +1554,7 @@ function MissionManager({ onNavigate }) {
             adminOnly,
             prerequisiteMissionId: prerequisiteMissionId || null,
             placeholderText: placeholderText.trim(),
+            defaultPrivate,
         };
 
         try {
@@ -1622,11 +1627,18 @@ function MissionManager({ onNavigate }) {
                     </InputGroup>
                 )}
 
-                <InputGroup style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem' }}>
-                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }}>차등 보상</StyledButton>
-                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }}>연계 미션</StyledButton>
-                    <StyledButton onClick={() => setIsFixed(p => !p)} style={{ backgroundColor: isFixed ? '#17a2b8' : '#6c757d' }}>{isFixed ? '반복(활성)' : '반복 미션'}</StyledButton>
-                    <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }}>{adminOnly ? ' 관리(활성)' : '관리자만'}</StyledButton>
+                <InputGroup style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
+                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
+                    <StyledButton onClick={() => setIsFixed(p => !p)} style={{ backgroundColor: isFixed ? '#17a2b8' : '#6c757d' }} title="매일 반복해서 수행할 수 있는 고정 미션으로 설정합니다. (예: 일기 쓰기)">{isFixed ? '반복(활성)' : '반복 미션'}</StyledButton>
+                    <StyledButton
+                        onClick={() => setDefaultPrivate(p => !p)}
+                        style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }}
+                        title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)"
+                    >
+                        {defaultPrivate ? '비공개' : '공개'}
+                    </StyledButton>
+                    <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? ' 관리자만(활성)' : '관리자만'}</StyledButton>
                     <SaveButton onClick={handleSaveMission}>{editMode ? '수정 완료' : '미션 출제'}</SaveButton>
                     {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
                 </InputGroup>

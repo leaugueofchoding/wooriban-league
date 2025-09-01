@@ -163,7 +163,7 @@ export const useLeagueStore = create((set, get) => ({
                 playersData, teamsData, usersData,
                 avatarPartsData, myRoomItemsData,
                 titlesData,
-                activeMissionsData, archivedMissionsData, submissionsData
+                allMissionsData, submissionsData
             ] = await Promise.all([
                 get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(),
                 getTeams(activeSeason.id),
@@ -171,10 +171,13 @@ export const useLeagueStore = create((set, get) => ({
                 getAvatarParts(),
                 getMyRoomItems(),
                 getTitles(),
-                getMissions('active'),
-                getMissions('archived'),
+                getMissions(), // status 인자 없이 호출하여 'active'와 'archived' 모두 가져옴
                 getMissionSubmissions()
             ]);
+
+            // [수정] 불러온 allMissionsData를 active와 archived로 분리
+            const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
+            const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
 
             const sortMissions = (missions) => {
                 return missions.sort((a, b) => {
@@ -189,11 +192,12 @@ export const useLeagueStore = create((set, get) => ({
                 avatarParts: avatarPartsData,
                 myRoomItems: myRoomItemsData,
                 titles: titlesData,
-                missions: sortMissions(activeMissionsData),
-                archivedMissions: sortMissions(archivedMissionsData),
+                missions: sortMissions(activeMissionsData), // 활성 미션만 저장
+                archivedMissions: sortMissions(archivedMissionsData), // 숨김 미션만 저장
                 missionSubmissions: submissionsData,
                 currentSeason: activeSeason, isLoading: false,
             });
+
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
             set({ isLoading: false });
