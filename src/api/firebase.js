@@ -339,8 +339,10 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
     status: 'pending',
     requestedAt: serverTimestamp(),
     checkedBy: null,
+    isPublic: submissionData.isPublic !== undefined ? submissionData.isPublic : true, // 기본값은 true(공개)
     ...submissionData
   });
+
 
   // 관리자/기록원에게 알림 전송
   const playersRef = collection(db, 'players');
@@ -1126,6 +1128,14 @@ export async function getMissions() {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+/**
+ * [수정] 미션 갤러리를 위해 승인된 제출물을 페이지별로 가져옵니다.
+ * @param {number} limitCount - 한 번에 불러올 게시물 수
+ * @param {object|null} lastVisible - 마지막으로 불러온 문서 (다음 페이지의 시작점)
+ */
+/**
+ * [수정] 미션 갤러리를 위해 승인된 모든 제출물을 가져옵니다. (페이지네이션 제거)
+ */
 export async function getApprovedSubmissions() {
   const submissionsRef = collection(db, "missionSubmissions");
   const q = query(submissionsRef, where("status", "==", "approved"), orderBy("approvedAt", "desc"));
@@ -2498,3 +2508,41 @@ export async function equipTitle(playerId, titleId) {
   });
 }
 
+// [신규] 미션 갤러리 게시물 관리자 숨김/표시 처리
+export async function toggleSubmissionAdminVisibility(submissionId) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  await runTransaction(db, async (transaction) => {
+    const submissionDoc = await transaction.get(submissionRef);
+    if (!submissionDoc.exists()) throw new Error("Submission not found");
+    const currentStatus = submissionDoc.data().adminHidden || false;
+    transaction.update(submissionRef, { adminHidden: !currentStatus });
+  });
+}
+
+// [신규] 미션 댓글 '좋아요' 처리
+export async function toggleCommentLike(submissionId, commentId, likerId) {
+  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+  await runTransaction(db, async (transaction) => {
+    const commentDoc = await transaction.get(commentRef);
+    if (!commentDoc.exists()) throw new Error("Comment not found");
+    const likes = commentDoc.data().likes || [];
+    const newLikes = likes.includes(likerId)
+      ? likes.filter(id => id !== likerId)
+      : [...likes, likerId];
+    transaction.update(commentRef, { likes: newLikes });
+  });
+}
+
+// [신규] 미션 답글 '좋아요' 처리
+export async function toggleReplyLike(submissionId, commentId, replyId, likerId) {
+  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+  await runTransaction(db, async (transaction) => {
+    const replyDoc = await transaction.get(replyRef);
+    if (!replyDoc.exists()) throw new Error("Reply not found");
+    const likes = replyDoc.data().likes || [];
+    const newLikes = likes.includes(likerId)
+      ? likes.filter(id => id !== likerId)
+      : [...likes, likerId];
+    transaction.update(replyRef, { likes: newLikes });
+  });
+}

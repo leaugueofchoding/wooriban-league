@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, addMissionReply, updateMissionComment, deleteMissionComment } from '../api/firebase';
+import { auth, db, addMissionReply, updateMissionComment, deleteMissionComment, toggleCommentLike, toggleReplyLike } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 // Styled Components
@@ -69,14 +69,23 @@ const CommentSubmitButton = styled.button`
     cursor: pointer;
     &:hover { background-color: #0056b3; }
 `;
+const LikeButton = styled.button`
+    background: none; border: none; cursor: pointer;
+    font-size: 1.2rem; display: flex; align-items: center; gap: 0.25rem;
+    color: ${props => props.$isLiked ? '#dc3545' : '#6c757d'};
+    &:hover { transform: scale(1.1); }
+`;
 
-// Reply Item Component
-function ReplyItem({ submissionId, commentId, reply }) {
+function ReplyItem({ submissionId, commentId, reply, permissions }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
-    const isAdmin = myPlayerData?.role === 'admin';
     const [isEditing, setIsEditing] = useState(false);
     const [editedText, setEditedText] = useState(reply.text);
+
+    const handleLike = () => {
+        if (!myPlayerData || !permissions.canLike) return;
+        toggleReplyLike(submissionId, commentId, reply.id, myPlayerData.id);
+    };
 
     const handleUpdate = () => {
         if (!editedText.trim()) return;
@@ -96,36 +105,30 @@ function ReplyItem({ submissionId, commentId, reply }) {
         <CommentCard style={{ backgroundColor: '#d0eaff' }}>
             <CommentHeader>
                 <CommentAuthor>{reply.replierName}</CommentAuthor>
-                {isAdmin && (
-                    <CommentActions>
-                        {isEditing ? (
-                            <>
-                                <button onClick={handleUpdate}>저장</button>
-                                <button onClick={() => setIsEditing(false)}>취소</button>
-                            </>
-                        ) : (
-                            <>
-                                <button onClick={() => setIsEditing(true)}>수정</button>
-                                <button onClick={handleDelete}>삭제</button>
-                            </>
-                        )}
-                    </CommentActions>
-                )}
+                <CommentActions>
+                    {permissions.canLike && (
+                        <LikeButton onClick={handleLike} $isLiked={reply.likes?.includes(myPlayerData?.id)}>
+                            ♡<span>{reply.likes?.length || 0}</span>
+                        </LikeButton>
+                    )}
+                    {permissions.canEdit && isEditing && (<>
+                        <button onClick={handleUpdate}>저장</button>
+                        <button onClick={() => setIsEditing(false)}>취소</button>
+                    </>)}
+                    {permissions.canEdit && !isEditing && (<>
+                        <button onClick={() => setIsEditing(true)}>수정</button>
+                        <button onClick={handleDelete}>삭제</button>
+                    </>)}
+                </CommentActions>
             </CommentHeader>
-            {isEditing ? (
-                <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="2" />
-            ) : (
-                <CommentText>{reply.text}</CommentText>
-            )}
+            {isEditing ? (<CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="2" />) : (<CommentText>{reply.text}</CommentText>)}
         </CommentCard>
     );
 }
 
-// Main Comment Thread Component
-function CommentThread({ submissionId, comment, missionTitle }) {
+function CommentThread({ submissionId, comment, missionTitle, permissions }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
-    const isAdmin = myPlayerData?.role === 'admin';
     const [replies, setReplies] = useState([]);
     const [isReplying, setIsReplying] = useState(false);
     const [replyContent, setReplyContent] = useState('');
@@ -140,6 +143,11 @@ function CommentThread({ submissionId, comment, missionTitle }) {
         });
         return () => unsubscribe();
     }, [submissionId, comment.id]);
+
+    const handleLike = () => {
+        if (!myPlayerData || !permissions.canLike) return;
+        toggleCommentLike(submissionId, comment.id, myPlayerData.id);
+    };
 
     const handleUpdateComment = () => {
         if (!editedText.trim()) return;
@@ -161,7 +169,7 @@ function CommentThread({ submissionId, comment, missionTitle }) {
         addMissionReply(
             submissionId,
             comment.id,
-            { replierId: myPlayerData.id, replierName: myPlayerData.name, text: replyContent },
+            { replierId: myPlayerData.id, replierName: myPlayerData.name, text: replyContent, likes: [] },
             { missionTitle, commenterAuthUid: originalCommenter?.authUid }
         ).then(() => {
             setReplyContent('');
@@ -174,48 +182,47 @@ function CommentThread({ submissionId, comment, missionTitle }) {
             <CommentCard>
                 <CommentHeader>
                     <CommentAuthor>{comment.commenterName}</CommentAuthor>
-                    {isAdmin && (
-                        <CommentActions>
-                            {isEditing ? (
-                                <>
-                                    <button onClick={handleUpdateComment}>저장</button>
-                                    <button onClick={() => setIsEditing(false)}>취소</button>
-                                </>
-                            ) : (
-                                <>
-                                    <button onClick={() => setIsEditing(true)}>수정</button>
-                                    <button onClick={handleDeleteComment}>삭제</button>
-                                </>
-                            )}
-                        </CommentActions>
-                    )}
+                    <CommentActions>
+                        {permissions.canLike && (
+                            <LikeButton onClick={handleLike} $isLiked={comment.likes?.includes(myPlayerData?.id)}>
+                                ♡<span>{comment.likes?.length || 0}</span>
+                            </LikeButton>
+                        )}
+                        {permissions.canEdit && isEditing && (<>
+                            <button onClick={handleUpdateComment}>저장</button>
+                            <button onClick={() => { setIsEditing(false); setEditedText(comment.text); }}>취소</button>
+                        </>)}
+                        {permissions.canEdit && !isEditing && (<>
+                            <button onClick={() => setIsEditing(true)}>수정</button>
+                            <button onClick={handleDeleteComment}>삭제</button>
+                        </>)}
+                    </CommentActions>
                 </CommentHeader>
-                {isEditing ? (
-                    <CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="3" />
-                ) : (
-                    <CommentText>{comment.text}</CommentText>
-                )}
+                {isEditing ? (<CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="3" />) : (<CommentText>{comment.text}</CommentText>)}
             </CommentCard>
 
             {replies.length > 0 && (
                 <ReplyList>
                     {replies.map(reply => (
-                        <ReplyItem key={reply.id} submissionId={submissionId} commentId={comment.id} reply={reply} />
+                        <ReplyItem key={reply.id} submissionId={submissionId} commentId={comment.id} reply={reply} permissions={permissions} />
                     ))}
                 </ReplyList>
             )}
 
-            <CommentActions style={{ marginTop: '0.75rem' }}>
-                <button onClick={() => setIsReplying(prev => !prev)}>
-                    {isReplying ? '답글 취소' : '답글 달기'}
-                </button>
-            </CommentActions>
-
-            {isReplying && (
-                <CommentInputContainer>
-                    <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows="2" placeholder="답글을 입력하세요..." />
-                    <CommentSubmitButton onClick={handleReplySubmit}>등록</CommentSubmitButton>
-                </CommentInputContainer>
+            {permissions.canReply && (
+                <>
+                    <CommentActions style={{ marginTop: '0.75rem' }}>
+                        <button onClick={() => setIsReplying(prev => !prev)}>
+                            {isReplying ? '답글 취소' : '답글 달기'}
+                        </button>
+                    </CommentActions>
+                    {isReplying && (
+                        <CommentInputContainer>
+                            <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows="2" placeholder="답글을 입력하세요..." />
+                            <CommentSubmitButton onClick={handleReplySubmit}>등록</CommentSubmitButton>
+                        </CommentInputContainer>
+                    )}
+                </>
             )}
         </div>
     );

@@ -219,9 +219,14 @@ export const useLeagueStore = create((set, get) => ({
         if (!confirm('미션을 숨기면 활성 목록에서 사라집니다. 정말 숨기시겠습니까?')) return;
         try {
             await updateMissionStatus(missionId, 'archived');
-            const activeMissions = await getMissions('active');
-            const archivedMissions = await getMissions('archived');
-            set({ missions: activeMissions, archivedMissions: archivedMissions });
+            set(state => {
+                const missionToArchive = state.missions.find(m => m.id === missionId);
+                if (!missionToArchive) return state;
+                return {
+                    missions: state.missions.filter(m => m.id !== missionId),
+                    archivedMissions: [...state.archivedMissions, { ...missionToArchive, status: 'archived' }]
+                };
+            });
             alert('미션이 보관되었습니다.');
         } catch (error) {
             alert('미션 보관 중 오류가 발생했습니다.');
@@ -249,9 +254,14 @@ export const useLeagueStore = create((set, get) => ({
     unarchiveMission: async (missionId) => {
         try {
             await updateMissionStatus(missionId, 'active');
-            const activeMissions = await getMissions('active');
-            const archivedMissions = await getMissions('archived');
-            set({ missions: activeMissions, archivedMissions: archivedMissions });
+            set(state => {
+                const missionToUnarchive = state.archivedMissions.find(m => m.id === missionId);
+                if (!missionToUnarchive) return state;
+                return {
+                    archivedMissions: state.archivedMissions.filter(m => m.id !== missionId),
+                    missions: [...state.missions, { ...missionToUnarchive, status: 'active' }]
+                };
+            });
             alert('미션이 다시 활성화되었습니다.');
         } catch (error) {
             alert('미션 활성화 중 오류가 발생했습니다.');
