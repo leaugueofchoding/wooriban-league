@@ -73,7 +73,7 @@ const SubmissionArea = styled.div`
 
 const TextArea = styled.textarea`
     width: 100%;
-    min-height: 80px;
+    min-height: 150px;
     padding: 0.75rem;
     border: 1px solid #ced4da;
     border-radius: 8px;

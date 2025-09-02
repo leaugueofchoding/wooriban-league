@@ -75,23 +75,6 @@ const TitleWrapper = styled.div`
   margin-bottom: 1.5rem;
 `;
 
-const GalleryButton = styled(Link)`
-  padding: 0.4rem 0.8rem;
-  font-size: 0.9rem;
-  font-weight: bold;
-  background-color: #6c757d;
-  color: white;
-  text-decoration: none;
-  border: none;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-  cursor: pointer;
-
-  &:hover {
-    background-color: #5a6268;
-  }
-`;
-
 const Title = styled.h2`
   margin: 0;
 `;
@@ -125,12 +108,53 @@ const ProfileLink = styled(Link)`
 
 const ActionButtonsWrapper = styled.div`
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem; // 버튼 간 간격 조정
 
   @media (max-width: 768px) {
     width: 100%;
     justify-content: center;
   }
+`;
+
+const GalleryButton = styled(Link)`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+    padding: 1rem;
+    width: 140px;
+    height: 120px;
+    border-radius: 12px;
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: bold;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s ease-in-out;
+    font-size: 1rem;
+
+    & > span:first-child {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    & > span:last-child {
+        line-height: 1.2;
+    }
+
+    &:hover {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+    }
+
+    @media (max-width: 768px) {
+      width: 0;
+      flex-grow: 1;
+      height: auto;
+      padding: 1rem 0.5rem;
+      font-size: 0.9rem;
+    }
 `;
 
 const VisitButton = styled.button`
@@ -666,6 +690,11 @@ function DashboardPage() {
                                 <span>👫</span>
                                 <span>친구집<br />놀러가기</span>
                             </VisitButton>
+                            {/* ▼▼▼ [신규] 갤러리 버튼 추가 ▼▼▼ */}
+                            <GalleryButton to="/mission-gallery">
+                                <span>🎨</span>
+                                <span>미션 갤러리<br />구경하기</span>
+                            </GalleryButton>
                             <SuggestionButton to="/suggestions">
                                 <span>💌</span>
                                 <span>선생님께<br />메시지 보내기</span>
@@ -680,9 +709,6 @@ function DashboardPage() {
                     <Section>
                         <TitleWrapper>
                             <Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title>
-                            <GalleryButton to="/mission-gallery" onClick={(e) => e.stopPropagation()}>
-                                갤러리 보기
-                            </GalleryButton>
                         </TitleWrapper>
                         {recentMissions.length > 0 ? (
                             recentMissions.map(mission => {

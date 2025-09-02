@@ -2408,29 +2408,58 @@ export async function toggleAdminFeedbackLike(submissionId, studentId) {
   }
 }
 
-// [신규] 미션 제출물 자체에 '좋아요'를 누르는 기능 (관리자, 학생 공용)
 export async function toggleSubmissionLike(submissionId, likerId) {
   const submissionRef = doc(db, "missionSubmissions", submissionId);
-  const submissionSnap = await getDoc(submissionRef);
 
-  if (!submissionSnap.exists()) {
-    throw new Error("Submission not found");
-  }
+  await runTransaction(db, async (transaction) => {
+    const submissionDoc = await transaction.get(submissionRef);
+    if (!submissionDoc.exists()) throw new Error("Submission not found");
 
-  const submissionData = submissionSnap.data();
-  const likes = submissionData.likes || [];
+    const submissionData = submissionDoc.data();
+    const likes = submissionData.likes || [];
 
-  if (likes.includes(likerId)) {
-    // 이미 '좋아요'를 눌렀다면 취소
-    await updateDoc(submissionRef, {
-      likes: likes.filter(id => id !== likerId)
-    });
-  } else {
-    // '좋아요'를 누르지 않았다면 추가
-    await updateDoc(submissionRef, {
-      likes: [...likes, likerId]
-    });
-  }
+    const newLikes = likes.includes(likerId)
+      ? likes.filter(id => id !== likerId)
+      : [...likes, likerId];
+
+    transaction.update(submissionRef, { likes: newLikes });
+
+    // --- [신규] 인기 게시물 보상 로직 ---
+    const POPULARITY_THRESHOLD = 10;
+    const REWARD_AMOUNT = 200;
+
+    // 1. '좋아요'가 10개가 되었고, 아직 보상을 받지 않았는지 확인
+    if (newLikes.length >= POPULARITY_THRESHOLD && !submissionData.popularRewardGranted) {
+      const authorId = submissionData.studentId;
+      const authorRef = doc(db, "players", authorId);
+      const authorDoc = await transaction.get(authorRef);
+
+      if (authorDoc.exists()) {
+        const authorData = authorDoc.data();
+
+        // 2. 포인트 보상 지급
+        transaction.update(authorRef, { points: increment(REWARD_AMOUNT) });
+
+        // 3. 보상 지급 완료 플래그 설정 (중복 방지)
+        transaction.update(submissionRef, { popularRewardGranted: true });
+
+        // 4. 포인트 내역 기록 및 알림 생성 (트랜잭션 밖에서 실행)
+        addPointHistory(
+          authorData.authUid,
+          authorData.name,
+          REWARD_AMOUNT,
+          "미션 갤러리 인기 게시물 보상"
+        );
+        createNotification(
+          authorData.authUid,
+          `🏆 미션 갤러리 인기 게시물 선정!`,
+          `축하합니다! 내 게시물이 '좋아요' ${POPULARITY_THRESHOLD}개를 달성하여 ${REWARD_AMOUNT}P를 받았습니다!`,
+          'gallery_reward',
+          '/mission-gallery'
+        );
+      }
+    }
+  });
 }
 
 /**

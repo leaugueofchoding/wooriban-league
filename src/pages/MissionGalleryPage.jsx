@@ -200,8 +200,9 @@ function MissionGalleryPage() {
     const { players, missions, archivedMissions } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
+    // [수정] Firestore에서 불러온 모든 제출물을 저장하는 state
     const [allSubmissions, setAllSubmissions] = useState([]);
-    const [visibleCount, setVisibleCount] = useState(9); // 3(인기) + 6(최신)
+    const [visibleCount, setVisibleCount] = useState(9);
     const ITEMS_PER_PAGE = 6;
 
     const [isLoading, setIsLoading] = useState(true);
@@ -234,11 +235,18 @@ function MissionGalleryPage() {
 
     const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
 
+    // [수정] `submissions`가 아닌 `allSubmissions`를 사용하도록 수정
     const publiclyVisibleSubmissions = useMemo(() => {
         return allSubmissions.filter(sub => {
             const mission = allMissionsList.find(m => m.id === sub.missionId);
+            if (!mission) return false;
             if (sub.adminHidden) return false;
-            return sub.isPublic === true || (sub.isPublic === undefined && !mission?.defaultPrivate);
+            if (sub.isPublic === false) return false;
+            if (sub.isPublic === true) return true;
+            if (sub.isPublic === undefined && !mission.defaultPrivate) {
+                return true;
+            }
+            return false;
         });
     }, [allSubmissions, allMissionsList]);
 

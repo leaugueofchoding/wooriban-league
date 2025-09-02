@@ -297,6 +297,7 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     };
 
     const handleLike = async () => {
+        if (!myPlayerData) return alert("사용자 정보를 찾을 수 없습니다.");
         try {
             await toggleSubmissionLike(submission.id, myPlayerData.id);
         } catch (error) {

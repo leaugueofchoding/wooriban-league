@@ -337,7 +337,10 @@ function PlayerStatsPage() {
                     playerTotals.wins += seasonData.stats.wins;
                     playerTotals.played += seasonData.stats.played;
                     playerTotals.goals += seasonData.stats.goals;
-                    if (seasonData.rank === 1) playerTotals.championships++;
+                    // ▼▼▼ [수정] 시즌이 'completed' 상태일 때만 우승으로 집계 ▼▼▼
+                    if (seasonData.rank === 1 && seasonData.season.status === 'completed') {
+                        playerTotals.championships++;
+                    }
                 });
                 return { ...player, ...playerTotals };
             });
