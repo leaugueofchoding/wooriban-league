@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
-import { useNavigate, Link } from 'react-router-dom'; // useNavigate 추가
+import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
 import { emblemMap } from '../utils/emblemMap';
@@ -65,7 +65,6 @@ const ClickableSection = styled(Link)`
   }
 `;
 
-
 const TitleWrapper = styled.div`
   display: flex;
   justify-content: space-between;
@@ -79,7 +78,6 @@ const Title = styled.h2`
   margin: 0;
 `;
 
-// ... (이하 모든 styled-component는 기존과 동일하게 유지) ...
 const MyInfoCard = styled.div`
   display: flex;
   align-items: center;
@@ -108,53 +106,12 @@ const ProfileLink = styled(Link)`
 
 const ActionButtonsWrapper = styled.div`
   display: flex;
-  gap: 0.75rem; // 버튼 간 간격 조정
+  gap: 0.75rem;
 
   @media (max-width: 768px) {
     width: 100%;
     justify-content: center;
   }
-`;
-
-const GalleryButton = styled(Link)`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    text-decoration: none;
-    padding: 1rem;
-    width: 140px;
-    height: 120px;
-    border-radius: 12px;
-    background-color: #f8f9fa;
-    color: #495057;
-    font-weight: bold;
-    border: 1px solid #dee2e6;
-    transition: all 0.2s ease-in-out;
-    font-size: 1rem;
-
-    & > span:first-child {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-    }
-
-    & > span:last-child {
-        line-height: 1.2;
-    }
-
-    &:hover {
-        background-color: #e9ecef;
-        border-color: #adb5bd;
-    }
-
-    @media (max-width: 768px) {
-      width: 0;
-      flex-grow: 1;
-      height: auto;
-      padding: 1rem 0.5rem;
-      font-size: 0.9rem;
-    }
 `;
 
 const VisitButton = styled.button`
@@ -180,6 +137,47 @@ const VisitButton = styled.button`
         margin-bottom: 0.5rem;
     }
     
+    & > span:last-child {
+        line-height: 1.2;
+    }
+
+    &:hover {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+    }
+
+    @media (max-width: 768px) {
+      width: 0;
+      flex-grow: 1;
+      height: auto;
+      padding: 1rem 0.5rem;
+      font-size: 0.9rem;
+    }
+`;
+
+const GalleryButton = styled(Link)`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+    padding: 1rem;
+    width: 140px;
+    height: 120px;
+    border-radius: 12px;
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: bold;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s ease-in-out;
+    font-size: 1rem;
+
+    & > span:first-child {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
     & > span:last-child {
         line-height: 1.2;
     }
@@ -243,7 +241,6 @@ const AvatarWrapper = styled.div`
   position: relative;
   margin-top: 0rem;
   margin-bottom: -0.5rem;
-
 `;
 
 const AvatarDisplay = styled.div`
@@ -255,7 +252,7 @@ const AvatarDisplay = styled.div`
   border: 4px solid #fff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   flex-shrink: 0;
-  margin-top: 30px; /* 아바타만 아래로 살짝 내리기 */
+  margin-top: 30px;
 `;
 
 const PartImage = styled.img`
@@ -488,7 +485,6 @@ const RequestButton = styled.button`
     }
 `;
 
-// [수정된 부분] DashboardPage 함수 전체 교체
 function DashboardPage() {
     const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
@@ -690,7 +686,6 @@ function DashboardPage() {
                                 <span>👫</span>
                                 <span>친구집<br />놀러가기</span>
                             </VisitButton>
-                            {/* ▼▼▼ [신규] 갤러리 버튼 추가 ▼▼▼ */}
                             <GalleryButton to="/mission-gallery">
                                 <span>🎨</span>
                                 <span>미션 갤러리<br />구경하기</span>
@@ -731,7 +726,9 @@ function DashboardPage() {
                                     if (submissionStatus === 'rejected' || !isSimpleMission) {
                                         navigate('/missions');
                                     } else if (isSimpleMission) {
-                                        submitMissionForApproval(mission.id, {});
+                                        // submitMissionForApproval is not defined here, so we will navigate.
+                                        // For simple approval, the user should go to the missions page.
+                                        navigate('/missions');
                                     }
                                 };
 
@@ -746,7 +743,7 @@ function DashboardPage() {
 
                                 return (
                                     <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <div style={{ flexGrow: 1 }}>
+                                        <div style={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/missions')}>
                                             <CardTitle>
                                                 {mission.title}
                                                 {mission.isFixed && <span title="고정 미션"> 🔄</span>}

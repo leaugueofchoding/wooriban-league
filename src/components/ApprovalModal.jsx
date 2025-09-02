@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { approveMissionsInBatch, rejectMissionSubmission, addMissionComment, toggleSubmissionLike } from '../api/firebase';
+import { approveMissionsInBatch, rejectMissionSubmission, addMissionComment, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
 import { auth, db } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
-import CommentThread from './CommentThread'; // 공통 컴포넌트 사용
+import CommentThread from './CommentThread';
 
 const ModalBackground = styled.div`
   position: fixed;
@@ -233,13 +233,21 @@ const CommentList = styled.div`
     gap: 1rem;
 `;
 
+const getSafeKeyFromUrl = (url) => {
+    try {
+        return btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    } catch (e) {
+        return url.replace(/[^a-zA-Z0-9]/g, '');
+    }
+};
+
 const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, totalCount, onAction, onImageClick }) => {
     const { players, missions } = useLeagueStore();
     const [status, setStatus] = useState(submission.status);
     const [newComment, setNewComment] = useState('');
     const [comments, setComments] = useState([]);
     const [likes, setLikes] = useState(submission.likes || []);
-    const [rotations, setRotations] = useState({});
+    const [rotations, setRotations] = useState(submission.rotations || {});
 
     const student = useMemo(() => players.find(p => p.id === submission.studentId), [players, submission]);
     const mission = useMemo(() => missions.find(m => m.id === submission.missionId), [missions, submission]);
@@ -248,7 +256,7 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     useEffect(() => {
         setStatus(submission.status);
         setLikes(submission.likes || []);
-        setRotations({});
+        setRotations(submission.rotations || {});
 
         const commentsRef = collection(db, "missionSubmissions", submission.id, "comments");
         const q = query(commentsRef, orderBy("createdAt", "asc"));
@@ -305,11 +313,18 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
         }
     };
 
-    const handleRotate = (url) => {
-        setRotations(prev => ({
-            ...prev,
-            [url]: (prev[url] || 0) + 90
-        }));
+    const handleRotate = async (url) => {
+        try {
+            await toggleSubmissionImageRotation(submission.id, url);
+            const imageKey = getSafeKeyFromUrl(url);
+            setRotations(prev => ({
+                ...prev,
+                [imageKey]: ((prev[imageKey] || 0) + 90) % 360
+            }));
+        } catch (error) {
+            console.error("Rotation update failed: ", error);
+            alert("이미지 회전 정보 저장에 실패했습니다.");
+        }
     };
 
     return (
@@ -327,17 +342,21 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
                     </StudentInfo>
                     <SubmissionDetails>
                         {submission.text && <p>{submission.text}</p>}
-                        {submission.photoUrls && submission.photoUrls.map((url, index) => (
-                            <ImageContainer key={index}>
-                                <img
-                                    src={url}
-                                    alt={`제출사진 ${index + 1}`}
-                                    onClick={() => onImageClick(url)}
-                                    style={{ transform: `rotate(${rotations[url] || 0}deg)` }}
-                                />
-                                <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>
-                            </ImageContainer>
-                        ))}
+                        {submission.photoUrls && submission.photoUrls.map((url, index) => {
+                            const imageKey = getSafeKeyFromUrl(url);
+                            const rotation = rotations[imageKey] || 0;
+                            return (
+                                <ImageContainer key={index}>
+                                    <img
+                                        src={url}
+                                        alt={`제출사진 ${index + 1}`}
+                                        onClick={() => onImageClick({ src: url, rotation })}
+                                        style={{ transform: `rotate(${rotation}deg)` }}
+                                    />
+                                    <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>
+                                </ImageContainer>
+                            );
+                        })}
                     </SubmissionDetails>
 
                     <CommentSection>

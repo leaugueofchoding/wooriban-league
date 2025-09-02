@@ -967,7 +967,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     })}
                 </List>
             )}
-            {/* [수정된 부분] submissionToShow 변수가 유효할 때만 모달을 렌더링합니다. */}
+            {/* [수정된 부분] onImageClick 핸들러가 객체를 받도록 수정됩니다. */}
             {submissionToShow && (
                 <ApprovalModal
                     submission={submissionToShow}
@@ -977,7 +977,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     currentIndex={selectedSubmissionIndex}
                     totalCount={pendingSubmissions.length}
                     onAction={handleActionInModal}
-                    onImageClick={(url) => setModalImageSrc(url)}
+                    onImageClick={(imageData) => setModalImageSrc(imageData)}
                 />
             )}
         </Section>
@@ -3592,7 +3592,8 @@ function AdminPage() {
     };
     return (
         <>
-            <ImageModal src={modalImageSrc} onClose={() => setModalImageSrc(null)} />
+            {/* [수정된 부분] ImageModal에 src와 rotation을 분리해서 전달합니다. */}
+            <ImageModal src={modalImageSrc?.src} rotation={modalImageSrc?.rotation} onClose={() => setModalImageSrc(null)} />
             <AdminWrapper>
                 <Sidebar>
                     <BroadcastButton to="/broadcast" target="_blank">📺 방송 송출 화면</BroadcastButton>

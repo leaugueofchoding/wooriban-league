@@ -3,13 +3,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, getApprovedSubmissions, addMissionComment, toggleSubmissionAdminVisibility, toggleSubmissionLike } from '../api/firebase';
+import { auth, db, getApprovedSubmissions, addMissionComment, toggleSubmissionAdminVisibility, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { Link } from 'react-router-dom';
 import CommentThread from '../components/CommentThread';
 import ImageModal from '../components/ImageModal';
-
-// --- Styled Components ---
 
 const Wrapper = styled.div`
   max-width: 1200px;
@@ -119,9 +117,34 @@ const ModalContent = styled.div`
   gap: 1.5rem;
 `;
 
+const ImageContainer = styled.div`
+  position: relative;
+`;
+
+const RotateButton = styled.button`
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  &:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+`;
+
 const ModalSubmissionDetails = styled.div`
     p { white-space: pre-wrap; margin-top: 0; background-color: #f8f9fa; padding: 1rem; border-radius: 8px; }
-    img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 0.5rem; cursor: pointer; }
+    img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 0.5rem; cursor: pointer; transition: transform 0.2s; }
 `;
 
 const ExitButton = styled(Link)`
@@ -196,6 +219,14 @@ const LoadMoreButton = styled.button`
     &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
+const getSafeKeyFromUrl = (url) => {
+  try {
+    return btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  } catch (e) {
+    return url.replace(/[^a-zA-Z0-9]/g, '');
+  }
+};
+
 function MissionGalleryPage() {
   const { players, missions, archivedMissions } = useLeagueStore();
   const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
@@ -210,24 +241,24 @@ function MissionGalleryPage() {
   const [modalImageSrc, setModalImageSrc] = useState(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
+  const [rotations, setRotations] = useState({});
 
   const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
 
   useEffect(() => {
     const fetchAllApprovedSubmissions = async () => {
-      // 미션 목록이 로드될 때까지 기다립니다.
       if (allMissionsList.length === 0) return;
-
       setIsLoading(true);
       const approvedSubmissions = await getApprovedSubmissions();
       setAllSubmissions(approvedSubmissions);
       setIsLoading(false);
     };
     fetchAllApprovedSubmissions();
-  }, [allMissionsList]); // allMissionsList가 준비되면 데이터를 불러옵니다.
+  }, [allMissionsList]);
 
   useEffect(() => {
     if (selectedSubmission) {
+      setRotations(selectedSubmission.rotations || {});
       const commentsRef = collection(db, "missionSubmissions", selectedSubmission.id, "comments");
       const q = query(commentsRef, orderBy("createdAt", "asc"));
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -238,17 +269,18 @@ function MissionGalleryPage() {
   }, [selectedSubmission]);
 
   const publiclyVisibleSubmissions = useMemo(() => {
-    // 미션 데이터가 아직 로드되지 않았다면 빈 배열을 반환하여 오류를 방지합니다.
     if (allMissionsList.length === 0) return [];
 
     return allSubmissions.filter(sub => {
       const mission = allMissionsList.find(m => m.id === sub.missionId);
       if (!mission) return false;
       if (sub.adminHidden) return false;
-
-      if (sub.isPublic === false) return false;
-      if (sub.isPublic === true) return true;
-
+      if (sub.isPublic === false) {
+        return false;
+      }
+      if (sub.isPublic === true) {
+        return true;
+      }
       if (sub.isPublic === undefined) {
         return !mission.defaultPrivate;
       }
@@ -271,9 +303,7 @@ function MissionGalleryPage() {
   }, [publiclyVisibleSubmissions]);
 
   const filteredSubmissions = useMemo(() => {
-    if (selectedMission === 'all') {
-      return publiclyVisibleSubmissions;
-    }
+    if (selectedMission === 'all') return publiclyVisibleSubmissions;
     return publiclyVisibleSubmissions.filter(sub => sub.missionId === selectedMission);
   }, [publiclyVisibleSubmissions, selectedMission]);
 
@@ -319,17 +349,38 @@ function MissionGalleryPage() {
     setSelectedSubmission(updatedSubmission);
   };
 
+  const handleRotate = async (url) => {
+    try {
+      await toggleSubmissionImageRotation(selectedSubmission.id, url);
+      const imageKey = getSafeKeyFromUrl(url);
+      const newRotation = ((rotations[imageKey] || 0) + 90) % 360;
+
+      const updatedRotations = { ...rotations, [imageKey]: newRotation };
+      setRotations(updatedRotations);
+
+      const updatedSubmission = { ...selectedSubmission, rotations: updatedRotations };
+      setSelectedSubmission(updatedSubmission);
+      setAllSubmissions(prev => prev.map(s => s.id === selectedSubmission.id ? updatedSubmission : s));
+
+    } catch (error) {
+      console.error("Rotation update failed: ", error);
+      alert("이미지 회전 정보 저장에 실패했습니다.");
+    }
+  };
+
   const getPlayerName = (studentId) => players.find(p => p.id === studentId)?.name || '알 수 없음';
   const getMissionTitle = (missionId) => allMissionsList.find(m => m.id === missionId)?.title || '알 수 없음';
   const getCardImage = (sub) => {
     if (sub.photoUrls && sub.photoUrls.length > 0) return sub.photoUrls[0];
     if (sub.photoUrl) return sub.photoUrl;
     return null;
-  }
+  };
 
   if (isLoading) {
     return <Wrapper><p>갤러리를 불러오는 중입니다...</p></Wrapper>;
   }
+
+  const canRotateSelected = myPlayerData?.role === 'admin' || myPlayerData?.id === selectedSubmission?.studentId;
 
   return (
     <>
@@ -403,12 +454,25 @@ function MissionGalleryPage() {
             <ModalContent>
               <ModalSubmissionDetails>
                 {selectedSubmission.text && <p>{selectedSubmission.text}</p>}
-                {selectedSubmission.photoUrls && selectedSubmission.photoUrls.map((url, index) => (
-                  <img key={index} src={url} alt={`제출 이미지 ${index + 1}`} onClick={() => setModalImageSrc({ src: url, rotation: selectedSubmission.rotations?.[url] || 0 })} />
-                ))}
-                {selectedSubmission.photoUrl && !selectedSubmission.photoUrls && (
-                  <img src={selectedSubmission.photoUrl} alt="제출 이미지" onClick={() => setModalImageSrc({ src: selectedSubmission.photoUrl, rotation: 0 })} />
-                )}
+                {selectedSubmission.photoUrls && selectedSubmission.photoUrls.map((url, index) => {
+                  const imageKey = getSafeKeyFromUrl(url);
+                  const rotation = rotations[imageKey] || 0;
+                  return (
+                    <ImageContainer key={index}>
+                      <img
+                        src={url}
+                        alt={`제출 이미지 ${index + 1}`}
+                        style={{ transform: `rotate(${rotation}deg)` }}
+                        onClick={() => setModalImageSrc({
+                          src: url,
+                          rotation: rotation,
+                          onRotate: canRotateSelected ? () => handleRotate(url) : null
+                        })}
+                      />
+                      {canRotateSelected && <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>}
+                    </ImageContainer>
+                  );
+                })}
               </ModalSubmissionDetails>
               <div>
                 {comments.map(comment => (
@@ -417,7 +481,7 @@ function MissionGalleryPage() {
                     submissionId={selectedSubmission.id}
                     comment={comment}
                     missionTitle={getMissionTitle(selectedSubmission.missionId)}
-                    permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' }}
+                    permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId }}
                   />
                 ))}
                 {myPlayerData &&
@@ -432,7 +496,12 @@ function MissionGalleryPage() {
         </ModalBackground>
       )}
 
-      <ImageModal src={modalImageSrc?.src} rotation={modalImageSrc?.rotation} onClose={() => setModalImageSrc(null)} />
+      <ImageModal
+        src={modalImageSrc?.src}
+        rotation={modalImageSrc?.rotation}
+        onClose={() => setModalImageSrc(null)}
+        onRotate={modalImageSrc?.onRotate}
+      />
     </>
   );
 }

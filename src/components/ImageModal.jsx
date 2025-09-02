@@ -28,6 +28,7 @@ const ModalContent = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative; // 자식 요소의 position absolute를 위해 추가
 `;
 
 const FullSizeImage = styled.img`
@@ -36,18 +37,54 @@ const FullSizeImage = styled.img`
   display: block;
   border-radius: 8px;
   object-fit: contain;
+  transform: rotate(${props => props.$rotation || 0}deg);
+  transition: transform 0.2s ease-in-out;
 `;
 
-const ImageModal = ({ src, onClose }) => {
-    if (!src) return null;
+// ▼▼▼ [신규] 회전 버튼 스타일 추가 ▼▼▼
+const RotateButton = styled.button`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  cursor: pointer;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  &:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+`;
 
-    return (
-        <ModalBackground onClick={onClose}>
-            <ModalContent onClick={(e) => e.stopPropagation()}>
-                <FullSizeImage src={src} alt="미션 제출 이미지 원본" />
-            </ModalContent>
-        </ModalBackground>
-    );
+
+const ImageModal = ({ src, rotation, onClose, onRotate }) => {
+  if (!src) return null;
+
+  const handleRotateClick = (e) => {
+    e.stopPropagation(); // 배경 클릭(닫기) 이벤트 방지
+    if (onRotate) {
+      onRotate();
+    }
+  };
+
+  return (
+    <ModalBackground onClick={onClose}>
+      <ModalContent onClick={(e) => e.stopPropagation()}>
+        <FullSizeImage src={src} $rotation={rotation} alt="미션 제출 이미지 원본" />
+        {/* ▼▼▼ [수정] onRotate prop이 있을 때만 회전 버튼을 보여줍니다. ▼▼▼ */}
+        {onRotate && (
+          <RotateButton onClick={handleRotateClick}>↻</RotateButton>
+        )}
+      </ModalContent>
+    </ModalBackground>
+  );
 };
 
 export default ImageModal;

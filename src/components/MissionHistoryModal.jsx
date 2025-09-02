@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, addMissionComment, toggleAdminFeedbackLike } from '../api/firebase';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import CommentThread from './CommentThread'; // 새로 만든 공통 컴포넌트 import
+import { auth, db, toggleSubmissionImageRotation } from '../api/firebase';
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import CommentThread from './CommentThread';
 
 const ModalBackground = styled.div`
   position: fixed;
@@ -72,8 +72,35 @@ const SubmissionDetails = styled.div`
         height: auto;
         border-radius: 8px;
         margin-top: 0.5rem;
+        cursor: pointer;
     }
 `;
+
+const ImageContainer = styled.div`
+  position: relative;
+`;
+
+const RotateButton = styled.button`
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  &:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+`;
+
 
 const CommentSection = styled.div`
     margin-top: 1.5rem;
@@ -126,42 +153,40 @@ const CloseButton = styled.button`
     }
 `;
 
+const getSafeKeyFromUrl = (url) => {
+    try {
+        return btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    } catch (e) {
+        return url.replace(/[^a-zA-Z0-9]/g, '');
+    }
+};
 
-function HistoryItem({ item, student, missionTitle }) {
+function HistoryItem({ item, student, missionTitle, onImageClick }) {
     const { players } = useLeagueStore();
     const [comments, setComments] = useState([]);
-    const [newComment, setNewComment] = useState('');
+    const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
+    const [rotations, setRotations] = useState(item.rotations || {});
 
-    const currentUser = auth.currentUser;
-    const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
+    const canRotate = myPlayerData?.role === 'admin' || myPlayerData?.id === student.id;
 
     useEffect(() => {
+        setRotations(item.rotations || {}); // 부모 컴포넌트에서 item이 바뀔 때마다 rotations 상태 업데이트
         const commentsRef = collection(db, "missionSubmissions", item.id, "comments");
         const q = query(commentsRef, orderBy("createdAt", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         return () => unsubscribe();
-    }, [item.id]);
+    }, [item]);
 
-    const handleCommentSubmit = async () => {
-        if (!newComment.trim() || !myPlayerData) return;
+    const handleRotate = async (url) => {
+        if (!canRotate) return;
         try {
-            await addMissionComment(
-                item.id,
-                {
-                    commenterId: myPlayerData.id,
-                    commenterName: myPlayerData.name,
-                    commenterRole: myPlayerData.role,
-                    text: newComment,
-                },
-                student?.authUid,
-                missionTitle
-            );
-            setNewComment('');
+            await toggleSubmissionImageRotation(item.id, url);
+            const imageKey = getSafeKeyFromUrl(url);
+            setRotations(prev => ({ ...prev, [imageKey]: ((prev[imageKey] || 0) + 90) % 360 }));
         } catch (error) {
-            console.error("Comment submission failed:", error);
-            alert(`댓글 등록 실패: ${error.message}`);
+            console.error("Rotation update failed:", error);
         }
     };
 
@@ -175,7 +200,21 @@ function HistoryItem({ item, student, missionTitle }) {
             <HistoryHeader>{formatDate(item.approvedAt || item.requestedAt)} 제출</HistoryHeader>
             <SubmissionDetails>
                 {item.text && <p>{item.text}</p>}
-                {item.photoUrls && item.photoUrls.map((url, index) => <img key={index} src={url} alt={`제출 이미지 ${index + 1}`} />)}
+                {item.photoUrls && item.photoUrls.map((url, index) => {
+                    const imageKey = getSafeKeyFromUrl(url);
+                    const rotation = rotations[imageKey] || 0;
+                    return (
+                        <ImageContainer key={index}>
+                            <img
+                                src={url}
+                                alt={`제출 이미지 ${index + 1}`}
+                                style={{ transform: `rotate(${rotation}deg)` }}
+                                onClick={() => onImageClick({ src: url, rotation, canRotate: canRotate, submissionId: item.id })}
+                            />
+                            {canRotate && <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>}
+                        </ImageContainer>
+                    )
+                })}
             </SubmissionDetails>
 
             <CommentSection>
@@ -186,20 +225,16 @@ function HistoryItem({ item, student, missionTitle }) {
                             submissionId={item.id}
                             comment={comment}
                             missionTitle={missionTitle}
+                            permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId }}
                         />
                     ))}
                 </CommentList>
-                <CommentInputContainer>
-                    <CommentTextarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="댓글을 입력하세요..." rows="2" />
-                    <CommentSubmitButton onClick={handleCommentSubmit}>등록</CommentSubmitButton>
-                </CommentInputContainer>
             </CommentSection>
         </HistoryItemWrapper>
     );
 }
 
-
-const MissionHistoryModal = ({ isOpen, onClose, missionTitle, history, student }) => {
+const MissionHistoryModal = ({ isOpen, onClose, missionTitle, history, student, onImageClick }) => {
     if (!isOpen) return null;
 
     return (
@@ -214,6 +249,7 @@ const MissionHistoryModal = ({ isOpen, onClose, missionTitle, history, student }
                                 item={item}
                                 student={student}
                                 missionTitle={missionTitle}
+                                onImageClick={onImageClick}
                             />
                         ))
                     ) : (

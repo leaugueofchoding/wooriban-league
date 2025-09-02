@@ -339,12 +339,13 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
     status: 'pending',
     requestedAt: serverTimestamp(),
     checkedBy: null,
-    isPublic: submissionData.isPublic !== undefined ? submissionData.isPublic : true, // 기본값은 true(공개)
+    // isPublic 필드를 submissionData에서 직접 받아오도록 수정
+    isPublic: submissionData.isPublic,
     ...submissionData
   });
 
 
-  // 관리자/기록원에게 알림 전송
+  // [추가] 관리자 및 기록원에게 알림 전송
   const playersRef = collection(db, 'players');
   const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
@@ -482,6 +483,49 @@ export async function addMissionReply(submissionId, commentId, replyData, origin
       "mission_comment",
       link
     );
+  }
+}
+
+// =================================================================
+// ▼▼▼ [수정] 이미지 회전 각도 저장 함수 ▼▼▼
+// =================================================================
+// URL을 Firestore 필드 경로에 안전한 키로 변환하는 헬퍼 함수
+const getSafeKeyFromUrl = (url) => {
+  // Base64 인코딩 후 URL에 안전하지 않은 문자(+, /, =)를 대체합니다.
+  try {
+    return btoa(url)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  } catch (e) {
+    console.error("Failed to create safe key from URL:", url, e);
+    // btoa가 실패할 경우 (예: 유니코드 문자)를 대비한 대체 키 생성
+    return url.replace(/[^a-zA-Z0-9]/g, '');
+  }
+};
+
+export async function toggleSubmissionImageRotation(submissionId, imageUrl) {
+  const submissionRef = doc(db, "missionSubmissions", submissionId);
+  const imageKey = getSafeKeyFromUrl(imageUrl); // URL을 안전한 키로 변환
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const submissionDoc = await transaction.get(submissionRef);
+      if (!submissionDoc.exists()) {
+        throw "Submission document does not exist!";
+      }
+      const currentRotations = submissionDoc.data().rotations || {};
+      const currentRotation = currentRotations[imageKey] || 0; // 안전한 키로 조회
+      const newRotation = (currentRotation + 90) % 360;
+
+      // 안전한 키를 사용하여 rotations 맵의 특정 필드만 업데이트합니다.
+      transaction.update(submissionRef, {
+        [`rotations.${imageKey}`]: newRotation
+      });
+    });
+  } catch (error) {
+    console.error("Transaction failed: ", error);
+    throw error;
   }
 }
 
