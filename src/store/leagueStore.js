@@ -317,15 +317,13 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error('선수 정보를 찾을 수 없습니다.');
 
-        const dataToSend = {};
+        const dataToSend = { isPublic: submissionData.isPublic };
         if (submissionData.text) {
             dataToSend.text = submissionData.text;
         }
-        // [수정] 'photo'가 아닌 'photos' 배열을 처리하고, 여러 파일 업로드 함수를 호출합니다.
         if (submissionData.photos && submissionData.photos.length > 0) {
-            // uploadMissionSubmissionFile -> uploadMissionSubmissionFiles (새로 만들 함수)
             const photoUrls = await uploadMissionSubmissionFile(missionId, myPlayerData.id, submissionData.photos);
-            dataToSend.photoUrls = photoUrls; // photoUrl -> photoUrls 배열
+            dataToSend.photoUrls = photoUrls;
         }
 
         try {

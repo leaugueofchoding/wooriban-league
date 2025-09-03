@@ -1484,15 +1484,7 @@ function MissionManager({ onNavigate }) {
         const { active, over } = event;
         if (active.id !== over.id) {
             const listKey = showArchived ? 'archivedMissions' : 'missions';
-            const missionsToDisplay = useMemo(() => {
-                const list = showArchived ? archivedMissions : missions;
-                // displayOrder 또는 생성 시간 기준으로 정렬
-                return [...list].sort((a, b) => {
-                    const orderA = typeof a.displayOrder === 'number' ? a.displayOrder : a.createdAt?.toMillis() || Infinity;
-                    const orderB = typeof b.displayOrder === 'number' ? b.displayOrder : b.createdAt?.toMillis() || Infinity;
-                    return orderA - orderB;
-                });
-            }, [showArchived, missions, archivedMissions]); const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
+            const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
             const newIndex = missionsToDisplay.findIndex(m => m.id === over.id);
             const newList = arrayMove(missionsToDisplay, oldIndex, newIndex);
             reorderMissions(newList, listKey);

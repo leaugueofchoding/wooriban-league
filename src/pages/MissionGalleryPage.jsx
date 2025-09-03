@@ -275,17 +275,24 @@ function MissionGalleryPage() {
 
         return allSubmissions.filter(sub => {
             const mission = allMissionsList.find(m => m.id === sub.missionId);
-            if (!mission) return false;
-            if (sub.adminHidden) return false;
+            if (!mission) return false; // 미션 정보가 없으면 표시하지 않음
+            if (sub.adminHidden) return false; // 관리자가 숨김 처리한 경우 표시하지 않음
+
+            // isPublic 필드가 명시적으로 false이면 무조건 비공개
             if (sub.isPublic === false) {
                 return false;
             }
+            // isPublic 필드가 명시적으로 true이면 무조건 공개
             if (sub.isPublic === true) {
                 return true;
             }
+            // isPublic 필드 값이 없는 경우(undefined), 미션의 기본 설정값을 따름
+            // defaultPrivate이 true(기본 비공개)이면 비공개, false(기본 공개)이면 공개
             if (sub.isPublic === undefined) {
                 return !mission.defaultPrivate;
             }
+
+            // 그 외의 경우는 기본적으로 비공개 처리
             return false;
         });
     }, [allSubmissions, allMissionsList]);

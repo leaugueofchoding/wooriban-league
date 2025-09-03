@@ -62,6 +62,23 @@ const MissionReward = styled.div`
   margin-top: 0.25rem;
 `;
 
+const VisibilityToggleButton = styled.button`
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background-color: ${props => props.$isPublic ? '#007bff' : '#dc3545'};
+    color: white;
+    transition: background-color 0.2s;
+
+    &:disabled {
+        background-color: #6c757d;
+        opacity: 0.7;
+    }
+`;
+
 const SubmissionArea = styled.div`
     display: flex;
     flex-direction: column;
@@ -222,16 +239,10 @@ const ToggleButton = styled.button`
     }
 `;
 
-// =================================================================
-// ▼▼▼ [핵심] 헬퍼 함수: 날짜가 오늘인지 정확하게 확인합니다. ▼▼▼
-// =================================================================
 const isDateToday = (timestamp) => {
   if (!timestamp || !timestamp.toDate) return false;
-
   const date = timestamp.toDate();
   const today = new Date();
-
-  // 시, 분, 초를 무시하고 년, 월, 일만 비교합니다.
   return date.getFullYear() === today.getFullYear() &&
     date.getMonth() === today.getMonth() &&
     date.getDate() === today.getDate();
@@ -239,7 +250,6 @@ const isDateToday = (timestamp) => {
 
 
 function SubmissionDetailsView({ submission, isOpen }) {
-  // [수정] photoUrl을 photoUrls 배열로 변경하여 처리합니다.
   if (!submission || (!submission.text && !submission.photoUrls)) {
     return null;
   }
@@ -247,7 +257,6 @@ function SubmissionDetailsView({ submission, isOpen }) {
   return (
     <SubmissionDetails $isOpen={isOpen}>
       {submission.text && <p>{submission.text}</p>}
-      {/* [수정] photoUrls 배열을 순회하며 모든 이미지를 보여줍니다. */}
       {submission.photoUrls && submission.photoUrls.map((url, index) => (
         <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} style={{ marginBottom: '0.5rem' }} />
       ))}
@@ -257,7 +266,7 @@ function SubmissionDetailsView({ submission, isOpen }) {
 
 function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission }) {
   const { submitMissionForApproval } = useLeagueStore();
-  const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [] });
+  const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [], isPublic: !mission.defaultPrivate });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -277,14 +286,16 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   }, [submission, mission.isFixed]);
 
   useEffect(() => {
+    const initialIsPublic = submission?.isPublic !== undefined ? submission.isPublic : !mission.defaultPrivate;
     if (submission?.status === 'rejected') {
-      setSubmissionContent({ text: submission.text || '', photos: [] });
+      setSubmissionContent({ text: submission.text || '', photos: [], isPublic: initialIsPublic });
     } else if (mission.placeholderText) {
-      setSubmissionContent({ text: mission.placeholderText + '\n\n', photos: [] });
+      setSubmissionContent({ text: mission.placeholderText + '\n\n', photos: [], isPublic: initialIsPublic });
     } else {
-      setSubmissionContent({ text: '', photos: [] });
+      setSubmissionContent({ text: '', photos: [], isPublic: initialIsPublic });
     }
-  }, [submission, mission.placeholderText, mission.id]);
+  }, [submission, mission.placeholderText, mission.id, mission.defaultPrivate]);
+
 
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
@@ -299,14 +310,11 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
-      // [수정] 기존 사진 목록에 새로 선택한 사진을 추가합니다.
       setSubmissionContent(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
-      // [추가] 파일을 추가한 후 input의 값을 초기화하여 같은 파일을 또 추가할 수 있게 합니다.
       e.target.value = null;
     }
   };
 
-  // [추가] 선택한 사진 목록을 초기화하는 함수
   const handleClearPhotos = () => {
     setSubmissionContent(prev => ({ ...prev, photos: [] }));
   };
@@ -315,9 +323,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     const isDoneOrPending = ['APPROVED_TODAY', 'PENDING_TODAY', 'approved', 'pending'].includes(missionStatus);
     if (isSubmitting || isDoneOrPending || !isPrerequisiteSubmitted) return;
 
-    // [수정] 제출 직전에 submissionContent의 최신 상태를 한 번 더 확인하여 이중으로 방어합니다.
-    const currentPhotos = submissionContent.photos;
-    const currentText = submissionContent.text;
+    const { text: currentText, photos: currentPhotos, isPublic } = submissionContent;
 
     if (isSubmissionRequired) {
       const requiresText = submissionType.includes('text');
@@ -325,16 +331,12 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
       const hasRealText = currentText.trim() !== '' && currentText.trim() !== mission.placeholderText?.trim();
       const hasPhotos = currentPhotos.length > 0;
 
-      // [수정] 요청하신 제출 조건 로직으로 변경합니다.
-      // 1. 글만 필요한 경우
       if (requiresText && !requiresPhoto && !hasRealText) {
         return alert('글 내용을 입력해주세요.');
       }
-      // 2. 사진만 필요한 경우
       if (requiresPhoto && !requiresText && !hasPhotos) {
         return alert('사진 파일을 한 장 이상 첨부해주세요.');
       }
-      // 3. 글과 사진 모두 필요한 경우 (둘 중 하나만 있어도 통과)
       if (requiresText && requiresPhoto && !hasRealText && !hasPhotos) {
         return alert('글을 작성하거나 사진을 한 장 이상 첨부해주세요.');
       }
@@ -342,11 +344,9 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
     setIsSubmitting(true);
     try {
-      // [수정] handleSubmit 스코프 내의 최신 데이터를 전달합니다.
-      await submitMissionForApproval(mission.id, { text: currentText, photos: currentPhotos });
+      await submitMissionForApproval(mission.id, { text: currentText, photos: currentPhotos, isPublic });
       alert('미션 완료를 성공적으로 요청했습니다!');
-      // 성공적으로 제출 후, 입력 상태 초기화
-      setSubmissionContent({ text: mission.placeholderText ? mission.placeholderText + '\n\n' : '', photos: [] });
+      setSubmissionContent({ text: mission.placeholderText ? mission.placeholderText + '\n\n' : '', photos: [], isPublic: !mission.defaultPrivate });
     } catch (error) {
       alert(`요청 실패: ${error.message}`);
     } finally {
@@ -388,16 +388,31 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
     }
 
     return (
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         {hasSubmission && (
           <RequestButton $status="approved" onClick={handleHistoryView}>
             기록 보기
           </RequestButton>
         )}
         {(isActionable || isDoneOrPending) && (
-          <RequestButton onClick={isActionable ? handleSubmit : null} disabled={isButtonDisabled} $status={actionButtonStyle}>
-            {actionButtonText}
-          </RequestButton>
+          <>
+            {isSubmissionRequired && isActionable && (
+              <VisibilityToggleButton
+                $isPublic={submissionContent.isPublic}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSubmissionContent(prev => ({ ...prev, isPublic: !prev.isPublic }));
+                }}
+                disabled={isButtonDisabled}
+                title={mission.defaultPrivate ? "이 미션은 기본적으로 비공개 제출됩니다." : "이 미션은 기본적으로 갤러리에 공개됩니다."}
+              >
+                {submissionContent.isPublic ? '갤러리 공개' : '비공개 제출'}
+              </VisibilityToggleButton>
+            )}
+            <RequestButton onClick={isActionable ? handleSubmit : null} disabled={isButtonDisabled} $status={actionButtonStyle}>
+              {actionButtonText}
+            </RequestButton>
+          </>
         )}
       </div>
     );
@@ -457,7 +472,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
                     disabled={isInputDisabled}
                   />
                 </FileInputLabel>
-                {/* [수정] 선택된 파일 목록을 리스트 형태로 보여주고, 초기화 버튼을 추가합니다. */}
                 {submissionContent.photos.length > 0 && (
                   <FileName>
                     <strong>첨부된 파일 ({submissionContent.photos.length}개):</strong>
@@ -516,7 +530,6 @@ function MissionsPage() {
                 history: history,
                 student: myPlayerData
               });
-              // URL에서 파라미터 제거
               navigate(location.pathname, { replace: true });
             }
           }
@@ -557,11 +570,11 @@ function MissionsPage() {
 
       if (mission.isFixed) {
         if (submission.status === 'approved' && isDateToday(submission.approvedAt)) {
-          return false; // 오늘 완료한 고정 미션은 숨김
+          return false;
         }
       } else {
         if (submission.status === 'approved') {
-          return false; // 완료한 일반 미션은 숨김
+          return false;
         }
       }
 
