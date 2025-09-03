@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
+import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
@@ -291,6 +291,13 @@ const PointDisplay = styled.p`
   color: #28a745;
 `;
 
+const LikeDisplay = styled.p`
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #dc3545;
+`;
+
 const EquippedTitle = styled.div`
   position: absolute;
   top: 5px;
@@ -491,6 +498,7 @@ function DashboardPage() {
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
     const navigate = useNavigate();
+    const [totalLikes, setTotalLikes] = useState(0);
 
     const myPlayerData = useMemo(() => {
         if (!currentUser) return null;
@@ -517,6 +525,11 @@ function DashboardPage() {
         };
         if (myPlayerData) {
             fetchGoals();
+            const fetchTotalLikes = async () => {
+                const likes = await getTotalLikesForPlayer(myPlayerData.id);
+                setTotalLikes(likes);
+            };
+            fetchTotalLikes();
         }
     }, [myPlayerData]);
 
@@ -679,6 +692,7 @@ function DashboardPage() {
                             <InfoText>
                                 <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
                                 <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
+                                <LikeDisplay>❤️ {totalLikes}</LikeDisplay>
                             </InfoText>
                         </ProfileLink>
                         <ActionButtonsWrapper>
