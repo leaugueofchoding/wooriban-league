@@ -423,36 +423,6 @@ export async function addMissionComment(submissionId, commentData, studentData, 
     ...commentData,
     createdAt: serverTimestamp(),
   });
-
-  const link = `/missions?openHistoryForSubmission=${submissionId}`;
-
-  if (commentData.commenterRole === 'player') {
-    // 학생이 댓글 작성 -> 관리자에게만 알림
-    const playersRef = collection(db, 'players');
-    const adminQuery = query(playersRef, where('role', 'in', ['admin']));
-    const adminSnapshot = await getDocs(adminQuery);
-    adminSnapshot.forEach(userDoc => {
-      const user = userDoc.data();
-      if (user.authUid) {
-        createNotification(
-          user.authUid,
-          `댓글: ${missionTitle}`,
-          `${commentData.commenterName}: "${commentData.text}"`,
-          "mission_comment",
-          link
-        );
-      }
-    });
-  } else if (studentData?.authUid) {
-    // 관리자가 댓글 작성 -> 학생에게 알림
-    createNotification(
-      studentData.authUid,
-      `📝 '${missionTitle}' 미션에 댓글이 달렸어요!`,
-      `${commentData.commenterName}: "${commentData.text}"`,
-      "mission_comment",
-      link
-    );
-  }
 }
 
 
@@ -2606,7 +2576,6 @@ export async function toggleCommentLike(submissionId, commentId, likerId) {
   });
 }
 
-// [신규] 미션 답글 '좋아요' 처리
 export async function toggleReplyLike(submissionId, commentId, replyId, likerId) {
   const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
   await runTransaction(db, async (transaction) => {
@@ -2617,5 +2586,20 @@ export async function toggleReplyLike(submissionId, commentId, replyId, likerId)
       ? likes.filter(id => id !== likerId)
       : [...likes, likerId];
     transaction.update(replyRef, { likes: newLikes });
+  });
+}
+
+/**
+ * [관리자용] 모든 미션 제출물의 모든 댓글을 불러옵니다.
+ * @returns {Array<object>} - 모든 댓글 목록
+ */
+export async function getAllMissionComments() {
+  const commentsQuery = query(collectionGroup(db, 'comments'), orderBy('createdAt', 'desc'));
+  const querySnapshot = await getDocs(commentsQuery);
+  // 각 댓글 문서에서 부모(제출물) ID를 가져와서 데이터에 추가
+  return querySnapshot.docs.map(doc => {
+    const parentPath = doc.ref.parent.parent.path;
+    const submissionId = parentPath.split('/').pop();
+    return { id: doc.id, submissionId, ...doc.data() };
   });
 }

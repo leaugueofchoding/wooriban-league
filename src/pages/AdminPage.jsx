@@ -54,7 +54,7 @@ import {
     adjustPlayerPoints,
     grantTitleToPlayersBatch
 } from '../api/firebase.js';
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, getDocs } from "firebase/firestore"; // getDocs import 추가
 import ImageModal from '../components/ImageModal'; // [추가] 이미지 모달 컴포넌트 import
 import RecorderPage from './RecorderPage';
 import ApprovalModal from '../components/ApprovalModal'; // [추가] 승인 모달 컴포넌트 import
@@ -346,6 +346,8 @@ const MonitorCommentCard = styled.div`
     padding: 1rem;
     margin-bottom: 1rem;
 `;
+
+const MissionCommentCard = styled(MonitorCommentCard)``; // 미션 댓글 카드 추가
 
 const MonitorHeader = styled.div`
     font-size: 0.9rem;
@@ -844,19 +846,16 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const refreshPendingSubmissions = async () => {
         const submissionsRef = collection(db, "missionSubmissions");
         const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const validSubmissions = submissions.filter(sub =>
-                missions.some(m => m.id === sub.missionId)
-            );
-            setPendingSubmissions(validSubmissions);
-        });
-        return unsubscribe;
+        const querySnapshot = await getDocs(q); // onSnapshot -> getDocs로 변경
+        const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const validSubmissions = submissions.filter(sub =>
+            missions.some(m => m.id === sub.missionId)
+        );
+        setPendingSubmissions(validSubmissions);
     };
 
     useEffect(() => {
-        const unsubscribe = refreshPendingSubmissions();
-        return () => unsubscribe;
+        refreshPendingSubmissions();
     }, [missions]);
 
 
@@ -876,8 +875,17 @@ function PendingMissionWidget({ setModalImageSrc }) {
         setSelectedSubmissionIndex(prev => (prev > 0 ? prev - 1 : prev));
     };
 
-    const handleActionInModal = () => {
-        refreshPendingSubmissions(); // 모달 내에서 승인/반려 후 목록 새로고침
+    const handleActionInModal = (actedSubmissionId) => {
+        // 모달에서 승인/반려 후 목록을 수동으로 업데이트 (화면 깜빡임 방지)
+        setPendingSubmissions(prev => prev.filter(sub => sub.id !== actedSubmissionId));
+        // 다음 미션으로 자동으로 넘어가도록 인덱스 조정
+        setSelectedSubmissionIndex(prev => {
+            if (prev === null) return null;
+            if (prev >= pendingSubmissions.length - 2) { // 마지막 항목이었으면 모달 닫기
+                return null;
+            }
+            return prev; // 현재 인덱스 유지 (다음 항목이 그 자리를 채움)
+        });
     };
 
     const handleAction = async (action, submission, reward) => {
@@ -976,7 +984,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     onPrev={handlePrev}
                     currentIndex={selectedSubmissionIndex}
                     totalCount={pendingSubmissions.length}
-                    onAction={handleActionInModal}
+                    onAction={() => handleActionInModal(submissionToShow.id)} // submission Id를 전달
                     onImageClick={(imageData) => setModalImageSrc(imageData)}
                 />
             )}
@@ -1228,6 +1236,70 @@ function MessageManager() {
             }
         }
     };
+
+    function MissionCommentMonitor() {
+        const { players, missions, archivedMissions, missionSubmissions } = useLeagueStore();
+        const [allComments, setAllComments] = useState([]);
+        const [isLoading, setIsLoading] = useState(true);
+        const navigate = useNavigate();
+
+        const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
+
+        useEffect(() => {
+            const fetchComments = async () => {
+                setIsLoading(true);
+                const comments = await getAllMissionComments();
+                setAllComments(comments);
+                setIsLoading(false);
+            };
+            fetchComments();
+        }, []);
+
+        const handleDeleteComment = async (submissionId, commentId) => {
+            if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
+                await deleteMissionComment(submissionId, commentId);
+                setAllComments(prev => prev.filter(c => c.id !== commentId));
+            }
+        };
+
+        const getSubmissionInfo = (submissionId) => {
+            const submission = missionSubmissions.find(s => s.id === submissionId);
+            if (!submission) return { missionTitle: '알 수 없는 미션', studentName: '알 수 없는 학생' };
+
+            const mission = allMissionsList.find(m => m.id === submission.missionId);
+            const student = players.find(p => p.id === submission.studentId);
+            return {
+                missionTitle: mission?.title || '삭제된 미션',
+                studentName: student?.name || '알 수 없는 학생',
+            }
+        };
+
+
+        if (isLoading) return <Section><p>댓글을 불러오는 중...</p></Section>;
+
+        return (
+            <FullWidthSection>
+                <Section>
+                    <SectionTitle>미션 갤러리 댓글 모음</SectionTitle>
+                    <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                        {allComments.map(comment => {
+                            const { missionTitle, studentName } = getSubmissionInfo(comment.submissionId);
+                            return (
+                                <MissionCommentCard key={comment.id}>
+                                    <MonitorHeader>
+                                        <strong>{comment.commenterName}</strong> → <span>{studentName}</span>님의 갤러리 게시물
+                                        <StyledButton onClick={() => handleDeleteComment(comment.submissionId, comment.id)} style={{ float: 'right', padding: '0.2rem 0.5rem', fontSize: '0.8rem', backgroundColor: '#dc3545' }}>댓글 삭제</StyledButton>
+                                    </MonitorHeader>
+                                    <MonitorContent>"{comment.text}"</MonitorContent>
+                                    <small style={{ color: '#6c757d' }}>미션: {missionTitle}</small>
+                                </MissionCommentCard>
+                            )
+                        })}
+                    </div>
+                </Section>
+            </FullWidthSection>
+        );
+    }
 
     const formatDate = (timestamp) => {
         if (!timestamp || typeof timestamp.toDate !== 'function') return '';
@@ -3538,7 +3610,8 @@ function AdminPage() {
         if (activeMenu === 'social') {
             switch (activeSubMenu) {
                 case 'messages': return <MessageManager preselectedStudentId={preselectedStudentId} onStudentSelect={setPreselectedStudentId} />;
-                case 'comments': return <MyRoomCommentMonitor />;
+                case 'myroom_comments': return <MyRoomCommentMonitor />;
+                case 'mission_comments': return <MissionCommentMonitor />;
                 default: return <MessageManager />;
             }
         }
@@ -3606,7 +3679,8 @@ function AdminPage() {
                             {activeMenu === 'social' && (
                                 <SubNavList>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'messages'} onClick={() => setActiveSubMenu('messages')}>1:1 메시지</SubNavButton></SubNavItem>
-                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'comments'} onClick={() => setActiveSubMenu('comments')}>마이룸 댓글 모음</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'myroom_comments'} onClick={() => setActiveSubMenu('myroom_comments')}>마이룸 댓글</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'mission_comments'} onClick={() => setActiveSubMenu('mission_comments')}>미션 갤러리 댓글</SubNavButton></SubNavItem>
                                 </SubNavList>
                             )}
                         </NavItem>
