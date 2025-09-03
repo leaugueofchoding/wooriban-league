@@ -2590,7 +2590,7 @@ export async function toggleReplyLike(submissionId, commentId, replyId, likerId)
 }
 
 /**
- * [관리자용] 모든 미션 제출물의 모든 댓글을 불러옵니다.
+// [관리자용] 모든 미션 제출물의 모든 댓글을 불러옵니다.
  * @returns {Array<object>} - 모든 댓글 목록
  */
 export async function getAllMissionComments() {
