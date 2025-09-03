@@ -2603,3 +2603,37 @@ export async function getAllMissionComments() {
     return { id: doc.id, submissionId, ...doc.data() };
   });
 }
+
+// [신규] 특정 플레이어가 받은 모든 '좋아요' 개수를 집계하는 함수
+export async function getTotalLikesForPlayer(playerId) {
+  if (!playerId) return 0;
+
+  let totalLikes = 0;
+
+  // 1. 마이룸 '좋아요' 수
+  const myRoomLikesQuery = query(collection(db, "players", playerId, "myRoomLikes"));
+  const myRoomLikesSnapshot = await getDocs(myRoomLikesQuery);
+  totalLikes += myRoomLikesSnapshot.size;
+
+  // 2. 미션 갤러리 게시물 '좋아요' 수
+  const submissionsQuery = query(collection(db, "missionSubmissions"), where("studentId", "==", playerId));
+  const submissionsSnapshot = await getDocs(submissionsQuery);
+  submissionsSnapshot.forEach(doc => {
+    const submission = doc.data();
+    if (submission.likes && Array.isArray(submission.likes)) {
+      totalLikes += submission.likes.length;
+    }
+  });
+
+  // 3. 마이룸 댓글 '좋아요' 수
+  const myRoomCommentsQuery = query(collection(db, "players", playerId, "myRoomComments"));
+  const myRoomCommentsSnapshot = await getDocs(myRoomCommentsQuery);
+  myRoomCommentsSnapshot.forEach(doc => {
+    const comment = doc.data();
+    if (comment.likes && Array.isArray(comment.likes)) {
+      totalLikes += comment.likes.length;
+    }
+  });
+
+  return totalLikes;
+}

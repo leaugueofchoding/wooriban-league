@@ -7,6 +7,7 @@ import { auth, db, updatePlayerProfile, equipTitle } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { getTotalLikesForPlayer } from '../api/firebase.js'; // [수정] getTotalLikesForPlayer 함수 import
 import PointHistoryModal from '../components/PointHistoryModal';
 
 // --- Styled Components ---
@@ -78,6 +79,18 @@ const PointDisplay = styled.div`
   margin-top: 1.5rem;
   color: #28a745;
 `;
+
+const LikeDisplay = styled.div`
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-top: 0.5rem;
+  color: #dc3545;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
 const ButtonGroup = styled.div`
   margin-top: 2rem;
   display: flex;
@@ -303,6 +316,7 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
+  const [totalLikes, setTotalLikes] = useState(0); // [수정] myRoomLikes -> totalLikes
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
@@ -314,6 +328,14 @@ function ProfilePage() {
       setNewName(playerData.name);
       setSelectedGender(playerData.gender || '');
       setSelectedTitleId(playerData.equippedTitle || null);
+    }
+    if (playerData?.id) {
+      // [수정] 모든 좋아요를 합산하는 함수를 호출하도록 변경
+      const fetchTotalLikes = async () => {
+        const likes = await getTotalLikesForPlayer(playerData.id);
+        setTotalLikes(likes);
+      };
+      fetchTotalLikes();
     }
   }, [playerData]);
 
@@ -479,6 +501,8 @@ function ProfilePage() {
 
         {playerData.role && <UserRole>{playerData.role}</UserRole>}
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
+        <LikeDisplay>❤️ {totalLikes}</LikeDisplay>
+
 
         <ButtonGroup>
           <ButtonRow>

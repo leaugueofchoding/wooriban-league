@@ -369,6 +369,23 @@ const MonitorReply = styled.div`
     font-size: 0.95rem;
 `;
 
+const LoadMoreButton = styled.button`
+    margin-top: 1.5rem;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #007bff;
+    background-color: #fff;
+    border: 1px solid #007bff;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+
+    &:hover {
+        background-color: #f0f8ff;
+    }
+`;
+
 // [추가] 날짜 표시줄 스타일
 const DateSeparator = styled.div`
   text-align: center;
@@ -1062,6 +1079,7 @@ function MyRoomCommentMonitor() {
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const navigate = useNavigate();
+    const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
 
     useEffect(() => {
         const fetchComments = async () => {
@@ -1101,7 +1119,7 @@ function MyRoomCommentMonitor() {
             <Section>
                 <SectionTitle>마이룸 댓글 모음</SectionTitle>
                 <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                    {allComments.map(comment => {
+                    {allComments.slice(0, visibleCommentsCount).map(comment => {
                         const roomOwner = players.find(p => p.id === comment.roomId);
                         return (
                             <MonitorCommentCard key={comment.id}>
@@ -1122,6 +1140,11 @@ function MyRoomCommentMonitor() {
                             </MonitorCommentCard>
                         )
                     })}
+                    {allComments.length > visibleCommentsCount && (
+                        <LoadMoreButton onClick={() => setVisibleCommentsCount(prev => prev + 10)}>
+                            더보기
+                        </LoadMoreButton>
+                    )}
                 </div>
             </Section>
         </FullWidthSection>
@@ -1330,6 +1353,7 @@ function MissionCommentMonitor() {
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const navigate = useNavigate();
+    const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
 
     const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
 
@@ -1370,7 +1394,7 @@ function MissionCommentMonitor() {
             <Section>
                 <SectionTitle>미션 갤러리 댓글 모음</SectionTitle>
                 <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                    {allComments.map(comment => {
+                    {allComments.slice(0, visibleCommentsCount).map(comment => {
                         const { missionTitle, studentName } = getSubmissionInfo(comment.submissionId);
                         return (
                             <MissionCommentCard key={comment.id}>
@@ -1383,6 +1407,11 @@ function MissionCommentMonitor() {
                             </MissionCommentCard>
                         )
                     })}
+                    {allComments.length > visibleCommentsCount && (
+                        <LoadMoreButton onClick={() => setVisibleCommentsCount(prev => prev + 10)}>
+                            더보기
+                        </LoadMoreButton>
+                    )}
                 </div>
             </Section>
         </FullWidthSection>

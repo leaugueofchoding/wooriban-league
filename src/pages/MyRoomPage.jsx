@@ -413,7 +413,6 @@ const AccordionContent = styled.div`
     transition: all 0.5s ease-in-out;
 `;
 
-// ▼▼▼ [수정] 컨트롤러 및 버튼 스타일 (좌/우 분리) ▼▼▼
 const ControllerButton = styled.button`
   background-color: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.8);
@@ -432,7 +431,6 @@ const ControllerButton = styled.button`
   }
 `;
 
-// [신규] 왼쪽 컨트롤러 (레이어, 삭제)
 const LeftControllerWrapper = styled.div`
   position: absolute;
   bottom: 20px;
@@ -451,7 +449,7 @@ const LayerButton = styled(ControllerButton)`
     width: 60px;
     height: 40px;
     font-size: 1rem;
-    border-radius: 8px; // 사각형 버튼으로 변경
+    border-radius: 8px;
     background-color: rgba(40, 167, 69, 0.7);
     &:hover {
         background-color: rgba(40, 167, 69, 1);
@@ -468,7 +466,6 @@ const DeleteItemButton = styled(ControllerButton)`
     }
 `;
 
-// [신규] 오른쪽 컨트롤러 (방향키)
 const RightControllerWrapper = styled.div`
   position: absolute;
   bottom: 20px;
@@ -494,13 +491,37 @@ const CenterButton = styled(ControllerButton)`
 `;
 const RightButton = styled(ControllerButton)` grid-area: 2 / 3 / 3 / 4; `;
 const DownButton = styled(ControllerButton)` grid-area: 3 / 2 / 4 / 3; `;
-// ▲▲▲ [수정 완료] ▲▲▲
 
+const LikeDisplay = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #dc3545;
+`;
+
+const LoadMoreButton = styled.button`
+    margin-top: 1.5rem;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #007bff;
+    background-color: #fff;
+    border: 1px solid #007bff;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+
+    &:hover {
+        background-color: #f0f8ff;
+    }
+`;
 
 function MyRoomPage() {
   const { playerId } = useParams();
   const navigate = useNavigate();
-  const { players, myRoomItems, avatarParts, titles } = useLeagueStore(); // [수정] titles 추가
+  const { players, myRoomItems, avatarParts, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -521,6 +542,7 @@ function MyRoomPage() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
   const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
+  const [visibleCommentsCount, setVisibleCommentsCount] = useState(5);
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
@@ -590,16 +612,13 @@ function MyRoomPage() {
     }, {});
   }, [roomConfig.items]);
 
-  // [추가] 댓글과 좋아요 데이터를 한 번만 불러오는 함수를 만듭니다.
   const fetchRoomSocialData = async () => {
     if (!roomOwnerData) return;
 
-    // 댓글 불러오기 (getDocs 사용)
     const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
     const commentsSnapshot = await getDocs(commentsQuery);
     setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // 좋아요 불러오기 (getDocs 사용)
     const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
     const likesSnapshot = await getDocs(likesQuery);
     setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -637,7 +656,6 @@ function MyRoomPage() {
       }
     });
 
-    // [수정] onSnapshot 대신 위에서 만든 함수를 호출하여 데이터를 한 번만 불러옵니다.
     fetchRoomSocialData();
 
   }, [roomOwnerData]);
@@ -663,7 +681,6 @@ function MyRoomPage() {
     setSelectedItemId(null);
   };
 
-  // ▼▼▼ [추가] 레이어 순서 변경 함수 ▼▼▼
   const handleLayerChange = (direction) => {
     if (!selectedItemId) return;
 
@@ -774,7 +791,6 @@ function MyRoomPage() {
         current.instanceId > latest.instanceId ? current : latest
       );
 
-      // ▼▼▼ [수정] 아이템 삭제 시 선택 해제 ▼▼▼
       if (selectedItemId === lastItem.instanceId) {
         setSelectedItemId(null);
       }
@@ -817,7 +833,6 @@ function MyRoomPage() {
         text: newComment,
       });
       setNewComment("");
-      // [추가] 댓글을 성공적으로 등록한 후, 방명록 데이터를 새로고침합니다.
       fetchRoomSocialData();
     } catch (error) {
       alert(`댓글 작성 실패: ${error.message}`);
@@ -912,7 +927,6 @@ function MyRoomPage() {
     navigate(`/my-room/${randomPlayerId}`);
   };
 
-  // ▼▼▼ [수정] 배경 클릭 시 선택 해제 로직 ▼▼▼
   const handleBackgroundClick = (e) => {
     if (e.target === e.currentTarget && isEditing) {
       setSelectedItemId(null);
@@ -923,7 +937,6 @@ function MyRoomPage() {
   return (
     <Wrapper>
       <Header>
-        {/* ▼▼▼ [수정] TitleContainer로 칭호와 제목을 묶어 간격 조절 ▼▼▼ */}
         <TitleContainer>
           {equippedTitle && (
             <EquippedTitle color={equippedTitle.color}>
@@ -940,6 +953,11 @@ function MyRoomPage() {
             <VisitButton onClick={handleRandomVisit}>계속 놀러가기</VisitButton>
           </>
         )}
+        {isMyRoom && (
+          <LikeDisplay>
+            ❤️ {likes.length}
+          </LikeDisplay>
+        )}
       </Header>
       <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
         <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
@@ -955,7 +973,6 @@ function MyRoomPage() {
             $isSelected={selectedItemId === 'playerAvatar'}
             onClick={(e) => handleSelect(e, 'playerAvatar')}
           >
-            {/* ▼▼▼ [수정] 아바타 렌더링 로직 수정 ▼▼▼ */}
             {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
           </InteractiveItem>
         )}
@@ -1061,7 +1078,7 @@ function MyRoomPage() {
           </CommentInputSection>
         )}
         <CommentList>
-          {comments.map(comment => (
+          {comments.slice(0, visibleCommentsCount).map(comment => (
             <CommentWrapper key={comment.id}>
               <CommentCard>
                 <CommentContent>
@@ -1103,6 +1120,11 @@ function MyRoomPage() {
             </CommentWrapper>
           ))}
         </CommentList>
+        {comments.length > visibleCommentsCount && (
+          <LoadMoreButton onClick={() => setVisibleCommentsCount(prev => prev + 5)}>
+            댓글 더보기
+          </LoadMoreButton>
+        )}
       </SocialFeaturesContainer>
 
       <ButtonContainer>
