@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import { useLeagueStore } from './store/leagueStore';
+// ▼▼▼ [수정] useClassStore를 함께 import 합니다. ▼▼▼
+import { useLeagueStore, useClassStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
 import styled from 'styled-components';
@@ -23,7 +24,7 @@ import TeamDetailPage from './pages/TeamDetailPage';
 import SuggestionPage from './pages/SuggestionPage';
 import MyRoomPage from './pages/MyRoomPage';
 import BroadcastPage from './pages/BroadcastPage';
-import MissionGalleryPage from './pages/MissionGalleryPage'; // 이 줄을 추가하고 위의 임시 코드를 삭제합니다.
+import MissionGalleryPage from './pages/MissionGalleryPage';
 
 // Common Components
 import Auth from './components/Auth';
@@ -75,7 +76,6 @@ function AccessDenied() {
   );
 }
 
-// [신규] 모든 리그 참가자를 위한 접근 제어
 const ProtectedRoute = ({ children }) => {
   const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -97,7 +97,6 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// [신규] 관리자 전용 접근 제어
 const AdminRoute = ({ children }) => {
   const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -121,32 +120,44 @@ const AdminRoute = ({ children }) => {
 
 
 function App() {
+  // ▼▼▼ [수정] leagueStore와 classStore에서 필요한 상태와 함수를 가져옵니다. ▼▼▼
   const {
-    isLoading, setLoading, fetchInitialData, cleanupListeners,
+    isLoading, setLoading, initializeClass, cleanupListeners,
     checkAttendance, pointAdjustmentNotification
   } = useLeagueStore();
+  const { classId, setClassId } = useClassStore();
+  // ▲▲▲ 여기까지 수정 ▲▲▲
+
   const [authChecked, setAuthChecked] = useState(false);
   const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false);
 
   useEffect(() => {
+    // ▼▼▼ [수정] 앱 시작 시 기본 classId를 설정하고, leagueStore를 초기화합니다. ▼▼▼
+    // TODO: 향후 이 부분은 학급 선택 UI나 초대 코드 로직으로 대체되어야 합니다.
+    const defaultClassId = "6-1"; // 임시 기본 학급 ID
+    setClassId(defaultClassId);
+    initializeClass(defaultClassId);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setLoading(true);
       if (user) {
-        await fetchInitialData();
+        // 이미 initializeClass에서 fetchInitialData를 호출하므로 중복 호출 제거
         checkAttendance();
       } else {
         cleanupListeners();
-        await fetchInitialData();
+        // 로그아웃 시에도 데이터를 다시 불러와 비로그인 상태 UI를 올바르게 표시
+        initializeClass(defaultClassId);
       }
       setAuthChecked(true);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [fetchInitialData, cleanupListeners, checkAttendance, setLoading]);
+    // initializeClass를 의존성 배열에 추가하여 classId 변경 시에도 데이터 리로드
+  }, [initializeClass, cleanupListeners, checkAttendance, setLoading, setClassId]);
 
 
   if (!authChecked || isLoading) {
-    const message = !authChecked ? "인증 정보 확인 중..." : "데이터 로딩 중...";
+    const message = !authChecked ? "인증 정보 확인 중..." : (classId ? "데이터 로딩 중..." : "학급 정보를 설정하는 중...");
     return <div style={{ textAlign: 'center', padding: '2rem' }}>{message}</div>;
   }
 
