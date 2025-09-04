@@ -134,7 +134,7 @@ function App() {
   useEffect(() => {
     // ▼▼▼ [수정] 앱 시작 시 기본 classId를 설정하고, leagueStore를 초기화합니다. ▼▼▼
     // TODO: 향후 이 부분은 학급 선택 UI나 초대 코드 로직으로 대체되어야 합니다.
-    const defaultClassId = "6-1"; // 임시 기본 학급 ID
+    const defaultClassId = "25-hwachang-6-2"; // 임시 기본 학급 ID
     setClassId(defaultClassId);
     initializeClass(defaultClassId);
 

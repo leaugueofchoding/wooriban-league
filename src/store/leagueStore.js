@@ -140,12 +140,12 @@ export const useLeagueStore = create((set, get) => ({
         }
         try {
             set({ isLoading: true });
-
+            
             await seedInitialTitles(classId);
 
             const currentUser = auth.currentUser;
             set({ currentUser });
-
+            
             const seasonsData = await getSeasons(classId);
             set({ seasons: seasonsData });
             const activeSeason = seasonsData.find(s => s.status === 'active' || s.status === 'preparing') || seasonsData[0] || null;
