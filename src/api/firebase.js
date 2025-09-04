@@ -8,8 +8,8 @@ import {
   updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc,
   runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp, limit, collectionGroup
 } from "firebase/firestore";
-import initialTitles from '../assets/titles.json'; // [추가] titles.json 파일 import
-import imageCompression from 'browser-image-compression'; // 라이브러리 import
+import initialTitles from '../assets/titles.json';
+import imageCompression from 'browser-image-compression';
 
 // Firebase 구성 정보
 const firebaseConfig = {
@@ -28,32 +28,33 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 // =================================================================
-// ▼▼▼ [신규] 칭호 데이터 자동 등록(seeding) 함수 ▼▼▼
+// ▼▼▼ [수정] 칭호 데이터 자동 등록(seeding) 함수 (classId 추가) ▼▼▼
 // =================================================================
-export async function seedInitialTitles() {
-  const titlesRef = collection(db, "titles");
-  const snapshot = await getDocs(query(titlesRef, limit(1))); // 1개만 가져와서 비어있는지 확인
+export async function seedInitialTitles(classId) {
+  if (!classId) return;
+  const titlesRef = collection(db, "classes", classId, "titles");
+  const snapshot = await getDocs(query(titlesRef, limit(1)));
 
   if (snapshot.empty) {
-    console.log("칭호 데이터가 비어있어, titles.json의 기본값으로 자동 등록을 시작합니다.");
+    console.log(`[${classId}] 칭호 데이터가 비어있어, titles.json의 기본값으로 자동 등록을 시작합니다.`);
     const batch = writeBatch(db);
     initialTitles.forEach(title => {
-      const docRef = doc(titlesRef, title.id); // JSON에 정의된 id를 문서 ID로 사용
+      const docRef = doc(titlesRef, title.id);
       batch.set(docRef, {
         ...title,
-        createdAt: serverTimestamp() // 생성 시간 추가
+        createdAt: serverTimestamp()
       });
     });
     await batch.commit();
-    console.log("기본 칭호 데이터 자동 등록 완료.");
+    console.log(`[${classId}] 기본 칭호 데이터 자동 등록 완료.`);
   }
 }
 
-
-// --- 포인트 기록 헬퍼 함수 ---
-const addPointHistory = async (playerId, playerName, changeAmount, reason) => {
+// --- 포인트 기록 헬퍼 함수 (classId 추가) ---
+const addPointHistory = async (classId, playerId, playerName, changeAmount, reason) => {
+  if (!classId) return;
   try {
-    await addDoc(collection(db, 'point_history'), {
+    await addDoc(collection(db, 'classes', classId, 'point_history'), {
       playerId,
       playerName,
       changeAmount,
@@ -65,14 +66,16 @@ const addPointHistory = async (playerId, playerName, changeAmount, reason) => {
   }
 };
 
-// --- 상점 및 아바타 ---
-export async function updatePlayerAvatar(playerId, avatarConfig) {
-  const playerRef = doc(db, 'players', playerId);
+// --- 상점 및 아바타 (classId 추가) ---
+export async function updatePlayerAvatar(classId, playerId, avatarConfig) {
+  if (!classId) return;
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
   await updateDoc(playerRef, { avatarConfig });
 }
 
-export async function buyAvatarPart(playerId, part) {
-  const playerRef = doc(db, 'players', playerId);
+export async function buyAvatarPart(classId, playerId, part) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
   const playerDoc = await getDoc(playerRef);
   if (!playerDoc.exists()) {
     throw new Error("플레이어 정보를 찾을 수 없습니다.");
@@ -81,27 +84,27 @@ export async function buyAvatarPart(playerId, part) {
 
   const now = new Date();
   let finalPrice = part.price;
-  let isCurrentlyOnSale = false;
 
   if (part.isSale && part.saleStartDate && part.saleEndDate) {
     const startDate = part.saleStartDate.toDate();
     const endDate = part.saleEndDate.toDate();
-
     if (now >= startDate && now <= endDate) {
       finalPrice = part.salePrice;
-      isCurrentlyOnSale = true;
     }
   }
 
   await runTransaction(db, async (transaction) => {
-    if (playerData.points < finalPrice) {
+    const freshPlayerDoc = await transaction.get(playerRef);
+    const freshPlayerData = freshPlayerDoc.data();
+
+    if (freshPlayerData.points < finalPrice) {
       throw "포인트가 부족합니다.";
     }
-    if (playerData.ownedParts?.includes(part.id)) {
+    if (freshPlayerData.ownedParts?.includes(part.id)) {
       throw "이미 소유하고 있는 아이템입니다.";
     }
 
-    const newPoints = playerData.points - finalPrice;
+    const newPoints = freshPlayerData.points - finalPrice;
     transaction.update(playerRef, {
       points: newPoints,
       ownedParts: arrayUnion(part.id)
@@ -109,6 +112,7 @@ export async function buyAvatarPart(playerId, part) {
   });
 
   await addPointHistory(
+    classId,
     playerData.authUid,
     playerData.name,
     -finalPrice,
@@ -118,36 +122,36 @@ export async function buyAvatarPart(playerId, part) {
 }
 
 // =================================================================
-// ▼▼▼ [수정] 자동 칭호 획득 조건 검사 및 부여 헬퍼 함수 ▼▼▼
+// ▼▼▼ [수정] 자동 칭호 획득 조건 검사 및 부여 헬퍼 함수 (classId 추가) ▼▼▼
 // =================================================================
-async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
-  if (!studentId || !studentAuthUid) return;
+async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
+  if (!classId || !studentId || !studentAuthUid) return;
 
-  const playerRef = doc(db, 'players', studentId);
+  const playerRef = doc(db, 'classes', classId, 'players', studentId);
   const playerSnap = await getDoc(playerRef);
   if (!playerSnap.exists()) return;
   const playerData = playerSnap.data();
 
-  const titlesRef = collection(db, "titles");
+  const titlesRef = collection(db, "classes", classId, "titles");
   const qTitles = query(titlesRef, where("type", "==", "auto"));
   const titlesSnapshot = await getDocs(qTitles);
   const autoTitles = titlesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const submissionsRef = collection(db, "missionSubmissions");
+  const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
   const qSubmissions = query(submissionsRef, where("studentId", "==", studentId), where("status", "==", "approved"));
   const submissionsSnapshot = await getDocs(qSubmissions);
   const approvedMissionCount = submissionsSnapshot.size;
 
-  const quizHistoryRef = collection(db, "quiz_history");
+  const quizHistoryRef = collection(db, "classes", classId, "quiz_history");
   const qQuiz = query(quizHistoryRef, where("studentId", "==", studentId), where("isCorrect", "==", true));
   const quizSnapshot = await getDocs(qQuiz);
   const correctQuizCount = quizSnapshot.size;
 
-  const contributionsQuery = query(collectionGroup(db, 'contributions'), where('playerId', '==', studentId));
+  const contributionsQuery = query(collectionGroup(db, 'contributions'), where('classId', '==', classId), where('playerId', '==', studentId));
   const contributionsSnapshot = await getDocs(contributionsQuery);
   const totalDonation = contributionsSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
 
-  const likesQuery = query(collection(db, "players", studentId, "myRoomLikes"));
+  const likesQuery = query(collection(db, "classes", classId, "players", studentId, "myRoomLikes"));
   const likesSnapshot = await getDocs(likesQuery);
   const myRoomLikesCount = likesSnapshot.size;
 
@@ -165,7 +169,7 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
     else if (title.conditionId === 'attendance_30_consecutive' && (playerData.consecutiveAttendanceDays || 0) >= 30) conditionMet = true;
 
     if (conditionMet) {
-      await grantTitleToPlayer(studentId, title.id);
+      await grantTitleToPlayer(classId, studentId, title.id);
       createNotification(
         studentAuthUid,
         `✨ 칭호 획득! [${title.name}]`,
@@ -173,15 +177,16 @@ async function checkAndGrantAutoTitles(studentId, studentAuthUid) {
         "title_acquired",
         "/profile"
       );
-      await adjustPlayerPoints(studentId, 500, `칭호 [${title.name}] 획득 보상`);
+      await adjustPlayerPoints(classId, studentId, 500, `칭호 [${title.name}] 획득 보상`);
     }
   }
 }
 
-// --- 미션 관리 ---
-export async function approveMissionsInBatch(missionId, studentIds, recorderId, reward) {
+// --- 미션 관리 (classId 추가) ---
+export async function approveMissionsInBatch(classId, missionId, studentIds, recorderId, reward) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   const batch = writeBatch(db);
-  const missionRef = doc(db, 'missions', missionId);
+  const missionRef = doc(db, 'classes', classId, 'missions', missionId);
   const missionSnap = await getDoc(missionRef);
   if (!missionSnap.exists()) {
     throw new Error("미션을 찾을 수 없습니다.");
@@ -190,14 +195,13 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
 
   // 학생들에게 포인트 지급
   for (const studentId of studentIds) {
-    const playerRef = doc(db, 'players', studentId);
+    const playerRef = doc(db, 'classes', classId, 'players', studentId);
     const playerDoc = await getDoc(playerRef);
 
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
-
       const submissionQuery = query(
-        collection(db, "missionSubmissions"),
+        collection(db, "classes", classId, "missionSubmissions"),
         where("missionId", "==", missionId),
         where("studentId", "==", studentId),
         where("status", "==", "pending")
@@ -223,21 +227,21 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
       );
 
       await addPointHistory(
+        classId,
         playerData.authUid,
         playerData.name,
         reward,
         `${missionData.title} 미션 완료`
       );
 
-      // [추가] 미션 승인 후, 자동 칭호 획득 조건을 확인합니다.
-      await checkAndGrantAutoTitles(studentId, playerData.authUid);
+      await checkAndGrantAutoTitles(classId, studentId, playerData.authUid);
     }
   }
 
   // --- 기록원에게 인센티브 지급 ---
   const incentiveAmount = studentIds.length * 10;
   if (incentiveAmount > 0) {
-    const playersRef = collection(db, 'players');
+    const playersRef = collection(db, 'classes', classId, 'players');
     const q = query(playersRef, where("authUid", "==", recorderId), limit(1));
     const recorderSnapshot = await getDocs(q);
 
@@ -247,10 +251,11 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
       batch.update(recorderDoc.ref, { points: increment(incentiveAmount) });
 
       await addPointHistory(
+        classId,
         recorderId,
         recorderData.name,
         incentiveAmount,
-        `보너스 (미션 승인 ${studentIds.length}건)` // [수정] "보너스"로 시작하도록 변경
+        `보너스 (미션 승인 ${studentIds.length}건)`
       );
 
       createNotification(
@@ -265,27 +270,27 @@ export async function approveMissionsInBatch(missionId, studentIds, recorderId, 
   await batch.commit();
 }
 
-export async function uploadMissionSubmissionFile(missionId, studentId, files) {
+export async function uploadMissionSubmissionFile(classId, missionId, studentId, files) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   const uploadPromises = files.map(async (file) => {
-    // 이미지 압축 로직을 여기에 포함하여 개별 파일에 적용합니다.
     const options = {
       maxSizeMB: 1,
       maxWidthOrHeight: 1280,
       useWebWorker: true,
     };
     const compressedFile = await imageCompression(file, options);
-    const storageRef = ref(storage, `mission-submissions/${missionId}/${studentId}/${Date.now()}_${compressedFile.name}`);
+    const storageRef = ref(storage, `classes/${classId}/mission-submissions/${missionId}/${studentId}/${Date.now()}_${compressedFile.name}`);
     const uploadResult = await uploadBytes(storageRef, compressedFile);
     return getDownloadURL(uploadResult.ref);
   });
   return await Promise.all(uploadPromises);
 }
 
-export async function requestMissionApproval(missionId, studentId, studentName, submissionData = {}) {
-  const submissionsRef = collection(db, 'missionSubmissions');
-  const missionRef = doc(db, 'missions', missionId);
+export async function requestMissionApproval(classId, missionId, studentId, studentName, submissionData = {}) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
+  const missionRef = doc(db, 'classes', classId, 'missions', missionId);
 
-  // [수정] photoUrl 필드 대신 photoUrls 필드를 사용하도록 합니다.
   if (submissionData.photoUrl) {
     submissionData.photoUrls = [submissionData.photoUrl];
     delete submissionData.photoUrl;
@@ -297,7 +302,6 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
   }
   const missionData = missionSnap.data();
 
-  // 1. Firestore에 단순하게 "해당 학생의 해당 미션 기록 전체"를 요청합니다.
   const q = query(
     submissionsRef,
     where("missionId", "==", missionId),
@@ -306,7 +310,6 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
   const querySnapshot = await getDocs(q);
   const submissions = querySnapshot.docs.map(doc => doc.data());
 
-  // 2. 가져온 데이터를 코드(Javascript)에서 직접 필터링합니다.
   let existingSubmission = null;
   if (missionData.isFixed) {
     const today = new Date();
@@ -330,8 +333,7 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
     }
   }
 
-  // 중복이 아니므로 새로운 제출 기록 생성
-  const newSubmissionRef = doc(collection(db, 'missionSubmissions'));
+  const newSubmissionRef = doc(collection(db, 'classes', classId, 'missionSubmissions'));
   await setDoc(newSubmissionRef, {
     missionId,
     studentId,
@@ -339,14 +341,11 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
     status: 'pending',
     requestedAt: serverTimestamp(),
     checkedBy: null,
-    // isPublic 필드를 submissionData에서 직접 받아오도록 수정
     isPublic: submissionData.isPublic,
     ...submissionData
   });
 
-
-  // [추가] 관리자 및 기록원에게 알림 전송
-  const playersRef = collection(db, 'players');
+  const playersRef = collection(db, 'classes', classId, 'players');
   const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin', 'recorder']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
 
@@ -365,8 +364,9 @@ export async function requestMissionApproval(missionId, studentId, studentName, 
   });
 }
 
-export async function rejectMissionSubmission(submissionId, studentAuthUid, missionTitle) {
-  const submissionRef = doc(db, 'missionSubmissions', submissionId);
+export async function rejectMissionSubmission(classId, submissionId, studentAuthUid, missionTitle) {
+  if (!classId) return;
+  const submissionRef = doc(db, 'classes', classId, 'missionSubmissions', submissionId);
   await updateDoc(submissionRef, {
     status: 'rejected'
   });
@@ -382,59 +382,45 @@ export async function rejectMissionSubmission(submissionId, studentAuthUid, miss
   }
 }
 
-export async function deleteMission(missionId) {
+export async function deleteMission(classId, missionId) {
+  if (!classId) return;
   const batch = writeBatch(db);
-  const submissionsRef = collection(db, "missionSubmissions");
+  const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
   const q = query(submissionsRef, where("missionId", "==", missionId));
   const querySnapshot = await getDocs(q);
   querySnapshot.forEach((doc) => {
     batch.delete(doc.ref);
   });
-  const missionRef = doc(db, 'missions', missionId);
+  const missionRef = doc(db, 'classes', classId, 'missions', missionId);
   batch.delete(missionRef);
   await batch.commit();
 }
 
-export async function getMissionHistory(studentId, missionId) {
+export async function getMissionHistory(classId, studentId, missionId) {
+  if (!classId) return [];
   const q = query(
-    collection(db, "missionSubmissions"),
+    collection(db, "classes", classId, "missionSubmissions"),
     where("studentId", "==", studentId),
     where("missionId", "==", missionId),
-    orderBy("requestedAt", "desc") // 모든 기록을 최신순으로 정렬
+    orderBy("requestedAt", "desc")
   );
 
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// =================================================================
-// ▼▼▼ [신규] 미션 댓글/답글 관련 함수 ▼▼▼
-// =================================================================
-/**
- * 미션 제출 기록에 댓글을 추가합니다.
- * @param {string} submissionId - 댓글을 달 미션 제출 기록의 ID
- * @param {object} commentData - 댓글 데이터 (작성자 ID, 이름, 내용 등)
- * @param {object} studentData - 미션 제출 학생의 정보 (알림 전송용)
- * @param {string} missionTitle - 미션 제목 (알림 내용용)
- */
-export async function addMissionComment(submissionId, commentData, studentData, missionTitle) {
-  const commentsRef = collection(db, "missionSubmissions", submissionId, "comments");
+export async function addMissionComment(classId, submissionId, commentData, studentData, missionTitle) {
+  if (!classId) return;
+  const commentsRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments");
   await addDoc(commentsRef, {
     ...commentData,
     createdAt: serverTimestamp(),
   });
 }
 
-
-/**
- * 미션 댓글에 답글을 추가합니다.
- * @param {string} submissionId - 댓글이 있는 미션 제출 기록의 ID
- * @param {string} commentId - 답글을 달 댓글의 ID
- * @param {object} replyData - 답글 데이터 (작성자 ID, 이름, 내용 등)
- * @param {object} originalComment - 원본 댓글 데이터 (알림 전송용)
- */
-export async function addMissionReply(submissionId, commentId, replyData, originalComment) {
-  const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", commentId, "replies");
+export async function addMissionReply(classId, submissionId, commentId, replyData, originalComment) {
+  if (!classId) return;
+  const repliesRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments", commentId, "replies");
   await addDoc(repliesRef, {
     ...replyData,
     createdAt: serverTimestamp(),
@@ -444,7 +430,6 @@ export async function addMissionReply(submissionId, commentId, replyData, origin
   const originalCommenterAuthUid = originalComment.commenterAuthUid;
   const link = `/missions?openHistoryForSubmission=${submissionId}`;
 
-  // 답글 작성자가 원 댓글 작성자가 아니고, 원 댓글 작성자의 정보가 있을 경우에만 알림 전송
   if (replierAuthUid && originalCommenterAuthUid && replierAuthUid !== originalCommenterAuthUid) {
     createNotification(
       originalCommenterAuthUid,
@@ -456,27 +441,21 @@ export async function addMissionReply(submissionId, commentId, replyData, origin
   }
 }
 
-// =================================================================
-// ▼▼▼ [수정] 이미지 회전 각도 저장 함수 ▼▼▼
-// =================================================================
-// URL을 Firestore 필드 경로에 안전한 키로 변환하는 헬퍼 함수
 const getSafeKeyFromUrl = (url) => {
-  // Base64 인코딩 후 URL에 안전하지 않은 문자(+, /, =)를 대체합니다.
   try {
     return btoa(url)
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '');
   } catch (e) {
-    console.error("Failed to create safe key from URL:", url, e);
-    // btoa가 실패할 경우 (예: 유니코드 문자)를 대비한 대체 키 생성
     return url.replace(/[^a-zA-Z0-9]/g, '');
   }
 };
 
-export async function toggleSubmissionImageRotation(submissionId, imageUrl) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  const imageKey = getSafeKeyFromUrl(imageUrl); // URL을 안전한 키로 변환
+export async function toggleSubmissionImageRotation(classId, submissionId, imageUrl) {
+  if (!classId) return;
+  const submissionRef = doc(db, "classes", classId, "missionSubmissions", submissionId);
+  const imageKey = getSafeKeyFromUrl(imageUrl);
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -485,10 +464,9 @@ export async function toggleSubmissionImageRotation(submissionId, imageUrl) {
         throw "Submission document does not exist!";
       }
       const currentRotations = submissionDoc.data().rotations || {};
-      const currentRotation = currentRotations[imageKey] || 0; // 안전한 키로 조회
+      const currentRotation = currentRotations[imageKey] || 0;
       const newRotation = (currentRotation + 90) % 360;
 
-      // 안전한 키를 사용하여 rotations 맵의 특정 필드만 업데이트합니다.
       transaction.update(submissionRef, {
         [`rotations.${imageKey}`]: newRotation
       });
@@ -499,9 +477,10 @@ export async function toggleSubmissionImageRotation(submissionId, imageUrl) {
   }
 }
 
-// --- 포인트 수동 조정 ---
-export async function adjustPlayerPoints(playerId, amount, reason) {
-  const playerRef = doc(db, "players", playerId);
+// --- 포인트 수동 조정 (classId 추가) ---
+export async function adjustPlayerPoints(classId, playerId, amount, reason) {
+  if (!classId) return;
+  const playerRef = doc(db, "classes", classId, "players", playerId);
 
   await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
@@ -520,24 +499,25 @@ export async function adjustPlayerPoints(playerId, amount, reason) {
       body,
       'point',
       null,
-      { amount, reason, title } // 모달에 전달할 데이터
+      { amount, reason, title }
     );
 
     await addPointHistory(
+      classId,
       playerData.authUid,
       playerData.name,
       amount,
       reason
     );
   });
-  console.log("포인트 조정 및 기록이 성공적으로 완료되었습니다.");
 }
 
-export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
+export async function batchAdjustPlayerPoints(classId, playerIds, amount, reason) {
+  if (!classId) return;
   const batch = writeBatch(db);
 
   for (const playerId of playerIds) {
-    const playerRef = doc(db, "players", playerId);
+    const playerRef = doc(db, "classes", classId, "players", playerId);
     const playerDoc = await getDoc(playerRef);
 
     if (playerDoc.exists()) {
@@ -553,10 +533,11 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
         body,
         'point',
         `/profile/${playerId}`,
-        { amount, reason, title } // 모달에 전달할 데이터
+        { amount, reason, title }
       );
 
       await addPointHistory(
+        classId,
         playerData.authUid,
         playerData.name,
         amount,
@@ -568,7 +549,7 @@ export async function batchAdjustPlayerPoints(playerIds, amount, reason) {
   await batch.commit();
 }
 
-// --- 사용자 및 선수 관리 ---
+// --- 사용자 및 선수 관리 (classId 추가) ---
 export async function updateUserProfile(user) {
   const userRef = doc(db, 'users', user.uid);
   await setDoc(userRef, {
@@ -585,38 +566,44 @@ export async function getUsers() {
   return querySnapshot.docs.map(doc => doc.data());
 }
 
-export async function linkPlayerToAuth(playerId, authUid, role) {
-  const playerRef = doc(db, 'players', playerId);
+export async function linkPlayerToAuth(classId, playerId, authUid, role) {
+  if (!classId) return;
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
   await updateDoc(playerRef, { authUid, role });
 }
 
-export async function addPlayer(playerData) {
-  const playerRef = doc(db, 'players', playerData.authUid);
+export async function addPlayer(classId, playerData) {
+  if (!classId) return;
+  const playerRef = doc(db, 'classes', classId, 'players', playerData.authUid);
   await setDoc(playerRef, playerData);
 }
 
-export async function getPlayers() {
-  const playersRef = collection(db, 'players');
+export async function getPlayers(classId) {
+  if (!classId) return [];
+  const playersRef = collection(db, 'classes', classId, 'players');
   const querySnapshot = await getDocs(playersRef);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function deletePlayer(playerId) {
-  await deleteDoc(doc(db, 'players', playerId));
+export async function deletePlayer(classId, playerId) {
+  if (!classId) return;
+  await deleteDoc(doc(db, 'classes', classId, 'players', playerId));
 }
 
-export async function updatePlayerStatus(playerId, status) {
-  const playerRef = doc(db, "players", playerId);
+export async function updatePlayerStatus(classId, playerId, status) {
+  if (!classId) return;
+  const playerRef = doc(db, "classes", classId, "players", playerId);
   await updateDoc(playerRef, { status });
 }
 
-export async function submitSuggestion(suggestionData) {
+export async function submitSuggestion(classId, suggestionData) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   const { studentId, studentName, message } = suggestionData;
   if (!message.trim()) {
     throw new Error("메시지 내용을 입력해야 합니다.");
   }
-  const now = new Date(); // [수정] 클라이언트의 현재 시간을 사용
-  await addDoc(collection(db, "suggestions"), {
+  const now = new Date();
+  await addDoc(collection(db, "classes", classId, "suggestions"), {
     studentId,
     studentName,
     message,
@@ -624,7 +611,7 @@ export async function submitSuggestion(suggestionData) {
       {
         sender: 'student',
         content: message,
-        createdAt: now // [수정] serverTimestamp() 대신 Date 객체 사용
+        createdAt: now
       }
     ],
     status: "pending",
@@ -632,8 +619,7 @@ export async function submitSuggestion(suggestionData) {
     lastMessageAt: now,
   });
 
-  // [추가] 관리자 및 기록원에게 알림 전송
-  const playersRef = collection(db, 'players');
+  const playersRef = collection(db, 'classes', classId, 'players');
   const adminRecorderQuery = query(playersRef, where('role', 'in', ['admin']));
   const adminRecorderSnapshot = await getDocs(adminRecorderQuery);
   adminRecorderSnapshot.forEach(userDoc => {
@@ -650,11 +636,10 @@ export async function submitSuggestion(suggestionData) {
   });
 }
 
-// 특정 학생의 건의사항 목록을 불러오는 함수
-export async function getSuggestionsForStudent(studentId) {
-  if (!studentId) return [];
+export async function getSuggestionsForStudent(classId, studentId) {
+  if (!classId || !studentId) return [];
   const q = query(
-    collection(db, "suggestions"),
+    collection(db, "classes", classId, "suggestions"),
     where("studentId", "==", studentId),
     orderBy("createdAt", "desc")
   );
@@ -662,33 +647,32 @@ export async function getSuggestionsForStudent(studentId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// 관리자가 모든 건의사항 목록을 불러오는 함수
-export async function getAllSuggestions() {
-  const q = query(collection(db, "suggestions"), orderBy("createdAt", "desc"));
+export async function getAllSuggestions(classId) {
+  if (!classId) return [];
+  const q = query(collection(db, "classes", classId, "suggestions"), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function replyToSuggestion(suggestionId, replyContent, studentAuthUid) {
+export async function replyToSuggestion(classId, suggestionId, replyContent, studentAuthUid) {
+  if (!classId) return;
   if (!replyContent.trim()) {
     throw new Error("답글 내용을 입력해야 합니다.");
   }
-  const suggestionRef = doc(db, "suggestions", suggestionId);
+  const suggestionRef = doc(db, "classes", classId, "suggestions", suggestionId);
 
-  // [수정] 단일 답글을 대화 배열에 추가하는 방식으로 변경
   const replyData = {
     content: replyContent,
     sender: 'admin',
-    createdAt: new Date() // serverTimestamp()를 new Date()로 변경
+    createdAt: new Date()
   };
 
   await updateDoc(suggestionRef, {
-    conversation: arrayUnion(replyData), // conversation 필드에 배열로 추가
+    conversation: arrayUnion(replyData),
     status: "replied",
-    lastMessageAt: serverTimestamp(), // 마지막 메시지 시간 갱신
+    lastMessageAt: serverTimestamp(),
   });
 
-  // 학생에게 답글 알림 보내기
   if (studentAuthUid) {
     createNotification(
       studentAuthUid,
@@ -811,51 +795,58 @@ export async function batchEndSale(partIds) {
   await batch.commit();
 }
 
-// --- 팀 및 경기 관리 ---
-export async function getTeams(seasonId) {
-  const teamsRef = collection(db, 'teams');
+// --- 팀 및 경기 관리 (classId 추가) ---
+export async function getTeams(classId, seasonId) {
+  if (!classId || !seasonId) return [];
+  const teamsRef = collection(db, 'classes', classId, 'teams');
   const q = query(teamsRef, where("seasonId", "==", seasonId));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function addTeam(newTeamData) {
-  await addDoc(collection(db, 'teams'), newTeamData);
+export async function addTeam(classId, newTeamData) {
+  if (!classId) return;
+  await addDoc(collection(db, 'classes', classId, 'teams'), newTeamData);
 }
 
-export async function deleteTeam(teamId) {
-  await deleteDoc(doc(db, 'teams', teamId));
+export async function deleteTeam(classId, teamId) {
+  if (!classId) return;
+  await deleteDoc(doc(db, 'classes', classId, 'teams', teamId));
 }
 
-export async function uploadTeamEmblem(teamId, file) {
-  const storageRef = ref(storage, `team-emblems/${teamId}/${file.name}`);
+export async function uploadTeamEmblem(classId, teamId, file) {
+  if (!classId) return;
+  const storageRef = ref(storage, `classes/${classId}/team-emblems/${teamId}/${file.name}`);
   await uploadBytes(storageRef, file);
   return getDownloadURL(storageRef);
 }
 
-// ▼▼▼ [수정] updateTeamInfo 함수 수정 ▼▼▼
-export async function updateTeamInfo(teamId, newName, emblemId, emblemUrl) {
-  const teamRef = doc(db, 'teams', teamId);
+export async function updateTeamInfo(classId, teamId, newName, emblemId, emblemUrl) {
+  if (!classId) return;
+  const teamRef = doc(db, 'classes', classId, 'teams', teamId);
   const updateData = {
     teamName: newName,
-    emblemId: emblemId || null, // 프리셋 ID 저장
-    emblemUrl: emblemUrl || null // 직접 업로드 URL 저장
+    emblemId: emblemId || null,
+    emblemUrl: emblemUrl || null
   };
   await updateDoc(teamRef, updateData);
 }
 
-export async function updateTeamMembers(teamId, newMembers) {
-  await updateDoc(doc(db, 'teams', teamId), { members: newMembers });
+export async function updateTeamMembers(classId, teamId, newMembers) {
+  if (!classId) return;
+  await updateDoc(doc(db, 'classes', classId, 'teams', teamId), { members: newMembers });
 }
 
-export async function updateTeamCaptain(teamId, captainId) {
-  const teamRef = doc(db, 'teams', teamId);
+export async function updateTeamCaptain(classId, teamId, captainId) {
+  if (!classId) return;
+  const teamRef = doc(db, 'classes', classId, 'teams', teamId);
   await updateDoc(teamRef, { captainId: captainId });
 }
 
-export async function batchAddTeams(newTeamsData) {
+export async function batchAddTeams(classId, newTeamsData) {
+  if (!classId) return;
   const batch = writeBatch(db);
-  const teamsRef = collection(db, 'teams');
+  const teamsRef = collection(db, 'classes', classId, 'teams');
   newTeamsData.forEach(teamData => {
     const newTeamRef = doc(teamsRef);
     batch.set(newTeamRef, teamData);
@@ -863,10 +854,11 @@ export async function batchAddTeams(newTeamsData) {
   await batch.commit();
 }
 
-export async function batchUpdateTeams(teamUpdates) {
+export async function batchUpdateTeams(classId, teamUpdates) {
+  if (!classId) return;
   const batch = writeBatch(db);
   teamUpdates.forEach(update => {
-    const teamRef = doc(db, 'teams', update.id);
+    const teamRef = doc(db, 'classes', classId, 'teams', update.id);
     batch.update(teamRef, {
       members: update.members,
       captainId: update.captainId,
@@ -875,16 +867,18 @@ export async function batchUpdateTeams(teamUpdates) {
   await batch.commit();
 }
 
-export async function getMatches(seasonId) {
-  const matchesRef = collection(db, 'matches');
+export async function getMatches(classId, seasonId) {
+  if (!classId || !seasonId) return [];
+  const matchesRef = collection(db, 'classes', classId, 'matches');
   const q = query(matchesRef, where("seasonId", "==", seasonId));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function updateMatchScores(matchId, scores, scorers, recorderId) {
+export async function updateMatchScores(classId, matchId, scores, scorers, recorderId) {
+  if (!classId) return;
   const batch = writeBatch(db);
-  const matchRef = doc(db, 'matches', matchId);
+  const matchRef = doc(db, 'classes', classId, 'matches', matchId);
   const matchSnap = await getDoc(matchRef);
 
   if (!matchSnap.exists()) {
@@ -892,7 +886,6 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
   }
   const matchData = matchSnap.data();
 
-  // 1. 경기 정보 업데이트
   batch.update(matchRef, {
     teamA_score: scores.a,
     teamB_score: scores.b,
@@ -900,9 +893,8 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
     scorers: scorers || {}
   });
 
-  // 2. 기록원에게 보너스 지급 (10P)
   if (recorderId) {
-    const playersRef = collection(db, 'players');
+    const playersRef = collection(db, 'classes', classId, 'players');
     const q = query(playersRef, where("authUid", "==", recorderId), limit(1));
     const recorderSnapshot = await getDocs(q);
 
@@ -910,13 +902,10 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
       const recorderDoc = recorderSnapshot.docs[0];
       const recorderData = recorderDoc.data();
       batch.update(recorderDoc.ref, { points: increment(30) });
-      addPointHistory(recorderId, recorderData.name, 30, `보너스 (경기 결과 기록)` // [수정] "보너스"로 시작하도록 변경
-      );
-      // [삭제] 개별 알림 생성 코드 제거
+      addPointHistory(classId, recorderId, recorderData.name, 30, `보너스 (경기 결과 기록)`);
     }
   }
 
-  // 3. 승리팀/패배팀 수당 지급
   const VICTORY_REWARD = 50;
   const DEFEAT_REWARD = 15;
   let winningTeamId = null;
@@ -930,36 +919,34 @@ export async function updateMatchScores(matchId, scores, scorers, recorderId) {
     losingTeamId = matchData.teamA_id;
   }
 
-  // 승리팀 보상 지급
   if (winningTeamId) {
-    const teamSnap = await getDoc(doc(db, 'teams', winningTeamId));
+    const teamSnap = await getDoc(doc(db, 'classes', classId, 'teams', winningTeamId));
     if (teamSnap.exists()) {
       const winningTeamData = teamSnap.data();
       for (const memberId of winningTeamData.members) {
-        const playerRef = doc(db, 'players', memberId);
+        const playerRef = doc(db, 'classes', classId, 'players', memberId);
         const playerSnap = await getDoc(playerRef);
         if (playerSnap.exists()) {
           const playerData = playerSnap.data();
           batch.update(playerRef, { points: increment(VICTORY_REWARD) });
-          addPointHistory(playerData.authUid, playerData.name, VICTORY_REWARD, "가가볼 리그 승리 수당");
+          addPointHistory(classId, playerData.authUid, playerData.name, VICTORY_REWARD, "가가볼 리그 승리 수당");
           createNotification(playerData.authUid, `🎉 리그 승리! +${VICTORY_REWARD}P`, `'${winningTeamData.teamName}' 팀의 승리를 축하합니다!`, 'point');
         }
       }
     }
   }
 
-  // 패배팀 보상 지급
   if (losingTeamId) {
-    const teamSnap = await getDoc(doc(db, 'teams', losingTeamId));
+    const teamSnap = await getDoc(doc(db, 'classes', classId, 'teams', losingTeamId));
     if (teamSnap.exists()) {
       const losingTeamData = teamSnap.data();
       for (const memberId of losingTeamData.members) {
-        const playerRef = doc(db, 'players', memberId);
+        const playerRef = doc(db, 'classes', classId, 'players', memberId);
         const playerSnap = await getDoc(playerRef);
         if (playerSnap.exists()) {
           const playerData = playerSnap.data();
           batch.update(playerRef, { points: increment(DEFEAT_REWARD) });
-          addPointHistory(playerData.authUid, playerData.name, DEFEAT_REWARD, "가가볼 리그 참가 수당");
+          addPointHistory(classId, playerData.authUid, playerData.name, DEFEAT_REWARD, "가가볼 리그 참가 수당");
           createNotification(playerData.authUid, `+${DEFEAT_REWARD}P 획득`, `값진 경기에 대한 참가 수당이 지급되었습니다.`, 'point');
         }
       }
@@ -1204,7 +1191,9 @@ export async function updateMissionStatus(missionId, status) {
 }
 
 // --- 아바타 파츠 기타 ---
+// --- 아바타 파츠 기타 (classId 추가) ---
 export async function updateAvatarPartDisplayName(partId, displayName) {
+  // avatarParts는 최상위 컬렉션 유지
   const partRef = doc(db, "avatarParts", partId);
   await updateDoc(partRef, { displayName });
 }
@@ -1212,6 +1201,7 @@ export async function updateAvatarPartDisplayName(partId, displayName) {
 export async function batchUpdateSaleDays(partIds, saleDays) {
   const batch = writeBatch(db);
   for (const partId of partIds) {
+    // avatarParts는 최상위 컬렉션 유지
     const partRef = doc(db, "avatarParts", partId);
     batch.update(partRef, {
       saleDays: saleDays,
@@ -1220,12 +1210,13 @@ export async function batchUpdateSaleDays(partIds, saleDays) {
   await batch.commit();
 }
 
-export async function buyMultipleAvatarParts(playerId, partsToBuy) {
+export async function buyMultipleAvatarParts(classId, playerId, partsToBuy) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   if (!partsToBuy || partsToBuy.length === 0) {
     throw new Error("구매할 아이템이 없습니다.");
   }
 
-  const playerRef = doc(db, "players", playerId);
+  const playerRef = doc(db, "classes", classId, "players", playerId);
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -1255,6 +1246,7 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
 
       for (const part of partsToBuy) {
         addPointHistory(
+          classId,
           playerData.authUid,
           playerData.name,
           -part.price,
@@ -1270,9 +1262,9 @@ export async function buyMultipleAvatarParts(playerId, partsToBuy) {
   }
 }
 
-// ▼▼▼ [신규] 마이룸 아이템 구매 함수 ▼▼▼
-export async function buyMyRoomItem(playerId, item) {
-  const playerRef = doc(db, "players", playerId);
+export async function buyMyRoomItem(classId, playerId, item) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
 
   return runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
@@ -1281,7 +1273,6 @@ export async function buyMyRoomItem(playerId, item) {
     }
     const playerData = playerDoc.data();
 
-    // sale 로직 추가
     const now = new Date();
     let finalPrice = item.price;
     if (item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate()) {
@@ -1297,10 +1288,11 @@ export async function buyMyRoomItem(playerId, item) {
 
     transaction.update(playerRef, {
       points: increment(-finalPrice),
-      ownedMyRoomItems: arrayUnion(item.id) // ownedParts가 아닌 ownedMyRoomItems에 추가
+      ownedMyRoomItems: arrayUnion(item.id)
     });
 
     await addPointHistory(
+      classId,
       playerData.authUid,
       playerData.name,
       -finalPrice,
@@ -1309,18 +1301,19 @@ export async function buyMyRoomItem(playerId, item) {
   });
 }
 
-export async function updatePlayerProfile(playerId, profileData) {
+export async function updatePlayerProfile(classId, playerId, profileData) {
+  if (!classId) return;
   if (profileData.name && profileData.name.trim().length === 0) {
     throw new Error("이름을 비워둘 수 없습니다.");
   }
-  const playerRef = doc(db, "players", playerId);
+  const playerRef = doc(db, "classes", classId, "players", playerId);
   await updateDoc(playerRef, profileData);
 }
 
-
-// --- 학급 공동 목표 ---
-export async function createClassGoal(goalData) {
-  await addDoc(collection(db, "classGoals"), {
+// --- 학급 공동 목표 (classId 추가) ---
+export async function createClassGoal(classId, goalData) {
+  if (!classId) return;
+  await addDoc(collection(db, "classes", classId, "classGoals"), {
     ...goalData,
     currentPoints: 0,
     status: "active",
@@ -1328,16 +1321,16 @@ export async function createClassGoal(goalData) {
   });
 }
 
-export async function getActiveGoals() {
-  const goalsRef = collection(db, "classGoals");
-  // ▼▼▼ [수정] 'active' 와 'paused' 상태의 목표를 모두 가져오도록 변경 ▼▼▼
+export async function getActiveGoals(classId) {
+  if (!classId) return [];
+  const goalsRef = collection(db, "classes", classId, "classGoals");
   const q = query(goalsRef, where("status", "in", ["active", "paused"]), orderBy("createdAt"));
   const querySnapshot = await getDocs(q);
 
   const goals = [];
   for (const goalDoc of querySnapshot.docs) {
     const goalData = { id: goalDoc.id, ...goalDoc.data() };
-    const contributionsRef = collection(db, "classGoals", goalDoc.id, "contributions");
+    const contributionsRef = collection(db, "classes", classId, "classGoals", goalDoc.id, "contributions");
     const contributionsSnap = await getDocs(contributionsRef);
     goalData.contributions = contributionsSnap.docs.map(doc => doc.data());
     goals.push(goalData);
@@ -1345,14 +1338,15 @@ export async function getActiveGoals() {
   return goals;
 }
 
-export async function donatePointsToGoal(playerId, goalId, amount) {
+export async function donatePointsToGoal(classId, playerId, goalId, amount) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   if (amount <= 0) {
     throw new Error("기부할 포인트를 올바르게 입력해주세요.");
   }
 
-  const playerRef = doc(db, "players", playerId);
-  const goalRef = doc(db, "classGoals", goalId);
-  const contributionRef = doc(collection(db, "classGoals", goalId, "contributions"));
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const goalRef = doc(db, "classes", classId, "classGoals", goalId);
+  const contributionRef = doc(collection(db, "classes", classId, "classGoals", goalId, "contributions"));
 
   await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
@@ -1379,13 +1373,15 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
     transaction.update(goalRef, { currentPoints: increment(amount) });
 
     transaction.set(contributionRef, {
-      playerId: playerId,
+      classId, // 기부 내역에도 classId 추가
+      playerId,
       playerName: playerData.name,
       amount: amount,
       timestamp: serverTimestamp()
     });
 
     addPointHistory(
+      classId,
       playerData.authUid,
       playerData.name,
       -amount,
@@ -1393,7 +1389,7 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
     );
 
     if (newTotalPoints >= goalData.targetPoints) {
-      const allPlayers = await getPlayers();
+      const allPlayers = await getPlayers(classId);
       allPlayers.forEach(p => {
         if (p.authUid) {
           createNotification(
@@ -1406,11 +1402,9 @@ export async function donatePointsToGoal(playerId, goalId, amount) {
       });
     }
 
-    // [위치 수정] 이 줄을 runTransaction 안으로 이동했습니다.
-    await checkAndGrantAutoTitles(playerId, playerData.authUid);
+    await checkAndGrantAutoTitles(classId, playerId, playerData.authUid);
   });
 }
-
 
 // ▼▼▼ [추가] 목표 상태를 변경하는 함수 추가 ▼▼▼
 export async function updateClassGoalStatus(goalId, newStatus) {
@@ -2124,19 +2118,17 @@ export async function batchDeleteMyRoomItems(itemsToDelete) {
 
   await batch.commit();
 }
-
+// --- 아바타 파츠 기타 (classId 추가) ---
 export async function updateAvatarPartCategory(partId, newCategory) {
   const partRef = doc(db, 'avatarParts', partId);
   await updateDoc(partRef, { category: newCategory });
 }
 
-// [신규] 마이룸 아이템 카테고리 업데이트 함수
 export async function updateMyRoomItemCategory(itemId, newCategory) {
   const itemRef = doc(db, "myRoomItems", itemId);
   await updateDoc(itemRef, { category: newCategory });
 }
 
-// [신규] 아바타 파츠 카테고리 일괄 업데이트 함수
 export async function batchUpdateAvatarPartCategory(partIds, newCategory) {
   const batch = writeBatch(db);
   partIds.forEach(partId => {
@@ -2146,7 +2138,6 @@ export async function batchUpdateAvatarPartCategory(partIds, newCategory) {
   await batch.commit();
 }
 
-// [신규] 마이룸 아이템 카테고리 일괄 업데이트 함수
 export async function batchUpdateMyRoomItemCategory(itemIds, newCategory) {
   const batch = writeBatch(db);
   itemIds.forEach(itemId => {
@@ -2156,14 +2147,15 @@ export async function batchUpdateMyRoomItemCategory(itemIds, newCategory) {
   await batch.commit();
 }
 
-export async function getAttendanceByDate(date) {
+export async function getAttendanceByDate(classId, date) {
+  if (!classId) return [];
   const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
 
   const endOfDay = new Date(date);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const historyRef = collection(db, 'point_history');
+  const historyRef = collection(db, 'classes', classId, 'point_history');
   const q = query(
     historyRef,
     where('reason', '==', "출석 체크 보상"),
@@ -2172,33 +2164,22 @@ export async function getAttendanceByDate(date) {
   );
 
   const querySnapshot = await getDocs(q);
-  // 중복된 authUid를 제거하여 한 학생이 여러 번 기록되었더라도 한 번만 표시되도록 합니다.
   const attendedAuthUids = [...new Set(querySnapshot.docs.map(doc => doc.data().playerId))];
   return attendedAuthUids;
 }
 
-// =================================================================
-// ▼▼▼ [신규] 관리자가 1:1 대화를 시작하는 함수 ▼▼▼
-// =================================================================
-
-/**
- * 관리자가 학생에게 첫 메시지를 보내 대화를 시작합니다.
- * @param {string} studentId - 메시지를 받을 학생의 ID
- * @param {string} studentName - 메시지를 받을 학생의 이름
- * @param {string} adminMessage - 관리자가 보내는 첫 메시지 내용
- * @param {string} studentAuthUid - 학생의 Firebase Auth UID (알림 전송용)
- */
-export async function adminInitiateConversation(studentId, studentName, adminMessage, studentAuthUid) {
+// --- 관리자 <-> 학생 1:1 대화 (classId 추가) ---
+export async function adminInitiateConversation(classId, studentId, studentName, adminMessage, studentAuthUid) {
+  if (!classId) return;
   if (!adminMessage.trim()) {
     throw new Error("메시지 내용을 입력해야 합니다.");
   }
   const now = new Date();
 
-  // 새로운 대화 문서를 생성합니다.
-  await addDoc(collection(db, "suggestions"), {
+  await addDoc(collection(db, "classes", classId, "suggestions"), {
     studentId,
     studentName,
-    message: `(선생님이 보낸 메시지) ${adminMessage}`, // 원본 메시지 필드 형식 유지
+    message: `(선생님이 보낸 메시지) ${adminMessage}`,
     conversation: [
       {
         sender: 'admin',
@@ -2206,12 +2187,11 @@ export async function adminInitiateConversation(studentId, studentName, adminMes
         createdAt: now
       }
     ],
-    status: "replied", // 관리자가 시작했으므로 바로 'replied' 상태
+    status: "replied",
     createdAt: now,
     lastMessageAt: now,
   });
 
-  // 학생에게 알림을 보냅니다.
   if (studentAuthUid) {
     createNotification(
       studentAuthUid,
@@ -2223,26 +2203,18 @@ export async function adminInitiateConversation(studentId, studentName, adminMes
   }
 }
 
-// =================================================================
-// ▼▼▼ [신규] 관리자가 전체 학생에게 메시지를 발송하는 함수 ▼▼▼
-// =================================================================
-
-/**
- * 관리자가 모든 학생에게 전체 메시지를 발송합니다.
- * @param {string} adminMessage - 발송할 메시지 내용
- */
-export async function sendBulkMessageToAllStudents(adminMessage) {
+export async function sendBulkMessageToAllStudents(classId, adminMessage) {
+  if (!classId) return;
   if (!adminMessage.trim()) {
     throw new Error("메시지 내용을 입력해야 합니다.");
   }
   const now = new Date();
 
-  const allPlayers = await getPlayers();
-  // [수정] 'admin' 역할을 제외한 모든 학생에게 메시지를 보내도록 필터를 수정합니다.
+  const allPlayers = await getPlayers(classId);
   const students = allPlayers.filter(p => p.role !== 'admin' && p.status !== 'inactive');
 
   for (const student of students) {
-    const suggestionsRef = collection(db, "suggestions");
+    const suggestionsRef = collection(db, "classes", classId, "suggestions");
     const q = query(suggestionsRef, where("studentId", "==", student.id), orderBy("createdAt", "desc"), limit(1));
     const querySnapshot = await getDocs(q);
 
@@ -2259,7 +2231,7 @@ export async function sendBulkMessageToAllStudents(adminMessage) {
         lastMessageAt: now
       });
     } else {
-      await addDoc(collection(db, "suggestions"), {
+      await addDoc(collection(db, "classes", classId, "suggestions"), {
         studentId: student.id,
         studentName: student.name,
         message: `(선생님이 보낸 전체 메시지) ${adminMessage}`,
@@ -2282,81 +2254,57 @@ export async function sendBulkMessageToAllStudents(adminMessage) {
   }
 }
 
-// =================================================================
-// ▼▼▼ [신규] 칭호 시스템 관련 함수들 ▼▼▼
-// =================================================================
-
-/**
- * 모든 칭호 목록을 가져옵니다.
- * @returns {Promise<Array<object>>} 칭호 객체 배열
- */
-export async function getTitles() {
-  const titlesRef = collection(db, "titles");
+// --- 칭호 시스템 (classId 추가) ---
+export async function getTitles(classId) {
+  if (!classId) return [];
+  const titlesRef = collection(db, "classes", classId, "titles");
   const q = query(titlesRef, orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-/**
- * 새로운 칭호를 생성합니다.
- * @param {object} titleData - 칭호 데이터 (name, description, icon, type 등)
- */
-export async function createTitle(titleData) {
-  await addDoc(collection(db, "titles"), {
+export async function createTitle(classId, titleData) {
+  if (!classId) return;
+  await addDoc(collection(db, "classes", classId, "titles"), {
     ...titleData,
-    color: titleData.color || '#000000', // [추가] 색상 필드 (기본값: 검정)
+    color: titleData.color || '#000000',
     createdAt: serverTimestamp(),
   });
 }
 
-/**
- * 특정 칭호 정보를 업데이트합니다.
-  * @param {object} dataToUpdate - 수정할 데이터
- */
-export async function updateTitle(titleId, dataToUpdate) {
-  const titleRef = doc(db, "titles", titleId);
-  // [수정] color 필드도 업데이트 목록에 포함시킵니다.
+export async function updateTitle(classId, titleId, dataToUpdate) {
+  if (!classId) return;
+  const titleRef = doc(db, "classes", classId, "titles", titleId);
   await updateDoc(titleRef, {
     ...dataToUpdate,
     color: dataToUpdate.color || '#000000'
   });
 }
 
-/**
- * 특정 칭호를 삭제합니다.
- * @param {string} titleId - 삭제할 칭호의 ID
- */
-export async function deleteTitle(titleId) {
-  const titleRef = doc(db, "titles", titleId);
+export async function deleteTitle(classId, titleId) {
+  if (!classId) return;
+  const titleRef = doc(db, "classes", classId, "titles", titleId);
   await deleteDoc(titleRef);
 }
 
-/**
- * 특정 학생에게 칭호를 수동으로 부여합니다.
- * @param {string} playerId - 칭호를 받을 학생의 ID
- * @param {string} titleId - 부여할 칭호의 ID
- */
-export async function grantTitleToPlayer(playerId, titleId) {
-  const playerRef = doc(db, "players", playerId);
+export async function grantTitleToPlayer(classId, playerId, titleId) {
+  if (!classId) return;
+  const playerRef = doc(db, "classes", classId, "players", playerId);
   await updateDoc(playerRef, {
     ownedTitles: arrayUnion(titleId)
   });
 }
 
-// 교체할 내용
-/**
- * [신규] 관리자가 학생에게 칭호를 수동으로 부여하고 보상을 지급합니다.
- * @param {string} playerId - 칭호를 받을 학생의 ID
- * @param {string} titleId - 부여할 칭호의 ID
- */
-export async function updateMissionComment(submissionId, commentId, newText) {
-  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+// --- 미션 댓글 및 좋아요 (classId 추가) ---
+export async function updateMissionComment(classId, submissionId, commentId, newText) {
+  if (!classId) return;
+  const commentRef = doc(db, "classes", classId, "missionSubmissions", submissionId, "comments", commentId);
   await updateDoc(commentRef, { text: newText });
 }
 
-export async function deleteMissionComment(submissionId, commentId) {
-  // 먼저 댓글 하위의 모든 답글을 삭제합니다.
-  const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", commentId, "replies");
+export async function deleteMissionComment(classId, submissionId, commentId) {
+  if (!classId) return;
+  const repliesRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments", commentId, "replies");
   const repliesSnap = await getDocs(repliesRef);
   const batch = writeBatch(db);
   repliesSnap.forEach(doc => {
@@ -2364,66 +2312,25 @@ export async function deleteMissionComment(submissionId, commentId) {
   });
   await batch.commit();
 
-  // 그 다음 댓글 자체를 삭제합니다.
-  const commentRef = doc(db, "missionSubmissions", submissionId, "comments", commentId);
+  const commentRef = doc(db, "classes", classId, "missionSubmissions", submissionId, "comments", commentId);
   await deleteDoc(commentRef);
 }
 
-export async function updateMissionReply(submissionId, commentId, replyId, newText) {
-  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+export async function updateMissionReply(classId, submissionId, commentId, replyId, newText) {
+  if (!classId) return;
+  const replyRef = doc(db, "classes", classId, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
   await updateDoc(replyRef, { text: newText });
 }
 
-export async function deleteMissionReply(submissionId, commentId, replyId) {
-  const replyRef = doc(db, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
+export async function deleteMissionReply(classId, submissionId, commentId, replyId) {
+  if (!classId) return;
+  const replyRef = doc(db, "classes", classId, "missionSubmissions", submissionId, "comments", commentId, "replies", replyId);
   await deleteDoc(replyRef);
 }
 
-// [신규] 미션 제출물에 관리자 피드백(댓글)을 추가/수정하는 함수
-export async function upsertAdminFeedback(submissionId, feedbackText) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  await updateDoc(submissionRef, {
-    adminFeedback: feedbackText,
-    feedbackUpdatedAt: serverTimestamp()
-  });
-}
-
-// [신규] 미션 제출물에서 관리자 피드백(댓글)을 삭제하는 함수
-export async function deleteAdminFeedback(submissionId) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  await updateDoc(submissionRef, {
-    adminFeedback: null,
-    feedbackUpdatedAt: null
-  });
-}
-
-// [신규] 학생이 관리자 피드백에 '좋아요'를 누르는 기능
-export async function toggleAdminFeedbackLike(submissionId, studentId) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
-  const submissionSnap = await getDoc(submissionRef);
-
-  if (!submissionSnap.exists()) {
-    throw new Error("Submission not found");
-  }
-
-  const submissionData = submissionSnap.data();
-  const likes = submissionData.adminFeedbackLikes || [];
-
-  if (likes.includes(studentId)) {
-    // 이미 '좋아요'를 눌렀다면 취소
-    await updateDoc(submissionRef, {
-      adminFeedbackLikes: likes.filter(id => id !== studentId)
-    });
-  } else {
-    // '좋아요'를 누르지 않았다면 추가
-    await updateDoc(submissionRef, {
-      adminFeedbackLikes: [...likes, studentId]
-    });
-  }
-}
-
-export async function toggleSubmissionLike(submissionId, likerId) {
-  const submissionRef = doc(db, "missionSubmissions", submissionId);
+export async function toggleSubmissionLike(classId, submissionId, likerId) {
+  if (!classId) return;
+  const submissionRef = doc(db, "classes", classId, "missionSubmissions", submissionId);
 
   await runTransaction(db, async (transaction) => {
     const submissionDoc = await transaction.get(submissionRef);
@@ -2431,34 +2338,27 @@ export async function toggleSubmissionLike(submissionId, likerId) {
 
     const submissionData = submissionDoc.data();
     const likes = submissionData.likes || [];
-
     const newLikes = likes.includes(likerId)
       ? likes.filter(id => id !== likerId)
       : [...likes, likerId];
 
     transaction.update(submissionRef, { likes: newLikes });
 
-    // --- [신규] 인기 게시물 보상 로직 ---
     const POPULARITY_THRESHOLD = 10;
     const REWARD_AMOUNT = 200;
 
-    // 1. '좋아요'가 10개가 되었고, 아직 보상을 받지 않았는지 확인
     if (newLikes.length >= POPULARITY_THRESHOLD && !submissionData.popularRewardGranted) {
       const authorId = submissionData.studentId;
-      const authorRef = doc(db, "players", authorId);
+      const authorRef = doc(db, "classes", classId, "players", authorId);
       const authorDoc = await transaction.get(authorRef);
 
       if (authorDoc.exists()) {
         const authorData = authorDoc.data();
-
-        // 2. 포인트 보상 지급
         transaction.update(authorRef, { points: increment(REWARD_AMOUNT) });
-
-        // 3. 보상 지급 완료 플래그 설정 (중복 방지)
         transaction.update(submissionRef, { popularRewardGranted: true });
 
-        // 4. 포인트 내역 기록 및 알림 생성 (트랜잭션 밖에서 실행)
         addPointHistory(
+          classId,
           authorData.authUid,
           authorData.name,
           REWARD_AMOUNT,
@@ -2476,13 +2376,9 @@ export async function toggleSubmissionLike(submissionId, likerId) {
   });
 }
 
-/**
- * [신규] 관리자가 학생에게 칭호를 수동으로 부여하고 보상을 지급합니다.
- * @param {string} playerId - 칭호를 받을 학생의 ID
- * @param {string} titleId - 부여할 칭호의 ID
- */
-export async function grantTitleToPlayerManually(playerId, titleId) {
-  const playerRef = doc(db, "players", playerId);
+export async function grantTitleToPlayerManually(classId, playerId, titleId) {
+  if (!classId) return;
+  const playerRef = doc(db, "classes", classId, "players", playerId);
   const playerSnap = await getDoc(playerRef);
 
   if (!playerSnap.exists()) {
@@ -2490,32 +2386,27 @@ export async function grantTitleToPlayerManually(playerId, titleId) {
   }
   const playerData = playerSnap.data();
 
-  // 이미 칭호를 소유하고 있는지 확인
   if (playerData.ownedTitles && playerData.ownedTitles.includes(titleId)) {
     throw new Error("이미 소유하고 있는 칭호입니다.");
   }
 
-  // 칭호 정보 가져오기 (보상 메시지에 사용)
-  const titleRef = doc(db, "titles", titleId);
+  const titleRef = doc(db, "classes", classId, "titles", titleId);
   const titleSnap = await getDoc(titleRef);
   if (!titleSnap.exists()) {
     throw new Error("칭호 정보를 찾을 수 없습니다.");
   }
   const title = titleSnap.data();
 
-  // 1. 칭호 부여
   await updateDoc(playerRef, {
     ownedTitles: arrayUnion(titleId)
   });
 
-  // 2. 보상 지급 (adjustPlayerPoints 재활용)
-  await adjustPlayerPoints(playerId, 500, `칭호 [${title.name}] 획득 보상`);
+  await adjustPlayerPoints(classId, playerId, 500, `칭호 [${title.name}] 획득 보상`);
 }
 
-
-// [추가] 여러 학생에게 칭호를 일괄 부여하는 함수
-export async function grantTitleToPlayersBatch(playerIds, titleId) {
-  const titleRef = doc(db, "titles", titleId);
+export async function grantTitleToPlayersBatch(classId, playerIds, titleId) {
+  if (!classId) return;
+  const titleRef = doc(db, "classes", classId, "titles", titleId);
   const titleSnap = await getDoc(titleRef);
   if (!titleSnap.exists()) {
     throw new Error("칭호 정보를 찾을 수 없습니다.");
@@ -2523,7 +2414,7 @@ export async function grantTitleToPlayersBatch(playerIds, titleId) {
   const title = titleSnap.data();
 
   for (const playerId of playerIds) {
-    const playerRef = doc(db, "players", playerId);
+    const playerRef = doc(db, "classes", classId, "players", playerId);
     const playerSnap = await getDoc(playerRef);
 
     if (playerSnap.exists()) {
@@ -2532,13 +2423,12 @@ export async function grantTitleToPlayersBatch(playerIds, titleId) {
         await updateDoc(playerRef, {
           ownedTitles: arrayUnion(titleId)
         });
-        await adjustPlayerPoints(playerId, 500, `칭호 [${title.name}] 획득 보상`);
+        await adjustPlayerPoints(classId, playerId, 500, `칭호 [${title.name}] 획득 보상`);
       }
     }
   }
 }
 
-// 교체할 부분의 아랫 한 줄 코드
 /**
  * 학생이 장착할 칭호를 설정합니다.
  * @param {string} playerId - 학생 ID
