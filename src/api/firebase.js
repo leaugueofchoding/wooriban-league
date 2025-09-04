@@ -956,14 +956,15 @@ export async function updateMatchScores(classId, matchId, scores, scorers, recor
   await batch.commit();
 }
 
-// ▼▼▼ [신규] 경기 시작 시간 기록 함수 추가 ▼▼▼
-export async function updateMatchStartTime(matchId) {
-  const matchRef = doc(db, 'matches', matchId);
+export async function updateMatchStartTime(classId, matchId) {
+  if (!classId) return;
+  const matchRef = doc(db, 'classes', classId, 'matches', matchId);
   await updateDoc(matchRef, { startTime: serverTimestamp() });
 }
 
-export async function updateMatchStatus(matchId, newStatus) {
-  const matchRef = doc(db, 'matches', matchId);
+export async function updateMatchStatus(classId, matchId, newStatus) {
+  if (!classId) return;
+  const matchRef = doc(db, 'classes', classId, 'matches', matchId);
   await updateDoc(matchRef, { status: newStatus });
 }
 
@@ -974,21 +975,19 @@ export async function deleteNotification(notificationId) {
 
 export async function deleteAllNotifications(userId) {
   if (!userId) return;
-
   const batch = writeBatch(db);
   const notificationsRef = collection(db, 'notifications');
   const q = query(notificationsRef, where('userId', '==', userId));
-
   const querySnapshot = await getDocs(q);
   querySnapshot.forEach(doc => {
     batch.delete(doc.ref);
   });
-
   await batch.commit();
 }
 
-export async function deleteMatchesBySeason(seasonId) {
-  const matchesRef = collection(db, 'matches');
+export async function deleteMatchesBySeason(classId, seasonId) {
+  if (!classId || !seasonId) return;
+  const matchesRef = collection(db, 'classes', classId, 'matches');
   const q = query(matchesRef, where("seasonId", "==", seasonId));
   const querySnapshot = await getDocs(q);
   if (querySnapshot.empty) return;
@@ -999,9 +998,10 @@ export async function deleteMatchesBySeason(seasonId) {
   await batch.commit();
 }
 
-export async function batchAddMatches(newMatchesData) {
+export async function batchAddMatches(classId, newMatchesData) {
+  if (!classId) return;
   const batch = writeBatch(db);
-  const matchesRef = collection(db, 'matches');
+  const matchesRef = collection(db, 'classes', classId, 'matches');
   newMatchesData.forEach(matchData => {
     const newMatchRef = doc(matchesRef);
     batch.set(newMatchRef, matchData);
@@ -1009,24 +1009,27 @@ export async function batchAddMatches(newMatchesData) {
   await batch.commit();
 }
 
-// --- 시즌 관리 ---
-export async function getSeasons() {
-  const seasonsRef = collection(db, 'seasons');
+// --- 시즌 관리 (classId 추가) ---
+export async function getSeasons(classId) {
+  if (!classId) return [];
+  const seasonsRef = collection(db, 'classes', classId, 'seasons');
   const q = query(seasonsRef, orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function updateSeason(seasonId, dataToUpdate) {
-  const seasonDoc = doc(db, 'seasons', seasonId);
+export async function updateSeason(classId, seasonId, dataToUpdate) {
+  if (!classId) return;
+  const seasonDoc = doc(db, 'classes', classId, 'seasons', seasonId);
   await updateDoc(seasonDoc, dataToUpdate);
 }
 
-export async function createNewSeason(seasonName) {
+export async function createNewSeason(classId, seasonName) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   if (!seasonName || !seasonName.trim()) {
     throw new Error("시즌 이름을 입력해야 합니다.");
   }
-  await addDoc(collection(db, 'seasons'), {
+  await addDoc(collection(db, 'classes', classId, 'seasons'), {
     seasonName: seasonName.trim(),
     status: 'preparing',
     createdAt: serverTimestamp(),
@@ -1034,12 +1037,12 @@ export async function createNewSeason(seasonName) {
   });
 }
 
-export async function saveAvatarMemorials(seasonId, playersInSeason) {
+export async function saveAvatarMemorials(classId, seasonId, playersInSeason) {
+  if (!classId) return;
   const batch = writeBatch(db);
   playersInSeason.forEach(player => {
-    // avatarConfig가 있는 선수만 저장
     if (player.avatarConfig) {
-      const memorialRef = doc(db, 'seasons', seasonId, 'memorials', player.id);
+      const memorialRef = doc(db, 'classes', classId, 'seasons', seasonId, 'memorials', player.id);
       batch.set(memorialRef, {
         playerId: player.id,
         playerName: player.name,
@@ -1050,8 +1053,9 @@ export async function saveAvatarMemorials(seasonId, playersInSeason) {
   await batch.commit();
 }
 
-export async function createPlayerFromUser(user) {
-  const playerRef = doc(db, 'players', user.uid);
+export async function createPlayerFromUser(classId, user) {
+  if (!classId) return;
+  const playerRef = doc(db, 'classes', classId, 'players', user.uid);
   const playerData = {
     authUid: user.uid,
     id: user.uid,
@@ -1066,10 +1070,10 @@ export async function createPlayerFromUser(user) {
   await setDoc(playerRef, playerData);
 }
 
-export async function getTodaysQuizHistory(studentId) {
-  if (!studentId) return [];
+export async function getTodaysQuizHistory(classId, studentId) {
+  if (!classId || !studentId) return [];
   const todayStr = getTodayDateString();
-  const historyRef = collection(db, 'quiz_history');
+  const historyRef = collection(db, 'classes', classId, 'quiz_history');
   const q = query(historyRef, where('studentId', '==', studentId), where('date', '==', todayStr));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => doc.data());
