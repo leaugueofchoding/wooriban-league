@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // ✅ useClassStore 추가
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -281,7 +281,7 @@ const DragHandle = styled.div`
   }
 `;
 
-function SortableListItem({ id, mission, onNavigate, unarchiveMission, archiveMission, removeMission, handleEditClick }) {
+function SortableListItem({ id, classId, mission, onNavigate, unarchiveMission, archiveMission, removeMission, handleEditClick }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
     const style = {
@@ -298,15 +298,17 @@ function SortableListItem({ id, mission, onNavigate, unarchiveMission, archiveMi
                 <span style={{ marginLeft: '1rem', color: '#6c757d' }}>(보상: {Array.isArray(mission.rewards) ? mission.rewards.join('/') : mission.reward}P)</span>
             </div>
             <MissionControls>
-                {/* [수정] onClick 핸들러를 onNavigate로 변경 */}
                 <StyledButton onClick={() => onNavigate(mission.id)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
                 <StyledButton onClick={() => handleEditClick(mission)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
                 {mission.status === 'archived' ? (
-                    <StyledButton onClick={() => unarchiveMission(mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
+                    // ✅ 스토어 액션 호출 시 classId 전달
+                    <StyledButton onClick={() => unarchiveMission(classId, mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
                 ) : (
-                    <StyledButton onClick={() => archiveMission(mission.id)} style={{ backgroundColor: '#6c757d' }}>숨김</StyledButton>
+                    // ✅ 스토어 액션 호출 시 classId 전달
+                    <StyledButton onClick={() => archiveMission(classId, mission.id)} style={{ backgroundColor: '#6c757d' }}>숨김</StyledButton>
                 )}
-                <StyledButton onClick={() => removeMission(mission.id)} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
+                // ✅ 스토어 액션 호출 시 classId 전달
+                <StyledButton onClick={() => removeMission(classId, mission.id)} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
             </MissionControls>
         </ListItem>
     );
@@ -741,6 +743,7 @@ const ItemCard = styled.div`
  background-color: #fff;
  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `;
+// src/pages/AdminPage.jsx (2/7)
 
 const getBackgroundPosition = (category) => {
     switch (category) {
@@ -756,18 +759,16 @@ const getBackgroundPosition = (category) => {
 const ItemImage = styled.div`
   width: 120px;
   height: 120px;
-  margin: 0 auto; /* 가운데 정렬 추가 */
+  margin: 0 auto;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   background-image: url(${props => props.src});
-  /* [수정] 액세서리는 기본 확대 없이 원래 크기로 표시 */
   background-size: ${props => props.$category === 'accessory' ? 'contain' : '200%'};
   background-repeat: no-repeat;
   background-color: #e9ecef;
   transition: background-size 0.2s ease-in-out;
   background-position: ${props => getBackgroundPosition(props.$category)};
   
-  /* [수정] 액세서리는 hover 시에도 확대되지 않음 */
   &:hover {
     background-size: ${props => props.$category === 'accessory' ? 'contain' : '220%'};
   }
@@ -855,26 +856,31 @@ const SaleBadge = styled.div`
 // --- Components ---
 
 function PendingMissionWidget({ setModalImageSrc }) {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
     const [selectedSubmissionIndex, setSelectedSubmissionIndex] = useState(null);
     const currentUser = auth.currentUser;
 
-    const refreshPendingSubmissions = async () => {
-        const submissionsRef = collection(db, "missionSubmissions");
-        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
-        const querySnapshot = await getDocs(q); // onSnapshot -> getDocs로 변경
-        const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const validSubmissions = submissions.filter(sub =>
-            missions.some(m => m.id === sub.missionId)
-        );
-        setPendingSubmissions(validSubmissions);
-    };
-
     useEffect(() => {
-        refreshPendingSubmissions();
-    }, [missions]);
+        // ✅ classId가 변경될 때마다 승인 대기 목록을 다시 가져오도록 수정
+        if (!classId) return;
+
+        const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
+        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
+
+        // 실시간 업데이트를 위해 onSnapshot 사용
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const validSubmissions = submissions.filter(sub =>
+                missions.some(m => m.id === sub.missionId)
+            );
+            setPendingSubmissions(validSubmissions);
+        });
+
+        return () => unsubscribe(); // Clean up the listener
+    }, [classId, missions]);
 
 
     const handleModalOpen = (index) => {
@@ -894,19 +900,18 @@ function PendingMissionWidget({ setModalImageSrc }) {
     };
 
     const handleActionInModal = (actedSubmissionId) => {
-        // 모달에서 승인/반려 후 목록을 수동으로 업데이트 (화면 깜빡임 방지)
         setPendingSubmissions(prev => prev.filter(sub => sub.id !== actedSubmissionId));
-        // 다음 미션으로 자동으로 넘어가도록 인덱스 조정
         setSelectedSubmissionIndex(prev => {
             if (prev === null) return null;
-            if (prev >= pendingSubmissions.length - 2) { // 마지막 항목이었으면 모달 닫기
+            if (prev >= pendingSubmissions.length - 2) {
                 return null;
             }
-            return prev; // 현재 인덱스 유지 (다음 항목이 그 자리를 채움)
+            return prev;
         });
     };
 
     const handleAction = async (action, submission, reward) => {
+        if (!classId) return; // ✅ classId 가드 추가
         setProcessingIds(prev => new Set(prev.add(submission.id)));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
@@ -923,17 +928,19 @@ function PendingMissionWidget({ setModalImageSrc }) {
 
         try {
             if (action === 'approve') {
-                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
+                // ✅ approveMissionsInBatch 호출 시 classId 전달
+                await approveMissionsInBatch(classId, mission.id, [student.id], currentUser.uid, reward);
             } else if (action === 'reject') {
-                await rejectMissionSubmission(submission.id, student.authUid, mission.title);
+                // ✅ rejectMissionSubmission 호출 시 classId 전달
+                await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
             }
         } catch (error) {
             console.error(`미션 ${action} 오류:`, error);
             alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
         }
+        // finally 블록을 제거하여 성공/실패와 무관하게 처리 상태가 해제되지 않도록 함 (UI 피드백 유지)
     };
 
-    // [수정된 부분] 렌더링할 특정 제출물을 변수로 선언합니다.
     const submissionToShow = selectedSubmissionIndex !== null ? pendingSubmissions[selectedSubmissionIndex] : null;
 
     return (
@@ -947,7 +954,6 @@ function PendingMissionWidget({ setModalImageSrc }) {
                         const student = players.find(p => p.id === sub.studentId);
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
-                        const hasContent = sub.text || (sub.photoUrls && sub.photoUrls.length > 0);
                         const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
                         if (!mission) return null;
@@ -993,7 +999,6 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     })}
                 </List>
             )}
-            {/* [수정된 부분] onImageClick 핸들러가 객체를 받도록 수정됩니다. */}
             {submissionToShow && (
                 <ApprovalModal
                     submission={submissionToShow}
@@ -1002,7 +1007,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     onPrev={handlePrev}
                     currentIndex={selectedSubmissionIndex}
                     totalCount={pendingSubmissions.length}
-                    onAction={() => handleActionInModal(submissionToShow.id)} // submission Id를 전달
+                    onAction={() => handleActionInModal(submissionToShow.id)}
                     onImageClick={(imageData) => setModalImageSrc(imageData)}
                 />
             )}
@@ -1011,19 +1016,21 @@ function PendingMissionWidget({ setModalImageSrc }) {
 }
 
 function AttendanceChecker({ players }) {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [attendedPlayerIds, setAttendedPlayerIds] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         const fetchAttendance = async () => {
+            if (!classId) return; // ✅ classId 가드 추가
             setIsLoading(true);
-            const uids = await getAttendanceByDate(selectedDate);
+            const uids = await getAttendanceByDate(classId, selectedDate); // ✅ classId 전달
             setAttendedPlayerIds(uids);
             setIsLoading(false);
         };
         fetchAttendance();
-    }, [selectedDate]);
+    }, [selectedDate, classId]); // ✅ 의존성 배열에 classId 추가
 
     const attendedPlayers = useMemo(() => {
         return players
@@ -1075,6 +1082,7 @@ function AttendanceChecker({ players }) {
 }
 
 function MyRoomCommentMonitor() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players } = useLeagueStore();
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -1083,17 +1091,18 @@ function MyRoomCommentMonitor() {
 
     useEffect(() => {
         const fetchComments = async () => {
+            if (!classId) return; // ✅ classId 가드 추가
             setIsLoading(true);
-            const comments = await getAllMyRoomComments();
+            const comments = await getAllMyRoomComments(classId); // ✅ classId 전달
             setAllComments(comments);
             setIsLoading(false);
         };
         fetchComments();
-    }, []);
+    }, [classId]); // ✅ 의존성 배열에 classId 추가
 
     const handleDeleteComment = async (roomId, commentId) => {
         if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
-            await deleteMyRoomComment(roomId, commentId);
+            await deleteMyRoomComment(classId, roomId, commentId); // ✅ classId 전달
             setAllComments(prev => prev.filter(c => c.id !== commentId));
         }
     };
@@ -1102,11 +1111,10 @@ function MyRoomCommentMonitor() {
         if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
             const comment = allComments.find(c => c.id === commentId);
             if (comment) {
-                // Firestore 타임스탬프 객체 비교를 위해 toDate().getTime() 사용
+                await deleteMyRoomReply(classId, roomId, commentId, reply); // ✅ classId 전달
                 const updatedReplies = comment.replies.filter(r =>
                     !(r.createdAt?.toDate().getTime() === reply.createdAt?.toDate().getTime() && r.text === reply.text)
                 );
-                await deleteMyRoomReply(roomId, commentId, reply);
                 setAllComments(prev => prev.map(c => c.id === commentId ? { ...c, replies: updatedReplies } : c));
             }
         }
@@ -1152,6 +1160,7 @@ function MyRoomCommentMonitor() {
 }
 
 function MessageManager() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players } = useLeagueStore();
     const [allSuggestions, setAllSuggestions] = useState([]);
     const [selectedStudentId, setSelectedStudentId] = useState(null);
@@ -1159,31 +1168,24 @@ function MessageManager() {
     const [isLoading, setIsLoading] = useState(true);
     const messageAreaRef = useRef(null);
 
-    // [추가] 데이터 구조 차이를 해결하기 위한 헬퍼 함수
     const getConversationFromDoc = (doc) => {
-        if (doc.conversation) {
-            return doc.conversation;
-        }
-        // 옛날 데이터 구조를 위한 하위 호환성 코드
+        if (doc.conversation) return doc.conversation;
         const oldConversation = [];
-        if (doc.message) {
-            oldConversation.push({ sender: 'student', content: doc.message, createdAt: doc.createdAt });
-        }
-        if (doc.reply) {
-            oldConversation.push({ sender: 'admin', content: doc.reply, createdAt: doc.repliedAt });
-        }
+        if (doc.message) oldConversation.push({ sender: 'student', content: doc.message, createdAt: doc.createdAt });
+        if (doc.reply) oldConversation.push({ sender: 'admin', content: doc.reply, createdAt: doc.repliedAt });
         return oldConversation;
     };
 
     useEffect(() => {
-        const q = query(collection(db, "suggestions"), orderBy("createdAt", "desc"));
+        if (!classId) return; // ✅ classId 가드 추가
+        const q = query(collection(db, "classes", classId, "suggestions"), orderBy("createdAt", "desc")); // ✅ classId 경로 추가
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const suggestionsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setAllSuggestions(suggestionsData);
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [classId]); // ✅ 의존성 배열에 classId 추가
 
     useEffect(() => {
         if (messageAreaRef.current) {
@@ -1202,7 +1204,7 @@ function MessageManager() {
     const sortedPlayers = useMemo(() => {
         const getLatestMessageTime = (playerId) => {
             const thread = studentThreads[playerId];
-            if (!thread) return 0; // 대화 없으면 0
+            if (!thread) return 0;
             const lastMessageDoc = thread.sort((a, b) => (b.lastMessageAt || b.createdAt).toMillis() - (a.lastMessageAt || a.createdAt).toMillis())[0];
             return (lastMessageDoc.lastMessageAt || lastMessageDoc.createdAt).toMillis();
         };
@@ -1212,8 +1214,8 @@ function MessageManager() {
             .sort((a, b) => {
                 const timeA = getLatestMessageTime(a.id);
                 const timeB = getLatestMessageTime(b.id);
-                if (timeA !== timeB) return timeB - timeA; // 1. 최신 메시지 순
-                return a.name.localeCompare(b.name);      // 2. 이름 가나다 순
+                if (timeA !== timeB) return timeB - timeA;
+                return a.name.localeCompare(b.name);
             });
     }, [players, studentThreads]);
 
@@ -1222,13 +1224,12 @@ function MessageManager() {
         const thread = studentThreads[selectedStudentId];
         if (!thread) return [];
 
-        // [수정] 헬퍼 함수를 사용하여 모든 대화 기록을 가져옵니다.
         return thread.flatMap(item => getConversationFromDoc(item))
             .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
     }, [selectedStudentId, studentThreads]);
 
     const handleReplySubmit = async () => {
-        if (!replyContent.trim() || !selectedStudentId) return;
+        if (!classId || !replyContent.trim() || !selectedStudentId) return; // ✅ classId 가드 추가
         const student = players.find(p => p.id === selectedStudentId);
         if (!student) return alert("학생 정보를 찾을 수 없습니다.");
 
@@ -1237,9 +1238,9 @@ function MessageManager() {
         try {
             if (thread) {
                 const lastMessageDoc = thread.sort((a, b) => (b.lastMessageAt || b.createdAt).toMillis() - (a.lastMessageAt || a.createdAt).toMillis())[0];
-                await replyToSuggestion(lastMessageDoc.id, replyContent, student.authUid);
+                await replyToSuggestion(classId, lastMessageDoc.id, replyContent, student.authUid); // ✅ classId 전달
             } else {
-                await adminInitiateConversation(student.id, student.name, replyContent, student.authUid);
+                await adminInitiateConversation(classId, student.id, student.name, replyContent, student.authUid); // ✅ classId 전달
             }
             setReplyContent('');
         } catch (error) {
@@ -1248,11 +1249,12 @@ function MessageManager() {
     };
 
     const handleBulkMessageSend = async () => {
+        if (!classId) return; // ✅ classId 가드 추가
         const message = prompt("모든 학생에게 보낼 메시지 내용을 입력하세요:");
         if (message && message.trim()) {
             if (window.confirm(`정말로 모든 학생에게 "${message}" 메시지를 보내시겠습니까?`)) {
                 try {
-                    await sendBulkMessageToAllStudents(message);
+                    await sendBulkMessageToAllStudents(classId, message); // ✅ classId 전달
                     alert("전체 메시지를 성공적으로 보냈습니다.");
                 } catch (error) {
                     alert(`전송 실패: ${error.message}`);
@@ -1277,7 +1279,6 @@ function MessageManager() {
                         {isLoading ? <p style={{ padding: '1rem' }}>로딩 중...</p> :
                             sortedPlayers.map(player => {
                                 const thread = studentThreads[player.id];
-                                // [수정] 헬퍼 함수를 사용하여 마지막 메시지를 찾습니다.
                                 const lastMessage = thread ? (thread.flatMap(item => getConversationFromDoc(item)).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())[0]) : null;
 
                                 return (

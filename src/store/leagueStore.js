@@ -140,12 +140,12 @@ export const useLeagueStore = create((set, get) => ({
         }
         try {
             set({ isLoading: true });
-            
+
             await seedInitialTitles(classId);
 
             const currentUser = auth.currentUser;
             set({ currentUser });
-            
+
             const seasonsData = await getSeasons(classId);
             set({ seasons: seasonsData });
             const activeSeason = seasonsData.find(s => s.status === 'active' || s.status === 'preparing') || seasonsData[0] || null;
@@ -518,12 +518,16 @@ export const useLeagueStore = create((set, get) => ({
 
         set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
+
     subscribeToRecorderBonus: (userId) => {
+        const { classId } = get();
+        if (!classId) return;
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayTimestamp = Timestamp.fromDate(today);
 
-        const historyRef = collection(db, 'point_history');
+        const historyRef = collection(db, 'classes', classId, 'point_history');
         const q = query(
             historyRef,
             where('playerId', '==', userId),
@@ -561,6 +565,9 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     fetchDailyQuiz: async (studentId) => {
+        const { classId } = get();
+        if (!classId) return;
+
         const todayStr = new Date().toLocaleDateString('ko-KR');
         const storedQuizSet = JSON.parse(localStorage.getItem('dailyQuizSet'));
         let todaysQuizzes = [];
@@ -576,7 +583,7 @@ export const useLeagueStore = create((set, get) => ({
 
         set({ dailyQuizSet: { date: todayStr, quizzes: todaysQuizzes } });
 
-        const todaysHistory = await getTodaysQuizHistory(studentId);
+        const todaysHistory = await getTodaysQuizHistory(classId, studentId);
         set({ quizHistory: todaysHistory });
 
         if (todaysHistory.length >= 5) {
@@ -589,13 +596,11 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     submitQuizAnswer: async (quizId, userAnswer) => {
-        const myPlayerData = get().players.find(p => p.authUid === auth.currentUser?.uid);
-        if (!myPlayerData) return false;
+        const { players, dailyQuiz, classId } = get();
+        const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
+        if (!myPlayerData || !dailyQuiz || !classId) return false;
 
-        const { dailyQuiz } = get();
-        if (!dailyQuiz) return false;
-
-        const isCorrect = await firebaseSubmitQuizAnswer(myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
+        const isCorrect = await firebaseSubmitQuizAnswer(classId, myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
 
         await get().fetchDailyQuiz(myPlayerData.id);
 
@@ -603,8 +608,10 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     batchAdjustPoints: async (playerIds, amount, reason) => {
+        const { classId } = get();
+        if (!classId) return;
         try {
-            await batchAdjustPlayerPoints(playerIds, amount, reason);
+            await batchAdjustPlayerPoints(classId, playerIds, amount, reason);
             set(state => ({
                 players: state.players.map(player => {
                     if (playerIds.includes(player.id)) {
@@ -620,91 +627,83 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     createSeason: async (seasonName) => {
-        await createNewSeason(seasonName);
-        const seasonsData = await getSeasons();
+        const { classId } = get();
+        if (!classId) return;
+        await createNewSeason(classId, seasonName);
+        const seasonsData = await getSeasons(classId);
         const activeSeason = seasonsData.find(s => s.status === 'active' || s.status === 'preparing') || seasonsData[0] || null;
         set({ seasons: seasonsData, currentSeason: activeSeason });
     },
 
     startSeason: async () => {
-        const season = get().currentSeason;
-        if (!season || season.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
+        const { classId, currentSeason } = get();
+        if (!classId || !currentSeason || currentSeason.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
         if (!confirm('시즌을 시작하면 선수/팀 구성 및 경기 일정 생성이 불가능해집니다. 시작하시겠습니까?')) return;
         try {
-            await updateSeason(season.id, { status: 'active' });
+            await updateSeason(classId, currentSeason.id, { status: 'active' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'active' } }));
         } catch (error) { console.error("시즌 시작 오류:", error); }
     },
 
     endSeason: async () => {
-        const season = get().currentSeason;
-        if (!season || season.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
+        const { classId, currentSeason } = get();
+        if (!classId || !currentSeason || currentSeason.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
         if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
 
         try {
-            // [수정] 시즌 종료 로직 실행 직전에 모든 관련 데이터를 Firestore에서 새로고침합니다.
-            const players = await getPlayers();
-            const teams = await getTeams(season.id);
-            const matches = await getMatches(season.id);
-
+            const players = await getPlayers(classId);
+            const teams = await getTeams(classId, currentSeason.id);
+            const matches = await getMatches(classId, currentSeason.id);
             const completedMatches = matches.filter(m => m.status === '완료');
 
             let stats = teams.map(team => ({
-                id: team.id,
-                teamName: team.teamName,
-                emblemId: team.emblemId,
-                emblemUrl: team.emblemUrl,
-                played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
+                id: team.id, teamName: team.teamName, emblemId: team.emblemId, emblemUrl: team.emblemUrl,
+                played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0, goalDifference: 0
             }));
 
             completedMatches.forEach(match => {
                 const teamA = stats.find(t => t.id === match.teamA_id);
                 const teamB = stats.find(t => t.id === match.teamB_id);
                 if (!teamA || !teamB) return;
-                teamA.goalsFor += match.teamA_score;
-                teamB.goalsFor += match.teamB_score;
+                teamA.goalsFor += match.teamA_score; teamB.goalsFor += match.teamB_score;
                 teamA.goalDifference += match.teamA_score - match.teamB_score;
                 teamB.goalDifference += match.teamB_score - match.teamA_score;
-                if (match.teamA_score > match.teamB_score) teamA.points += 3;
-                else if (match.teamB_score > match.teamA_score) teamB.points += 3;
-                else { teamA.points++; teamB.points++; }
+                if (match.teamA_score > match.teamB_score) { teamA.points += 3; teamA.wins++; teamB.losses++; }
+                else if (match.teamB_score > match.teamA_score) { teamB.points += 3; teamB.wins++; teamA.losses++; }
+                else { teamA.points++; teamB.points++; teamA.draws++; teamB.draws++; }
             });
+
             stats.sort((a, b) => {
                 if (b.points !== a.points) return b.points - a.points;
                 if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
                 return b.goalsFor - a.goalsFor;
             });
 
-            // --- [수정 시작] 칭호 부여 로직 추가 ---
-            // 1. 우승팀에게 '리그의 지배자' 칭호 부여
             if (stats.length > 0) {
-                const winningTeamId = stats[0].id;
-                const winningTeam = teams.find(t => t.id === winningTeamId);
-                if (winningTeam && winningTeam.members.length > 0) {
+                const winningTeam = teams.find(t => t.id === stats[0].id);
+                if (winningTeam?.members.length > 0) {
                     for (const memberId of winningTeam.members) {
-                        await grantTitleToPlayer(memberId, 'ruler_of_the_league');
+                        await grantTitleToPlayer(classId, memberId, 'ruler_of_the_league');
                     }
                 }
             }
 
             const prizeConfig = [
-                { rank: 1, prize: season.winningPrize || 0, label: "우승" },
-                { rank: 2, prize: season.secondPlacePrize || 0, label: "준우승" },
-                { rank: 3, prize: season.thirdPlacePrize || 0, label: "3위" }
+                { rank: 1, prize: currentSeason.winningPrize || 0, label: "우승" },
+                { rank: 2, prize: currentSeason.secondPlacePrize || 0, label: "준우승" },
+                { rank: 3, prize: currentSeason.thirdPlacePrize || 0, label: "3위" }
             ];
 
             for (const config of prizeConfig) {
                 if (stats.length >= config.rank && config.prize > 0) {
-                    const rankedTeamId = stats[config.rank - 1].id;
-                    const rankedTeam = teams.find(t => t.id === rankedTeamId);
-                    if (rankedTeam && rankedTeam.members.length > 0) {
-                        await get().batchAdjustPoints(rankedTeam.members, config.prize, `${season.seasonName} ${config.label} 보상`);
+                    const rankedTeam = teams.find(t => t.id === stats[config.rank - 1].id);
+                    if (rankedTeam?.members.length > 0) {
+                        await get().batchAdjustPoints(rankedTeam.members, config.prize, `${currentSeason.seasonName} ${config.label} 보상`);
                     }
                 }
             }
 
-            // 2. 득점왕에게 '득점 기계' 칭호 부여
-            const topScorerPrize = season.topScorerPrize || 0;
+            const topScorerPrize = currentSeason.topScorerPrize || 0;
             const scorerPoints = {};
             completedMatches.forEach(match => {
                 if (match.scorers) {
@@ -715,37 +714,31 @@ export const useLeagueStore = create((set, get) => ({
             });
 
             const maxGoals = Math.max(0, ...Object.values(scorerPoints));
-
             if (maxGoals > 0) {
                 const topScorers = Object.keys(scorerPoints).filter(playerId => scorerPoints[playerId] === maxGoals);
                 if (topScorers.length > 0) {
                     if (topScorerPrize > 0) {
-                        await get().batchAdjustPoints(topScorers, topScorerPrize, `${season.seasonName} 득점왕 보상`);
+                        await get().batchAdjustPoints(topScorers, topScorerPrize, `${currentSeason.seasonName} 득점왕 보상`);
                     }
                     for (const scorerId of topScorers) {
-                        await grantTitleToPlayer(scorerId, 'goal_machine');
+                        await grantTitleToPlayer(classId, scorerId, 'goal_machine');
                     }
                 }
             }
-            // --- [수정 끝] ---
 
             const playersInSeason = teams.flatMap(team => team.members)
-                .map(playerId => players.find(p => p.id === playerId))
-                .filter(Boolean);
+                .map(playerId => players.find(p => p.id === playerId)).filter(Boolean);
 
             if (playersInSeason.length > 0) {
-                // [수정] saveAvatarMemorials 호출 시 오류를 잡아내도록 로직을 보강합니다.
                 try {
-                    await saveAvatarMemorials(season.id, playersInSeason);
+                    await saveAvatarMemorials(classId, currentSeason.id, playersInSeason);
                 } catch (error) {
                     console.error("아바타 박제 중 오류 발생:", error);
-                    alert("시즌 종료 시 아바타 박제에 실패했습니다. (관리자 콘솔을 확인하세요)");
+                    alert("시즌 종료 시 아바타 박제에 실패했습니다.");
                 }
-            } else {
-                console.warn("시즌에 참가한 플레이어가 없어 아바타를 박제하지 못했습니다.");
             }
 
-            await updateSeason(season.id, { status: 'completed' });
+            await updateSeason(classId, currentSeason.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));
             alert('시즌이 종료되고 순위별 보상 및 칭호가 지급되었습니다.');
 
@@ -754,11 +747,12 @@ export const useLeagueStore = create((set, get) => ({
             alert("시즌 종료 중 오류가 발생했습니다.");
         }
     },
-    // 교체할 부분의 아랫 한 줄 코드
-    updateSeasonDetails: async (seasonId, dataToUpdate) => {
-        try {
 
-            await updateSeason(seasonId, dataToUpdate);
+    updateSeasonDetails: async (seasonId, dataToUpdate) => {
+        const { classId } = get();
+        if (!classId) return;
+        try {
+            await updateSeason(classId, seasonId, dataToUpdate);
             set(state => ({
                 seasons: state.seasons.map(s => s.id === seasonId ? { ...s, ...dataToUpdate } : s),
                 currentSeason: state.currentSeason?.id === seasonId ? { ...state.currentSeason, ...dataToUpdate } : state.currentSeason
@@ -770,29 +764,33 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     linkPlayer: async (playerId, authUid, role) => {
-        if (!playerId || !authUid || !role) return alert('선수, 사용자, 역할을 모두 선택해야 합니다.');
+        const { classId } = get();
+        if (!classId || !playerId || !authUid || !role) return alert('선수, 사용자, 역할을 모두 선택해야 합니다.');
         try {
-            await linkPlayerToAuth(playerId, authUid, role);
-            const players = await getPlayers();
+            await linkPlayerToAuth(classId, playerId, authUid, role);
+            const players = await getPlayers(classId);
             set({ players });
             alert('성공적으로 연결되었습니다.');
         } catch (error) { console.error("계정 연결 오류:", error); }
     },
 
     removePlayer: async (playerId) => {
-        if (!confirm('정말로 이 선수를 삭제하시겠습니까?')) return;
-        await deletePlayer(playerId);
-        const players = await getPlayers();
+        const { classId } = get();
+        if (!classId || !confirm('정말로 이 선수를 삭제하시겠습니까?')) return;
+        await deletePlayer(classId, playerId);
+        const players = await getPlayers(classId);
         set({ players });
     },
 
     togglePlayerStatus: async (playerId, currentStatus) => {
+        const { classId } = get();
+        if (!classId) return;
         const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
-        const actionText = newStatus === 'inactive' ? '활성화' : '비활성화';
+        const actionText = newStatus === 'inactive' ? '비활성화' : '활성화';
         if (!confirm(`이 선수를 ${actionText} 상태로 변경하시겠습니까?`)) return;
 
         try {
-            await updatePlayerStatus(playerId, newStatus);
+            await updatePlayerStatus(classId, playerId, newStatus);
             set(state => ({
                 players: state.players.map(p =>
                     p.id === playerId ? { ...p, status: newStatus } : p
@@ -806,30 +804,30 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     addNewTeam: async (teamName) => {
+        const { classId, currentSeason } = get();
+        if (!classId || !currentSeason) return alert('현재 시즌 정보를 불러올 수 없습니다.');
         if (!teamName.trim()) return alert('팀 이름을 입력해주세요.');
-        const seasonId = get().currentSeason?.id;
-        if (!seasonId) return alert('현재 시즌 정보를 불러올 수 없습니다.');
-        await addTeam({ teamName, seasonId, captainId: null, members: [] });
-        const updatedTeams = await getTeams(seasonId);
+
+        await addTeam(classId, { teamName, seasonId: currentSeason.id, captainId: null, members: [] });
+        const updatedTeams = await getTeams(classId, currentSeason.id);
         set({ teams: updatedTeams });
     },
 
     removeTeam: async (teamId) => {
-        if (!confirm('정말로 이 팀을 삭제하시겠습니까?')) return;
-        await deleteTeam(teamId);
-        const seasonId = get().currentSeason?.id;
-        const updatedTeams = await getTeams(seasonId);
+        const { classId, currentSeason } = get();
+        if (!classId || !currentSeason || !confirm('정말로 이 팀을 삭제하시겠습니까?')) return;
+        await deleteTeam(classId, teamId);
+        const updatedTeams = await getTeams(classId, currentSeason.id);
         set({ teams: updatedTeams });
     },
 
     setTeamCaptain: async (teamId, captainId) => {
+        const { classId, currentSeason } = get();
+        if (!classId || !currentSeason) return;
         try {
-            await updateTeamCaptain(teamId, captainId);
-            const seasonId = get().currentSeason?.id;
-            if (seasonId) {
-                const updatedTeams = await getTeams(seasonId);
-                set({ teams: updatedTeams });
-            }
+            await updateTeamCaptain(classId, teamId, captainId);
+            const updatedTeams = await getTeams(classId, currentSeason.id);
+            set({ teams: updatedTeams });
             alert('주장이 임명되었습니다.');
         } catch (error) {
             alert('주장 임명 중 오류가 발생했습니다.');
@@ -837,15 +835,17 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     batchCreateTeams: async (maleCount, femaleCount) => {
-        const seasonId = get().currentSeason?.id;
-        if (!seasonId) return alert('현재 시즌 정보를 불러올 수 없습니다.');
+        const { classId, currentSeason } = get();
+        if (!classId || !currentSeason) return alert('현재 시즌 정보를 불러올 수 없습니다.');
+
         const newTeams = [];
-        for (let i = 1; i <= maleCount; i++) newTeams.push({ teamName: `남자 ${i}팀`, gender: '남', seasonId, captainId: null, members: [] });
-        for (let i = 1; i <= femaleCount; i++) newTeams.push({ teamName: `여자 ${i}팀`, gender: '여', seasonId, captainId: null, members: [] });
+        for (let i = 1; i <= maleCount; i++) newTeams.push({ teamName: `남자 ${i}팀`, gender: '남', seasonId: currentSeason.id, captainId: null, members: [] });
+        for (let i = 1; i <= femaleCount; i++) newTeams.push({ teamName: `여자 ${i}팀`, gender: '여', seasonId: currentSeason.id, captainId: null, members: [] });
+
         if (newTeams.length > 0 && confirm(`${newTeams.length}개의 팀을 생성하시겠습니까?`)) {
             try {
-                await batchAddTeams(newTeams);
-                const updatedTeams = await getTeams(seasonId);
+                await batchAddTeams(classId, newTeams);
+                const updatedTeams = await getTeams(classId, currentSeason.id);
                 set({ teams: updatedTeams });
                 alert('팀이 성공적으로 생성되었습니다.');
             } catch (error) { console.error("팀 일괄 생성 오류:", error); }
@@ -853,34 +853,38 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     assignPlayerToTeam: async (teamId, playerId) => {
-        if (!playerId) return;
-        const team = get().teams.find(t => t.id === teamId);
+        const { classId, teams, currentSeason } = get();
+        if (!classId || !currentSeason || !playerId) return;
+
+        const team = teams.find(t => t.id === teamId);
         if (team.members.includes(playerId)) return alert('이미 팀에 속한 선수입니다.');
-        await updateTeamMembers(teamId, [...team.members, playerId]);
-        const seasonId = get().currentSeason?.id;
-        const updatedTeams = await getTeams(seasonId);
+
+        await updateTeamMembers(classId, teamId, [...team.members, playerId]);
+        const updatedTeams = await getTeams(classId, currentSeason.id);
         set({ teams: updatedTeams });
     },
 
     unassignPlayerFromTeam: async (teamId, playerId) => {
-        const team = get().teams.find(t => t.id === teamId);
-        await updateTeamMembers(teamId, team.members.filter(id => id !== playerId));
-        const seasonId = get().currentSeason?.id;
-        const updatedTeams = await getTeams(seasonId);
+        const { classId, teams, currentSeason } = get();
+        if (!classId || !currentSeason) return;
+
+        const team = teams.find(t => t.id === teamId);
+        await updateTeamMembers(classId, teamId, team.members.filter(id => id !== playerId));
+        const updatedTeams = await getTeams(classId, currentSeason.id);
         set({ teams: updatedTeams });
     },
 
     autoAssignTeams: async () => {
-        if (!confirm('팀원을 자동 배정하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
-        const { players, teams, currentSeason } = get();
+        const { classId, players, teams, currentSeason } = get();
+        if (!classId || !currentSeason || !confirm('팀원을 자동 배정하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
+
         const numTeams = teams.length;
         if (players.length === 0 || numTeams === 0) return alert('선수와 팀이 모두 필요합니다.');
 
         try {
-            // 1. 모든 과거 시즌의 경기 기록을 가져와 선수별 '통산 누적 득점'을 계산합니다.
-            const allSeasons = await getSeasons();
+            const allSeasons = await getSeasons(classId);
             const pastSeasons = allSeasons.filter(s => s.id !== currentSeason.id && s.status === 'completed');
-            const pastMatchesPromises = pastSeasons.map(s => getMatches(s.id));
+            const pastMatchesPromises = pastSeasons.map(s => getMatches(classId, s.id));
             const pastMatchesBySeason = await Promise.all(pastMatchesPromises);
             const allPastMatches = pastMatchesBySeason.flat();
 
@@ -895,32 +899,24 @@ export const useLeagueStore = create((set, get) => ({
                 }
             });
 
-            // 2. 배정 대상 선수 필터링 및 통산 득점순 정렬
             const activePlayers = players.filter(p => p.status !== 'inactive' && p.role !== 'admin');
-            const scoreSorter = (a, b) => (playerGoals[b.id] || 0) - (playerGoals[a.id] || 0);
-            const sortedPlayers = [...activePlayers].sort(scoreSorter);
+            const sortedPlayers = [...activePlayers].sort((a, b) => (playerGoals[b.id] || 0) - (playerGoals[a.id] || 0));
 
-            // 3. 팀 업데이트를 위한 배열 초기화 (성별 카운트 포함)
             const teamUpdates = teams.map(team => ({ id: team.id, members: [], captainId: null, genderCount: { '남': 0, '여': 0 } }));
 
-            // 4. 상위 득점자(팀 수만큼)를 각 팀에 분리 배정 (주장 지정 없이)
             const topPlayers = sortedPlayers.splice(0, numTeams);
             const shuffledTeamUpdates = [...teamUpdates].sort(() => 0.5 - Math.random());
             topPlayers.forEach((player, index) => {
                 const team = shuffledTeamUpdates[index];
                 if (team) {
                     team.members.push(player.id);
-                    if (player.gender) {
-                        team.genderCount[player.gender]++;
-                    }
+                    if (player.gender) team.genderCount[player.gender]++;
                 }
             });
 
-            // 5. 남은 선수들을 성별로 분리 후 랜덤으로 섞기
             const remainingMalePlayers = sortedPlayers.filter(p => p.gender === '남').sort(() => 0.5 - Math.random());
             const remainingFemalePlayers = sortedPlayers.filter(p => p.gender === '여').sort(() => 0.5 - Math.random());
 
-            // 6. 성별을 고려하여 남은 선수 배정
             const assignRemainingPlayers = (playersToAssign, gender) => {
                 playersToAssign.forEach(player => {
                     teamUpdates.sort((a, b) => {
@@ -940,7 +936,6 @@ export const useLeagueStore = create((set, get) => ({
             assignRemainingPlayers(remainingMalePlayers, '남');
             assignRemainingPlayers(remainingFemalePlayers, '여');
 
-            // 7. [핵심 수정] 모든 팀원 배정이 끝난 후, 각 팀에서 랜덤으로 주장을 선출합니다.
             teamUpdates.forEach(team => {
                 if (team.members.length > 0) {
                     const randomIndex = Math.floor(Math.random() * team.members.length);
@@ -948,11 +943,10 @@ export const useLeagueStore = create((set, get) => ({
                 }
             });
 
-            // 8. DB 업데이트 (임시 데이터 genderCount 제외)
             const finalTeamUpdates = teamUpdates.map(({ id, members, captainId }) => ({ id, members, captainId }));
-            await batchUpdateTeams(finalTeamUpdates);
+            await batchUpdateTeams(classId, finalTeamUpdates);
 
-            const updatedTeams = await getTeams(currentSeason.id);
+            const updatedTeams = await getTeams(classId, currentSeason.id);
             set({ teams: updatedTeams });
             alert('자동 배정이 완료되었습니다.');
 
@@ -963,69 +957,41 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     generateSchedule: async () => {
-        if (!confirm('경기 일정을 새로 생성하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
-        const { teams, leagueType, currentSeason } = get();
-        if (!currentSeason) return alert('현재 시즌 정보가 없습니다.');
+        const { classId, teams, leagueType, currentSeason } = get();
+        if (!classId || !currentSeason) return alert('현재 시즌 정보가 없습니다.');
         if (teams.length < 2) return alert('최소 2팀이 필요합니다.');
+        if (!confirm('경기 일정을 새로 생성하시겠습니까? 기존 경기 일정은 모두 삭제됩니다.')) return;
 
         let matchesToCreate = [];
-
         const createRoundRobinSchedule = (teamList) => {
             if (teamList.length < 2) return [];
+            let scheduleTeams = [...teamList];
+            if (scheduleTeams.length % 2 !== 0) scheduleTeams.push({ id: 'BYE' });
 
-            let teams = [...teamList];
-            if (teams.length % 2 !== 0) {
-                teams.push({ id: 'BYE', teamName: 'BYE' });
-            }
-
-            const numTeams = teams.length;
+            const numTeams = scheduleTeams.length;
             const rounds = [];
-            const half = numTeams / 2;
-
-            const teamIndexes = teams.map((_, i) => i);
-            const fixedTeam = teamIndexes.shift();
-
             for (let round = 0; round < numTeams - 1; round++) {
                 const roundMatches = [];
-                const matchUp = [teams[fixedTeam], teams[teamIndexes[0]]];
-                if (matchUp[0].id !== 'BYE' && matchUp[1].id !== 'BYE') {
-                    roundMatches.push({ teamA_id: matchUp[0].id, teamB_id: matchUp[1].id });
-                }
-
-                for (let i = 1; i < half; i++) {
-                    const matchUp = [teams[teamIndexes[i]], teams[teamIndexes[teamIndexes.length - i]]];
-                    if (matchUp[0].id !== 'BYE' && matchUp[1].id !== 'BYE') {
-                        roundMatches.push({ teamA_id: matchUp[0].id, teamB_id: matchUp[1].id });
+                for (let i = 0; i < numTeams / 2; i++) {
+                    const teamA = scheduleTeams[i];
+                    const teamB = scheduleTeams[numTeams - 1 - i];
+                    if (teamA.id !== 'BYE' && teamB.id !== 'BYE') {
+                        roundMatches.push({ teamA_id: teamA.id, teamB_id: teamB.id });
                     }
                 }
                 rounds.push(roundMatches);
-
-                teamIndexes.unshift(teamIndexes.pop());
+                scheduleTeams.splice(1, 0, scheduleTeams.pop());
             }
-
-            const homeAndAwayRounds = [...rounds, ...rounds.map(round => round.map(match => ({ teamA_id: match.teamB_id, teamB_id: match.teamA_id })))];
-            const finalSchedule = homeAndAwayRounds.flat();
-
-            return finalSchedule.map(match => ({
-                ...match,
-                seasonId: currentSeason.id,
-                teamA_score: null,
-                teamB_score: null,
-                status: '예정'
+            const homeAndAway = [...rounds, ...rounds.map(round => round.map(match => ({ teamA_id: match.teamB_id, teamB_id: match.teamA_id })))];
+            return homeAndAway.flat().map(match => ({
+                ...match, seasonId: currentSeason.id, teamA_score: null, teamB_score: null, status: '예정'
             }));
         };
 
         if (leagueType === 'separated') {
             const maleTeams = teams.filter(t => t.gender === '남');
             const femaleTeams = teams.filter(t => t.gender === '여');
-            const maleMatches = createRoundRobinSchedule(maleTeams);
-            const femaleMatches = createRoundRobinSchedule(femaleTeams);
-
-            let i = 0, j = 0;
-            while (i < maleMatches.length || j < femaleMatches.length) {
-                if (i < maleMatches.length) matchesToCreate.push(maleMatches[i++]);
-                if (j < femaleMatches.length) matchesToCreate.push(femaleMatches[j++]);
-            }
+            matchesToCreate = [...createRoundRobinSchedule(maleTeams), ...createRoundRobinSchedule(femaleTeams)];
         } else {
             matchesToCreate = createRoundRobinSchedule(teams);
         }
@@ -1033,9 +999,9 @@ export const useLeagueStore = create((set, get) => ({
         if (matchesToCreate.length === 0) return alert('생성할 경기가 없습니다. 팀 구성을 확인해주세요.');
 
         try {
-            await deleteMatchesBySeason(currentSeason.id);
-            await batchAddMatches(matchesToCreate);
-            const updatedMatches = await getMatches(currentSeason.id);
+            await deleteMatchesBySeason(classId, currentSeason.id);
+            await batchAddMatches(classId, matchesToCreate);
+            const updatedMatches = await getMatches(classId, currentSeason.id);
             set({ matches: updatedMatches });
             alert('새로운 경기 일정이 성공적으로 생성되었습니다.');
         } catch (error) {
@@ -1045,23 +1011,27 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     saveScores: async (matchId, scores, scorers) => {
+        const { classId } = get();
+        if (!classId) return;
         try {
             const recorderId = auth.currentUser?.uid;
             if (!recorderId) {
                 alert("로그인 정보가 없습니다. 다시 로그인해주세요.");
                 return;
             }
-            await updateMatchScores(matchId, scores, scorers, recorderId);
+            await updateMatchScores(classId, matchId, scores, scorers, recorderId);
         } catch (error) { console.error("점수 저장 오류:", error); }
     },
 
     checkAttendance: async () => {
+        const { classId } = get();
         const user = auth.currentUser;
-        if (!user) return;
+        if (!classId || !user) return;
+
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) return;
         try {
-            const isAvailable = await isAttendanceRewardAvailable(myPlayerData.id);
+            const isAvailable = await isAttendanceRewardAvailable(classId, myPlayerData.id);
             if (isAvailable) {
                 set({ showAttendanceModal: true });
             }
@@ -1071,13 +1041,15 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     claimAttendanceReward: async () => {
+        const { classId } = get();
         const user = auth.currentUser;
-        if (!user) return;
+        if (!classId || !user) return;
+
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) return;
         try {
             const rewardAmount = 100;
-            await grantAttendanceReward(myPlayerData.id, rewardAmount);
+            await grantAttendanceReward(classId, myPlayerData.id, rewardAmount);
             set({ showAttendanceModal: false });
         } catch (error) {
             console.error("출석 보상 지급 중 오류:", error);
@@ -1098,12 +1070,8 @@ export const useLeagueStore = create((set, get) => ({
         if (!teams || teams.length === 0) return [];
 
         const completedMatches = matches.filter(m => m.status === '완료');
-
         let stats = teams.map(team => ({
-            id: team.id,
-            teamName: team.teamName,
-            emblemId: team.emblemId,
-            emblemUrl: team.emblemUrl,
+            id: team.id, teamName: team.teamName, emblemId: team.emblemId, emblemUrl: team.emblemUrl,
             played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0,
         }));
 
