@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { css, keyframes } from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { db } from '../api/firebase';
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
 import whistleSound from '../assets/whistle.mp3';
 import { emblemMap } from '../utils/emblemMap';
-// ▼▼▼ [추가] WinnerPage 컴포넌트 import ▼▼▼
 import WinnerPage from './WinnerPage';
 
 // --- Styled Components ---
@@ -195,6 +194,7 @@ function PlayerNameplate({ player, isCaptain, goals, isHighlight }) {
 }
 
 function BroadcastPage({ isMiniMode = false }) {
+  const { classId } = useClassStore(); // [추가]
   const { players, teams, currentSeason } = useLeagueStore();
   const [matchForDisplay, setMatchForDisplay] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
@@ -205,14 +205,13 @@ function BroadcastPage({ isMiniMode = false }) {
   const audioRef = useRef(new Audio(whistleSound));
   const confettiCanvasRef = useRef(null);
   const prevMatchesRef = useRef([]);
-  const [showWinnerPage, setShowWinnerPage] = useState(false); // [추가] 우승 페이지 표시 상태
+  const [showWinnerPage, setShowWinnerPage] = useState(false);
 
   const playWhistle = () => {
     audioRef.current.play().catch(error => console.error("오디오 재생 오류:", error));
   };
 
   useEffect(() => {
-    // [추가] 시즌이 종료되면 우승 페이지를 표시
     if (currentSeason?.status === 'completed') {
       setShowWinnerPage(true);
     } else {
@@ -221,8 +220,9 @@ function BroadcastPage({ isMiniMode = false }) {
   }, [currentSeason]);
 
   useEffect(() => {
-    if (!currentSeason) return;
-    const matchesRef = collection(db, 'matches');
+    if (!classId || !currentSeason) return; // [수정] classId 가드 추가
+
+    const matchesRef = collection(db, 'classes', classId, 'matches'); // [수정]
     const q = query(matchesRef, where("seasonId", "==", currentSeason.id));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -281,7 +281,7 @@ function BroadcastPage({ isMiniMode = false }) {
       prevMatchesRef.current = matchesData;
     });
     return () => unsubscribe();
-  }, [currentSeason]);
+  }, [currentSeason, classId]); // [수정]
 
   useEffect(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -355,7 +355,6 @@ function BroadcastPage({ isMiniMode = false }) {
     }
   }, [matchForDisplay, timeLeft]);
 
-  // ▼▼▼ [수정] showWinnerPage가 true이면 WinnerPage를 렌더링 ▼▼▼
   if (showWinnerPage) {
     return <WinnerPage />;
   }
