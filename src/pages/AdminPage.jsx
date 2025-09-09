@@ -744,6 +744,7 @@ const ItemCard = styled.div`
  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `;
 // src/pages/AdminPage.jsx (2/7)
+// src/pages/AdminPage.jsx (2/7)
 
 const getBackgroundPosition = (category) => {
     switch (category) {
@@ -1347,9 +1348,11 @@ function MessageManager() {
         </FullWidthSection>
     );
 }
+// src/pages/AdminPage.jsx (3/7)
 
 // ▼▼▼ [수정] MissionCommentMonitor를 MessageManager 외부로 이동 ▼▼▼
 function MissionCommentMonitor() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, missions, archivedMissions, missionSubmissions } = useLeagueStore();
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -1360,17 +1363,19 @@ function MissionCommentMonitor() {
 
     useEffect(() => {
         const fetchComments = async () => {
+            if (!classId) return; // ✅ classId 가드 추가
             setIsLoading(true);
-            const comments = await getAllMissionComments();
+            const comments = await getAllMissionComments(classId); // ✅ classId 전달
             setAllComments(comments);
             setIsLoading(false);
         };
         fetchComments();
-    }, []);
+    }, [classId]); // ✅ 의존성 배열에 classId 추가
 
     const handleDeleteComment = async (submissionId, commentId) => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
-            await deleteMissionComment(submissionId, commentId);
+            await deleteMissionComment(classId, submissionId, commentId); // ✅ classId 전달
             setAllComments(prev => prev.filter(c => c.id !== commentId));
         }
     };
@@ -1386,7 +1391,6 @@ function MissionCommentMonitor() {
             studentName: student?.name || '알 수 없는 학생',
         }
     };
-
 
     if (isLoading) return <Section><p>댓글을 불러오는 중...</p></Section>;
 
@@ -1419,27 +1423,29 @@ function MissionCommentMonitor() {
     );
 }
 
-
 function GoalManager() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const [title, setTitle] = useState('');
     const [targetPoints, setTargetPoints] = useState(10000);
     const [activeGoals, setActiveGoals] = useState([]);
 
     const fetchGoals = async () => {
-        const goals = await getActiveGoals();
+        if (!classId) return; // ✅ classId 가드 추가
+        const goals = await getActiveGoals(classId); // ✅ classId 전달
         setActiveGoals(goals);
     };
 
     useEffect(() => {
         fetchGoals();
-    }, []);
+    }, [classId]); // ✅ 의존성 배열에 classId 추가
 
     const handleCreateGoal = async () => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (!title.trim() || targetPoints <= 0) {
             return alert('목표 이름과 올바른 목표 포인트를 입력해주세요.');
         }
         try {
-            await createClassGoal({ title, targetPoints: Number(targetPoints) });
+            await createClassGoal(classId, { title, targetPoints: Number(targetPoints) }); // ✅ classId 전달
             alert('새로운 학급 목표가 설정되었습니다!');
             setTitle('');
             setTargetPoints(10000);
@@ -1450,11 +1456,12 @@ function GoalManager() {
     };
 
     const handleGoalStatusToggle = async (goal) => {
+        if (!classId) return; // ✅ classId 가드 추가
         const newStatus = goal.status === 'paused' ? 'active' : 'paused';
         const actionText = newStatus === 'paused' ? '일시중단' : '다시시작';
         if (window.confirm(`'${goal.title}' 목표를 '${actionText}' 상태로 변경하시겠습니까?`)) {
             try {
-                await updateClassGoalStatus(goal.id, newStatus);
+                await updateClassGoalStatus(classId, goal.id, newStatus); // ✅ classId 전달
                 alert(`목표가 ${actionText} 처리되었습니다.`);
                 fetchGoals();
             } catch (error) {
@@ -1464,9 +1471,10 @@ function GoalManager() {
     };
 
     const handleGoalDelete = async (goalId) => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (window.confirm("정말로 이 목표를 삭제하시겠습니까? 기부 내역도 함께 사라집니다.")) {
             try {
-                await deleteClassGoal(goalId);
+                await deleteClassGoal(classId, goalId); // ✅ classId 전달
                 alert('목표가 삭제되었습니다.');
                 fetchGoals();
             } catch (error) {
@@ -1476,9 +1484,10 @@ function GoalManager() {
     };
 
     const handleGoalComplete = async (goalId) => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (window.confirm("이 목표를 '완료' 처리하여 대시보드에서 숨기시겠습니까?")) {
             try {
-                await completeClassGoal(goalId);
+                await completeClassGoal(classId, goalId); // ✅ classId 전달
                 alert('목표가 완료 처리되었습니다.');
                 fetchGoals();
             } catch (error) {
@@ -1486,7 +1495,6 @@ function GoalManager() {
             }
         }
     };
-
 
     return (
         <FullWidthSection>
@@ -1556,20 +1564,15 @@ function GoalManager() {
 }
 
 function MissionManager({ onNavigate }) {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const {
-        missions,
-        archivedMissions,
-        archiveMission,
-        unarchiveMission,
-        removeMission,
-        reorderMissions,
-        editMission // [수정] editMission 액션을 스토어에서 가져옵니다.
+        missions, archivedMissions, archiveMission, unarchiveMission,
+        removeMission, reorderMissions, editMission
     } = useLeagueStore();
     const navigate = useNavigate();
     const sensors = useSensors(useSensor(PointerSensor));
 
-    // [수정] 생성/수정 모드를 관리하는 state 추가
-    const [editMode, setEditMode] = useState(null); // null이면 생성, mission 객체가 있으면 수정 모드
+    const [editMode, setEditMode] = useState(null);
     const [title, setTitle] = useState('');
     const [placeholderText, setPlaceholderText] = useState('');
     const [rewards, setRewards] = useState(['100', '', '']);
@@ -1578,21 +1581,18 @@ function MissionManager({ onNavigate }) {
     const [adminOnly, setAdminOnly] = useState(false);
     const [prerequisiteMissionId, setPrerequisiteMissionId] = useState('');
     const [showArchived, setShowArchived] = useState(false);
-    const [showAdvanced, setShowAdvanced] = useState({
-        rewards: false,
-        prerequisite: false,
-    });
+    const [showAdvanced, setShowAdvanced] = useState({ rewards: false, prerequisite: false });
     const [defaultPrivate, setDefaultPrivate] = useState(false);
-
 
     const handleDragEnd = (event) => {
         const { active, over } = event;
         if (active.id !== over.id) {
             const listKey = showArchived ? 'archivedMissions' : 'missions';
+            const missionsToDisplay = showArchived ? archivedMissions : missions;
             const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
             const newIndex = missionsToDisplay.findIndex(m => m.id === over.id);
             const newList = arrayMove(missionsToDisplay, oldIndex, newIndex);
-            reorderMissions(newList, listKey);
+            reorderMissions(newList, listKey); // reorderMissions는 내부에서 classId 처리
         }
     };
 
@@ -1600,7 +1600,6 @@ function MissionManager({ onNavigate }) {
         setSubmissionTypes(prev => ({ ...prev, [type]: !prev[type] }));
     };
 
-    // [추가] 수정 버튼 클릭 시 호출될 함수
     const handleEditClick = (mission) => {
         setEditMode(mission);
         setTitle(mission.title);
@@ -1619,10 +1618,9 @@ function MissionManager({ onNavigate }) {
         setAdminOnly(mission.adminOnly || false);
         setPrerequisiteMissionId(mission.prerequisiteMissionId || '');
         setDefaultPrivate(mission.defaultPrivate || false);
-        window.scrollTo(0, 0); // 페이지 상단으로 스크롤하여 수정 폼이 보이게 함
+        window.scrollTo(0, 0);
     };
 
-    // [추가] 수정/생성 취소 함수
     const handleCancel = () => {
         setEditMode(null);
         setTitle('');
@@ -1636,40 +1634,32 @@ function MissionManager({ onNavigate }) {
         setShowAdvanced({ rewards: false, prerequisite: false });
     };
 
-    // [수정] 생성과 수정을 모두 처리하는 저장 함수
     const handleSaveMission = async () => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (!title.trim() || !rewards[0]) {
             return alert('미션 이름과 기본 보상 포인트를 모두 입력해주세요.');
         }
 
-        const selectedTypes = Object.entries(submissionTypes)
-            .filter(([, isSelected]) => isSelected)
-            .map(([type]) => type);
+        const selectedTypes = Object.entries(submissionTypes).filter(([, isSelected]) => isSelected).map(([type]) => type);
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
-
         const finalRewards = rewards.map(r => Number(r)).filter(r => r > 0);
 
         const missionData = {
-            title,
-            rewards: finalRewards,
-            reward: finalRewards[0] || 0,
-            submissionType: typeToSend,
-            isFixed,
-            adminOnly,
+            title, rewards: finalRewards, reward: finalRewards[0] || 0,
+            submissionType: typeToSend, isFixed, adminOnly,
             prerequisiteMissionId: prerequisiteMissionId || null,
-            placeholderText: placeholderText.trim(),
-            defaultPrivate,
+            placeholderText: placeholderText.trim(), defaultPrivate,
         };
 
         try {
-            if (editMode) { // 수정 모드일 때
-                await editMission(editMode.id, missionData);
+            if (editMode) {
+                await editMission(editMode.id, missionData); // editMission은 내부에서 classId 처리
                 alert('미션이 성공적으로 수정되었습니다!');
-            } else { // 생성 모드일 때
-                await createMission(missionData);
+            } else {
+                await createMission(classId, missionData); // ✅ createMission 호출 시 classId 전달
                 alert('새로운 미션이 등록되었습니다!');
             }
-            handleCancel(); // 폼 초기화
+            handleCancel();
         } catch (error) {
             console.error("미션 저장 오류:", error);
             alert('미션 저장 중 오류가 발생했습니다.');
@@ -1683,20 +1673,8 @@ function MissionManager({ onNavigate }) {
             <SectionTitle>{editMode ? `미션 수정: ${editMode.title}` : '미션 관리 📜'}</SectionTitle>
             <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
                 <InputGroup>
-                    <input
-                        type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="미션 이름"
-                        style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
-                    />
-                    <ScoreInput
-                        type="number"
-                        value={rewards[0]}
-                        onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])}
-                        style={{ width: '80px' }}
-                        placeholder="기본 보상"
-                    />
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="미션 이름" style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }} />
+                    <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '80px' }} placeholder="기본 보상" />
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                         <label title="글 제출 필요"><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} /> 글</label>
                         <label title="사진 제출 필요"><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} /> 사진</label>
@@ -1705,12 +1683,7 @@ function MissionManager({ onNavigate }) {
 
                 {submissionTypes.text && (
                     <InputGroup>
-                        <TextArea
-                            value={placeholderText}
-                            onChange={(e) => setPlaceholderText(e.target.value)}
-                            placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요."
-                            style={{ minHeight: '60px' }}
-                        />
+                        <TextArea value={placeholderText} onChange={(e) => setPlaceholderText(e.target.value)} placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요." style={{ minHeight: '60px' }} />
                     </InputGroup>
                 )}
 
@@ -1735,13 +1708,7 @@ function MissionManager({ onNavigate }) {
                     <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
                     <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
                     <StyledButton onClick={() => setIsFixed(p => !p)} style={{ backgroundColor: isFixed ? '#17a2b8' : '#6c757d' }} title="매일 반복해서 수행할 수 있는 고정 미션으로 설정합니다. (예: 일기 쓰기)">{isFixed ? '반복(활성)' : '반복 미션'}</StyledButton>
-                    <StyledButton
-                        onClick={() => setDefaultPrivate(p => !p)}
-                        style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }}
-                        title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)"
-                    >
-                        {defaultPrivate ? '비공개' : '공개'}
-                    </StyledButton>
+                    <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)" >{defaultPrivate ? '비공개' : '공개'}</StyledButton>
                     <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? ' 관리자만(활성)' : '관리자만'}</StyledButton>
                     <SaveButton onClick={handleSaveMission}>{editMode ? '수정 완료' : '미션 출제'}</SaveButton>
                     {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
@@ -1761,13 +1728,13 @@ function MissionManager({ onNavigate }) {
                                     <SortableListItem
                                         key={mission.id}
                                         id={mission.id}
+                                        classId={classId} // ✅ classId 전달
                                         mission={mission}
-                                        navigate={navigate}
                                         unarchiveMission={unarchiveMission}
                                         archiveMission={archiveMission}
                                         removeMission={removeMission}
                                         handleEditClick={handleEditClick}
-                                        onNavigate={onNavigate} // 이 부분을 추가/수정합니다.
+                                        onNavigate={onNavigate}
                                     />
                                 ))
                             ) : (
@@ -2246,13 +2213,14 @@ function AvatarPartManager() {
         </FullWidthSection>
     );
 }
-
-// src/pages/AdminPage.jsx
+// src/pages/AdminPage.jsx (5/7)
 
 // =================================================================
 // ▼▼▼ [수정 완료] 마이룸 아이템 관리 컴포넌트 ▼▼▼
 // =================================================================
 function MyRoomItemManager() {
+    // 이 컴포넌트는 모든 학급이 공통으로 사용하는 아이템을 관리하므로 classId가 필요 없습니다.
+    // 따라서 보내주신 코드 그대로 유지합니다.
     const { fetchInitialData, updateLocalMyRoomItemDisplayName, batchMoveMyRoomItemCategory } = useLeagueStore();
     const myRoomItemsFromStore = useLeagueStore(state => state.myRoomItems);
 
@@ -2262,7 +2230,7 @@ function MyRoomItemManager() {
     const [isUploading, setIsUploading] = useState(false);
     const [prices, setPrices] = useState({});
     const [displayNames, setDisplayNames] = useState({});
-    const [widths, setWidths] = useState({}); // [신규] 아이템 너비 상태
+    const [widths, setWidths] = useState({});
     const [checkedItems, setCheckedItems] = useState(new Set());
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -2296,7 +2264,7 @@ function MyRoomItemManager() {
 
     const refreshItems = async () => {
         setIsLoading(true);
-        await fetchInitialData();
+        await fetchInitialData(); // fetchInitialData는 내부적으로 classId를 사용하므로 OK
         setIsLoading(false);
     };
 
@@ -2304,15 +2272,15 @@ function MyRoomItemManager() {
         setMyRoomItems(myRoomItemsFromStore);
         const initialPrices = {};
         const initialDisplayNames = {};
-        const initialWidths = {}; // [신규]
+        const initialWidths = {};
         myRoomItemsFromStore.forEach(item => {
             initialPrices[item.id] = item.price || 0;
             initialDisplayNames[item.id] = item.displayName || '';
-            initialWidths[item.id] = item.width || 15; // [신규] 기본값 15%
+            initialWidths[item.id] = item.width || 15;
         });
         setPrices(initialPrices);
         setDisplayNames(initialDisplayNames);
-        setWidths(initialWidths); // [신규]
+        setWidths(initialWidths);
         if (myRoomItemsFromStore.length > 0 || !useLeagueStore.getState().isLoading) {
             setIsLoading(false);
         }
@@ -2326,7 +2294,7 @@ function MyRoomItemManager() {
         }, {});
     }, [myRoomItems]);
 
-    const sortedCategories = ['하우스', '배경', '가구', '가전', '소품']; // 카테고리 목록 수정
+    const sortedCategories = ['하우스', '배경', '가구', '가전', '소품'];
     const [activeTab, setActiveTab] = useState('가구');
 
     useEffect(() => {
@@ -2343,7 +2311,7 @@ function MyRoomItemManager() {
     const handleFileChange = (e) => setFiles(Array.from(e.target.files));
     const handlePriceChange = (itemId, value) => setPrices(prev => ({ ...prev, [itemId]: value }));
     const handleDisplayNameChange = (itemId, value) => setDisplayNames(prev => ({ ...prev, [itemId]: value }));
-    const handleWidthChange = (itemId, value) => setWidths(prev => ({ ...prev, [itemId]: value })); // [신규]
+    const handleWidthChange = (itemId, value) => setWidths(prev => ({ ...prev, [itemId]: value }));
     const handleCheckboxChange = (itemId) => {
         setCheckedItems(prev => {
             const newSet = new Set(prev);
@@ -2404,7 +2372,6 @@ function MyRoomItemManager() {
 
             await batchUpdateMyRoomItemDetails(updates);
 
-            // ▼▼▼ [신규] 로컬 상태(zustand store) 직접 업데이트 ▼▼▼
             useLeagueStore.setState(state => {
                 const updatedMyRoomItems = state.myRoomItems.map(item => {
                     const update = updates.find(u => u.id === item.id);
@@ -2426,7 +2393,6 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템(${itemNames})을 영구적으로 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`)) {
             try {
                 await batchDeleteMyRoomItems(itemsToDelete);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
                 useLeagueStore.setState(state => ({
                     myRoomItems: state.myRoomItems.filter(item => !checkedItems.has(item.id))
                 }));
@@ -2452,10 +2418,7 @@ function MyRoomItemManager() {
                             const originalPrice = item.price;
                             const salePrice = Math.floor(originalPrice * (1 - salePercent / 100));
                             return {
-                                ...item,
-                                isSale: true,
-                                originalPrice,
-                                salePrice,
+                                ...item, isSale: true, originalPrice, salePrice,
                                 saleStartDate: { toDate: () => startDate },
                                 saleEndDate: { toDate: () => endDate }
                             };
@@ -2475,7 +2438,6 @@ function MyRoomItemManager() {
         if (window.confirm(`'${itemId}' 아이템의 세일을 즉시 종료하시겠습니까?`)) {
             try {
                 await batchEndMyRoomItemSale([itemId]);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
                 useLeagueStore.setState(state => ({
                     myRoomItems: state.myRoomItems.map(item =>
                         item.id === itemId ? { ...item, isSale: false, salePrice: null, originalPrice: null, saleStartDate: null, saleEndDate: null } : item
@@ -2502,7 +2464,6 @@ function MyRoomItemManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템을 [${dayNames}] 요일에만 판매하도록 설정하시겠습니까?\n(선택한 요일이 없으면 상시 판매로 변경됩니다.)`)) {
             try {
                 await batchUpdateMyRoomItemSaleDays(Array.from(checkedItems), dayArray);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
                 useLeagueStore.setState(state => ({
                     myRoomItems: state.myRoomItems.map(item =>
                         checkedItems.has(item.id) ? { ...item, saleDays: dayArray } : item
@@ -2527,13 +2488,11 @@ function MyRoomItemManager() {
                         <option value="가구">가구</option>
                         <option value="가전">가전</option>
                         <option value="소품">소품</option>
-
                     </select>
                     <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
                         {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
                     </SaveButton>
                 </InputGroup>
-
                 <InputGroup>
                     <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                         {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
@@ -2541,7 +2500,6 @@ function MyRoomItemManager() {
                     <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
                         {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
                     </SaveButton>
-                    {/* ▼▼▼ [수정] 아이템 이동 버튼 추가 ▼▼▼ */}
                     <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
                         {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
                     </SaveButton>
@@ -2549,7 +2507,6 @@ function MyRoomItemManager() {
                         {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
                     </SaveButton>
                 </InputGroup>
-
                 {isMoveMode && (<div style={{ border: '2px solid #ffc107', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff9e6' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
@@ -2571,7 +2528,6 @@ function MyRoomItemManager() {
                         </select>
                     </InputGroup>
                 </div>)}
-
                 {isSaleMode && (<div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0f8ff' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
@@ -2583,7 +2539,6 @@ function MyRoomItemManager() {
                         <span>종료일:</span><DatePicker selected={endDate} onChange={date => setEndDate(date)} dateFormat="yyyy/MM/dd" />
                     </InputGroup>
                 </div>)}
-
                 {isSaleDayMode && (<div style={{ border: '2px solid #17a2b8', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#f0faff' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
@@ -2598,7 +2553,6 @@ function MyRoomItemManager() {
                         ))}
                     </InputGroup>
                 </div>)}
-
                 {isDeleteMode && (<div style={{ border: '2px solid #dc3545', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff0f1' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: 0 }}>
                         <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
@@ -2607,7 +2561,6 @@ function MyRoomItemManager() {
                         </SaveButton>
                     </InputGroup>
                 </div>)}
-
                 <TabContainer>
                     {sortedCategories.map(category => (
                         <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
@@ -2615,7 +2568,6 @@ function MyRoomItemManager() {
                         </TabButton>
                     ))}
                 </TabContainer>
-
                 {isLoading ? <p>아이템 목록을 불러오는 중...</p> : (
                     <>
                         <ItemGrid>
@@ -2631,7 +2583,6 @@ function MyRoomItemManager() {
                                             </div>
                                         )}
                                         {isCurrentlyOnSale && <SaleBadge>SALE</SaleBadge>}
-
                                         <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginBottom: '0.5rem' }}>
                                             <input
                                                 type="text"
@@ -2642,18 +2593,15 @@ function MyRoomItemManager() {
                                             />
                                             <SaveButton onClick={() => handleSaveDisplayName(item.id)} style={{ padding: '0.5rem' }}>✓</SaveButton>
                                         </div>
-
                                         <ItemImage
                                             src={item.src}
                                             $category={item.category}
                                             style={{ backgroundSize: 'contain', backgroundPosition: 'center' }}
                                         />
-
                                         {saleDaysText && (
                                             <div style={{ fontSize: '0.8em', color: '#17a2b8', fontWeight: 'bold' }}>{saleDaysText}</div>
                                         )}
                                         <ScoreInput type="number" value={prices[item.id] || ''} onChange={(e) => handlePriceChange(item.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: '0.5rem 0' }} />
-                                        {/* ▼▼▼ [신규] 너비 조절 입력 필드 추가 ▼▼▼ */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                                             <label htmlFor={`width-${item.id}`} style={{ fontSize: '0.8rem' }}>크기(%):</label>
                                             <ScoreInput id={`width-${item.id}`} type="number" value={widths[item.id] || ''} onChange={(e) => handleWidthChange(item.id, e.target.value)} style={{ width: '100%', margin: 0 }} />
@@ -2744,8 +2692,10 @@ function RoleManager() {
     );
 }
 
+// src/pages/AdminPage.jsx (6/7)
 
 function PointManager() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, batchAdjustPoints } = useLeagueStore();
     const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
     const [amount, setAmount] = useState(0);
@@ -2775,6 +2725,7 @@ function PointManager() {
     };
 
     const handleSubmit = () => {
+        // ✅ batchAdjustPoints 호출 시 classId 전달 (스토어 액션 내부에서 classId를 사용하므로 직접 전달)
         batchAdjustPoints(Array.from(selectedPlayerIds), Number(amount), reason.trim());
         setSelectedPlayerIds(new Set());
         setAmount(0);
@@ -2814,12 +2765,8 @@ function PointManager() {
                         return (
                             <div key={player.id} title={isAdmin ? "관리자는 선택할 수 없습니다." : ""}>
                                 <label style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.5rem',
-                                    padding: '0.5rem',
-                                    opacity: isAdmin ? 0.5 : 1,
-                                    cursor: isAdmin ? 'not-allowed' : 'pointer'
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem',
+                                    opacity: isAdmin ? 0.5 : 1, cursor: isAdmin ? 'not-allowed' : 'pointer'
                                 }}>
                                     <input
                                         type="checkbox"
@@ -2837,18 +2784,12 @@ function PointManager() {
 
                 <InputGroup>
                     <input
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="변경할 포인트 (차감 시 음수)"
-                        style={{ width: '200px', padding: '0.5rem' }}
+                        type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+                        placeholder="변경할 포인트 (차감 시 음수)" style={{ width: '200px', padding: '0.5rem' }}
                     />
                     <input
-                        type="text"
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        placeholder="조정 사유 (예: 봉사활동 보상)"
-                        style={{ flex: 1, padding: '0.5rem' }}
+                        type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+                        placeholder="조정 사유 (예: 봉사활동 보상)" style={{ flex: 1, padding: '0.5rem' }}
                     />
                 </InputGroup>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -2866,6 +2807,7 @@ function PointManager() {
 }
 
 function MatchRow({ match, isInitiallyOpen, onSave }) {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, teams, saveScores, currentSeason } = useLeagueStore();
 
     const teamA = useMemo(() => teams.find(t => t.id === match.teamA_id), [teams, match.teamA_id]);
@@ -2886,9 +2828,7 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     const [scoreB, setScoreB] = useState(initialScore.b);
     const [showScorers, setShowScorers] = useState(isInitiallyOpen);
     const [scorers, setScorers] = useState(match.scorers || {});
-
     const [ownGoals, setOwnGoals] = useState({ A: 0, B: 0 });
-
     const isSeasonActive = currentSeason?.status === 'active';
 
     useEffect(() => {
@@ -2898,37 +2838,25 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     const handleScorerChange = (playerId, amount) => {
         const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
         const currentGoals = scorers[playerId] || 0;
-
         if (amount === -1 && currentGoals === 0) return;
-
         if (amount === 1) {
             if (playerTeam === 'A' && scoreB === 0) return;
             if (playerTeam === 'B' && scoreA === 0) return;
         }
-
         setScorers(prev => {
             const newGoals = Math.max(0, currentGoals + amount);
             const newScorers = { ...prev };
-            if (newGoals > 0) {
-                newScorers[playerId] = newGoals;
-            } else {
-                delete newScorers[playerId];
-            }
+            if (newGoals > 0) newScorers[playerId] = newGoals;
+            else delete newScorers[playerId];
             return newScorers;
         });
-
-        if (playerTeam === 'A') {
-            setScoreB(s => Math.max(0, s - amount));
-        } else {
-            setScoreA(s => Math.max(0, s - amount));
-        }
+        if (playerTeam === 'A') setScoreB(s => Math.max(0, s - amount));
+        else setScoreA(s => Math.max(0, s - amount));
     };
 
     const handleOwnGoalChange = (team, amount) => {
         const currentOwnGoals = ownGoals[team];
-
         if (amount === -1 && currentOwnGoals === 0) return;
-
         if (team === 'A') {
             if (amount === 1 && scoreA === 0) return;
             setScoreA(s => Math.max(0, s - amount));
@@ -2936,14 +2864,11 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
             if (amount === 1 && scoreB === 0) return;
             setScoreB(s => Math.max(0, s - amount));
         }
-
-        setOwnGoals(prev => ({
-            ...prev,
-            [team]: Math.max(0, currentOwnGoals + amount)
-        }));
+        setOwnGoals(prev => ({ ...prev, [team]: Math.max(0, currentOwnGoals + amount) }));
     };
 
     const handleSave = () => {
+        // ✅ saveScores 호출 시 classId 전달 (스토어 액션 내부에서 classId를 사용)
         saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
         alert('저장되었습니다!');
         onSave(match.id);
@@ -3025,6 +2950,7 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
 }
 
 function PlayerManager({ onSendMessage }) {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, currentSeason, togglePlayerStatus } = useLeagueStore();
     const [showInactive, setShowInactive] = useState(false);
     const isNotPreparing = currentSeason?.status !== 'preparing';
@@ -3055,6 +2981,7 @@ function PlayerManager({ onSendMessage }) {
                                         <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필</StyledButton>
                                     </Link>
                                     <StyledButton
+                                        // ✅ togglePlayerStatus 호출 시 classId 전달 (스토어 액션 내부에서 classId를 사용)
                                         onClick={() => togglePlayerStatus(player.id, player.status)}
                                         disabled={isNotPreparing && !isInactive}
                                         title={isNotPreparing && !isInactive ? "시즌 중에는 학생을 비활성화할 수 없습니다." : ""}
@@ -3074,13 +3001,11 @@ function PlayerManager({ onSendMessage }) {
 
 
 function LeagueManager() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const {
-        players, teams, matches,
-        addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
-        autoAssignTeams, generateSchedule, batchCreateTeams,
-        leagueType, setLeagueType,
-        currentSeason, startSeason, endSeason, updateSeasonDetails,
-        createSeason, setTeamCaptain
+        players, teams, matches, addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
+        autoAssignTeams, generateSchedule, batchCreateTeams, leagueType, setLeagueType,
+        currentSeason, startSeason, endSeason, updateSeasonDetails, createSeason, setTeamCaptain
     } = useLeagueStore();
 
     const isNotPreparing = currentSeason?.status !== 'preparing';
@@ -3091,7 +3016,6 @@ function LeagueManager() {
     const [selectedPlayer, setSelectedPlayer] = useState({});
     const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0, topScorer: 0 });
     const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
-
     const [openedMatchId, setOpenedMatchId] = useState(null);
 
     const unassignedPlayers = useMemo(() => {
@@ -3105,11 +3029,8 @@ function LeagueManager() {
 
     useEffect(() => {
         const pendingMatches = matches.filter(m => m.status !== '완료');
-        if (pendingMatches.length > 0) {
-            setOpenedMatchId(pendingMatches[0].id);
-        } else {
-            setOpenedMatchId(null);
-        }
+        if (pendingMatches.length > 0) setOpenedMatchId(pendingMatches[0].id);
+        else setOpenedMatchId(null);
     }, [matches]);
 
     useEffect(() => {
@@ -3126,7 +3047,6 @@ function LeagueManager() {
     const handleSaveAndOpenNext = (savedMatchId) => {
         const pendingMatches = matches.filter(m => m.status !== '완료');
         const currentIndex = pendingMatches.findIndex(m => m.id === savedMatchId);
-
         const nextMatch = pendingMatches[currentIndex + 1];
         setOpenedMatchId(nextMatch ? nextMatch.id : null);
     };
@@ -3135,7 +3055,7 @@ function LeagueManager() {
         if (!newSeasonNameForCreate.trim()) return alert("새 시즌의 이름을 입력해주세요.");
         if (window.confirm(`'${newSeasonNameForCreate}' 시즌을 새로 시작하시겠습니까?`)) {
             try {
-                await createSeason(newSeasonNameForCreate);
+                await createSeason(newSeasonNameForCreate); // 스토어 액션 내부에서 classId 처리
                 setNewSeasonNameForCreate('');
                 alert('새로운 시즌이 생성되었습니다!');
             } catch (error) {
@@ -3150,7 +3070,7 @@ function LeagueManager() {
 
     const handleSavePrizes = async () => {
         try {
-            await updateSeasonDetails(currentSeason.id, {
+            await updateSeasonDetails(currentSeason.id, { // 스토어 액션 내부에서 classId 처리
                 winningPrize: prizes.first,
                 secondPlacePrize: prizes.second,
                 thirdPlacePrize: prizes.third,
@@ -3167,18 +3087,17 @@ function LeagueManager() {
     };
 
     const handleAssignPlayer = (teamId) => {
-        assignPlayerToTeam(teamId, selectedPlayer[teamId]);
+        assignPlayerToTeam(teamId, selectedPlayer[teamId]); // 스토어 액션 내부에서 classId 처리
     };
 
     const handleAddTeam = () => {
-        addNewTeam(newTeamName);
+        addNewTeam(newTeamName); // 스토어 액션 내부에서 classId 처리
         setNewTeamName('');
     };
 
     const handleBatchCreateTeams = () => {
-        batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount));
+        batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount)); // 스토어 액션 내부에서 classId 처리
     };
-
 
     return (
         <>
@@ -3203,11 +3122,8 @@ function LeagueManager() {
                                 <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
                                     <InputGroup>
                                         <input
-                                            type="text"
-                                            value={newSeasonNameForCreate}
-                                            onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
-                                            placeholder="새 시즌 이름 입력"
-                                            style={{ flex: 1, padding: '0.5rem' }}
+                                            type="text" value={newSeasonNameForCreate} onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
+                                            placeholder="새 시즌 이름 입력" style={{ flex: 1, padding: '0.5rem' }}
                                         />
                                         <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>새 시즌 준비하기</SaveButton>
                                     </InputGroup>
@@ -3230,11 +3146,8 @@ function LeagueManager() {
                             <p>현재 진행중인 시즌이 없습니다. 새 시즌을 시작해주세요.</p>
                             <InputGroup>
                                 <input
-                                    type="text"
-                                    value={newSeasonNameForCreate}
-                                    onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
-                                    placeholder="새 시즌 이름 입력 (예: 25-1 시즌)"
-                                    style={{ flex: 1, padding: '0.5rem' }}
+                                    type="text" value={newSeasonNameForCreate} onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
+                                    placeholder="새 시즌 이름 입력 (예: 25-1 시즌)" style={{ flex: 1, padding: '0.5rem' }}
                                 />
                                 <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>새 시즌 준비하기</SaveButton>
                             </InputGroup>
@@ -3283,7 +3196,7 @@ function LeagueManager() {
                                                 <MemberListItem key={memberId}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         <CaptainButton
-                                                            onClick={() => setTeamCaptain(team.id, memberId)}
+                                                            onClick={() => setTeamCaptain(team.id, memberId)} // 스토어 액션 내부에서 classId 처리
                                                             disabled={isNotPreparing || isCaptain}
                                                             $isCaptain={isCaptain}
                                                             title={isNotPreparing ? "시즌 중에는 주장을 변경할 수 없습니다." : (isCaptain ? "현재 주장" : "주장으로 임명")}
@@ -3340,55 +3253,45 @@ function LeagueManager() {
     )
 }
 
-// =================================================================
-// ▼▼▼ [신규] 칭호 관리 컴포넌트 ▼▼▼
-// =================================================================
 function TitleManager() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, fetchInitialData } = useLeagueStore();
     const [titles, setTitles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editingTitle, setEditingTitle] = useState(null);
     const [isAssignMode, setIsAssignMode] = useState(null);
-    // [수정] 단일 선택(string)에서 다중 선택(Set)으로 변경
     const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
 
     const fetchTitles = async () => {
+        if (!classId) return; // ✅ classId 가드 추가
         setIsLoading(true);
-        const titlesData = await getTitles();
+        const titlesData = await getTitles(classId); // ✅ classId 전달
         setTitles(titlesData);
         setIsLoading(false);
     };
 
     useEffect(() => {
         fetchTitles();
-    }, []);
+    }, [classId]); // ✅ 의존성 배열에 classId 추가
 
-    // [추가] 체크박스 핸들러
     const handlePlayerSelect = (playerId) => {
         setSelectedPlayerIds(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(playerId)) {
-                newSet.delete(playerId);
-            } else {
-                newSet.add(playerId);
-            }
+            if (newSet.has(playerId)) newSet.delete(playerId);
+            else newSet.add(playerId);
             return newSet;
         });
     };
 
-    // [추가] 전체 선택 핸들러
     const handleSelectAll = () => {
         const allPlayerIds = players.filter(p => p.role !== 'admin').map(p => p.id);
         const allSelected = allPlayerIds.length > 0 && allPlayerIds.every(id => selectedPlayerIds.has(id));
-
-        if (allSelected) {
-            setSelectedPlayerIds(new Set());
-        } else {
-            setSelectedPlayerIds(new Set(allPlayerIds));
-        }
+        if (allSelected) setSelectedPlayerIds(new Set());
+        else setSelectedPlayerIds(new Set(allPlayerIds));
     };
 
     const handleSave = async () => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (!editingTitle.name) return alert('칭호 이름을 입력하세요.');
         if (editingTitle.type === 'auto' && !editingTitle.conditionId) {
             return alert('자동 획득 칭호는 반드시 조건 ID를 입력해야 합니다.');
@@ -3396,10 +3299,10 @@ function TitleManager() {
 
         try {
             if (editingTitle.id) {
-                await updateTitle(editingTitle.id, editingTitle);
+                await updateTitle(classId, editingTitle.id, editingTitle); // ✅ classId 전달
                 alert('칭호가 수정되었습니다.');
             } else {
-                await createTitle(editingTitle);
+                await createTitle(classId, editingTitle); // ✅ classId 전달
                 alert('새로운 칭호가 생성되었습니다.');
             }
             setEditingTitle(null);
@@ -3410,9 +3313,10 @@ function TitleManager() {
     };
 
     const handleDelete = async (titleId, titleName) => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (window.confirm(`'${titleName}' 칭호를 정말로 삭제하시겠습니까?`)) {
             try {
-                await deleteTitle(titleId);
+                await deleteTitle(classId, titleId); // ✅ classId 전달
                 alert('칭호가 삭제되었습니다.');
                 fetchTitles();
             } catch (error) {
@@ -3422,14 +3326,14 @@ function TitleManager() {
     };
 
     const handleAssignTitle = async () => {
+        if (!classId) return; // ✅ classId 가드 추가
         if (selectedPlayerIds.size === 0) return alert('학생을 한 명 이상 선택하세요.');
         try {
-            // [수정] 새로운 일괄 부여 함수 호출
-            await grantTitleToPlayersBatch(Array.from(selectedPlayerIds), isAssignMode);
+            await grantTitleToPlayersBatch(classId, Array.from(selectedPlayerIds), isAssignMode); // ✅ classId 전달
             alert(`${selectedPlayerIds.size}명의 학생에게 칭호를 성공적으로 부여하고 500P 보상을 지급했습니다.`);
             setSelectedPlayerIds(new Set());
             setIsAssignMode(null);
-            fetchInitialData();
+            fetchInitialData(); // fetchInitialData는 내부에서 classId 처리
         } catch (error) {
             alert(`부여 실패: ${error.message}`);
         }
@@ -3437,19 +3341,19 @@ function TitleManager() {
 
     const sortedPlayers = useMemo(() =>
         [...players].sort((a, b) => a.name.localeCompare(b.name)),
-        [players]);
+        [players]
+    );
 
     return (
         <FullWidthSection>
             <Section>
                 <SectionTitle>칭호 관리 🎖️</SectionTitle>
-                <StyledButton onClick={() => setEditingTitle({ name: '', icon: '', description: '', type: 'manual' })} style={{ marginBottom: '1rem', alignSelf: 'flex-start' }}>
+                <StyledButton onClick={() => setEditingTitle({ name: '', icon: '', description: '', type: 'manual', color: '#000000' })} style={{ marginBottom: '1rem', alignSelf: 'flex-start' }}>
                     새 칭호 만들기
                 </StyledButton>
 
                 {editingTitle && (
                     <div style={{ border: '1px solid #ccc', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                        {/* ... 칭호 생성/수정 UI (기존과 동일) ... */}
                         <InputGroup>
                             <div style={{ flex: 1, border: '1px solid #ccc', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                                 {['🏆', '🧠', '👑', '⚽', '🕊️', '⭐', '🌳', '💡', '🎤', '🏦', '🎵', '🧹', '🥇', '🥈', '🥉'].map(icon => (
@@ -3457,23 +3361,17 @@ function TitleManager() {
                                         key={icon}
                                         onClick={() => setEditingTitle(p => ({ ...p, icon: icon }))}
                                         style={{
-                                            fontSize: '1.5rem',
-                                            padding: '0.25rem',
+                                            fontSize: '1.5rem', padding: '0.25rem',
                                             border: editingTitle.icon === icon ? '2px solid #007bff' : '2px solid transparent',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer'
+                                            borderRadius: '4px', cursor: 'pointer'
                                         }}
                                     >
                                         {icon}
                                     </button>
                                 ))}
                                 <input
-                                    type="text"
-                                    value={editingTitle.icon || ''}
-                                    onChange={e => setEditingTitle(p => ({ ...p, icon: e.target.value }))}
-                                    placeholder="직접 입력"
-                                    style={{ width: '100px', padding: '0.5rem', fontSize: '1rem' }}
-                                    maxLength="2"
+                                    type="text" value={editingTitle.icon || ''} onChange={e => setEditingTitle(p => ({ ...p, icon: e.target.value }))}
+                                    placeholder="직접 입력" style={{ width: '100px', padding: '0.5rem', fontSize: '1rem' }} maxLength="2"
                                 />
                             </div>
                         </InputGroup>
@@ -3506,38 +3404,24 @@ function TitleManager() {
                             <h4>'{titles.find(t => t.id === isAssignMode)?.name}' 칭호 부여하기</h4>
                             <StyledButton onClick={handleSelectAll}>전체 선택/해제</StyledButton>
                         </div>
-                        {/* [수정] 콤보박스를 체크박스 그리드로 변경 */}
                         <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                            gap: '0.5rem',
-                            maxHeight: '200px',
-                            overflowY: 'auto',
-                            border: '1px solid #dee2e6',
-                            borderRadius: '8px',
-                            padding: '1rem',
-                            backgroundColor: 'white',
-                            marginBottom: '1rem'
+                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                            gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', border: '1px solid #dee2e6',
+                            borderRadius: '8px', padding: '1rem', backgroundColor: 'white', marginBottom: '1rem'
                         }}>
                             {sortedPlayers.map(player => {
                                 const isAdmin = player.role === 'admin';
-                                // [추가] 학생이 이미 칭호를 가지고 있는지 확인하는 변수
                                 const hasTitle = player.ownedTitles && player.ownedTitles.includes(isAssignMode);
                                 const isDisabled = isAdmin || hasTitle;
 
                                 return (
                                     <div key={player.id} title={isAdmin ? "관리자는 선택할 수 없습니다." : (hasTitle ? "이미 보유한 칭호입니다." : "")}>
                                         <label style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.5rem',
-                                            padding: '0.5rem',
-                                            opacity: isDisabled ? 0.5 : 1,
-                                            cursor: isDisabled ? 'not-allowed' : 'pointer'
+                                            display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem',
+                                            opacity: isDisabled ? 0.5 : 1, cursor: isDisabled ? 'not-allowed' : 'pointer'
                                         }}>
                                             <input
-                                                type="checkbox"
-                                                checked={selectedPlayerIds.has(player.id)}
+                                                type="checkbox" checked={selectedPlayerIds.has(player.id)}
                                                 onChange={() => !isDisabled && handlePlayerSelect(player.id)}
                                                 style={{ width: '18px', height: '18px' }}
                                                 disabled={isDisabled}

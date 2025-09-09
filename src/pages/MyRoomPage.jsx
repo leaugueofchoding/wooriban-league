@@ -1,8 +1,8 @@
-// src/pages/MyRoomPage.jsx (전체 코드)
+// src/pages/MyRoomPage.jsx
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
 import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -10,7 +10,7 @@ import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
 
 
-// --- Styled Components (기존과 동일 및 신규 추가) ---
+// --- Styled Components ---
 
 const Wrapper = styled.div`
   max-width: 960px;
@@ -24,16 +24,15 @@ const Wrapper = styled.div`
 const EquippedTitle = styled.div`
   padding: 0.6rem 1.2rem;
   border-radius: 8px;
- font-weight: bold;
+  font-weight: bold;
   font-size: 1.3rem;
-  margin: 0; /* [수정] 자체 여백 제거 */
+  margin: 0;
   display: inline-block;
   color: ${props => props.color || '#343a40'};
   background-color: #f8f9fa;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(0, 0, 0, 0.1);
 `;
-// ▲▲▲ [추가 완료] ▲▲▲
 
 const TabContainer = styled.div`
   display: flex;
@@ -61,21 +60,20 @@ const Header = styled.div`
   flex-wrap: wrap;
 `;
 
-// [추가] 칭호와 마이룸 제목을 묶는 컨테이너
 const TitleContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem; /* 칭호와 제목 사이의 간격을 좁힙니다. */
+  gap: 0.25rem;
 
   h1 {
-    margin: 0; /* h1 태그의 기본 여백 제거 */
+    margin: 0;
   }
 `;
 
 const RoomContainer = styled.div`
   width: 100%;
-  padding-top: 75%; /* 4:3 ratio */
+  padding-top: 75%;
   position: relative;
   border: 2px solid #ddd;
   border-radius: 8px;
@@ -116,7 +114,6 @@ const RoomBackground = styled.img`
   pointer-events: none;
 `;
 
-// ▼▼▼ [수정] DraggableItem -> InteractiveItem으로 변경 및 스타일 수정 ▼▼▼
 const InteractiveItem = styled.div`
   position: absolute;
   cursor: ${props => props.$isEditing ? 'pointer' : 'default'};
@@ -136,7 +133,6 @@ const InteractiveItem = styled.div`
   }
 `;
 
-// ▼▼▼ [추가] 아바타 파츠를 위한 스타일 컴포넌트 ▼▼▼
 const AvatarPartImage = styled.img`
     position: absolute;
     top: 0;
@@ -146,7 +142,6 @@ const AvatarPartImage = styled.img`
     object-fit: contain;
     pointer-events: none;
 `;
-
 
 const SocialFeaturesContainer = styled.div`
     margin-top: 2rem;
@@ -337,7 +332,6 @@ const ItemCount = styled.span`
   min-width: 20px;
 `;
 
-
 const ButtonContainer = styled.div`
     display: flex;
     justify-content: center;
@@ -519,6 +513,7 @@ const LoadMoreButton = styled.button`
 `;
 
 function MyRoomPage() {
+  const { classId } = useClassStore(); // [추가]
   const { playerId } = useParams();
   const navigate = useNavigate();
   const { players, myRoomItems, avatarParts, titles } = useLeagueStore();
@@ -613,21 +608,21 @@ function MyRoomPage() {
   }, [roomConfig.items]);
 
   const fetchRoomSocialData = async () => {
-    if (!roomOwnerData) return;
+    if (!classId || !roomOwnerData) return; // [수정]
 
-    const commentsQuery = query(collection(db, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
+    const commentsQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc")); // [수정]
     const commentsSnapshot = await getDocs(commentsQuery);
     setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    const likesQuery = query(collection(db, "players", roomOwnerData.id, "myRoomLikes"));
+    const likesQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomLikes")); // [수정]
     const likesSnapshot = await getDocs(likesQuery);
     setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
   useEffect(() => {
-    if (!roomOwnerData) return;
+    if (!classId || !roomOwnerData) return; // [수정]
 
-    const playerRef = doc(db, 'players', roomOwnerData.id);
+    const playerRef = doc(db, 'classes', classId, 'players', roomOwnerData.id); // [수정]
     getDoc(playerRef).then(playerSnap => {
       if (playerSnap.exists()) {
         const configData = playerSnap.data().myRoomConfig || {};
@@ -658,7 +653,7 @@ function MyRoomPage() {
 
     fetchRoomSocialData();
 
-  }, [roomOwnerData]);
+  }, [roomOwnerData, classId]); // [수정]
 
   const handleSelect = (e, instanceId) => {
     e.stopPropagation();
@@ -813,9 +808,9 @@ function MyRoomPage() {
   };
 
   const handleSaveLayout = async () => {
-    if (!isMyRoom || !isEditing) return;
+    if (!classId || !isMyRoom || !isEditing) return; // [수정]
     try {
-      await updateDoc(doc(db, 'players', playerId), { myRoomConfig: roomConfig });
+      await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig }); // [수정]
       alert('마이룸이 저장되었습니다!');
       setIsEditing(false);
       setSelectedItemId(null);
@@ -825,9 +820,9 @@ function MyRoomPage() {
   };
 
   const handlePostComment = async () => {
-    if (!newComment.trim() || !myPlayerData) return;
+    if (!classId || !newComment.trim() || !myPlayerData) return; // [수정]
     try {
-      await addMyRoomComment(playerId, {
+      await addMyRoomComment(classId, playerId, { // [수정]
         commenterId: myPlayerData.id,
         commenterName: myPlayerData.name,
         text: newComment,
@@ -840,55 +835,61 @@ function MyRoomPage() {
   };
 
   const handleAddMyRoomReply = async (commentId) => {
-    if (!replyContent.trim() || !myPlayerData) return;
+    if (!classId || !replyContent.trim() || !myPlayerData) return; // [수정]
     try {
-      await addMyRoomReply(playerId, commentId, {
+      await addMyRoomReply(classId, playerId, commentId, { // [수정]
         replierId: myPlayerData.id,
         replierName: myPlayerData.name,
         text: replyContent,
       });
       setReplyContent("");
       setReplyingTo(null);
+      fetchRoomSocialData();
     } catch (error) {
       alert(`답글 작성 실패: ${error.message}`);
     }
   };
 
   const handleLikeRoom = async () => {
-    if (isMyRoom || !myPlayerData) return;
+    if (!classId || isMyRoom || !myPlayerData) return; // [수정]
     try {
-      await likeMyRoom(playerId, myPlayerData.id, myPlayerData.name);
+      await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name); // [수정]
+      fetchRoomSocialData();
     } catch (error) {
       alert(error.message);
     }
   };
 
   const handleLikeComment = async (commentId) => {
-    if (!myPlayerData) return alert("로그인 후 이용해주세요.");
+    if (!classId || !myPlayerData) return alert("로그인 후 이용해주세요."); // [수정]
     try {
-      await likeMyRoomComment(playerId, commentId, myPlayerData.id);
+      await likeMyRoomComment(classId, playerId, commentId, myPlayerData.id); // [수정]
+      fetchRoomSocialData();
     } catch (error) {
       alert(error.message);
     }
   };
 
   const handleLikeMyRoomReply = async (comment, reply) => {
-    if (!myPlayerData) return;
+    if (!classId || !myPlayerData) return; // [수정]
     if (myPlayerData.id !== comment.commenterId) {
       alert("댓글을 작성한 사람만 답글에 '좋아요'를 누를 수 있습니다.");
       return;
     }
     try {
-      await likeMyRoomReply(playerId, comment.id, reply, myPlayerData.id);
+      await likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id); // [수정]
+      fetchRoomSocialData();
     } catch (error) {
       alert(error.message);
     }
   }
 
   const handleDeleteComment = async (commentId) => {
+    if (!classId) return; // [추가]
     if (window.confirm("정말로 이 댓글을 삭제하시겠습니까?")) {
       try {
-        await deleteMyRoomComment(playerId, commentId);
+        await deleteMyRoomComment(classId, playerId, commentId); // [수정]
+        fetchRoomSocialData();
       } catch (error) {
         alert(`댓글 삭제 실패: ${error.message}`);
       }
@@ -896,9 +897,11 @@ function MyRoomPage() {
   };
 
   const handleDeleteReply = async (commentId, reply) => {
+    if (!classId) return; // [추가]
     if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
       try {
-        await deleteMyRoomReply(playerId, commentId, reply);
+        await deleteMyRoomReply(classId, playerId, commentId, reply); // [수정]
+        fetchRoomSocialData();
       } catch (error) {
         alert(`답글 삭제 실패: ${error.message}`);
       }
@@ -906,6 +909,7 @@ function MyRoomPage() {
   };
 
   const handleRandomVisit = () => {
+    if (!myPlayerData) return;
     const visitedKey = 'visitedMyRooms';
     let visited = JSON.parse(sessionStorage.getItem(visitedKey)) || [];
     const allPlayerIds = players.filter(p => p.status !== 'inactive' && p.id !== myPlayerData.id).map(p => p.id);
@@ -933,6 +937,9 @@ function MyRoomPage() {
     }
   };
 
+  if (!roomOwnerData) {
+    return <Wrapper><p>존재하지 않는 학생입니다.</p></Wrapper>
+  }
 
   return (
     <Wrapper>

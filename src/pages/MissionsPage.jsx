@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { auth, getMissionHistory, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import MissionHistoryModal from '../components/MissionHistoryModal';
@@ -265,6 +265,7 @@ function SubmissionDetailsView({ submission, isOpen }) {
 }
 
 function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission }) {
+  const { classId } = useClassStore(); // [추가]
   const { submitMissionForApproval } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [], isPublic: !mission.defaultPrivate });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -299,7 +300,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const submissionType = mission.submissionType || ['simple'];
   const isSubmissionRequired = !submissionType.includes('simple');
-  const hasViewableContent = submission && (submission.text || (submission.photoUrls && submission.photoUrls.length > 0));
 
   const isPrerequisiteSubmitted = useMemo(() => {
     if (!mission.prerequisiteMissionId) return true;
@@ -356,7 +356,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
   const handleHistoryView = async (e) => {
     e.stopPropagation();
-    const history = await getMissionHistory(myPlayerData.id, mission.id);
+    if (!classId || !myPlayerData) return; // [추가]
+    const history = await getMissionHistory(classId, myPlayerData.id, mission.id); // [수정]
     setMissionHistory(history);
     setIsHistoryModalOpen(true);
   };
@@ -500,6 +501,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission })
 
 
 function MissionsPage() {
+  const { classId } = useClassStore(); // [추가]
   const { players, missions, missionSubmissions } = useLeagueStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -514,16 +516,17 @@ function MissionsPage() {
 
   useEffect(() => {
     const openModalFromLink = async () => {
+      if (!classId) return; // [추가]
       const params = new URLSearchParams(location.search);
       const submissionId = params.get('openHistoryForSubmission');
       if (submissionId && myPlayerData) {
         try {
-          const submissionDoc = await getDoc(doc(db, 'missionSubmissions', submissionId));
+          const submissionDoc = await getDoc(doc(db, 'classes', classId, 'missionSubmissions', submissionId)); // [수정]
           if (submissionDoc.exists()) {
             const submissionData = submissionDoc.data();
             const mission = missions.find(m => m.id === submissionData.missionId);
             if (mission && submissionData.studentId === myPlayerData.id) {
-              const history = await getMissionHistory(myPlayerData.id, mission.id);
+              const history = await getMissionHistory(classId, myPlayerData.id, mission.id); // [수정]
               setHistoryModalState({
                 isOpen: true,
                 missionTitle: mission.title,
@@ -541,7 +544,7 @@ function MissionsPage() {
     if (myPlayerData && missions.length > 0) {
       openModalFromLink();
     }
-  }, [location, navigate, myPlayerData, missions]);
+  }, [location, navigate, myPlayerData, missions, classId]); // [수정]
 
 
   const mySubmissionsMap = useMemo(() => {
@@ -583,8 +586,8 @@ function MissionsPage() {
   }, [missions, mySubmissionsMap, hideCompleted]);
 
   const handleHistoryView = async (mission) => {
-    if (!myPlayerData) return;
-    const history = await getMissionHistory(myPlayerData.id, mission.id);
+    if (!classId || !myPlayerData) return; // [추가]
+    const history = await getMissionHistory(classId, myPlayerData.id, mission.id); // [수정]
     setHistoryModalState({ isOpen: true, missionTitle: mission.title, history, student: myPlayerData });
   };
 

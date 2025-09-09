@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정] useClassStore import
 import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
@@ -11,8 +11,7 @@ import { emblemMap } from '../utils/emblemMap';
 import QuizWidget from '../components/QuizWidget';
 import confetti from 'canvas-confetti';
 
-// --- Styled Components ---
-
+// --- Styled Components (기존과 동일하여 생략) ---
 const DashboardWrapper = styled.div`
   max-width: 1000px;
   margin: 1rem auto;
@@ -277,7 +276,6 @@ const InfoText = styled.div`
   }
 `;
 
-
 const WelcomeMessage = styled.p`
   margin: 0;
   font-size: 1.5rem;
@@ -493,6 +491,7 @@ const RequestButton = styled.button`
 `;
 
 function DashboardPage() {
+    const { classId } = useClassStore(); // [추가]
     const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
@@ -511,8 +510,10 @@ function DashboardPage() {
     }, [myPlayerData, titles]);
 
     useEffect(() => {
+        if (!classId) return; // [추가]
+
         const fetchGoals = async () => {
-            const goals = await getActiveGoals();
+            const goals = await getActiveGoals(classId); // [수정]
             if (goals.length > 0) {
                 const goal = goals[0];
                 setActiveGoal(goal);
@@ -523,15 +524,16 @@ function DashboardPage() {
                 setActiveGoal(null);
             }
         };
+
         if (myPlayerData) {
             fetchGoals();
             const fetchTotalLikes = async () => {
-                const likes = await getTotalLikesForPlayer(myPlayerData.id);
+                const likes = await getTotalLikesForPlayer(classId, myPlayerData.id); // [수정]
                 setTotalLikes(likes);
             };
             fetchTotalLikes();
         }
-    }, [myPlayerData]);
+    }, [myPlayerData, classId]); // [수정]
 
     const topContributor = useMemo(() => {
         if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) return null;
@@ -568,16 +570,17 @@ function DashboardPage() {
     }, [myPlayerData, avatarParts]);
 
     const handleDonate = async () => {
+        if (!classId) return; // [추가]
         if (!myPlayerData) return alert('플레이어 정보를 불러올 수 없습니다.');
         const amount = Number(donationAmount);
         if (amount <= 0) return alert('기부할 포인트를 올바르게 입력해주세요.');
         if (myPlayerData.points < amount) return alert('포인트가 부족합니다.');
         if (window.confirm(`${amount}P를 '${activeGoal.title}' 목표에 기부하시겠습니까?`)) {
             try {
-                await donatePointsToGoal(myPlayerData.id, activeGoal.id, amount);
+                await donatePointsToGoal(classId, myPlayerData.id, activeGoal.id, amount); // [수정]
                 alert('포인트를 기부했습니다! 고맙습니다!');
                 setDonationAmount('');
-                const goals = await getActiveGoals();
+                const goals = await getActiveGoals(classId); // [수정]
                 if (goals.length > 0) setActiveGoal(goals[0]);
             } catch (error) {
                 alert(`기부 실패: ${error.message}`);
@@ -740,8 +743,6 @@ function DashboardPage() {
                                     if (submissionStatus === 'rejected' || !isSimpleMission) {
                                         navigate('/missions');
                                     } else if (isSimpleMission) {
-                                        // submitMissionForApproval is not defined here, so we will navigate.
-                                        // For simple approval, the user should go to the missions page.
                                         navigate('/missions');
                                     }
                                 };
@@ -805,7 +806,7 @@ function DashboardPage() {
                         <TitleWrapper><Title>🏆 실시간 리그 순위</Title></TitleWrapper>
                         {topRankedTeams.length > 0 ? (
                             topRankedTeams.map((team, index) => (
-                                <RankItem key={team.id} onClick={() => navigate(`/league/teams/${team.id}`)}>
+                                <RankItem key={team.id} onClick={(e) => { e.preventDefault(); navigate(`/league/teams/${team.id}`) }}>
                                     <Rank>{rankIcons[index] || `${team.rank}위`}</Rank>
                                     <Emblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
                                     <span>{team.teamName} ({team.points}점)</span>
