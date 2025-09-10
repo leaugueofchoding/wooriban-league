@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // useClassStore import
 import { approveMissionsInBatch, rejectMissionSubmission, addMissionComment, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
 import { auth, db } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
@@ -243,6 +243,7 @@ const getSafeKeyFromUrl = (url) => {
 
 const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, totalCount, onAction, onImageClick }) => {
     const { players, missions } = useLeagueStore();
+    const { classId } = useClassStore(); // classId 상태 가져오기
     const [status, setStatus] = useState(submission.status);
     const [newComment, setNewComment] = useState('');
     const [comments, setComments] = useState([]);
@@ -258,22 +259,26 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
         setLikes(submission.likes || []);
         setRotations(submission.rotations || {});
 
-        const commentsRef = collection(db, "missionSubmissions", submission.id, "comments");
+        if (!classId) return; // classId가 없으면 실행하지 않음
+
+        const commentsRef = collection(db, "classes", classId, "missionSubmissions", submission.id, "comments");
         const q = query(commentsRef, orderBy("createdAt", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         return () => unsubscribe();
 
-    }, [submission]);
+    }, [submission, classId]);
 
     const handleAction = async (action, reward) => {
+        if (!classId) return alert('학급 정보가 없습니다.');
         try {
             if (action === 'approve') {
-                await approveMissionsInBatch(mission.id, [student.id], myPlayerData.id, reward);
+                // approveMissionsInBatch 호출 시 classId를 첫 번째 인자로 전달
+                await approveMissionsInBatch(classId, mission.id, [student.id], myPlayerData.authUid, reward);
                 setStatus('approved');
             } else if (action === 'reject') {
-                await rejectMissionSubmission(submission.id, student.authUid, mission.title);
+                await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
                 setStatus('rejected');
             }
             onAction();
@@ -285,9 +290,10 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
     const handleCommentSubmit = async () => {
-        if (!newComment.trim() || !myPlayerData) return;
+        if (!newComment.trim() || !myPlayerData || !classId) return;
         try {
             await addMissionComment(
+                classId,
                 submission.id,
                 {
                     commenterId: myPlayerData.id,
@@ -305,17 +311,18 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     };
 
     const handleLike = async () => {
-        if (!myPlayerData) return alert("사용자 정보를 찾을 수 없습니다.");
+        if (!myPlayerData || !classId) return alert("사용자 정보를 찾을 수 없습니다.");
         try {
-            await toggleSubmissionLike(submission.id, myPlayerData.id);
+            await toggleSubmissionLike(classId, submission.id, myPlayerData.id);
         } catch (error) {
             alert("좋아요 처리에 실패했습니다.");
         }
     };
 
     const handleRotate = async (url) => {
+        if (!classId) return;
         try {
-            await toggleSubmissionImageRotation(submission.id, url);
+            await toggleSubmissionImageRotation(classId, submission.id, url);
             const imageKey = getSafeKeyFromUrl(url);
             setRotations(prev => ({
                 ...prev,

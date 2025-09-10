@@ -3460,6 +3460,18 @@ function TitleManager() {
     );
 }
 
+function ClassManager() {
+    return (
+        <FullWidthSection>
+            <Section>
+                <SectionTitle>학급 관리 🏫</SectionTitle>
+                <p>이곳에서 새로운 학급을 생성하거나, 관리할 학급을 선택할 수 있습니다.</p>
+                {/* 학급 생성 및 선택 기능이 여기에 구현될 예정입니다. */}
+            </Section>
+        </FullWidthSection>
+    );
+}
+
 function AdminPage() {
     const { players } = useLeagueStore();
     const { tab } = useParams();
@@ -3557,6 +3569,9 @@ function AdminPage() {
         if (activeMenu === 'title') {
             return <TitleManager />;
         }
+        if (activeMenu === 'class') {
+            return <ClassManager />;
+        }
         return <PendingMissionWidget />;
     };
 
@@ -3568,7 +3583,11 @@ function AdminPage() {
             if (activeMenu !== 'student') setStudentSubMenu('point');
         } else if (menu === 'league') {
             if (activeMenu !== 'league') setActiveSubMenu('league_manage');
-        } else {
+        } else if (menu === 'class') {
+            // '학급 관리' 메뉴는 하위 메뉴가 없으므로 activeSubMenu를 초기화합니다.
+            setActiveSubMenu('');
+        }
+        else {
             setActiveSubMenu('');
         }
     };
@@ -3630,6 +3649,9 @@ function AdminPage() {
                         </NavItem>
                         <NavItem>
                             <NavButton $active={activeMenu === 'title'} onClick={() => handleMenuClick('title')}>칭호 관리</NavButton>
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'class'} onClick={() => handleMenuClick('class')}>학급 관리</NavButton>
                         </NavItem>
                     </NavList>
                 </Sidebar>

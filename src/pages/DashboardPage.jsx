@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정] useClassStore import
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
@@ -490,15 +490,71 @@ const RequestButton = styled.button`
     }
 `;
 
+// =================================================================
+// ▼▼▼ [신규] React Hooks 오류를 해결하기 위해 분리된 컴포넌트 ▼▼▼
+// =================================================================
+function MissionItem({ mission, mySubmissions, canSubmitMission }) {
+    const navigate = useNavigate();
+
+    const submission = mySubmissions[mission.id];
+    let submissionStatus = submission?.status;
+
+    const isCompletedToday = mission.isFixed && submissionStatus === 'approved' && submission?.approvedAt && new Date(submission.approvedAt.toDate()).toDateString() === new Date().toDateString();
+
+    if (mission.isFixed && submissionStatus === 'approved' && !isCompletedToday) {
+        submissionStatus = null;
+    }
+
+    const submissionType = mission.submissionType || ['simple'];
+    const isSimpleMission = submissionType.includes('simple') && submissionType.length === 1;
+
+    const handleButtonClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate('/missions');
+    };
+
+    const rewardText = useMemo(() => {
+        if (!mission.rewards || mission.rewards.length <= 1) {
+            return `💰 ${mission.reward} P`;
+        }
+        const minReward = Math.min(...mission.rewards);
+        const maxReward = Math.max(...mission.rewards);
+        return `💰 ${minReward} ~ ${maxReward} P`;
+    }, [mission.rewards, mission.reward]);
+
+    return (
+        <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <div style={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/missions')}>
+                <CardTitle>
+                    {mission.title}
+                    {mission.isFixed && <span title="고정 미션"> 🔄</span>}
+                    {submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
+                    {submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
+                </CardTitle>
+                <CardText>{rewardText}</CardText>
+            </div>
+            {canSubmitMission && (
+                <RequestButton
+                    onClick={handleButtonClick}
+                    disabled={isCompletedToday || submissionStatus === 'pending' || (submissionStatus === 'approved' && !mission.isFixed)}
+                    $status={isCompletedToday ? 'approved' : submissionStatus}
+                >
+                    {isCompletedToday ? '오늘 완료!' : (submissionStatus === 'pending' ? '승인 대기중' : (submissionStatus === 'rejected' ? '다시 제출' : '다 했어요!'))}
+                </RequestButton>
+            )}
+        </Card>
+    );
+}
+
+
 function DashboardPage() {
-    const { classId } = useClassStore(); // [추가]
+    const { classId } = useClassStore();
     const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
     const navigate = useNavigate();
-    const [totalLikes, setTotalLikes] = useState(0);
-
     const myPlayerData = useMemo(() => {
         if (!currentUser) return null;
         return players.find(p => p.authUid === currentUser.uid);
@@ -510,10 +566,10 @@ function DashboardPage() {
     }, [myPlayerData, titles]);
 
     useEffect(() => {
-        if (!classId) return; // [추가]
+        if (!classId) return;
 
         const fetchGoals = async () => {
-            const goals = await getActiveGoals(classId); // [수정]
+            const goals = await getActiveGoals(classId);
             if (goals.length > 0) {
                 const goal = goals[0];
                 setActiveGoal(goal);
@@ -527,13 +583,8 @@ function DashboardPage() {
 
         if (myPlayerData) {
             fetchGoals();
-            const fetchTotalLikes = async () => {
-                const likes = await getTotalLikesForPlayer(classId, myPlayerData.id); // [수정]
-                setTotalLikes(likes);
-            };
-            fetchTotalLikes();
         }
-    }, [myPlayerData, classId]); // [수정]
+    }, [myPlayerData, classId]);
 
     const topContributor = useMemo(() => {
         if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) return null;
@@ -570,17 +621,17 @@ function DashboardPage() {
     }, [myPlayerData, avatarParts]);
 
     const handleDonate = async () => {
-        if (!classId) return; // [추가]
+        if (!classId) return;
         if (!myPlayerData) return alert('플레이어 정보를 불러올 수 없습니다.');
         const amount = Number(donationAmount);
         if (amount <= 0) return alert('기부할 포인트를 올바르게 입력해주세요.');
         if (myPlayerData.points < amount) return alert('포인트가 부족합니다.');
         if (window.confirm(`${amount}P를 '${activeGoal.title}' 목표에 기부하시겠습니까?`)) {
             try {
-                await donatePointsToGoal(classId, myPlayerData.id, activeGoal.id, amount); // [수정]
+                await donatePointsToGoal(classId, myPlayerData.id, activeGoal.id, amount);
                 alert('포인트를 기부했습니다! 고맙습니다!');
                 setDonationAmount('');
-                const goals = await getActiveGoals(classId); // [수정]
+                const goals = await getActiveGoals(classId);
                 if (goals.length > 0) setActiveGoal(goals[0]);
             } catch (error) {
                 alert(`기부 실패: ${error.message}`);
@@ -695,7 +746,7 @@ function DashboardPage() {
                             <InfoText>
                                 <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
                                 <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
-                                <LikeDisplay>❤️ {totalLikes}</LikeDisplay>
+                                <LikeDisplay>❤️ {myPlayerData?.totalLikes || 0}</LikeDisplay>
                             </InfoText>
                         </ProfileLink>
                         <ActionButtonsWrapper>
@@ -723,62 +774,14 @@ function DashboardPage() {
                             <Title>📢 새로운 미션 [{uncompletedMissionsCount}개]</Title>
                         </TitleWrapper>
                         {recentMissions.length > 0 ? (
-                            recentMissions.map(mission => {
-                                const submission = mySubmissions[mission.id];
-                                let submissionStatus = submission?.status;
-
-                                const isCompletedToday = mission.isFixed && submissionStatus === 'approved' && submission?.approvedAt && new Date(submission.approvedAt.toDate()).toDateString() === new Date().toDateString();
-
-                                if (mission.isFixed && submissionStatus === 'approved' && !isCompletedToday) {
-                                    submissionStatus = null;
-                                }
-
-                                const submissionType = mission.submissionType || ['simple'];
-                                const isSimpleMission = submissionType.includes('simple') && submissionType.length === 1;
-
-                                const handleButtonClick = (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-
-                                    if (submissionStatus === 'rejected' || !isSimpleMission) {
-                                        navigate('/missions');
-                                    } else if (isSimpleMission) {
-                                        navigate('/missions');
-                                    }
-                                };
-
-                                const rewardText = useMemo(() => {
-                                    if (!mission.rewards || mission.rewards.length <= 1) {
-                                        return `💰 ${mission.reward} P`;
-                                    }
-                                    const minReward = Math.min(...mission.rewards);
-                                    const maxReward = Math.max(...mission.rewards);
-                                    return `💰 ${minReward} ~ ${maxReward} P`;
-                                }, [mission.rewards, mission.reward]);
-
-                                return (
-                                    <Card key={mission.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <div style={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/missions')}>
-                                            <CardTitle>
-                                                {mission.title}
-                                                {mission.isFixed && <span title="고정 미션"> 🔄</span>}
-                                                {mission.submissionType?.includes('text') && <span title="글 제출"> 📝</span>}
-                                                {mission.submissionType?.includes('photo') && <span title="사진 제출"> 📸</span>}
-                                            </CardTitle>
-                                            <CardText>{rewardText}</CardText>
-                                        </div>
-                                        {canSubmitMission && (
-                                            <RequestButton
-                                                onClick={handleButtonClick}
-                                                disabled={isCompletedToday || submissionStatus === 'pending' || (submissionStatus === 'approved' && !mission.isFixed)}
-                                                $status={isCompletedToday ? 'approved' : submissionStatus}
-                                            >
-                                                {isCompletedToday ? '오늘 완료!' : (submissionStatus === 'pending' ? '승인 대기중' : (submissionStatus === 'rejected' ? '다시 제출' : '다 했어요!'))}
-                                            </RequestButton>
-                                        )}
-                                    </Card>
-                                )
-                            })
+                            recentMissions.map(mission => (
+                                <MissionItem
+                                    key={mission.id}
+                                    mission={mission}
+                                    mySubmissions={mySubmissions}
+                                    canSubmitMission={canSubmitMission}
+                                />
+                            ))
                         ) : (<p>현재 등록된 새로운 미션이 없습니다.</p>)}
                     </Section>
                 </ClickableSection>

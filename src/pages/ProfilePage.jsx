@@ -317,12 +317,20 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
-  const [totalLikes, setTotalLikes] = useState(0);
-
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
+
+  const totalLikes = useMemo(() => {
+    //
+    if (playerData?.authUid === currentUser?.uid) {
+      return players.find(p => p.authUid === currentUser.uid)?.totalLikes || 0;
+    }
+    // 다른 사람 프로필은 일단 0으로 표시 (필요 시 추후 계산 로직 추가)
+    return 0;
+  }, [players, currentUser, playerData]);
+
 
   useEffect(() => {
     if (playerData) {
@@ -330,14 +338,7 @@ function ProfilePage() {
       setSelectedGender(playerData.gender || '');
       setSelectedTitleId(playerData.equippedTitle || null);
     }
-    if (playerData?.id && classId) { // [수정]
-      const fetchTotalLikes = async () => {
-        const likes = await getTotalLikesForPlayer(classId, playerData.id); // [수정]
-        setTotalLikes(likes);
-      };
-      fetchTotalLikes();
-    }
-  }, [playerData, classId]); // [수정]
+  }, [playerData]);
 
   const equippedTitle = useMemo(() => {
     if (!playerData?.equippedTitle || !titles.length) return null;
@@ -498,7 +499,7 @@ function ProfilePage() {
 
         {playerData.role && <UserRole>{playerData.role}</UserRole>}
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
-        <LikeDisplay>❤️ {totalLikes}</LikeDisplay>
+        <LikeDisplay>❤️ {playerData.authUid === currentUser?.uid ? totalLikes : 'N/A'}</LikeDisplay>
 
         <ButtonGroup>
           <ButtonRow>

@@ -52,6 +52,7 @@ import {
     getTitles,
     seedInitialTitles,
     grantTitleToPlayer,
+    getTotalLikesForPlayer, // <<< 이 부분을 추가해주세요!
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -152,14 +153,23 @@ export const useLeagueStore = create((set, get) => ({
 
             if (currentUser) {
                 get().cleanupListeners();
-                const playersData = await getPlayers(classId);
+                let playersData = await getPlayers(classId); // let으로 변경
+
+                // 현재 로그인한 사용자의 총 좋아요 수를 계산하여 플레이어 데이터에 추가
+                const myPlayerIndex = playersData.findIndex(p => p.authUid === currentUser.uid);
+                if (myPlayerIndex > -1) {
+                    const myPlayer = playersData[myPlayerIndex];
+                    const totalLikes = await getTotalLikesForPlayer(classId, myPlayer.id);
+                    playersData[myPlayerIndex] = { ...myPlayer, totalLikes: totalLikes };
+                }
+
                 set({ players: playersData });
 
                 get().subscribeToNotifications(currentUser.uid);
                 get().subscribeToPlayerData(currentUser.uid);
                 get().subscribeToMissionSubmissions(currentUser.uid);
 
-                const myPlayerData = playersData.find(p => p.authUid === currentUser.uid);
+                const myPlayerData = playersData[myPlayerIndex]; // 업데이트된 데이터 사용
                 if (myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role)) {
                     get().subscribeToRecorderBonus(currentUser.uid);
                 }
