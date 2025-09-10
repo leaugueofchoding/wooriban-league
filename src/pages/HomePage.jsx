@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
@@ -197,7 +197,6 @@ const TeamCard = styled.div`
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
-  /* ▼▼▼ [수정] 조건부 테두리 스타일 제거 ▼▼▼ */
   border: 2px solid transparent;
 
   &:hover {
@@ -218,7 +217,6 @@ const TeamCardEmblem = styled.img`
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 `;
 
-// ▼▼▼ [추가] 팀 이름과 라벨을 묶기 위한 컨테이너 ▼▼▼
 const TeamNameContainer = styled.div`
   display: flex;
   justify-content: center;
@@ -232,13 +230,11 @@ const TeamCardName = styled.h2`
   font-size: 1.5rem;
 `;
 
-// ▼▼▼ [추가] (나의팀) 라벨 스타일 ▼▼▼
 const MyTeamLabel = styled.span`
   color: #007bff;
   font-size: 1rem;
   font-weight: bold;
 `;
-
 
 const TeamRecord = styled.p`
   margin: 0;
@@ -246,7 +242,6 @@ const TeamRecord = styled.p`
   color: #495057;
   font-weight: 500;
 `;
-
 
 function ScheduleItem({ match, isInitiallyOpen }) {
   const { teams, players } = useLeagueStore();
@@ -364,7 +359,6 @@ function TeamInfoContent({ teams, matches, currentSeason, myTeamId }) {
       <SectionTitle>팀 정보</SectionTitle>
       <TeamGrid>
         {teamStats.map(team => (
-          // ▼▼▼ [수정] $isMyTeam prop 제거하고, TeamNameContainer 사용 ▼▼▼
           <TeamCard key={team.id} onClick={() => handleCardClick(team.id)}>
             <TeamCardEmblem src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem} alt={`${team.teamName} 엠블럼`} />
             <TeamNameContainer>
@@ -379,8 +373,6 @@ function TeamInfoContent({ teams, matches, currentSeason, myTeamId }) {
   )
 }
 
-
-
 function HomePage() {
   const { matches, teams, currentSeason, players, standingsData } = useLeagueStore();
   const navigate = useNavigate();
@@ -393,7 +385,6 @@ function HomePage() {
     return players.find(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
 
-  // ▼▼▼ [추가] 현재 사용자가 속한 팀의 ID를 찾는 로직 ▼▼▼
   const myTeam = useMemo(() => {
     if (!myPlayerData || !currentSeason) return null;
     return teams.find(team => team.seasonId === currentSeason.id && team.members.includes(myPlayerData.id));
@@ -414,13 +405,11 @@ function HomePage() {
       case 'leagueInfo':
         return <LeagueInfoContent matches={matches} standingsData={finalStandingsData} />;
       case 'teamInfo':
-        // ▼▼▼ [수정] TeamInfoContent에 myTeamId 전달 ▼▼▼
         return <TeamInfoContent teams={teams} matches={matches} currentSeason={currentSeason} myTeamId={myTeam?.id} />;
       default:
         return null;
     }
   };
-
 
   return (
     <Wrapper>

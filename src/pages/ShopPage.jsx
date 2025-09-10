@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, updatePlayerAvatar } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 import { useNavigate } from 'react-router-dom';
@@ -302,6 +302,7 @@ const translateCategory = (category) => {
 };
 
 function ShopPage() {
+  const { classId } = useClassStore(); // [추가]
   const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
@@ -314,7 +315,6 @@ function ShopPage() {
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
 
-  // ▼▼▼ [수정] useEffect 로직 변경 ▼▼▼
   useEffect(() => {
     if (myPlayerData?.avatarConfig && isInitialLoad.current) {
       setPreviewConfig(myPlayerData.avatarConfig);
@@ -428,7 +428,7 @@ function ShopPage() {
     const itemNames = newItemsToBuy.map(p => p.displayName || p.id).join(', ');
     if (window.confirm(`총 ${newItemsToBuy.length}개의 새 아이템(${itemNames})을 ${totalCost}P에 구매하시겠습니까?`)) {
       try {
-        await buyMultipleAvatarParts(newItemsToBuy);
+        await buyMultipleAvatarParts(newItemsToBuy); // 스토어 액션이므로 내부에서 classId 처리
         alert('구매를 완료했습니다!');
         setJustPurchased(true);
       } catch (error) {
@@ -457,7 +457,7 @@ function ShopPage() {
 
       if (window.confirm(`'${item.displayName || item.id}' 아이템을 ${finalPrice}P에 구매하시겠습니까?`)) {
         try {
-          await buyMyRoomItem(item);
+          await buyMyRoomItem(item); // 스토어 액션이므로 내부에서 classId 처리
           alert('구매를 완료했습니다!');
         } catch (error) {
           alert(`구매 실패: ${error.message}`);
@@ -494,9 +494,9 @@ function ShopPage() {
   const handleResetPreview = () => setPreviewConfig(myPlayerData.avatarConfig);
 
   const handleWearPurchased = async () => {
-    if (!myPlayerData) return alert("선수 정보를 찾을 수 없습니다.");
+    if (!classId || !myPlayerData) return alert("선수 정보를 찾을 수 없습니다."); // [수정]
     try {
-      await updatePlayerAvatar(myPlayerData.id, previewConfig);
+      await updatePlayerAvatar(classId, myPlayerData.id, previewConfig); // [수정]
       alert("선택한 아바타가 저장되었습니다!");
       useLeagueStore.getState().fetchInitialData();
       navigate(`/profile/${myPlayerData.id}`);
@@ -508,11 +508,9 @@ function ShopPage() {
 
   const previewPartUrls = useMemo(() => {
     if (!previewConfig) return [baseAvatar];
-
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'mouth', 'nose', 'eyes'];
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'mouth', 'nose', 'eyes', 'face'];
     const urls = [baseAvatar];
     const config = previewConfig;
-
     RENDER_ORDER.forEach(category => {
       const partId = config[category];
       if (partId) {
@@ -520,14 +518,12 @@ function ShopPage() {
         if (part) urls.push(part.src);
       }
     });
-
     if (config.accessories) {
       Object.values(config.accessories).forEach(partId => {
         const part = avatarParts.find(p => p.id === partId);
         if (part) urls.push(part.src);
       });
     }
-
     return Array.from(new Set(urls));
   }, [previewConfig, avatarParts]);
 

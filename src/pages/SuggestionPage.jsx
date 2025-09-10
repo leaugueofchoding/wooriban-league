@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { auth, db, submitSuggestion } from '../api/firebase';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
@@ -106,8 +106,24 @@ const SubmitButton = styled.button`
   }
 `;
 
+const ExitButton = styled.button`
+  display: block;
+  margin: 2rem auto;
+  padding: 0.8rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  &:hover { background-color: #5a6268; }
+`;
+
 
 function SuggestionPage() {
+    const { classId } = useClassStore(); // [추가]
     const { players } = useLeagueStore();
     const currentUser = auth.currentUser;
     const navigate = useNavigate();
@@ -123,14 +139,14 @@ function SuggestionPage() {
     }, [players, currentUser]);
 
     useEffect(() => {
-        if (!myPlayerData) {
+        if (!myPlayerData || !classId) { // [수정]
             setIsLoading(false);
             return;
         }
 
         setIsLoading(true);
         const q = query(
-            collection(db, "suggestions"),
+            collection(db, "classes", classId, "suggestions"), // [수정]
             where("studentId", "==", myPlayerData.id),
             orderBy("createdAt", "asc")
         );
@@ -142,7 +158,7 @@ function SuggestionPage() {
         });
 
         return () => unsubscribe();
-    }, [myPlayerData]);
+    }, [myPlayerData, classId]); // [수정]
 
     useEffect(() => {
         if (messageAreaRef.current) {
@@ -152,11 +168,11 @@ function SuggestionPage() {
 
 
     const handleSuggestionSubmit = async () => {
-        if (!myPlayerData) return alert('선수 정보가 없습니다.');
+        if (!classId || !myPlayerData) return alert('선수 정보가 없습니다.'); // [수정]
         if (!content.trim()) return alert('내용을 입력해주세요.');
 
         try {
-            await submitSuggestion({
+            await submitSuggestion(classId, { // [수정]
                 studentId: myPlayerData.id,
                 studentName: myPlayerData.name,
                 message: content,
@@ -180,6 +196,7 @@ function SuggestionPage() {
             if (item.conversation) {
                 return item.conversation;
             }
+            // 하위 호환성
             const oldConversation = [];
             if (item.message) {
                 oldConversation.push({
@@ -232,7 +249,7 @@ function SuggestionPage() {
                     <SubmitButton onClick={handleSuggestionSubmit} disabled={!content.trim()}>전송</SubmitButton>
                 </InputArea>
             </ChatContainer>
-            <button onClick={() => navigate(-1)} style={{ display: 'block', margin: '2rem auto' }}>돌아가기</button>
+            <ExitButton onClick={() => navigate(-1)}>돌아가기</ExitButton>
         </Wrapper>
     );
 }

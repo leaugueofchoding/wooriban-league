@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getPlayerSeasonStats } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
@@ -241,7 +241,6 @@ function SeasonStatsCard({ seasonData }) {
             const memberData = players.find(p => p.id === memberId);
             if (!memberData) return null;
 
-            // [수정] memorialsMap에서 해당 팀원의 박제된 아바타 정보를 찾아 사용합니다.
             const memorialConfig = seasonData.memorialsMap?.get(memberId);
             const config = memorialConfig || memberData.avatarConfig || {};
 
@@ -312,7 +311,7 @@ function SeasonStatsCard({ seasonData }) {
 }
 
 function PlayerStatsPage() {
-    // [수정] useLeagueStore에서 titles를 함께 가져옵니다.
+    const { classId } = useClassStore(); // [추가]
     const { players, titles } = useLeagueStore();
     const { playerId } = useParams();
     const navigate = useNavigate();
@@ -326,8 +325,9 @@ function PlayerStatsPage() {
 
     useEffect(() => {
         const fetchAllStats = async () => {
+            if (!classId || players.length === 0) return; // [수정]
             setLoading(true);
-            const allPlayerStatsPromises = players.map(p => getPlayerSeasonStats(p.id));
+            const allPlayerStatsPromises = players.map(p => getPlayerSeasonStats(classId, p.id)); // [수정]
             const allStatsResults = await Promise.all(allPlayerStatsPromises);
 
             const totals = allStatsResults.map((playerSeasons, index) => {
@@ -337,7 +337,6 @@ function PlayerStatsPage() {
                     playerTotals.wins += seasonData.stats.wins;
                     playerTotals.played += seasonData.stats.played;
                     playerTotals.goals += seasonData.stats.goals;
-                    // ▼▼▼ [수정] 시즌이 'completed' 상태일 때만 우승으로 집계 ▼▼▼
                     if (seasonData.rank === 1 && seasonData.season.status === 'completed') {
                         playerTotals.championships++;
                     }
@@ -350,14 +349,13 @@ function PlayerStatsPage() {
             setAllSeasonStats(myStats);
             setLoading(false);
         };
-        if (players.length > 0) fetchAllStats();
-    }, [players, playerId]);
+        fetchAllStats();
+    }, [players, playerId, classId]); // [수정]
 
     const sortedPlayers = useMemo(() => {
         return [...allPlayerTotals].sort((a, b) => {
             if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
             if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
-
             if (b.championships !== a.championships) return b.championships - a.championships;
             if (b.wins !== a.wins) return b.wins - a.wins;
             return b.goals - a.goals;
@@ -408,13 +406,10 @@ function PlayerStatsPage() {
                         <HeaderCell onClick={() => handleSort('goals')}>득점{getSortIndicator('goals')}</HeaderCell>
                     </RankHeader>
                     {sortedPlayers.map((p, index) => {
-                        // [추가] 각 선수의 장착 칭호 정보를 찾습니다.
                         const equippedTitle = p.equippedTitle ? titles.find(t => t.id === p.equippedTitle) : null;
-
                         return (
                             <PlayerRankItem key={p.id} to={`/profile/${p.id}`}>
                                 <span>{index + 1}</span>
-                                {/* [수정] 이름과 칭호를 함께 표시합니다. */}
                                 <div style={{ display: 'flex', alignItems: 'center' }}>
                                     <span>{p.name}</span>
                                     {equippedTitle && (

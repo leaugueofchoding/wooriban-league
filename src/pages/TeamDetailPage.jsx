@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { auth, updateTeamInfo, uploadTeamEmblem } from '../api/firebase';
@@ -250,6 +250,7 @@ const MemberTitle = styled.div`
 
 
 function TeamDetailPage() {
+    const { classId } = useClassStore(); // [추가]
     const { teamId } = useParams();
     const navigate = useNavigate();
     const { teams, players, matches, avatarParts, currentSeason, fetchInitialData, titles } = useLeagueStore();
@@ -264,7 +265,6 @@ function TeamDetailPage() {
 
     const teamData = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
     const isCaptain = useMemo(() => currentUser && teamData && teamData.captainId === players.find(p => p.authUid === currentUser.uid)?.id, [currentUser, teamData, players]);
-
     const canEditTeam = useMemo(() => currentSeason?.status !== 'completed', [currentSeason]);
 
     const teamMembers = useMemo(() => {
@@ -325,6 +325,7 @@ function TeamDetailPage() {
     };
 
     const handleSave = async () => {
+        if (!classId) return; // [추가]
         if (!newTeamName.trim()) return alert('팀 이름을 입력해주세요.');
         setIsSaving(true);
         try {
@@ -332,11 +333,11 @@ function TeamDetailPage() {
             let finalEmblemUrl = null;
 
             if (newEmblemFile) {
-                finalEmblemUrl = await uploadTeamEmblem(teamId, newEmblemFile);
+                finalEmblemUrl = await uploadTeamEmblem(classId, teamId, newEmblemFile); // [수정]
                 finalEmblemId = null;
             }
 
-            await updateTeamInfo(teamId, newTeamName, finalEmblemId, finalEmblemUrl);
+            await updateTeamInfo(classId, teamId, newTeamName, finalEmblemId, finalEmblemUrl); // [수정]
 
             alert('팀 정보가 성공적으로 수정되었습니다.');
             await fetchInitialData();

@@ -2,12 +2,12 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
 import { auth, db, updatePlayerProfile, equipTitle } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
-import { getTotalLikesForPlayer } from '../api/firebase.js'; // [수정] getTotalLikesForPlayer 함수 import
+import { getTotalLikesForPlayer } from '../api/firebase.js';
 import PointHistoryModal from '../components/PointHistoryModal';
 
 // --- Styled Components ---
@@ -303,6 +303,7 @@ const SaveTitlesButton = styled(Button)`
 `;
 
 function ProfilePage() {
+  const { classId } = useClassStore(); // [추가]
   const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
@@ -316,7 +317,7 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
-  const [totalLikes, setTotalLikes] = useState(0); // [수정] myRoomLikes -> totalLikes
+  const [totalLikes, setTotalLikes] = useState(0);
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
@@ -329,15 +330,14 @@ function ProfilePage() {
       setSelectedGender(playerData.gender || '');
       setSelectedTitleId(playerData.equippedTitle || null);
     }
-    if (playerData?.id) {
-      // [수정] 모든 좋아요를 합산하는 함수를 호출하도록 변경
+    if (playerData?.id && classId) { // [수정]
       const fetchTotalLikes = async () => {
-        const likes = await getTotalLikesForPlayer(playerData.id);
+        const likes = await getTotalLikesForPlayer(classId, playerData.id); // [수정]
         setTotalLikes(likes);
       };
       fetchTotalLikes();
     }
-  }, [playerData]);
+  }, [playerData, classId]); // [수정]
 
   const equippedTitle = useMemo(() => {
     if (!playerData?.equippedTitle || !titles.length) return null;
@@ -356,8 +356,9 @@ function ProfilePage() {
   }, [playerData, titles]);
 
   const handleSaveEquippedTitle = async () => {
+    if (!classId || !playerData) return; // [추가]
     try {
-      await equipTitle(playerData.id, selectedTitleId);
+      await equipTitle(classId, playerData.id, selectedTitleId); // [수정]
       await fetchInitialData();
       alert('칭호가 저장되었습니다!');
       setIsTitleAccordionOpen(false);
@@ -376,11 +377,9 @@ function ProfilePage() {
     if (!playerData?.avatarConfig || !avatarParts.length) {
       return { selectedPartUrls: [baseAvatar], equippedItems: [] };
     }
-
     const urls = [baseAvatar];
     const items = [];
     const config = playerData.avatarConfig;
-
     RENDER_ORDER.forEach(category => {
       const partId = config[category];
       if (partId) {
@@ -391,7 +390,6 @@ function ProfilePage() {
         }
       }
     });
-
     if (config.accessories) {
       Object.values(config.accessories).forEach(partId => {
         const part = avatarParts.find(p => p.id === partId);
@@ -401,13 +399,12 @@ function ProfilePage() {
         }
       });
     }
-
     return { selectedPartUrls: Array.from(new Set(urls)), equippedItems: items };
   }, [playerData, avatarParts]);
 
   const fetchPointHistory = async () => {
-    if (!playerData || !playerData.authUid) return;
-    const historyQuery = query(collection(db, 'point_history'), where('playerId', '==', playerData.authUid), orderBy('timestamp', 'desc'));
+    if (!classId || !playerData || !playerData.authUid) return; // [수정]
+    const historyQuery = query(collection(db, 'classes', classId, 'point_history'), where('playerId', '==', playerData.authUid), orderBy('timestamp', 'desc')); // [수정]
     const querySnapshot = await getDocs(historyQuery);
     setPointHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
@@ -418,11 +415,12 @@ function ProfilePage() {
   };
 
   const handleSaveProfile = async () => {
+    if (!classId || !playerData) return; // [추가]
     if (!newName.trim()) return alert('이름을 입력해주세요.');
     if (!selectedGender) return alert('성별을 선택해주세요.');
 
     try {
-      await updatePlayerProfile(playerData.id, {
+      await updatePlayerProfile(classId, playerData.id, { // [수정]
         name: newName.trim(),
         gender: selectedGender,
       });
@@ -462,7 +460,6 @@ function ProfilePage() {
             {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
           </AvatarDisplay>
         </AvatarWrapper>
-
         <UserNameContainer>
           {isEditing ? (
             <>
@@ -503,7 +500,6 @@ function ProfilePage() {
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
         <LikeDisplay>❤️ {totalLikes}</LikeDisplay>
 
-
         <ButtonGroup>
           <ButtonRow>
             {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
@@ -536,18 +532,16 @@ function ProfilePage() {
                   </TitleCard>
                 )) : <p>아직 획득한 칭호가 없습니다.</p>}
               </TitleGrid>
-
               <SaveTitlesButton onClick={handleSaveEquippedTitle}>
                 선택한 칭호로 저장하기
               </SaveTitlesButton>
-
               <Subtitle>미획득 칭호 🔒</Subtitle>
               <TitleGrid>
                 {unownedTitles.map(title => (
                   <TitleCard
                     key={title.id}
                     $isOwned={false}
-                    title={title.description} // 툴팁으로 획득 조건 표시
+                    title={title.description}
                   >
                     <strong style={{ color: title.color }}>{title.icon} {title.name}</strong>
                     <p>{title.description}</p>
