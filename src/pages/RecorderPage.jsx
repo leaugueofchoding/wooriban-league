@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, approveMissionsInBatch, getMissionHistory } from '../api/firebase';
 import MissionHistoryModal from '../components/MissionHistoryModal';
 import ImageModal from '../components/ImageModal'; // 이미지 모달 import 추가
@@ -191,6 +191,7 @@ const TopControls = styled.div`
 
 
 function RecorderPage({ isAdminView = false, initialMissionId = null }) {
+    const { classId } = useClassStore(); // [추가]
     const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
     const { missionId } = useParams();
     const navigate = useNavigate();
@@ -203,7 +204,7 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [missionHistory, setMissionHistory] = useState([]);
     const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
-    const [modalImageSrc, setModalImageSrc] = useState(null); // 이미지 모달 state 추가
+    const [modalImageSrc, setModalImageSrc] = useState(null);
 
     useEffect(() => {
         if (initialMissionId) {
@@ -267,8 +268,8 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
 
     const handleHistoryView = async (e, student) => {
         e.stopPropagation();
-        if (!selectedMissionId) return;
-        const history = await getMissionHistory(student.id, selectedMissionId);
+        if (!classId || !selectedMissionId) return; // [수정]
+        const history = await getMissionHistory(classId, student.id, selectedMissionId); // [수정]
         setMissionHistory(history);
         setSelectedStudentForHistory(student);
         setIsHistoryModalOpen(true);
@@ -287,8 +288,8 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
         }
     };
 
-
     const handleSubmit = async () => {
+        if (!classId) return; // [추가]
         const mission = missions.find(m => m.id === selectedMissionId);
         if (!mission || checkedStudents.size === 0) {
             return alert('미션을 선택하고, 승인할 학생을 한 명 이상 체크해주세요.');
@@ -298,7 +299,7 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
         const studentNames = Array.from(checkedStudents).map(id => players.find(p => p.id === id)?.name).join(', ');
         if (window.confirm(`${studentNames} 학생들의 미션 완료를 승인하고 포인트를 지급하시겠습니까?`)) {
             try {
-                await approveMissionsInBatch(selectedMissionId, Array.from(checkedStudents), currentUser.uid, mission.reward);
+                await approveMissionsInBatch(classId, selectedMissionId, Array.from(checkedStudents), currentUser.uid, mission.reward); // [수정]
                 alert('포인트 지급이 완료되었습니다.');
                 setCheckedStudents(new Set());
                 await fetchInitialData();

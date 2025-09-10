@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, db, approveMissionsInBatch, rejectMissionSubmission, updateMatchStatus, updateMatchStartTime } from '../api/firebase.js';
 import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
@@ -228,6 +228,7 @@ const RemoteButton = styled.button`
 
 
 function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
+    const { classId } = useClassStore();
     const { players, teams, saveScores } = useLeagueStore();
     const [showScorers, setShowScorers] = useState(isInitiallyOpen);
 
@@ -238,20 +239,20 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
     const teamBMembers = useMemo(() => teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamB, players]);
 
     useEffect(() => {
+        if (!classId) return;
         if (match.status === '예정' && (match.teamA_score == null || match.teamB_score == null)) {
-            // [수정] 팀원 수 중 더 많은 수를 기준으로 기본 점수를 설정합니다.
             const maxMembers = Math.max(teamAMembers.length, teamBMembers.length);
             const defaultScoreA = match.teamA_score ?? maxMembers;
             const defaultScoreB = match.teamB_score ?? maxMembers;
 
             if (match.teamA_score == null || match.teamB_score == null) {
-                updateDoc(doc(db, 'matches', match.id), {
+                updateDoc(doc(db, 'classes', classId, 'matches', match.id), {
                     teamA_score: defaultScoreA,
                     teamB_score: defaultScoreB,
                 });
             }
         }
-    }, [match.id, match.status, match.teamA_score, match.teamB_score, teamAMembers.length, teamBMembers.length]);
+    }, [match.id, match.status, match.teamA_score, match.teamB_score, teamAMembers.length, teamBMembers.length, classId]);
 
     const scoreA = match.teamA_score ?? 0;
     const scoreB = match.teamB_score ?? 0;
@@ -262,16 +263,18 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
     }, [isInitiallyOpen]);
 
     const handleScoreChange = async (team, amount) => {
+        if (!classId) return;
         const newScoreA = team === 'A' ? Math.max(0, scoreA + amount) : scoreA;
         const newScoreB = team === 'B' ? Math.max(0, scoreB + amount) : scoreB;
 
-        await updateDoc(doc(db, 'matches', match.id), {
+        await updateDoc(doc(db, 'classes', classId, 'matches', match.id), {
             teamA_score: newScoreA,
             teamB_score: newScoreB,
         });
     };
 
     const handleScorerChange = async (playerId, amount) => {
+        if (!classId) return;
         const playerTeam = teamAMembers.some(p => p.id === playerId) ? 'A' : 'B';
         const currentGoals = scorers[playerId] || 0;
 
@@ -293,7 +296,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
         const newScoreA = playerTeam === 'B' ? Math.max(0, scoreA - amount) : scoreA;
         const newScoreB = playerTeam === 'A' ? Math.max(0, scoreB - amount) : scoreB;
 
-        await updateDoc(doc(db, 'matches', match.id), {
+        await updateDoc(doc(db, 'classes', classId, 'matches', match.id), {
             scorers: newScorers,
             teamA_score: newScoreA,
             teamB_score: newScoreB
@@ -301,10 +304,11 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
     };
 
     const handleOwnGoalChange = async (team) => {
+        if (!classId) return;
         const newScoreA = team === 'A' ? Math.max(0, scoreA - 1) : scoreA;
         const newScoreB = team === 'B' ? Math.max(0, scoreB - 1) : scoreB;
 
-        await updateDoc(doc(db, 'matches', match.id), {
+        await updateDoc(doc(db, 'classes', classId, 'matches', match.id), {
             teamA_score: newScoreA,
             teamB_score: newScoreB
         });
@@ -317,7 +321,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
 
     return (
         <MatchItem>
-            <MatchSummary style={{ minWidth: '0' }}> {/* minWidth 제거 */}
+            <MatchSummary style={{ minWidth: '0' }}>
                 <TeamName>{teamA?.teamName || 'N/A'}</TeamName>
                 <ScoreControl>
                     <ScoreButton onClick={() => handleScoreChange('A', -1)} disabled={match.status === '완료'}>-</ScoreButton>
@@ -332,7 +336,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
                 </ScoreControl>
                 <TeamName>{teamB?.teamName || 'N/A'}</TeamName>
 
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexShrink: 0 }}> {/* flexShrink 추가 */}
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexShrink: 0 }}>
                     <StyledButton onClick={() => setShowScorers(s => !s)} disabled={match.status === '완료'}>득점</StyledButton>
                     {match.status === '예정' && (
                         <RemoteButton className="start" onClick={() => onStatusChange(match.id, '진행중')}>경기 시작</RemoteButton>
@@ -394,6 +398,7 @@ function MatchRow({ match, isInitiallyOpen, onStatusChange }) {
 }
 
 function RecorderDashboardPage() {
+    const { classId } = useClassStore(); // [추가]
     const { players, missions, matches, missionSubmissions } = useLeagueStore();
     const [processingIds, setProcessingIds] = useState(new Set());
     const [mainTab, setMainTab] = useState('mission');
@@ -420,7 +425,6 @@ function RecorderDashboardPage() {
         return nextUpcomingMatch?.id || null;
     }, [sortedMatches]);
 
-    // ▼▼▼ [수정] 필터링 로직 수정 ▼▼▼
     const pendingSubmissions = useMemo(() => {
         const myRole = myPlayerData?.role;
         const pending = missionSubmissions.filter(sub => sub.status === 'pending');
@@ -432,9 +436,9 @@ function RecorderDashboardPage() {
             return true;
         });
     }, [missionSubmissions, missions, myPlayerData]);
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const handleAction = async (action, submission, reward) => {
+        if (!classId) return; // [추가]
         setProcessingIds(prev => new Set(prev).add(submission.id));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
@@ -444,9 +448,9 @@ function RecorderDashboardPage() {
         }
         try {
             if (action === 'approve') {
-                await approveMissionsInBatch(mission.id, [student.id], currentUser.uid, reward);
+                await approveMissionsInBatch(classId, mission.id, [student.id], currentUser.uid, reward); // [수정]
             } else if (action === 'reject') {
-                await rejectMissionSubmission(submission.id, student.authUid, mission.title);
+                await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title); // [수정]
             }
         } catch (error) {
             console.error(`미션 처리 오류:`, error);
@@ -454,10 +458,11 @@ function RecorderDashboardPage() {
     };
 
     const handleMatchStatusChange = async (matchId, newStatus) => {
+        if (!classId) return; // [추가]
         if (newStatus === '진행중') {
-            await updateMatchStartTime(matchId);
+            await updateMatchStartTime(classId, matchId); // [수정]
         }
-        await updateMatchStatus(matchId, newStatus);
+        await updateMatchStatus(classId, matchId, newStatus); // [수정]
     };
 
     return (
@@ -483,7 +488,7 @@ function RecorderDashboardPage() {
                                     return null;
                                 }
 
-                                const hasContent = sub.text || sub.photoUrl;
+                                const hasContent = sub.text || sub.photoUrl || (sub.photoUrls && sub.photoUrls.length > 0);
                                 const isTieredReward = mission.rewards && mission.rewards.length > 1;
 
                                 return (
@@ -492,7 +497,7 @@ function RecorderDashboardPage() {
                                             <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {student?.name} - [{mission?.title}]
                                                 {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
-                                                {sub.photoUrl && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
+                                                {(sub.photoUrl || (sub.photoUrls && sub.photoUrls.length > 0)) && <span style={{ color: '#007bff', fontWeight: 'bold', marginLeft: '0.5rem' }}>[사진]</span>}
                                             </span>
 
                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -530,7 +535,6 @@ function RecorderDashboardPage() {
                                         </div>
                                         <SubmissionDetails $isOpen={isOpen}>
                                             {sub.text && <p>{sub.text}</p>}
-                                            {/* [수정] 관리자 페이지와 마찬가지로, 이미지 클릭 시 원본을 볼 수 있도록 수정합니다. */}
                                             {sub.photoUrls && sub.photoUrls.map((url, index) => (
                                                 <img key={index} src={url} alt={`제출된 사진 ${index + 1}`} onClick={() => alert('이미지 크게보기는 관리자 페이지에서만 가능합니다.')} style={{ marginBottom: '0.5rem', cursor: 'pointer' }} />
                                             ))}

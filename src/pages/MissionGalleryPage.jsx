@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, db, getApprovedSubmissions, addMissionComment, toggleSubmissionAdminVisibility, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { Link } from 'react-router-dom';
@@ -230,6 +230,7 @@ const getSafeKeyFromUrl = (url) => {
 };
 
 function MissionGalleryPage() {
+    const { classId } = useClassStore();
     const { players, missions, archivedMissions } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
@@ -249,50 +250,39 @@ function MissionGalleryPage() {
 
     useEffect(() => {
         const fetchAllApprovedSubmissions = async () => {
-            if (allMissionsList.length === 0) return;
+            if (!classId || allMissionsList.length === 0) return;
             setIsLoading(true);
-            const approvedSubmissions = await getApprovedSubmissions();
+            const approvedSubmissions = await getApprovedSubmissions(classId);
             setAllSubmissions(approvedSubmissions);
             setIsLoading(false);
         };
         fetchAllApprovedSubmissions();
-    }, [allMissionsList]);
+    }, [allMissionsList, classId]);
 
     useEffect(() => {
-        if (selectedSubmission) {
+        if (selectedSubmission && classId) {
             setRotations(selectedSubmission.rotations || {});
-            const commentsRef = collection(db, "missionSubmissions", selectedSubmission.id, "comments");
+            const commentsRef = collection(db, "classes", classId, "missionSubmissions", selectedSubmission.id, "comments");
             const q = query(commentsRef, orderBy("createdAt", "asc"));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             });
             return () => unsubscribe();
         }
-    }, [selectedSubmission]);
+    }, [selectedSubmission, classId]);
 
     const publiclyVisibleSubmissions = useMemo(() => {
         if (allMissionsList.length === 0) return [];
 
         return allSubmissions.filter(sub => {
             const mission = allMissionsList.find(m => m.id === sub.missionId);
-            if (!mission) return false; // 미션 정보가 없으면 표시하지 않음
-            if (sub.adminHidden) return false; // 관리자가 숨김 처리한 경우 표시하지 않음
-
-            // isPublic 필드가 명시적으로 false이면 무조건 비공개
-            if (sub.isPublic === false) {
-                return false;
-            }
-            // isPublic 필드가 명시적으로 true이면 무조건 공개
-            if (sub.isPublic === true) {
-                return true;
-            }
-            // isPublic 필드 값이 없는 경우(undefined), 미션의 기본 설정값을 따름
-            // defaultPrivate이 true(기본 비공개)이면 비공개, false(기본 공개)이면 공개
+            if (!mission) return false;
+            if (sub.adminHidden) return false;
+            if (sub.isPublic === false) return false;
+            if (sub.isPublic === true) return true;
             if (sub.isPublic === undefined) {
                 return !mission.defaultPrivate;
             }
-
-            // 그 외의 경우는 기본적으로 비공개 처리
             return false;
         });
     }, [allSubmissions, allMissionsList]);
@@ -325,9 +315,10 @@ function MissionGalleryPage() {
     };
 
     const handleAdminToggleVisibility = async (submission) => {
+        if (!classId) return;
         const action = submission.adminHidden ? "표시" : "숨김";
         if (window.confirm(`이 게시물을 갤러리에서 ${action} 처리하시겠습니까?`)) {
-            await toggleSubmissionAdminVisibility(submission.id);
+            await toggleSubmissionAdminVisibility(classId, submission.id);
             const updatedSubmission = { ...submission, adminHidden: !submission.adminHidden };
             setAllSubmissions(prev => prev.map(s => s.id === submission.id ? updatedSubmission : s));
             setSelectedSubmission(updatedSubmission);
@@ -335,9 +326,10 @@ function MissionGalleryPage() {
     };
 
     const handleCommentSubmit = async () => {
-        if (!newComment.trim() || !myPlayerData) return;
+        if (!classId || !newComment.trim() || !myPlayerData) return;
         const student = players.find(p => p.id === selectedSubmission.studentId);
         await addMissionComment(
+            classId,
             selectedSubmission.id,
             { commenterId: myPlayerData.id, commenterName: myPlayerData.name, commenterRole: myPlayerData.role, text: newComment },
             student?.authUid,
@@ -348,8 +340,8 @@ function MissionGalleryPage() {
 
     const handleLikeSubmission = async (e) => {
         e.stopPropagation();
-        if (!myPlayerData) return;
-        await toggleSubmissionLike(selectedSubmission.id, myPlayerData.id);
+        if (!classId || !myPlayerData) return;
+        await toggleSubmissionLike(classId, selectedSubmission.id, myPlayerData.id);
         const newLikes = selectedSubmission.likes?.includes(myPlayerData.id)
             ? selectedSubmission.likes.filter(id => id !== myPlayerData.id)
             : [...(selectedSubmission.likes || []), myPlayerData.id];
@@ -359,8 +351,9 @@ function MissionGalleryPage() {
     };
 
     const handleRotate = async (url) => {
+        if (!classId) return;
         try {
-            await toggleSubmissionImageRotation(selectedSubmission.id, url);
+            await toggleSubmissionImageRotation(classId, selectedSubmission.id, url);
             const imageKey = getSafeKeyFromUrl(url);
             const newRotation = ((rotations[imageKey] || 0) + 90) % 360;
 
@@ -487,6 +480,7 @@ function MissionGalleryPage() {
                                 {comments.map(comment => (
                                     <CommentThread
                                         key={comment.id}
+                                        classId={classId}
                                         submissionId={selectedSubmission.id}
                                         comment={comment}
                                         missionTitle={getMissionTitle(selectedSubmission.missionId)}
