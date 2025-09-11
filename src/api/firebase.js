@@ -549,6 +549,86 @@ export async function batchAdjustPlayerPoints(classId, playerIds, amount, reason
   await batch.commit();
 }
 
+// =================================================================
+// ▼▼▼ [신규] 학급 가입 및 생성 관련 함수 ▼▼▼
+// =================================================================
+
+/**
+ * 초대 코드를 사용하여 해당하는 classId를 찾습니다.
+ * @param {string} inviteCode - 확인할 초대 코드
+ * @returns {string|null} - 일치하는 학급의 ID 또는 null
+ */
+export async function getClassIdByInviteCode(inviteCode) {
+  if (!inviteCode) return null;
+  const classesRef = collection(db, "classes");
+  const q = query(classesRef, where("inviteCode", "==", inviteCode), limit(1));
+  const querySnapshot = await getDocs(q);
+
+  if (querySnapshot.empty) {
+    console.error(`'${inviteCode}'에 해당하는 학급을 찾을 수 없습니다.`);
+    return null;
+  }
+  return querySnapshot.docs[0].id;
+}
+
+/**
+ * 특정 학급에 새로운 선수를 등록합니다.
+ * @param {string} classId - 가입할 학급의 ID
+ * @param {object} user - Firebase Auth를 통해 로그인한 사용자 객체
+ */
+export async function registerPlayerInClass(classId, user) {
+  if (!classId || !user) throw new Error("학급 ID와 사용자 정보가 필요합니다.");
+
+  const playerRef = doc(db, 'classes', classId, 'players', user.uid);
+  const playerSnap = await getDoc(playerRef);
+
+  if (playerSnap.exists()) {
+    // 이미 해당 학급에 등록된 경우, 오류 대신 그냥 넘어갈 수 있도록 처리합니다.
+    console.warn(`${user.displayName}님은 이미 '${classId}' 학급에 등록되어 있습니다.`);
+    return playerSnap.data();
+  }
+
+  const playerData = {
+    authUid: user.uid,
+    id: user.uid,
+    name: user.displayName,
+    email: user.email,
+    photoURL: user.photoURL,
+    points: 100, // 신규 가입 포인트
+    ownedParts: [],
+    avatarConfig: {},
+    role: 'player',
+    status: 'active',
+    createdAt: serverTimestamp(),
+  };
+  await setDoc(playerRef, playerData);
+  return playerData;
+}
+
+/**
+ * [관리자용] 새로운 학급을 생성하고 초대 코드를 발급합니다.
+ * @param {string} className - 새로 생성할 학급의 이름
+ * @param {object} adminUser - 관리자(생성자)의 Firebase Auth 사용자 객체
+ * @returns {object} - 생성된 학급 ID와 초대 코드
+ */
+export async function createNewClass(className, adminUser) {
+  const newClassRef = doc(collection(db, 'classes'));
+
+  // 4자리-4자리 형태의 랜덤 초대 코드 생성
+  const inviteCode = `${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+  await setDoc(newClassRef, {
+    name: className,
+    adminId: adminUser.uid,
+    createdAt: serverTimestamp(),
+    inviteCode: inviteCode,
+  });
+
+  // 새 학급에 기본 칭호 데이터를 자동으로 넣어줍니다.
+  await seedInitialTitles(newClassRef.id);
+
+  return { classId: newClassRef.id, inviteCode, name: className };
+}
 // --- 사용자 및 선수 관리 (classId 추가) ---
 export async function updateUserProfile(user) {
   const userRef = doc(db, 'users', user.uid);

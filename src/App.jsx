@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-// ▼▼▼ [수정] useClassStore를 함께 import 합니다. ▼▼▼
 import { useLeagueStore, useClassStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
@@ -25,6 +24,7 @@ import SuggestionPage from './pages/SuggestionPage';
 import MyRoomPage from './pages/MyRoomPage';
 import BroadcastPage from './pages/BroadcastPage';
 import MissionGalleryPage from './pages/MissionGalleryPage';
+import LandingPage from './pages/LandingPage.jsx'; // ◀◀◀ [추가] 랜딩 페이지 import
 
 // Common Components
 import Auth from './components/Auth';
@@ -76,6 +76,9 @@ function AccessDenied() {
   );
 }
 
+// =================================================================
+// ▼▼▼ [수정] 보호된 경로 로직 변경 ▼▼▼
+// =================================================================
 const ProtectedRoute = ({ children }) => {
   const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -87,11 +90,12 @@ const ProtectedRoute = ({ children }) => {
   }, [players, currentUser]);
 
   if (isLoading) {
-    return null;
+    return null; // 로딩 중에는 아무것도 표시하지 않음
   }
 
   if (!currentUser || !isPlayerRegistered) {
-    return <Navigate to="/access-denied" state={{ from: location }} replace />;
+    // 로그인이 안됐거나, 선수 등록이 안됐으면 랜딩 페이지로 보냄
+    return <Navigate to="/" state={{ from: location }} replace />;
   }
 
   return children;
@@ -112,6 +116,7 @@ const AdminRoute = ({ children }) => {
   }
 
   if (!currentUser || !myPlayerData || myPlayerData.role !== 'admin') {
+    // 관리자가 아니면 접근 거부 페이지 표시
     return <Navigate to="/access-denied" state={{ from: location }} replace />;
   }
 
@@ -120,40 +125,39 @@ const AdminRoute = ({ children }) => {
 
 
 function App() {
-  // ▼▼▼ [수정] leagueStore와 classStore에서 필요한 상태와 함수를 가져옵니다. ▼▼▼
   const {
     isLoading, setLoading, initializeClass, cleanupListeners,
     checkAttendance, pointAdjustmentNotification
   } = useLeagueStore();
   const { classId, setClassId } = useClassStore();
-  // ▲▲▲ 여기까지 수정 ▲▲▲
 
   const [authChecked, setAuthChecked] = useState(false);
   const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
 
   useEffect(() => {
-    // ▼▼▼ [수정] 앱 시작 시 기본 classId를 설정하고, leagueStore를 초기화합니다. ▼▼▼
-    // TODO: 향후 이 부분은 학급 선택 UI나 초대 코드 로직으로 대체되어야 합니다.
-    const defaultClassId = "25-hwachang-6-2"; // 임시 기본 학급 ID
-    setClassId(defaultClassId);
-    initializeClass(defaultClassId);
+    const defaultClassId = "25-hwachang-6-2";
+    if (!classId) {
+      setClassId(defaultClassId);
+    }
+    initializeClass(classId || defaultClassId);
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user); // 현재 유저 상태 업데이트
       setLoading(true);
       if (user) {
-        // 이미 initializeClass에서 fetchInitialData를 호출하므로 중복 호출 제거
         checkAttendance();
       } else {
         cleanupListeners();
-        // 로그아웃 시에도 데이터를 다시 불러와 비로그인 상태 UI를 올바르게 표시
-        initializeClass(defaultClassId);
       }
+      // initializeClass는 user 상태 변경과 관계없이 항상 실행되어야 함
+      // (로그아웃 시에도 비로그인 데이터를 불러오기 위해)
+      initializeClass(classId || defaultClassId);
       setAuthChecked(true);
       setLoading(false);
     });
     return () => unsubscribe();
-    // initializeClass를 의존성 배열에 추가하여 classId 변경 시에도 데이터 리로드
-  }, [initializeClass, cleanupListeners, checkAttendance, setLoading, setClassId]);
+  }, [initializeClass, cleanupListeners, checkAttendance, setLoading, classId, setClassId]);
 
 
   if (!authChecked || isLoading) {
@@ -164,39 +168,39 @@ function App() {
   return (
     <BrowserRouter>
       <AppWrapper>
-        <Auth user={auth.currentUser} />
+        {/* ▼▼▼ [수정] 로그인 했을 때만 상단 메뉴가 보이도록 변경 ▼▼▼ */}
+        {currentUser && <Auth user={currentUser} />}
         <AttendanceModal />
         {pointAdjustmentNotification && <PointAdjustmentModal />}
         <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            {/* ▼▼▼ [수정] 루트 경로 로직 변경 ▼▼▼ */}
+            <Route path="/" element={currentUser ? <DashboardPage /> : <LandingPage />} />
+
             <Route path="/access-denied" element={<AccessDenied />} />
             <Route path="/broadcast" element={<BroadcastPage />} />
 
+            {/* 나머지 경로는 모두 ProtectedRoute로 감싸서 로그인 및 선수 등록 여부 확인 */}
             <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="/league/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
-
             <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
             <Route path="/shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
-
-            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
-            <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
-
             <Route path="/winner" element={<ProtectedRoute><WinnerPage /></ProtectedRoute>} />
-
             <Route path="/profile/edit" element={<ProtectedRoute><AvatarEditPage /></ProtectedRoute>} />
             <Route path="/profile/:playerId/stats" element={<ProtectedRoute><PlayerStatsPage /></ProtectedRoute>} />
             <Route path="/profile/:playerId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-
             <Route path="/recorder-dashboard" element={<ProtectedRoute><RecorderDashboardPage /></ProtectedRoute>} />
             <Route path="/recorder/:missionId" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
             <Route path="/recorder" element={<ProtectedRoute><RecorderPage /></ProtectedRoute>} />
             <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
-
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
             <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
+
+            {/* 관리자 경로는 AdminRoute로 이중 보호 */}
+            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+            <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
           </Routes>
         </MainContent>
         <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} />

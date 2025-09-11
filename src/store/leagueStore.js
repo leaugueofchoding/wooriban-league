@@ -26,7 +26,9 @@ import {
     deleteMission,
     batchUpdateMissionOrder,
     updateMission,
-    createPlayerFromUser,
+    createPlayerFromUser, // createPlayerFromUser는 이제 사용하지 않으므로 삭제해도 됩니다.
+    getClassIdByInviteCode, // ◀◀◀ [추가]
+    registerPlayerInClass, // ◀◀◀ [추가]
     markNotificationsAsRead,
     getTodaysQuizHistory,
     submitQuizAnswer as firebaseSubmitQuizAnswer,
@@ -320,20 +322,27 @@ export const useLeagueStore = create((set, get) => ({
         });
     },
 
-    registerAsPlayer: async () => {
-        const { classId } = get();
+    joinClassWithInviteCode: async (inviteCode) => {
         const user = auth.currentUser;
-        if (!user) return alert('로그인이 필요합니다.');
-        if (window.confirm('리그에 선수로 참가하시겠습니까? 참가 시 기본 정보가 등록됩니다.')) {
-            try {
-                await createPlayerFromUser(classId, user);
-                alert('리그 참가 신청이 완료되었습니다!');
-                await get().fetchInitialData();
-            } catch (error) {
-                console.error("리그 참가 오류:", error);
-                alert('참가 신청 중 오류가 발생했습니다.');
-            }
+        if (!user) {
+            throw new Error('로그인이 필요합니다.');
         }
+
+        const targetClassId = await getClassIdByInviteCode(inviteCode);
+        if (!targetClassId) {
+            throw new Error(`유효하지 않은 초대 코드입니다. 코드를 다시 확인해주세요.`);
+        }
+
+        // 새로운 학급에 선수로 등록
+        await registerPlayerInClass(targetClassId, user);
+
+        // 가입한 학급으로 앱의 classId를 설정하고 데이터를 새로고침
+        useClassStore.getState().setClassId(targetClassId);
+        await get().initializeClass(targetClassId);
+
+        // 사용자의 'users' 문서에도 마지막으로 접속한 학급 ID를 저장 (향후 자동 로그인 시 사용)
+        const userRef = doc(db, 'users', user.uid);
+        await setDoc(userRef, { lastJoinedClassId: targetClassId }, { merge: true });
     },
 
     submitMissionForApproval: async (missionId, submissionData) => {

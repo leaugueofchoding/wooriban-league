@@ -307,7 +307,7 @@ function SortableListItem({ id, classId, mission, onNavigate, unarchiveMission, 
                     // ✅ 스토어 액션 호출 시 classId 전달
                     <StyledButton onClick={() => archiveMission(classId, mission.id)} style={{ backgroundColor: '#6c757d' }}>숨김</StyledButton>
                 )}
-                // ✅ 스토어 액션 호출 시 classId 전달
+
                 <StyledButton onClick={() => removeMission(classId, mission.id)} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
             </MissionControls>
         </ListItem>
@@ -2634,6 +2634,7 @@ function MyRoomItemManager() {
 }
 
 function RoleManager() {
+    const { classId } = useClassStore(); // ✅ classId 가져오기
     const { players, fetchInitialData } = useLeagueStore();
     const [selectedPlayerId, setSelectedPlayerId] = useState('');
     const [selectedRole, setSelectedRole] = useState('player');
@@ -2655,7 +2656,7 @@ function RoleManager() {
         }
 
         try {
-            await linkPlayerToAuth(selectedPlayerId, player.authUid, selectedRole);
+            await linkPlayerToAuth(classId, selectedPlayerId, player.authUid, selectedRole);
             alert(`${player.name}님의 역할이 ${selectedRole}(으)로 변경되었습니다.`);
             await fetchInitialData();
         } catch (error) {
@@ -3460,17 +3461,62 @@ function TitleManager() {
     );
 }
 
+// =================================================================
+// ▼▼▼ [신규] 학급 관리 컴포넌트 ▼▼▼
+// =================================================================
 function ClassManager() {
+    const { classId, setClassId } = useClassStore();
+    const { initializeClass } = useLeagueStore();
+    const [newClassName, setNewClassName] = useState('');
+    // 실제로는 관리자가 소유한 학급 목록을 불러와야 합니다. 지금은 임시 데이터입니다.
+    const [classList, setClassList] = useState([
+        { id: '25-hwachang-6-2', name: '25년 화창초 6-2' },
+        { id: 'temp-class-1', name: '임시 학급 1' }
+    ]);
+
+    const handleClassChange = (newClassId) => {
+        if (newClassId !== classId) {
+            console.log(`학급을 ${newClassId}(으)로 변경합니다.`);
+            setClassId(newClassId);
+            initializeClass(newClassId); // 스토어 액션을 호출하여 전체 데이터 리로드
+        }
+    };
+
+    const handleCreateClass = () => {
+        if (!newClassName.trim()) return alert("새 학급의 이름을 입력해주세요.");
+        // 여기에 실제로 Firestore에 새 학급을 생성하는 API 로직이 추가될 것입니다.
+        alert(`'${newClassName}' 학급 생성 기능은 다음 단계에서 구현될 예정입니다.`);
+    };
+
     return (
         <FullWidthSection>
             <Section>
                 <SectionTitle>학급 관리 🏫</SectionTitle>
                 <p>이곳에서 새로운 학급을 생성하거나, 관리할 학급을 선택할 수 있습니다.</p>
-                {/* 학급 생성 및 선택 기능이 여기에 구현될 예정입니다. */}
+
+                <InputGroup style={{ borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                    <select value={classId || ''} onChange={(e) => handleClassChange(e.target.value)} style={{ flex: 1, padding: '0.75rem', fontSize: '1rem' }}>
+                        {classList.map(cls => (
+                            <option key={cls.id} value={cls.id}>{cls.name}</option>
+                        ))}
+                    </select>
+                </InputGroup>
+
+                <InputGroup style={{ borderTop: '1px solid #eee', paddingTop: '1rem', marginTop: '1rem' }}>
+                    <input
+                        type="text"
+                        value={newClassName}
+                        onChange={(e) => setNewClassName(e.target.value)}
+                        placeholder="새 학급 이름 (예: 26년 화창초 6-1)"
+                        style={{ flex: 1, padding: '0.75rem' }}
+                    />
+                    <StyledButton onClick={handleCreateClass} style={{ backgroundColor: '#28a745' }}>새 학급 생성</StyledButton>
+                </InputGroup>
             </Section>
         </FullWidthSection>
     );
 }
+
 
 function AdminPage() {
     const { players } = useLeagueStore();
@@ -3584,7 +3630,6 @@ function AdminPage() {
         } else if (menu === 'league') {
             if (activeMenu !== 'league') setActiveSubMenu('league_manage');
         } else if (menu === 'class') {
-            // '학급 관리' 메뉴는 하위 메뉴가 없으므로 activeSubMenu를 초기화합니다.
             setActiveSubMenu('');
         }
         else {

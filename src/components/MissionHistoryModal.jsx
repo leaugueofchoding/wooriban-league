@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore'; // useClassStore import
 import { auth, db, toggleSubmissionImageRotation } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import CommentThread from './CommentThread';
@@ -163,6 +163,7 @@ const getSafeKeyFromUrl = (url) => {
 
 function HistoryItem({ item, student, missionTitle, onImageClick }) {
     const { players } = useLeagueStore();
+    const { classId } = useClassStore(); // classId 가져오기
     const [comments, setComments] = useState([]);
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const [rotations, setRotations] = useState(item.rotations || {});
@@ -170,19 +171,21 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
     const canRotate = myPlayerData?.role === 'admin' || myPlayerData?.id === student.id;
 
     useEffect(() => {
-        setRotations(item.rotations || {}); // 부모 컴포넌트에서 item이 바뀔 때마다 rotations 상태 업데이트
-        const commentsRef = collection(db, "missionSubmissions", item.id, "comments");
+        setRotations(item.rotations || {});
+        if (!classId) return; // classId 가드 추가
+
+        const commentsRef = collection(db, "classes", classId, "missionSubmissions", item.id, "comments");
         const q = query(commentsRef, orderBy("createdAt", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         return () => unsubscribe();
-    }, [item]);
+    }, [item, classId]);
 
     const handleRotate = async (url) => {
-        if (!canRotate) return;
+        if (!canRotate || !classId) return;
         try {
-            await toggleSubmissionImageRotation(item.id, url);
+            await toggleSubmissionImageRotation(classId, item.id, url);
             const imageKey = getSafeKeyFromUrl(url);
             setRotations(prev => ({ ...prev, [imageKey]: ((prev[imageKey] || 0) + 90) % 360 }));
         } catch (error) {
@@ -193,6 +196,12 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
     const formatDate = (timestamp) => {
         if (!timestamp?.toDate) return '날짜 정보 없음';
         return timestamp.toDate().toLocaleString('ko-KR');
+    };
+
+    const handleImageClick = (imageData) => {
+        if (onImageClick) {
+            onImageClick(imageData);
+        }
     };
 
     return (
@@ -209,7 +218,7 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
                                 src={url}
                                 alt={`제출 이미지 ${index + 1}`}
                                 style={{ transform: `rotate(${rotation}deg)` }}
-                                onClick={() => onImageClick({ src: url, rotation, canRotate: canRotate, submissionId: item.id })}
+                                onClick={() => handleImageClick({ src: url, rotation, canRotate: canRotate, submissionId: item.id })}
                             />
                             {canRotate && <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>}
                         </ImageContainer>
@@ -222,6 +231,7 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
                     {comments.map(comment => (
                         <CommentThread
                             key={comment.id}
+                            classId={classId} // classId 전달
                             submissionId={item.id}
                             comment={comment}
                             missionTitle={missionTitle}
