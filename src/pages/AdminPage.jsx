@@ -727,8 +727,17 @@ const ItemCard = styled.div`
  background-color: #fff;
  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `;
-// src/pages/AdminPage.jsx (2/7)
-// src/pages/AdminPage.jsx (2/7)
+
+const getBackgroundPosition = (category) => {
+    switch (category) {
+        case 'bottom': return 'center 75%';
+        case 'shoes': return 'center 100%';
+        case 'eyes': case 'nose': case 'mouth': return 'center 25%';
+        case 'hair': return 'center 0%';
+        case 'top':
+        default: return 'center 55%';
+    }
+};
 
 const ItemImage = styled.div`
   width: 120px;
@@ -3445,14 +3454,15 @@ function ClassManager() {
     const [managedClasses, setManagedClasses] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // 현재 선택된 학급 정보를 memoization하여 불필요한 재계산을 방지합니다.
     const currentClass = useMemo(() => {
         return managedClasses.find(c => c.id === classId);
     }, [managedClasses, classId]);
 
-    // 관리자가 소유한 모든 학급 목록을 불러오는 함수입니다.
     const fetchManagedClasses = useCallback(async () => {
-        if (!currentUser) return;
+        if (!currentUser) {
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         try {
             const classesRef = collection(db, "classes");
@@ -3461,7 +3471,6 @@ function ClassManager() {
             const classes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setManagedClasses(classes);
 
-            // 만약 현재 선택된 classId가 없거나, 관리 목록에 없는 경우 첫 번째 학급으로 자동 설정합니다.
             if (classes.length > 0 && (!classId || !classes.some(c => c.id === classId))) {
                 setClassId(classes[0].id);
             }
@@ -3474,18 +3483,18 @@ function ClassManager() {
 
 
     useEffect(() => {
-        fetchManagedClasses();
-    }, [fetchManagedClasses]);
+        if (currentUser) {
+            fetchManagedClasses();
+        }
+    }, [currentUser, fetchManagedClasses]);
 
-    // 학급 선택 드롭다운 메뉴 변경 시 호출되는 핸들러입니다.
     const handleClassChange = (newClassId) => {
         if (newClassId !== classId) {
             setClassId(newClassId);
-            initializeClass(newClassId); // 앱 전체 상태를 선택된 학급 기준으로 변경합니다.
+            initializeClass(newClassId);
         }
     };
 
-    // '새 학급 생성' 버튼 클릭 시 호출되는 핸들러입니다.
     const handleCreateClass = async () => {
         if (!newClassName.trim()) return alert("새 학급의 이름을 입력해주세요.");
         if (!currentUser) return alert("로그인 정보가 없습니다.");
@@ -3493,9 +3502,8 @@ function ClassManager() {
             const { classId: newClassId, name, inviteCode } = await createNewClass(newClassName, currentUser);
             alert(`'${newClassName}' 학급이 성공적으로 생성되었습니다!`);
 
-            // 상태를 직접 업데이트하여 즉시 UI에 반영합니다.
             setManagedClasses(prev => [...prev, { id: newClassId, name, inviteCode, adminId: currentUser.uid }]);
-            handleClassChange(newClassId); // 새로 만든 학급으로 바로 전환
+            handleClassChange(newClassId);
             setNewClassName('');
 
         } catch (error) {
@@ -3503,7 +3511,6 @@ function ClassManager() {
         }
     };
 
-    // 초대 코드를 클립보드에 복사하는 유틸리티 함수입니다.
     const handleCopyToClipboard = (text) => {
         navigator.clipboard.writeText(text)
             .then(() => alert('초대 코드가 클립보드에 복사되었습니다.'))
@@ -3520,7 +3527,6 @@ function ClassManager() {
                 <SectionTitle>학급 관리 🏫</SectionTitle>
                 <p>이곳에서 새로운 학급을 생성하거나, 관리할 학급을 선택할 수 있습니다.</p>
 
-                {/* 학급 선택 섹션 */}
                 <InputGroup>
                     <select value={classId || ''} onChange={(e) => handleClassChange(e.target.value)} style={{ flex: 1, padding: '0.75rem', fontSize: '1rem' }}>
                         {managedClasses.length > 0 ? (
@@ -3533,7 +3539,6 @@ function ClassManager() {
                     </select>
                 </InputGroup>
 
-                {/* 초대 코드 및 QR 코드 표시 섹션 */}
                 {currentClass && (
                     <InviteCodeWrapper>
                         <h3>'{currentClass.name}' 초대 정보</h3>
@@ -3547,7 +3552,6 @@ function ClassManager() {
                     </InviteCodeWrapper>
                 )}
 
-                {/* 새 학급 생성 섹션 */}
                 <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
                     <input
                         type="text"
