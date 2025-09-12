@@ -1,8 +1,6 @@
-// src/pages/AdminPage.jsx
-
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'; // Suspense 삭제
 import styled from 'styled-components';
-import { useLeagueStore, useClassStore } from '../store/leagueStore'; // ✅ useClassStore 추가
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -10,57 +8,17 @@ import PlayerProfile from '../components/PlayerProfile.jsx';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import QRCode from 'react-qr-code'; // ◀◀◀ [수정] 새 라이브러리를 import 합니다.
 import {
-    uploadAvatarPart,
-    batchUpdateAvatarPartDetails,
-    createMission,
-    updateAvatarPartStatus,
-    batchUpdateSaleInfo,
-    batchEndSale,
-    updateAvatarPartDisplayName,
-    batchUpdateSaleDays,
-    createClassGoal,
-    getActiveGoals,
-    batchDeleteAvatarParts,
-    deleteClassGoal,
-    approveMissionsInBatch,
-    rejectMissionSubmission,
-    linkPlayerToAuth,
-    auth,
-    db,
-    completeClassGoal,
-    createNewSeason,
-    replyToSuggestion,
-    adminInitiateConversation,
-    sendBulkMessageToAllStudents,
-    uploadMyRoomItem,
-    getMyRoomItems,
-    batchUpdateMyRoomItemDetails,
-    batchDeleteMyRoomItems,
-    batchUpdateMyRoomItemSaleInfo,
-    batchEndMyRoomItemSale,
-    batchUpdateMyRoomItemSaleDays,
-    updateMyRoomItemDisplayName,
-    getAllMyRoomComments, // 댓글 모니터링 함수 import
-    deleteMyRoomComment,  // 댓글 삭제 함수 import
-    deleteMyRoomReply,    // 답글 삭제 함수 import
-    updateClassGoalStatus, // [추가] 목표 상태 업데이트 함수 import
-    getAttendanceByDate,
-    getTitles,
-    createTitle,
-    updateTitle,
-    deleteTitle,
-    grantTitleToPlayerManually,
-    adjustPlayerPoints,
-    grantTitleToPlayersBatch,
-    getAllMissionComments // [추가] 미션 댓글 모니터링 함수 import
+    // ... (firebase.js에서 가져오는 다른 모든 함수들은 그대로 둡니다)
+    uploadAvatarPart, batchUpdateAvatarPartDetails, createMission, updateAvatarPartStatus, batchUpdateSaleInfo, batchEndSale, updateAvatarPartDisplayName, batchUpdateSaleDays, createClassGoal, getActiveGoals, batchDeleteAvatarParts, deleteClassGoal, approveMissionsInBatch, rejectMissionSubmission, linkPlayerToAuth, auth, db, completeClassGoal, createNewSeason, replyToSuggestion, adminInitiateConversation, sendBulkMessageToAllStudents, uploadMyRoomItem, getMyRoomItems, batchUpdateMyRoomItemDetails, batchDeleteMyRoomItems, batchUpdateMyRoomItemSaleInfo, batchEndMyRoomItemSale, batchUpdateMyRoomItemSaleDays, updateMyRoomItemDisplayName, getAllMyRoomComments, deleteMyRoomComment, deleteMyRoomReply, updateClassGoalStatus, getAttendanceByDate, getTitles, createTitle, updateTitle, deleteTitle, grantTitleToPlayerManually, adjustPlayerPoints, grantTitleToPlayersBatch, getAllMissionComments, createNewClass
 } from '../api/firebase.js';
-import { collection, query, where, orderBy, onSnapshot, getDocs } from "firebase/firestore"; // getDocs import 추가
-import ImageModal from '../components/ImageModal'; // [추가] 이미지 모달 컴포넌트 import
+import { collection, query, where, orderBy, onSnapshot, getDocs } from "firebase/firestore";
+import ImageModal from '../components/ImageModal';
 import RecorderPage from './RecorderPage';
-import ApprovalModal from '../components/ApprovalModal'; // [추가] 승인 모달 컴포넌트 import
+import ApprovalModal from '../components/ApprovalModal';
 
-// --- Styled Components ---
+// --- Styled Components (이하 코드는 이전과 동일) ---
 const AdminWrapper = styled.div`
   display: flex;
   gap: 2rem;
@@ -279,6 +237,32 @@ const DragHandle = styled.div`
   &:active {
     cursor: grabbing;
   }
+`;
+
+const InviteCodeWrapper = styled.div`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    border: 2px dashed #007bff;
+    border-radius: 8px;
+    background-color: #f0f8ff;
+`;
+
+const InviteCodeDisplay = styled.div`
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #0056b3;
+    background-color: #fff;
+    padding: 0.5rem 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #bce0fd;
+    cursor: pointer;
+
+    &:hover {
+        background-color: #e9f5ff;
+    }
 `;
 
 function SortableListItem({ id, classId, mission, onNavigate, unarchiveMission, archiveMission, removeMission, handleEditClick }) {
@@ -745,17 +729,6 @@ const ItemCard = styled.div`
 `;
 // src/pages/AdminPage.jsx (2/7)
 // src/pages/AdminPage.jsx (2/7)
-
-const getBackgroundPosition = (category) => {
-    switch (category) {
-        case 'bottom': return 'center 75%';
-        case 'shoes': return 'center 100%';
-        case 'eyes': case 'nose': case 'mouth': return 'center 25%';
-        case 'hair': return 'center 0%';
-        case 'top':
-        default: return 'center 55%';
-    }
-};
 
 const ItemImage = styled.div`
   width: 120px;
@@ -2624,7 +2597,7 @@ function MyRoomItemManager() {
                             <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>다음</PageButton>
                         </PaginationContainer>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                            <SaveButton onClick={handleSaveAllDetails}>'{activeTab}' 탭 정보 모두 저장</SaveButton>
+                            <SaveButton onClick={handleSaveAllDetails}>'${activeTab}' 탭 정보 모두 저장</SaveButton>
                         </div>
                     </>
                 )}
@@ -3462,31 +3435,84 @@ function TitleManager() {
 }
 
 // =================================================================
-// ▼▼▼ [신규] 학급 관리 컴포넌트 ▼▼▼
+// ▼▼▼ [수정] 학급 관리 컴포넌트 기능 완성 ▼▼▼
 // =================================================================
 function ClassManager() {
     const { classId, setClassId } = useClassStore();
     const { initializeClass } = useLeagueStore();
+    const currentUser = auth.currentUser;
     const [newClassName, setNewClassName] = useState('');
-    // 실제로는 관리자가 소유한 학급 목록을 불러와야 합니다. 지금은 임시 데이터입니다.
-    const [classList, setClassList] = useState([
-        { id: '25-hwachang-6-2', name: '25년 화창초 6-2' },
-        { id: 'temp-class-1', name: '임시 학급 1' }
-    ]);
+    const [managedClasses, setManagedClasses] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
+    // 현재 선택된 학급 정보를 memoization하여 불필요한 재계산을 방지합니다.
+    const currentClass = useMemo(() => {
+        return managedClasses.find(c => c.id === classId);
+    }, [managedClasses, classId]);
+
+    // 관리자가 소유한 모든 학급 목록을 불러오는 함수입니다.
+    const fetchManagedClasses = useCallback(async () => {
+        if (!currentUser) return;
+        setIsLoading(true);
+        try {
+            const classesRef = collection(db, "classes");
+            const q = query(classesRef, where("adminId", "==", currentUser.uid));
+            const querySnapshot = await getDocs(q);
+            const classes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setManagedClasses(classes);
+
+            // 만약 현재 선택된 classId가 없거나, 관리 목록에 없는 경우 첫 번째 학급으로 자동 설정합니다.
+            if (classes.length > 0 && (!classId || !classes.some(c => c.id === classId))) {
+                setClassId(classes[0].id);
+            }
+        } catch (error) {
+            console.error("관리 학급 목록을 불러오는 중 오류 발생:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [currentUser, classId, setClassId]);
+
+
+    useEffect(() => {
+        fetchManagedClasses();
+    }, [fetchManagedClasses]);
+
+    // 학급 선택 드롭다운 메뉴 변경 시 호출되는 핸들러입니다.
     const handleClassChange = (newClassId) => {
         if (newClassId !== classId) {
-            console.log(`학급을 ${newClassId}(으)로 변경합니다.`);
             setClassId(newClassId);
-            initializeClass(newClassId); // 스토어 액션을 호출하여 전체 데이터 리로드
+            initializeClass(newClassId); // 앱 전체 상태를 선택된 학급 기준으로 변경합니다.
         }
     };
 
-    const handleCreateClass = () => {
+    // '새 학급 생성' 버튼 클릭 시 호출되는 핸들러입니다.
+    const handleCreateClass = async () => {
         if (!newClassName.trim()) return alert("새 학급의 이름을 입력해주세요.");
-        // 여기에 실제로 Firestore에 새 학급을 생성하는 API 로직이 추가될 것입니다.
-        alert(`'${newClassName}' 학급 생성 기능은 다음 단계에서 구현될 예정입니다.`);
+        if (!currentUser) return alert("로그인 정보가 없습니다.");
+        try {
+            const { classId: newClassId, name, inviteCode } = await createNewClass(newClassName, currentUser);
+            alert(`'${newClassName}' 학급이 성공적으로 생성되었습니다!`);
+
+            // 상태를 직접 업데이트하여 즉시 UI에 반영합니다.
+            setManagedClasses(prev => [...prev, { id: newClassId, name, inviteCode, adminId: currentUser.uid }]);
+            handleClassChange(newClassId); // 새로 만든 학급으로 바로 전환
+            setNewClassName('');
+
+        } catch (error) {
+            alert(`학급 생성 실패: ${error.message}`);
+        }
     };
+
+    // 초대 코드를 클립보드에 복사하는 유틸리티 함수입니다.
+    const handleCopyToClipboard = (text) => {
+        navigator.clipboard.writeText(text)
+            .then(() => alert('초대 코드가 클립보드에 복사되었습니다.'))
+            .catch(err => console.error('클립보드 복사 실패:', err));
+    };
+
+    if (isLoading) {
+        return <Section><p>관리 학급 목록을 불러오는 중...</p></Section>;
+    }
 
     return (
         <FullWidthSection>
@@ -3494,15 +3520,35 @@ function ClassManager() {
                 <SectionTitle>학급 관리 🏫</SectionTitle>
                 <p>이곳에서 새로운 학급을 생성하거나, 관리할 학급을 선택할 수 있습니다.</p>
 
-                <InputGroup style={{ borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                {/* 학급 선택 섹션 */}
+                <InputGroup>
                     <select value={classId || ''} onChange={(e) => handleClassChange(e.target.value)} style={{ flex: 1, padding: '0.75rem', fontSize: '1rem' }}>
-                        {classList.map(cls => (
-                            <option key={cls.id} value={cls.id}>{cls.name}</option>
-                        ))}
+                        {managedClasses.length > 0 ? (
+                            managedClasses.map(cls => (
+                                <option key={cls.id} value={cls.id}>{cls.name}</option>
+                            ))
+                        ) : (
+                            <option value="">관리 중인 학급이 없습니다. 새 학급을 생성해주세요.</option>
+                        )}
                     </select>
                 </InputGroup>
 
-                <InputGroup style={{ borderTop: '1px solid #eee', paddingTop: '1rem', marginTop: '1rem' }}>
+                {/* 초대 코드 및 QR 코드 표시 섹션 */}
+                {currentClass && (
+                    <InviteCodeWrapper>
+                        <h3>'{currentClass.name}' 초대 정보</h3>
+                        <div style={{ background: 'white', padding: '16px', borderRadius: '8px' }}>
+                            <QRCode value={`${window.location.origin}/join?inviteCode=${currentClass.inviteCode}`} size={128} />
+                        </div>
+                        <InviteCodeDisplay onClick={() => handleCopyToClipboard(currentClass.inviteCode)} title="클릭하여 복사">
+                            {currentClass.inviteCode}
+                        </InviteCodeDisplay>
+                        <small>학생들에게 위 QR코드를 보여주거나 초대 코드를 알려주세요.</small>
+                    </InviteCodeWrapper>
+                )}
+
+                {/* 새 학급 생성 섹션 */}
+                <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
                     <input
                         type="text"
                         value={newClassName}
@@ -3519,6 +3565,7 @@ function ClassManager() {
 
 
 function AdminPage() {
+    console.log('현재 관리자 UID:', auth.currentUser?.uid); // ◀◀◀ 이 줄을 추가하세요.
     const { players } = useLeagueStore();
     const { tab } = useParams();
     const location = useLocation();
