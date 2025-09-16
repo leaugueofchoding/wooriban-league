@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase';
+import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase'; // getTotalLikesForPlayer 추가
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
@@ -493,6 +493,7 @@ const RequestButton = styled.button`
 // =================================================================
 // ▼▼▼ [신규] React Hooks 오류를 해결하기 위해 분리된 컴포넌트 ▼▼▼
 // =================================================================
+// 교체 후
 function MissionItem({ mission, mySubmissions, canSubmitMission }) {
     const navigate = useNavigate();
 
@@ -555,6 +556,8 @@ function DashboardPage() {
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
     const navigate = useNavigate();
+    const [likeCount, setLikeCount] = useState(null);
+
     const myPlayerData = useMemo(() => {
         if (!currentUser) return null;
         return players.find(p => p.authUid === currentUser.uid);
@@ -581,8 +584,17 @@ function DashboardPage() {
             }
         };
 
+        const fetchLikes = async () => {
+            if (myPlayerData?.id) {
+                setLikeCount(null);
+                const totalLikes = await getTotalLikesForPlayer(classId, myPlayerData.id);
+                setLikeCount(totalLikes);
+            }
+        };
+
         if (myPlayerData) {
             fetchGoals();
+            fetchLikes();
         }
     }, [myPlayerData, classId]);
 
@@ -746,7 +758,7 @@ function DashboardPage() {
                             <InfoText>
                                 <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
                                 <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
-                                <LikeDisplay>❤️ {myPlayerData?.totalLikes || 0}</LikeDisplay>
+                                <LikeDisplay>❤️ {likeCount === null ? '...' : likeCount.toLocaleString()}</LikeDisplay>
                             </InfoText>
                         </ProfileLink>
                         <ActionButtonsWrapper>

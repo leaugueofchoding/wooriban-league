@@ -512,8 +512,9 @@ const LoadMoreButton = styled.button`
     }
 `;
 
+// 교체할 MyRoomPage 컴포넌트 전체 코드
 function MyRoomPage() {
-  const { classId } = useClassStore(); // [추가]
+  const { classId } = useClassStore();
   const { playerId } = useParams();
   const navigate = useNavigate();
   const { players, myRoomItems, avatarParts, titles } = useLeagueStore();
@@ -608,21 +609,21 @@ function MyRoomPage() {
   }, [roomConfig.items]);
 
   const fetchRoomSocialData = async () => {
-    if (!classId || !roomOwnerData) return; // [수정]
+    if (!classId || !roomOwnerData) return;
 
-    const commentsQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc")); // [수정]
+    const commentsQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
     const commentsSnapshot = await getDocs(commentsQuery);
     setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    const likesQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomLikes")); // [수정]
+    const likesQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomLikes"));
     const likesSnapshot = await getDocs(likesQuery);
     setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
   useEffect(() => {
-    if (!classId || !roomOwnerData) return; // [수정]
+    if (!classId || !roomOwnerData) return;
 
-    const playerRef = doc(db, 'classes', classId, 'players', roomOwnerData.id); // [수정]
+    const playerRef = doc(db, 'classes', classId, 'players', roomOwnerData.id);
     getDoc(playerRef).then(playerSnap => {
       if (playerSnap.exists()) {
         const configData = playerSnap.data().myRoomConfig || {};
@@ -653,7 +654,7 @@ function MyRoomPage() {
 
     fetchRoomSocialData();
 
-  }, [roomOwnerData, classId]); // [수정]
+  }, [roomOwnerData, classId]);
 
   const handleSelect = (e, instanceId) => {
     e.stopPropagation();
@@ -808,9 +809,9 @@ function MyRoomPage() {
   };
 
   const handleSaveLayout = async () => {
-    if (!classId || !isMyRoom || !isEditing) return; // [수정]
+    if (!classId || !isMyRoom || !isEditing) return;
     try {
-      await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig }); // [수정]
+      await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig });
       alert('마이룸이 저장되었습니다!');
       setIsEditing(false);
       setSelectedItemId(null);
@@ -819,10 +820,22 @@ function MyRoomPage() {
     }
   };
 
+  const handleResetLayout = () => {
+    if (window.confirm('정말로 방의 모든 아이템을 치우고 초기 상태로 되돌리시겠습니까? 이 작업은 저장하기 전까지는 적용되지 않습니다.')) {
+      setRoomConfig({
+        items: [], // 모든 아이템 제거
+        houseId: null, // 하우스 제거
+        backgroundId: null, // 배경 제거
+        playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false } // 아바타는 기본 위치로
+      });
+      setSelectedItemId(null);
+    }
+  };
+
   const handlePostComment = async () => {
-    if (!classId || !newComment.trim() || !myPlayerData) return; // [수정]
+    if (!classId || !newComment.trim() || !myPlayerData) return;
     try {
-      await addMyRoomComment(classId, playerId, { // [수정]
+      await addMyRoomComment(classId, playerId, {
         commenterId: myPlayerData.id,
         commenterName: myPlayerData.name,
         text: newComment,
@@ -835,9 +848,9 @@ function MyRoomPage() {
   };
 
   const handleAddMyRoomReply = async (commentId) => {
-    if (!classId || !replyContent.trim() || !myPlayerData) return; // [수정]
+    if (!classId || !replyContent.trim() || !myPlayerData) return;
     try {
-      await addMyRoomReply(classId, playerId, commentId, { // [수정]
+      await addMyRoomReply(classId, playerId, commentId, {
         replierId: myPlayerData.id,
         replierName: myPlayerData.name,
         text: replyContent,
@@ -851,9 +864,9 @@ function MyRoomPage() {
   };
 
   const handleLikeRoom = async () => {
-    if (!classId || isMyRoom || !myPlayerData) return; // [수정]
+    if (!classId || isMyRoom || !myPlayerData) return;
     try {
-      await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name); // [수정]
+      await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name);
       fetchRoomSocialData();
     } catch (error) {
       alert(error.message);
@@ -861,9 +874,9 @@ function MyRoomPage() {
   };
 
   const handleLikeComment = async (commentId) => {
-    if (!classId || !myPlayerData) return alert("로그인 후 이용해주세요."); // [수정]
+    if (!classId || !myPlayerData) return alert("로그인 후 이용해주세요.");
     try {
-      await likeMyRoomComment(classId, playerId, commentId, myPlayerData.id); // [수정]
+      await likeMyRoomComment(classId, playerId, commentId, myPlayerData.id);
       fetchRoomSocialData();
     } catch (error) {
       alert(error.message);
@@ -871,13 +884,13 @@ function MyRoomPage() {
   };
 
   const handleLikeMyRoomReply = async (comment, reply) => {
-    if (!classId || !myPlayerData) return; // [수정]
+    if (!classId || !myPlayerData) return;
     if (myPlayerData.id !== comment.commenterId) {
       alert("댓글을 작성한 사람만 답글에 '좋아요'를 누를 수 있습니다.");
       return;
     }
     try {
-      await likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id); // [수정]
+      await likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id);
       fetchRoomSocialData();
     } catch (error) {
       alert(error.message);
@@ -885,10 +898,10 @@ function MyRoomPage() {
   }
 
   const handleDeleteComment = async (commentId) => {
-    if (!classId) return; // [추가]
+    if (!classId) return;
     if (window.confirm("정말로 이 댓글을 삭제하시겠습니까?")) {
       try {
-        await deleteMyRoomComment(classId, playerId, commentId); // [수정]
+        await deleteMyRoomComment(classId, playerId, commentId);
         fetchRoomSocialData();
       } catch (error) {
         alert(`댓글 삭제 실패: ${error.message}`);
@@ -897,10 +910,10 @@ function MyRoomPage() {
   };
 
   const handleDeleteReply = async (commentId, reply) => {
-    if (!classId) return; // [추가]
+    if (!classId) return;
     if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
       try {
-        await deleteMyRoomReply(classId, playerId, commentId, reply); // [수정]
+        await deleteMyRoomReply(classId, playerId, commentId, reply);
         fetchRoomSocialData();
       } catch (error) {
         alert(`답글 삭제 실패: ${error.message}`);
@@ -1027,7 +1040,10 @@ function MyRoomPage() {
           <InventoryContainer>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0 }}>내 아이템 목록</h3>
-              <SaveButton onClick={handleSaveLayout}>마이룸 저장</SaveButton>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <ResetButton onClick={handleResetLayout}>초기화</ResetButton>
+                <SaveButton onClick={handleSaveLayout}>마이룸 저장</SaveButton>
+              </div>
             </div>
 
             <TabContainer style={{ justifyContent: 'flex-start', borderBottom: '1px solid #dee2e6' }}>
@@ -1140,5 +1156,13 @@ function MyRoomPage() {
     </Wrapper>
   );
 }
+
+// ▼▼▼ [추가] Styled-Component를 파일 하단으로 이동 ▼▼▼
+const ResetButton = styled(SaveButton)`
+    background-color: #6c757d;
+    &:hover {
+        background-color: #5a6268;
+    }
+`;
 
 export default MyRoomPage;

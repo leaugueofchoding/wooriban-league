@@ -301,6 +301,7 @@ const SaveTitlesButton = styled(Button)`
     margin-top: 1.5rem;
 `;
 
+// 교체할 ProfilePage 컴포넌트 전체 코드
 function ProfilePage() {
   const { classId } = useClassStore();
   const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
@@ -316,18 +317,17 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
-  const [likeCount, setLikeCount] = useState(null); // ◀◀◀ [추가] 하트 개수 상태
+  const [likeCount, setLikeCount] = useState(null);
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
 
-  // ◀◀◀ [추가] 프로필 주인이 바뀔 때마다 하트 개수를 새로 불러오는 로직
   useEffect(() => {
     const fetchLikes = async () => {
       if (classId && playerData?.id) {
-        setLikeCount(null); // 로딩 상태로 초기화
+        setLikeCount(null);
         const totalLikes = await getTotalLikesForPlayer(classId, playerData.id);
         setLikeCount(totalLikes);
       }
@@ -495,7 +495,7 @@ function ProfilePage() {
           ) : (
             <NameEditor>
               <UserName>{playerData.name}</UserName>
-              {isMyProfile && (
+              {(isMyProfile || isAdmin) && (
                 <Button onClick={() => setIsEditing(true)} style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}>✏️</Button>
               )}
             </NameEditor>
@@ -504,9 +504,7 @@ function ProfilePage() {
 
         {playerData.role && <UserRole>{playerData.role}</UserRole>}
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
-        {/* ◀◀◀ [수정] N/A 대신 로딩 상태와 실제 값을 표시하도록 변경 */}
         <LikeDisplay>❤️ {likeCount === null ? '...' : likeCount}</LikeDisplay>
-
 
         <ButtonGroup>
           <ButtonRow>
