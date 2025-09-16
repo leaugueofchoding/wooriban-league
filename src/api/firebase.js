@@ -409,13 +409,25 @@ export async function getMissionHistory(classId, studentId, missionId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function addMissionComment(classId, submissionId, commentData, studentData, missionTitle) {
+export async function addMissionComment(classId, submissionId, commentData, studentAuthUid, missionTitle) {
   if (!classId) return;
   const commentsRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments");
+  // 🔽 [수정] commentData와 함께 classId를 명시적으로 추가합니다.
   await addDoc(commentsRef, {
     ...commentData,
+    classId, // classId 필드 추가
     createdAt: serverTimestamp(),
   });
+
+  if (studentAuthUid && commentData.commenterId !== studentAuthUid) {
+    createNotification(
+      studentAuthUid,
+      `💬 ${missionTitle} 게시물에 댓글이 달렸습니다.`,
+      `${commentData.commenterName}: "${commentData.text}"`,
+      "mission_comment",
+      `/mission-gallery`
+    );
+  }
 }
 
 export async function addMissionReply(classId, submissionId, commentId, replyData, originalComment) {
@@ -1836,17 +1848,22 @@ export async function likeMyRoom(classId, roomId, likerId, likerName) {
  */
 export async function addMyRoomComment(classId, roomId, commentData) {
   if (!classId) return;
-  const commentsRef = collection(db, "classes", classId, "players", roomId, "myRoomComments"); // ✅ classId 경로 추가
-  await addDoc(commentsRef, { ...commentData, classId, createdAt: serverTimestamp(), likes: [] }); // ✅ 댓글 데이터에 classId 저장 (collectionGroup 쿼리용)
+  const commentsRef = collection(db, "classes", classId, "players", roomId, "myRoomComments");
+  // 🔽 [수정] commentData와 함께 classId를 명시적으로 추가합니다.
+  await addDoc(commentsRef, { ...commentData, classId, createdAt: serverTimestamp(), likes: [] });
 
   // 마이룸 주인에게 알림 전송
-  createNotification(
-    roomId,
-    `💬 ${commentData.commenterName}님이 댓글을 남겼습니다.`,
-    `"${commentData.text}"`,
-    "myroom_comment",
-    `/my-room/${roomId}`
-  );
+  const roomOwnerDoc = await getDoc(doc(db, "classes", classId, "players", roomId));
+  if (roomOwnerDoc.exists()) {
+    const roomOwnerData = roomOwnerDoc.data();
+    createNotification(
+      roomOwnerData.authUid,
+      `💬 ${commentData.commenterName}님이 댓글을 남겼습니다.`,
+      `"${commentData.text}"`,
+      "myroom_comment",
+      `/my-room/${roomId}`
+    );
+  }
 }
 
 /**
@@ -2396,48 +2413,51 @@ export async function toggleSubmissionLike(classId, submissionId, likerId) {
   if (!classId) return;
   const submissionRef = doc(db, "classes", classId, "missionSubmissions", submissionId);
 
-  await runTransaction(db, async (transaction) => {
-    const submissionDoc = await transaction.get(submissionRef);
-    if (!submissionDoc.exists()) throw new Error("Submission not found");
+  // 1. 좋아요 상태를 먼저 업데이트합니다. (트랜잭션 분리)
+  const submissionDoc = await getDoc(submissionRef);
+  if (!submissionDoc.exists()) throw new Error("Submission not found");
 
-    const submissionData = submissionDoc.data();
-    const likes = submissionData.likes || [];
-    const newLikes = likes.includes(likerId)
-      ? likes.filter(id => id !== likerId)
-      : [...likes, likerId];
+  const submissionData = submissionDoc.data();
+  const likes = submissionData.likes || [];
+  const newLikes = likes.includes(likerId)
+    ? likes.filter(id => id !== likerId)
+    : [...likes, likerId];
 
-    transaction.update(submissionRef, { likes: newLikes });
+  await updateDoc(submissionRef, { likes: newLikes });
 
-    const POPULARITY_THRESHOLD = 10;
-    const REWARD_AMOUNT = 200;
+  // 2. 좋아요가 10개 이상이고, 보상이 지급되지 않았다면 별도로 보상을 지급합니다.
+  const POPULARITY_THRESHOLD = 10;
+  const REWARD_AMOUNT = 200;
 
-    if (newLikes.length >= POPULARITY_THRESHOLD && !submissionData.popularRewardGranted) {
-      const authorId = submissionData.studentId;
-      const authorRef = doc(db, "classes", classId, "players", authorId);
-      const authorDoc = await transaction.get(authorRef);
+  if (newLikes.length >= POPULARITY_THRESHOLD && !submissionData.popularRewardGranted) {
+    const authorId = submissionData.studentId;
+    const authorRef = doc(db, "classes", classId, "players", authorId);
+    const authorDoc = await getDoc(authorRef);
 
-      if (authorDoc.exists()) {
-        const authorData = authorDoc.data();
-        transaction.update(authorRef, { points: increment(REWARD_AMOUNT) });
-        transaction.update(submissionRef, { popularRewardGranted: true });
+    if (authorDoc.exists()) {
+      const authorData = authorDoc.data();
+      // 보상 지급과 보상 지급 완료 상태 업데이트를 함께 처리
+      const batch = writeBatch(db);
+      batch.update(authorRef, { points: increment(REWARD_AMOUNT) });
+      batch.update(submissionRef, { popularRewardGranted: true });
+      await batch.commit();
 
-        addPointHistory(
-          classId,
-          authorData.authUid,
-          authorData.name,
-          REWARD_AMOUNT,
-          "미션 갤러리 인기 게시물 보상"
-        );
-        createNotification(
-          authorData.authUid,
-          `🏆 미션 갤러리 인기 게시물 선정!`,
-          `축하합니다! 내 게시물이 '좋아요' ${POPULARITY_THRESHOLD}개를 달성하여 ${REWARD_AMOUNT}P를 받았습니다!`,
-          'gallery_reward',
-          '/mission-gallery'
-        );
-      }
+      addPointHistory(
+        classId,
+        authorData.authUid,
+        authorData.name,
+        REWARD_AMOUNT,
+        "미션 갤러리 인기 게시물 보상"
+      );
+      createNotification(
+        authorData.authUid,
+        `🏆 미션 갤러리 인기 게시물 선정!`,
+        `축하합니다! 내 게시물이 '좋아요' ${POPULARITY_THRESHOLD}개를 달성하여 ${REWARD_AMOUNT}P를 받았습니다!`,
+        'gallery_reward',
+        '/mission-gallery'
+      );
     }
-  });
+  }
 }
 
 export async function grantTitleToPlayerManually(classId, playerId, titleId) {

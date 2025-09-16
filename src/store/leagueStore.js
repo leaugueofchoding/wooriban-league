@@ -157,14 +157,6 @@ export const useLeagueStore = create((set, get) => ({
                 get().cleanupListeners();
                 let playersData = await getPlayers(classId); // let으로 변경
 
-                // 현재 로그인한 사용자의 총 좋아요 수를 계산하여 플레이어 데이터에 추가
-                const myPlayerIndex = playersData.findIndex(p => p.authUid === currentUser.uid);
-                if (myPlayerIndex > -1) {
-                    const myPlayer = playersData[myPlayerIndex];
-                    const totalLikes = await getTotalLikesForPlayer(classId, myPlayer.id);
-                    playersData[myPlayerIndex] = { ...myPlayer, totalLikes: totalLikes };
-                }
-
                 set({ players: playersData });
 
                 get().subscribeToNotifications(currentUser.uid);

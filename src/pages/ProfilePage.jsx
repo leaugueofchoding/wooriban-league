@@ -2,20 +2,19 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
-import { auth, db, updatePlayerProfile, equipTitle } from '../api/firebase.js';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
+import { auth, db, updatePlayerProfile, equipTitle, getTotalLikesForPlayer } from '../api/firebase.js'; // getTotalLikesForPlayer 추가
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
-import { getTotalLikesForPlayer } from '../api/firebase.js';
 import PointHistoryModal from '../components/PointHistoryModal';
 
-// --- Styled Components ---
+// --- Styled Components (이전과 동일) ---
 const AvatarWrapper = styled.div`
   position: relative;
   width: 150px;
   height: 150px;
-  margin: 2rem auto 1rem; /* 칭호가 들어갈 상단 여백 확보 */
+  margin: 2rem auto 1rem;
 `;
 
 const AvatarDisplay = styled.div`
@@ -28,7 +27,7 @@ const AvatarDisplay = styled.div`
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  margin-top: 5px; /* 아바타를 아래로 살짝 이동 */
+  margin-top: 5px;
 `;
 
 const PartImage = styled.img`
@@ -303,7 +302,7 @@ const SaveTitlesButton = styled(Button)`
 `;
 
 function ProfilePage() {
-  const { classId } = useClassStore(); // [추가]
+  const { classId } = useClassStore();
   const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
@@ -317,19 +316,25 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
+  const [likeCount, setLikeCount] = useState(null); // ◀◀◀ [추가] 하트 개수 상태
+
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
 
-  const totalLikes = useMemo(() => {
-    //
-    if (playerData?.authUid === currentUser?.uid) {
-      return players.find(p => p.authUid === currentUser.uid)?.totalLikes || 0;
-    }
-    // 다른 사람 프로필은 일단 0으로 표시 (필요 시 추후 계산 로직 추가)
-    return 0;
-  }, [players, currentUser, playerData]);
+  // ◀◀◀ [추가] 프로필 주인이 바뀔 때마다 하트 개수를 새로 불러오는 로직
+  useEffect(() => {
+    const fetchLikes = async () => {
+      if (classId && playerData?.id) {
+        setLikeCount(null); // 로딩 상태로 초기화
+        const totalLikes = await getTotalLikesForPlayer(classId, playerData.id);
+        setLikeCount(totalLikes);
+      }
+    };
+
+    fetchLikes();
+  }, [playerData, classId]);
 
 
   useEffect(() => {
@@ -357,9 +362,9 @@ function ProfilePage() {
   }, [playerData, titles]);
 
   const handleSaveEquippedTitle = async () => {
-    if (!classId || !playerData) return; // [추가]
+    if (!classId || !playerData) return;
     try {
-      await equipTitle(classId, playerData.id, selectedTitleId); // [수정]
+      await equipTitle(classId, playerData.id, selectedTitleId);
       await fetchInitialData();
       alert('칭호가 저장되었습니다!');
       setIsTitleAccordionOpen(false);
@@ -404,8 +409,8 @@ function ProfilePage() {
   }, [playerData, avatarParts]);
 
   const fetchPointHistory = async () => {
-    if (!classId || !playerData || !playerData.authUid) return; // [수정]
-    const historyQuery = query(collection(db, 'classes', classId, 'point_history'), where('playerId', '==', playerData.authUid), orderBy('timestamp', 'desc')); // [수정]
+    if (!classId || !playerData || !playerData.authUid) return;
+    const historyQuery = query(collection(db, 'classes', classId, 'point_history'), where('playerId', '==', playerData.authUid), orderBy('timestamp', 'desc'));
     const querySnapshot = await getDocs(historyQuery);
     setPointHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
@@ -416,12 +421,12 @@ function ProfilePage() {
   };
 
   const handleSaveProfile = async () => {
-    if (!classId || !playerData) return; // [추가]
+    if (!classId || !playerData) return;
     if (!newName.trim()) return alert('이름을 입력해주세요.');
     if (!selectedGender) return alert('성별을 선택해주세요.');
 
     try {
-      await updatePlayerProfile(classId, playerData.id, { // [수정]
+      await updatePlayerProfile(classId, playerData.id, {
         name: newName.trim(),
         gender: selectedGender,
       });
@@ -499,7 +504,9 @@ function ProfilePage() {
 
         {playerData.role && <UserRole>{playerData.role}</UserRole>}
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
-        <LikeDisplay>❤️ {playerData.authUid === currentUser?.uid ? totalLikes : 'N/A'}</LikeDisplay>
+        {/* ◀◀◀ [수정] N/A 대신 로딩 상태와 실제 값을 표시하도록 변경 */}
+        <LikeDisplay>❤️ {likeCount === null ? '...' : likeCount}</LikeDisplay>
+
 
         <ButtonGroup>
           <ButtonRow>

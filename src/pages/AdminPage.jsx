@@ -3459,27 +3459,51 @@ function ClassManager() {
     }, [managedClasses, classId]);
 
     const fetchManagedClasses = useCallback(async () => {
+        console.log("1. fetchManagedClasses 함수 시작.");
+
         if (!currentUser) {
+            console.log("2. currentUser가 아직 없습니다. 함수를 종료합니다.");
             setIsLoading(false);
             return;
         }
+        console.log("2. currentUser 확인 완료. UID:", currentUser.uid);
+
         setIsLoading(true);
         try {
             const classesRef = collection(db, "classes");
+            console.log("3. 'classes' 컬렉션에 대한 쿼리를 준비합니다.");
             const q = query(classesRef, where("adminId", "==", currentUser.uid));
+
+            console.log("4. 쿼리를 실행합니다...");
             const querySnapshot = await getDocs(q);
-            const classes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log("5. 쿼리 실행 완료.");
+
+            if (querySnapshot.empty) {
+                console.log("6. 쿼리 결과가 비어있습니다. (문서 없음)");
+            } else {
+                console.log(`6. ${querySnapshot.size}개의 문서를 찾았습니다.`);
+            }
+
+            const classes = querySnapshot.docs.map(doc => {
+                console.log(" - 문서 ID:", doc.id, "데이터:", doc.data());
+                return { id: doc.id, ...doc.data() };
+            });
+
             setManagedClasses(classes);
+            console.log("7. managedClasses 상태가 업데이트되었습니다.", classes);
 
             if (classes.length > 0 && (!classId || !classes.some(c => c.id === classId))) {
+                console.log("8. 현재 classId가 없거나 목록에 없으므로, 첫 번째 학급으로 자동 설정합니다:", classes[0].id);
                 setClassId(classes[0].id);
             }
         } catch (error) {
-            console.error("관리 학급 목록을 불러오는 중 오류 발생:", error);
+            console.error("!!! 관리 학급 목록을 불러오는 중 심각한 오류 발생:", error);
+            alert("학급 목록을 불러오는 중 오류가 발생했습니다. 개발자 콘솔을 확인해주세요.");
         } finally {
             setIsLoading(false);
+            console.log("9. fetchManagedClasses 함수 종료.");
         }
-    }, [currentUser, classId, setClassId]);
+    }, [currentUser, classId, setClassId, initializeClass]);
 
 
     useEffect(() => {
@@ -3557,7 +3581,7 @@ function ClassManager() {
                         type="text"
                         value={newClassName}
                         onChange={(e) => setNewClassName(e.target.value)}
-                        placeholder="새 학급 이름 (예: 26년 화창초 6-1)"
+                        placeholder="새 학급 이름 (예: 26년 초 6-1)"
                         style={{ flex: 1, padding: '0.75rem' }}
                     />
                     <StyledButton onClick={handleCreateClass} style={{ backgroundColor: '#28a745' }}>새 학급 생성</StyledButton>
