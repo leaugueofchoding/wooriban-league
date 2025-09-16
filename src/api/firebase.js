@@ -2617,3 +2617,33 @@ export async function getTotalLikesForPlayer(classId, playerId) {
 
   return totalLikes;
 }
+
+export async function selectInitialPet(classId, species, name) {
+  const user = auth.currentUser;
+  if (!classId || !user) throw new Error("사용자 또는 학급 정보가 없습니다.");
+
+  const playerRef = doc(db, "classes", classId, "players", user.uid);
+
+  const skillMap = {
+    dragon: 'fiery_focus',
+    rabbit: 'quick_thinking',
+    turtle: 'shell_shield'
+  };
+
+  const petData = {
+    name: name,
+    species: species,
+    level: 1,
+    exp: 0,
+    maxExp: 100,
+    skillId: skillMap[species] || null,
+    appearanceId: `${species}_lv1`
+  };
+
+  await updateDoc(playerRef, {
+    pet: petData
+  });
+
+  // 펫 선택 시 초기 보상 지급
+  await adjustPlayerPoints(classId, user.uid, 200, "첫 파트너 펫 선택 보상");
+}

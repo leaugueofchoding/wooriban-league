@@ -25,7 +25,11 @@ import MyRoomPage from './pages/MyRoomPage';
 import BroadcastPage from './pages/BroadcastPage';
 import MissionGalleryPage from './pages/MissionGalleryPage';
 import LandingPage from './pages/LandingPage.jsx';
-import JoinPage from './pages/JoinPage.jsx'; // ◀◀◀ [추가] 가입 페이지 import
+import JoinPage from './pages/JoinPage.jsx';
+// ▼▼▼ [추가] 새로운 펫 관련 페이지 import ▼▼▼
+import PetPage from './features/pet/PetPage.jsx';
+import PetSelectionPage from './features/pet/PetSelectionPage.jsx';
+
 
 // Common Components
 import Auth from './components/Auth';
@@ -92,7 +96,6 @@ const ProtectedRoute = ({ children }) => {
     return null;
   }
 
-  // 초대 코드가 있으면 가입 페이지로 먼저 보냄
   const inviteCode = sessionStorage.getItem('inviteCode');
   if (currentUser && inviteCode) {
     return <Navigate to={`/join?inviteCode=${inviteCode}`} state={{ from: location }} replace />;
@@ -149,10 +152,9 @@ function App() {
       setLoading(true);
 
       if (user) {
-        // 초대 코드가 세션에 있으면 가입 절차를 먼저 시도
         const inviteCode = sessionStorage.getItem('inviteCode');
         if (inviteCode) {
-          // JoinPage에서 가입 처리 후 리다이렉션 할 것이므로 여기서는 별도 처리 안함
+          // JoinPage will handle the logic
         } else {
           await initializeClass(classId || defaultClassId);
           checkAttendance();
@@ -184,7 +186,7 @@ function App() {
         <MainContent>
           <Routes>
             <Route path="/" element={currentUser ? <DashboardPage /> : <LandingPage />} />
-            <Route path="/join" element={currentUser ? <JoinPage /> : <Navigate to="/" />} /> {/* ◀◀◀ [추가] 가입 페이지 라우트 */}
+            <Route path="/join" element={currentUser ? <JoinPage /> : <Navigate to="/" />} />
             <Route path="/access-denied" element={<AccessDenied />} />
             <Route path="/broadcast" element={<BroadcastPage />} />
 
@@ -203,6 +205,10 @@ function App() {
             <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
             <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
+
+            {/* ▼▼▼ [수정] 펫 관련 라우트 추가 ▼▼▼ */}
+            <Route path="/pet" element={<ProtectedRoute><PetPage /></ProtectedRoute>} />
+            <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
 
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />

@@ -516,6 +516,15 @@ function ProfilePage() {
             {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
             <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
             {isMyProfile && <Button onClick={() => setIsTitleAccordionOpen(prev => !prev)}>칭호 관리</Button>}
+            {/* ▼▼▼ [추가] 펫 관리 버튼 ▼▼▼ */}
+            {isMyProfile && (
+              <StyledLink
+                to={playerData.pet ? "/pet" : "/pet/select"}
+                style={{ backgroundColor: '#6f42c1', color: 'white' }}
+              >
+                펫 관리
+              </StyledLink>
+            )}
             <StyledLink to={`/my-room/${playerData.id}`} style={{ backgroundColor: '#fd7e14', color: 'white' }}>마이룸 가기</StyledLink>
           </ButtonRow>
         </ButtonGroup>

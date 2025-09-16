@@ -55,6 +55,7 @@ import {
     seedInitialTitles,
     grantTitleToPlayer,
     getTotalLikesForPlayer, // <<< 이 부분을 추가해주세요!
+    selectInitialPet as firebaseSelectInitialPet
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -100,6 +101,13 @@ export const useLeagueStore = create((set, get) => ({
     quizHistory: [],
     currentUser: null,
     pointAdjustmentNotification: null,
+
+    selectInitialPet: async (species, name) => {
+        const { classId } = get();
+        await firebaseSelectInitialPet(classId, species, name);
+        // 데이터 즉시 반영을 위해 fetchInitialData 호출
+        await get().fetchInitialData();
+    },
 
     // --- [수정] Actions ---
     setLoading: (status) => set({ isLoading: status }),
