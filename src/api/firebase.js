@@ -192,8 +192,8 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     throw new Error("미션을 찾을 수 없습니다.");
   }
   const missionData = missionSnap.data();
+  const MISSION_EXP_REWARD = 20; // 미션 완료 시 펫 경험치 20 지급
 
-  // 학생들에게 포인트 지급
   for (const studentId of studentIds) {
     const playerRef = doc(db, 'classes', classId, 'players', studentId);
     const playerDoc = await getDoc(playerRef);
@@ -219,10 +219,15 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
 
       batch.update(playerRef, { points: increment(reward) });
 
+      // ▼▼▼ [추가] 펫 경험치 획득 로직 호출 ▼▼▼
+      if (playerData.pet) {
+        await updatePetExperience(playerRef, MISSION_EXP_REWARD);
+      }
+
       createNotification(
         playerData.authUid,
         `'${missionData.title}' 미션 완료!`,
-        `${reward}P를 획득했습니다.`,
+        `${reward}P와 펫 경험치 ${MISSION_EXP_REWARD}을 획득했습니다.`,
         'mission'
       );
 
@@ -238,7 +243,6 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     }
   }
 
-  // --- 기록원에게 인센티브 지급 ---
   const incentiveAmount = studentIds.length * 10;
   if (incentiveAmount > 0) {
     const playersRef = collection(db, 'classes', classId, 'players');
@@ -1174,18 +1178,26 @@ export async function getTodaysQuizHistory(classId, studentId) {
 export async function submitQuizAnswer(classId, studentId, quizId, userAnswer, correctAnswer) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const isCorrect = userAnswer.trim().toLowerCase() === String(correctAnswer).toLowerCase();
+  const QUIZ_EXP_REWARD = 10; // 퀴즈 정답 시 펫 경험치 10 지급
 
-  const historyRef = collection(db, 'classes', classId, 'quiz_history'); // ✅ classId 경로 추가
+  const historyRef = collection(db, 'classes', classId, 'quiz_history');
   await addDoc(historyRef, {
     studentId, quizId, userAnswer, isCorrect,
     date: getTodayDateString(), timestamp: serverTimestamp(),
   });
 
   if (isCorrect) {
-    const playerDoc = await getDoc(doc(db, 'classes', classId, 'players', studentId)); // ✅ classId 경로 추가
+    const playerRef = doc(db, 'classes', classId, 'players', studentId);
+    const playerDoc = await getDoc(playerRef);
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
       await adjustPlayerPoints(classId, studentId, 50, `'${quizId}' 퀴즈 정답`);
+
+      // ▼▼▼ [추가] 펫 경험치 획득 로직 호출 ▼▼▼
+      if (playerData.pet) {
+        await updatePetExperience(playerRef, QUIZ_EXP_REWARD);
+      }
+
       await checkAndGrantAutoTitles(classId, studentId, playerData.authUid);
     }
   }
@@ -2636,6 +2648,10 @@ export async function selectInitialPet(classId, species, name) {
     level: 1,
     exp: 0,
     maxExp: 100,
+    hp: 100,      // 체력 추가
+    maxHp: 100,   // 최대 체력 추가
+    sp: 50,       // 스킬 포인트 추가
+    maxSp: 50,    // 최대 스킬 포인트 추가
     skillId: skillMap[species] || null,
     appearanceId: `${species}_lv1`
   };
@@ -2644,6 +2660,36 @@ export async function selectInitialPet(classId, species, name) {
     pet: petData
   });
 
-  // 펫 선택 시 초기 보상 지급
   await adjustPlayerPoints(classId, user.uid, 200, "첫 파트너 펫 선택 보상");
+}
+
+async function updatePetExperience(playerRef, expGained) {
+  // 헬퍼 함수는 외부에 노출할 필요가 없으므로 export 하지 않습니다.
+  const playerSnap = await getDoc(playerRef);
+  if (!playerSnap.exists() || !playerSnap.data().pet) {
+    return; // 펫이 없으면 아무것도 하지 않음
+  }
+
+  const pet = playerSnap.data().pet;
+  let { level, exp, maxExp, hp, maxHp, sp, maxSp } = pet;
+
+  exp += expGained;
+
+  // 레벨업 처리 (경험치가 maxExp를 넘는 동안 반복)
+  while (exp >= maxExp) {
+    level++;
+    exp -= maxExp;
+
+    // ▼▼▼ [수정] 경험치 요구량 복리(1.2배) 증가 및 최대 HP/SP 10% 증가 로직 ▼▼▼
+    maxExp = Math.floor(maxExp * 1.2);
+    maxHp = Math.floor(maxHp * 1.1);
+    maxSp = Math.floor(maxSp * 1.1);
+
+    // HP와 SP를 최대치의 40%만큼 회복 (최대치를 넘지 않음)
+    hp = Math.min(maxHp, hp + Math.floor(maxHp * 0.4));
+    sp = Math.min(maxSp, sp + Math.floor(maxSp * 0.4));
+  }
+
+  const updatedPetData = { ...pet, level, exp, maxExp, hp, maxHp, sp, maxSp };
+  await updateDoc(playerRef, { pet: updatedPetData });
 }

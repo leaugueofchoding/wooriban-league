@@ -37,6 +37,8 @@ import AttendanceModal from './components/AttendanceModal';
 import PointAdjustmentModal from './components/PointAdjustmentModal';
 import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
+import BattlePage from './features/battle/BattlePage.jsx';
+
 
 const AppWrapper = styled.div`
   display: flex;
@@ -209,6 +211,7 @@ function App() {
             {/* ▼▼▼ [수정] 펫 관련 라우트 추가 ▼▼▼ */}
             <Route path="/pet" element={<ProtectedRoute><PetPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
+            <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} /> {/* ◀◀◀ 추가 */}
 
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
