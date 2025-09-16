@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useLeagueStore, useClassStore } from '../store/leagueStore'; // useClassStore import
+import { useLeagueStore } from '../store/leagueStore';
 
 const Wrapper = styled.div`
   display: flex;
@@ -60,53 +60,50 @@ const JoinButton = styled.button`
 `;
 
 function JoinPage() {
-    const navigate = useNavigate();
-    const location = useLocation();
-    const { joinClassWithInviteCode } = useLeagueStore(); // ◀◀◀ [수정]
-    const { setClassId } = useClassStore(); // ◀◀◀ [추가]
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { joinClassWithInviteCode } = useLeagueStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-    const inviteCode = new URLSearchParams(location.search).get('inviteCode');
-    const [className, setClassName] = useState('...'); // 학급 이름을 표시할 상태
+  const inviteCode = new URLSearchParams(location.search).get('inviteCode');
 
-    useEffect(() => {
-        if (!inviteCode) {
-            navigate('/');
-        }
-        // 이 부분은 다음 단계에서 초대 코드로 학급 이름을 가져오는 로직으로 확장됩니다.
-    }, [inviteCode, navigate]);
+  useEffect(() => {
+    if (!inviteCode) {
+      navigate('/');
+    }
+  }, [inviteCode, navigate]);
 
-    const handleJoin = async () => {
-        setIsLoading(true);
-        setError('');
-        try {
-            await joinClassWithInviteCode(inviteCode);
-            alert('우리반 리그에 오신 것을 환영합니다!');
-            navigate('/'); // 가입 후 메인 페이지(대시보드)로 이동
-        } catch (error) {
-            setError(error.message);
-            setIsLoading(false);
-        }
-    };
+  const handleJoin = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      await joinClassWithInviteCode(inviteCode);
+      alert('우리반 리그에 오신 것을 환영합니다!');
+      sessionStorage.removeItem('inviteCode'); // 사용한 초대 코드 정보 제거
+      navigate('/'); // 가입 후 메인 페이지(대시보드)로 이동
+    } catch (error) {
+      setError(error.message);
+      setIsLoading(false);
+    }
+  };
 
-    return (
-        <Wrapper>
-            <Card>
-                <Title>학급에 참여하기</Title>
-                <InfoText>
-                    선생님께 공유받은 초대 코드로<br />
-                    우리반 리그에 참여하시겠습니까?
-                </InfoText>
-                {/* 에러 메시지 표시 */}
-                {error && <p style={{ color: 'red', fontWeight: 'bold' }}>{error}</p>}
+  return (
+    <Wrapper>
+      <Card>
+        <Title>학급에 참여하기</Title>
+        <InfoText>
+          선생님께 공유받은 초대 코드로<br />
+          우리반 리그에 참여하시겠습니까?
+        </InfoText>
+        {error && <p style={{ color: 'red', fontWeight: 'bold' }}>{error}</p>}
 
-                <JoinButton onClick={handleJoin} disabled={isLoading}>
-                    {isLoading ? '등록 중...' : `네, 참여할래요!`}
-                </JoinButton>
-            </Card>
-        </Wrapper>
-    );
+        <JoinButton onClick={handleJoin} disabled={isLoading}>
+          {isLoading ? '등록 중...' : `네, 참여할래요!`}
+        </JoinButton>
+      </Card>
+    </Wrapper>
+  );
 }
 
 export default JoinPage;

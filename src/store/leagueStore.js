@@ -153,21 +153,7 @@ export const useLeagueStore = create((set, get) => ({
             set({ seasons: seasonsData });
             const activeSeason = seasonsData.find(s => s.status === 'active' || s.status === 'preparing') || seasonsData[0] || null;
 
-            if (currentUser) {
-                get().cleanupListeners();
-                let playersData = await getPlayers(classId); // let으로 변경
-
-                set({ players: playersData });
-
-                get().subscribeToNotifications(currentUser.uid);
-                get().subscribeToPlayerData(currentUser.uid);
-                get().subscribeToMissionSubmissions(currentUser.uid);
-
-                const myPlayerData = playersData[myPlayerIndex]; // 업데이트된 데이터 사용
-                if (myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role)) {
-                    get().subscribeToRecorderBonus(currentUser.uid);
-                }
-            }
+            get().cleanupListeners();
 
             if (!activeSeason) {
                 const [usersData, avatarPartsData, myRoomItemsData] = await Promise.all([getUsers(), getAvatarParts(), getMyRoomItems()]);

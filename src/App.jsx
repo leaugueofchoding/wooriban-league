@@ -24,7 +24,8 @@ import SuggestionPage from './pages/SuggestionPage';
 import MyRoomPage from './pages/MyRoomPage';
 import BroadcastPage from './pages/BroadcastPage';
 import MissionGalleryPage from './pages/MissionGalleryPage';
-import LandingPage from './pages/LandingPage.jsx'; // ◀◀◀ [추가] 랜딩 페이지 import
+import LandingPage from './pages/LandingPage.jsx';
+import JoinPage from './pages/JoinPage.jsx'; // ◀◀◀ [추가] 가입 페이지 import
 
 // Common Components
 import Auth from './components/Auth';
@@ -76,9 +77,7 @@ function AccessDenied() {
   );
 }
 
-// =================================================================
-// ▼▼▼ [수정] 보호된 경로 로직 변경 ▼▼▼
-// =================================================================
+
 const ProtectedRoute = ({ children }) => {
   const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -90,11 +89,16 @@ const ProtectedRoute = ({ children }) => {
   }, [players, currentUser]);
 
   if (isLoading) {
-    return null; // 로딩 중에는 아무것도 표시하지 않음
+    return null;
+  }
+
+  // 초대 코드가 있으면 가입 페이지로 먼저 보냄
+  const inviteCode = sessionStorage.getItem('inviteCode');
+  if (currentUser && inviteCode) {
+    return <Navigate to={`/join?inviteCode=${inviteCode}`} state={{ from: location }} replace />;
   }
 
   if (!currentUser || !isPlayerRegistered) {
-    // 로그인이 안됐거나, 선수 등록이 안됐으면 랜딩 페이지로 보냄
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
@@ -116,7 +120,6 @@ const AdminRoute = ({ children }) => {
   }
 
   if (!currentUser || !myPlayerData || myPlayerData.role !== 'admin') {
-    // 관리자가 아니면 접근 거부 페이지 표시
     return <Navigate to="/access-denied" state={{ from: location }} replace />;
   }
 
@@ -140,19 +143,25 @@ function App() {
     if (!classId) {
       setClassId(defaultClassId);
     }
-    initializeClass(classId || defaultClassId);
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user); // 현재 유저 상태 업데이트
+      setCurrentUser(user);
       setLoading(true);
+
       if (user) {
-        checkAttendance();
+        // 초대 코드가 세션에 있으면 가입 절차를 먼저 시도
+        const inviteCode = sessionStorage.getItem('inviteCode');
+        if (inviteCode) {
+          // JoinPage에서 가입 처리 후 리다이렉션 할 것이므로 여기서는 별도 처리 안함
+        } else {
+          await initializeClass(classId || defaultClassId);
+          checkAttendance();
+        }
       } else {
         cleanupListeners();
+        await initializeClass(classId || defaultClassId);
       }
-      // initializeClass는 user 상태 변경과 관계없이 항상 실행되어야 함
-      // (로그아웃 시에도 비로그인 데이터를 불러오기 위해)
-      initializeClass(classId || defaultClassId);
+
       setAuthChecked(true);
       setLoading(false);
     });
@@ -168,20 +177,17 @@ function App() {
   return (
     <BrowserRouter>
       <AppWrapper>
-        {/* ▼▼▼ [수정] 로그인 했을 때만 상단 메뉴가 보이도록 변경 ▼▼▼ */}
         {currentUser && <Auth user={currentUser} />}
         <AttendanceModal />
         {pointAdjustmentNotification && <PointAdjustmentModal />}
         <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>
           <Routes>
-            {/* ▼▼▼ [수정] 루트 경로 로직 변경 ▼▼▼ */}
             <Route path="/" element={currentUser ? <DashboardPage /> : <LandingPage />} />
-
+            <Route path="/join" element={currentUser ? <JoinPage /> : <Navigate to="/" />} /> {/* ◀◀◀ [추가] 가입 페이지 라우트 */}
             <Route path="/access-denied" element={<AccessDenied />} />
             <Route path="/broadcast" element={<BroadcastPage />} />
 
-            {/* 나머지 경로는 모두 ProtectedRoute로 감싸서 로그인 및 선수 등록 여부 확인 */}
             <Route path="/league" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="/league/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
             <Route path="/missions" element={<ProtectedRoute><MissionsPage /></ProtectedRoute>} />
@@ -198,7 +204,6 @@ function App() {
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
             <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
 
-            {/* 관리자 경로는 AdminRoute로 이중 보호 */}
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
           </Routes>

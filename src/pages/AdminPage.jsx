@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'; // Suspense 삭제
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -8,9 +8,8 @@ import PlayerProfile from '../components/PlayerProfile.jsx';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import QRCode from 'react-qr-code'; // ◀◀◀ [수정] 새 라이브러리를 import 합니다.
+import QRCode from 'react-qr-code';
 import {
-    // ... (firebase.js에서 가져오는 다른 모든 함수들은 그대로 둡니다)
     uploadAvatarPart, batchUpdateAvatarPartDetails, createMission, updateAvatarPartStatus, batchUpdateSaleInfo, batchEndSale, updateAvatarPartDisplayName, batchUpdateSaleDays, createClassGoal, getActiveGoals, batchDeleteAvatarParts, deleteClassGoal, approveMissionsInBatch, rejectMissionSubmission, linkPlayerToAuth, auth, db, completeClassGoal, createNewSeason, replyToSuggestion, adminInitiateConversation, sendBulkMessageToAllStudents, uploadMyRoomItem, getMyRoomItems, batchUpdateMyRoomItemDetails, batchDeleteMyRoomItems, batchUpdateMyRoomItemSaleInfo, batchEndMyRoomItemSale, batchUpdateMyRoomItemSaleDays, updateMyRoomItemDisplayName, getAllMyRoomComments, deleteMyRoomComment, deleteMyRoomReply, updateClassGoalStatus, getAttendanceByDate, getTitles, createTitle, updateTitle, deleteTitle, grantTitleToPlayerManually, adjustPlayerPoints, grantTitleToPlayersBatch, getAllMissionComments, createNewClass
 } from '../api/firebase.js';
 import { collection, query, where, orderBy, onSnapshot, getDocs } from "firebase/firestore";
@@ -18,7 +17,7 @@ import ImageModal from '../components/ImageModal';
 import RecorderPage from './RecorderPage';
 import ApprovalModal from '../components/ApprovalModal';
 
-// --- Styled Components (이하 코드는 이전과 동일) ---
+// --- Styled Components (기존과 동일) ---
 const AdminWrapper = styled.div`
   display: flex;
   gap: 2rem;
@@ -248,6 +247,7 @@ const InviteCodeWrapper = styled.div`
     border: 2px dashed #007bff;
     border-radius: 8px;
     background-color: #f0f8ff;
+    margin-top: 1.5rem;
 `;
 
 const InviteCodeDisplay = styled.div`
@@ -285,10 +285,8 @@ function SortableListItem({ id, classId, mission, onNavigate, unarchiveMission, 
                 <StyledButton onClick={() => onNavigate(mission.id)} style={{ backgroundColor: '#17a2b8' }}>상태 확인</StyledButton>
                 <StyledButton onClick={() => handleEditClick(mission)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
                 {mission.status === 'archived' ? (
-                    // ✅ 스토어 액션 호출 시 classId 전달
                     <StyledButton onClick={() => unarchiveMission(classId, mission.id)} style={{ backgroundColor: '#28a745' }}>활성화</StyledButton>
                 ) : (
-                    // ✅ 스토어 액션 호출 시 classId 전달
                     <StyledButton onClick={() => archiveMission(classId, mission.id)} style={{ backgroundColor: '#6c757d' }}>숨김</StyledButton>
                 )}
 
@@ -334,7 +332,7 @@ const MonitorCommentCard = styled.div`
     margin-bottom: 1rem;
 `;
 
-const MissionCommentCard = styled(MonitorCommentCard)``; // 미션 댓글 카드 추가
+const MissionCommentCard = styled(MonitorCommentCard)``;
 
 const MonitorHeader = styled.div`
     font-size: 0.9rem;
@@ -372,7 +370,6 @@ const LoadMoreButton = styled.button`
     }
 `;
 
-// [추가] 날짜 표시줄 스타일
 const DateSeparator = styled.div`
   text-align: center;
   margin: 1rem 0;
@@ -381,7 +378,6 @@ const DateSeparator = styled.div`
   font-weight: bold;
 `;
 
-// [추가] 전체 메시지 발송 버튼 스타일
 const BulkMessageButton = styled.button`
   width: calc(100% - 2rem);
   margin: 0 1rem 1rem 1rem;
@@ -728,6 +724,7 @@ const ItemCard = styled.div`
  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `;
 
+
 const getBackgroundPosition = (category) => {
     switch (category) {
         case 'bottom': return 'center 75%';
@@ -835,11 +832,73 @@ const SaleBadge = styled.div`
   z-index: 2;
 `;
 
+// ▼▼▼ [신규] 학급 관리 UI를 위한 스타일 ▼▼▼
+const ClassGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+`;
+
+const ClassCard = styled.div`
+  padding: 1.5rem;
+  border-radius: 12px;
+  background-color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  border: 3px solid ${props => props.$isActive ? '#007bff' : 'transparent'};
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  }
+
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+  }
+
+  p {
+    margin: 0;
+    color: #6c757d;
+  }
+`;
+
+const AddClassCard = styled(ClassCard)`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-style: dashed;
+  border-color: #ced4da;
+  color: #6c757d;
+
+  &:hover {
+    border-color: #007bff;
+    color: #007bff;
+  }
+
+  .plus-icon {
+    font-size: 3rem;
+    font-weight: 300;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+  }
+`;
+
+const QRCodeSection = styled.div`
+    margin-top: 2rem;
+    padding: 2rem;
+    border-radius: 8px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+`;
 
 // --- Components ---
 
 function PendingMissionWidget({ setModalImageSrc }) {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
@@ -847,13 +906,11 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const currentUser = auth.currentUser;
 
     useEffect(() => {
-        // ✅ classId가 변경될 때마다 승인 대기 목록을 다시 가져오도록 수정
         if (!classId) return;
 
         const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
         const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
 
-        // 실시간 업데이트를 위해 onSnapshot 사용
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const validSubmissions = submissions.filter(sub =>
@@ -862,7 +919,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
             setPendingSubmissions(validSubmissions);
         });
 
-        return () => unsubscribe(); // Clean up the listener
+        return () => unsubscribe();
     }, [classId, missions]);
 
 
@@ -894,7 +951,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
     };
 
     const handleAction = async (action, submission, reward) => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         setProcessingIds(prev => new Set(prev.add(submission.id)));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
@@ -911,17 +968,14 @@ function PendingMissionWidget({ setModalImageSrc }) {
 
         try {
             if (action === 'approve') {
-                // ✅ approveMissionsInBatch 호출 시 classId 전달
                 await approveMissionsInBatch(classId, mission.id, [student.id], currentUser.uid, reward);
             } else if (action === 'reject') {
-                // ✅ rejectMissionSubmission 호출 시 classId 전달
                 await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
             }
         } catch (error) {
             console.error(`미션 ${action} 오류:`, error);
             alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
         }
-        // finally 블록을 제거하여 성공/실패와 무관하게 처리 상태가 해제되지 않도록 함 (UI 피드백 유지)
     };
 
     const submissionToShow = selectedSubmissionIndex !== null ? pendingSubmissions[selectedSubmissionIndex] : null;
@@ -999,21 +1053,21 @@ function PendingMissionWidget({ setModalImageSrc }) {
 }
 
 function AttendanceChecker({ players }) {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [attendedPlayerIds, setAttendedPlayerIds] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         const fetchAttendance = async () => {
-            if (!classId) return; // ✅ classId 가드 추가
+            if (!classId) return;
             setIsLoading(true);
-            const uids = await getAttendanceByDate(classId, selectedDate); // ✅ classId 전달
+            const uids = await getAttendanceByDate(classId, selectedDate);
             setAttendedPlayerIds(uids);
             setIsLoading(false);
         };
         fetchAttendance();
-    }, [selectedDate, classId]); // ✅ 의존성 배열에 classId 추가
+    }, [selectedDate, classId]);
 
     const attendedPlayers = useMemo(() => {
         return players
@@ -1065,7 +1119,7 @@ function AttendanceChecker({ players }) {
 }
 
 function MyRoomCommentMonitor() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players } = useLeagueStore();
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -1074,18 +1128,18 @@ function MyRoomCommentMonitor() {
 
     useEffect(() => {
         const fetchComments = async () => {
-            if (!classId) return; // ✅ classId 가드 추가
+            if (!classId) return;
             setIsLoading(true);
-            const comments = await getAllMyRoomComments(classId); // ✅ classId 전달
+            const comments = await getAllMyRoomComments(classId);
             setAllComments(comments);
             setIsLoading(false);
         };
         fetchComments();
-    }, [classId]); // ✅ 의존성 배열에 classId 추가
+    }, [classId]);
 
     const handleDeleteComment = async (roomId, commentId) => {
         if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
-            await deleteMyRoomComment(classId, roomId, commentId); // ✅ classId 전달
+            await deleteMyRoomComment(classId, roomId, commentId);
             setAllComments(prev => prev.filter(c => c.id !== commentId));
         }
     };
@@ -1094,7 +1148,7 @@ function MyRoomCommentMonitor() {
         if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
             const comment = allComments.find(c => c.id === commentId);
             if (comment) {
-                await deleteMyRoomReply(classId, roomId, commentId, reply); // ✅ classId 전달
+                await deleteMyRoomReply(classId, roomId, commentId, reply);
                 const updatedReplies = comment.replies.filter(r =>
                     !(r.createdAt?.toDate().getTime() === reply.createdAt?.toDate().getTime() && r.text === reply.text)
                 );
@@ -1143,7 +1197,7 @@ function MyRoomCommentMonitor() {
 }
 
 function MessageManager() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players } = useLeagueStore();
     const [allSuggestions, setAllSuggestions] = useState([]);
     const [selectedStudentId, setSelectedStudentId] = useState(null);
@@ -1160,15 +1214,15 @@ function MessageManager() {
     };
 
     useEffect(() => {
-        if (!classId) return; // ✅ classId 가드 추가
-        const q = query(collection(db, "classes", classId, "suggestions"), orderBy("createdAt", "desc")); // ✅ classId 경로 추가
+        if (!classId) return;
+        const q = query(collection(db, "classes", classId, "suggestions"), orderBy("createdAt", "desc"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const suggestionsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setAllSuggestions(suggestionsData);
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [classId]); // ✅ 의존성 배열에 classId 추가
+    }, [classId]);
 
     useEffect(() => {
         if (messageAreaRef.current) {
@@ -1212,7 +1266,7 @@ function MessageManager() {
     }, [selectedStudentId, studentThreads]);
 
     const handleReplySubmit = async () => {
-        if (!classId || !replyContent.trim() || !selectedStudentId) return; // ✅ classId 가드 추가
+        if (!classId || !replyContent.trim() || !selectedStudentId) return;
         const student = players.find(p => p.id === selectedStudentId);
         if (!student) return alert("학생 정보를 찾을 수 없습니다.");
 
@@ -1221,9 +1275,9 @@ function MessageManager() {
         try {
             if (thread) {
                 const lastMessageDoc = thread.sort((a, b) => (b.lastMessageAt || b.createdAt).toMillis() - (a.lastMessageAt || a.createdAt).toMillis())[0];
-                await replyToSuggestion(classId, lastMessageDoc.id, replyContent, student.authUid); // ✅ classId 전달
+                await replyToSuggestion(classId, lastMessageDoc.id, replyContent, student.authUid);
             } else {
-                await adminInitiateConversation(classId, student.id, student.name, replyContent, student.authUid); // ✅ classId 전달
+                await adminInitiateConversation(classId, student.id, student.name, replyContent, student.authUid);
             }
             setReplyContent('');
         } catch (error) {
@@ -1232,12 +1286,12 @@ function MessageManager() {
     };
 
     const handleBulkMessageSend = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         const message = prompt("모든 학생에게 보낼 메시지 내용을 입력하세요:");
         if (message && message.trim()) {
             if (window.confirm(`정말로 모든 학생에게 "${message}" 메시지를 보내시겠습니까?`)) {
                 try {
-                    await sendBulkMessageToAllStudents(classId, message); // ✅ classId 전달
+                    await sendBulkMessageToAllStudents(classId, message);
                     alert("전체 메시지를 성공적으로 보냈습니다.");
                 } catch (error) {
                     alert(`전송 실패: ${error.message}`);
@@ -1330,11 +1384,9 @@ function MessageManager() {
         </FullWidthSection>
     );
 }
-// src/pages/AdminPage.jsx (3/7)
 
-// ▼▼▼ [수정] MissionCommentMonitor를 MessageManager 외부로 이동 ▼▼▼
 function MissionCommentMonitor() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, missions, archivedMissions, missionSubmissions } = useLeagueStore();
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -1345,19 +1397,19 @@ function MissionCommentMonitor() {
 
     useEffect(() => {
         const fetchComments = async () => {
-            if (!classId) return; // ✅ classId 가드 추가
+            if (!classId) return;
             setIsLoading(true);
-            const comments = await getAllMissionComments(classId); // ✅ classId 전달
+            const comments = await getAllMissionComments(classId);
             setAllComments(comments);
             setIsLoading(false);
         };
         fetchComments();
-    }, [classId]); // ✅ 의존성 배열에 classId 추가
+    }, [classId]);
 
     const handleDeleteComment = async (submissionId, commentId) => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (window.confirm("정말로 이 댓글과 모든 답글을 삭제하시겠습니까?")) {
-            await deleteMissionComment(classId, submissionId, commentId); // ✅ classId 전달
+            await deleteMissionComment(classId, submissionId, commentId);
             setAllComments(prev => prev.filter(c => c.id !== commentId));
         }
     };
@@ -1406,28 +1458,28 @@ function MissionCommentMonitor() {
 }
 
 function GoalManager() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const [title, setTitle] = useState('');
     const [targetPoints, setTargetPoints] = useState(10000);
     const [activeGoals, setActiveGoals] = useState([]);
 
     const fetchGoals = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
-        const goals = await getActiveGoals(classId); // ✅ classId 전달
+        if (!classId) return;
+        const goals = await getActiveGoals(classId);
         setActiveGoals(goals);
     };
 
     useEffect(() => {
         fetchGoals();
-    }, [classId]); // ✅ 의존성 배열에 classId 추가
+    }, [classId]);
 
     const handleCreateGoal = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (!title.trim() || targetPoints <= 0) {
             return alert('목표 이름과 올바른 목표 포인트를 입력해주세요.');
         }
         try {
-            await createClassGoal(classId, { title, targetPoints: Number(targetPoints) }); // ✅ classId 전달
+            await createClassGoal(classId, { title, targetPoints: Number(targetPoints) });
             alert('새로운 학급 목표가 설정되었습니다!');
             setTitle('');
             setTargetPoints(10000);
@@ -1438,12 +1490,12 @@ function GoalManager() {
     };
 
     const handleGoalStatusToggle = async (goal) => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         const newStatus = goal.status === 'paused' ? 'active' : 'paused';
         const actionText = newStatus === 'paused' ? '일시중단' : '다시시작';
         if (window.confirm(`'${goal.title}' 목표를 '${actionText}' 상태로 변경하시겠습니까?`)) {
             try {
-                await updateClassGoalStatus(classId, goal.id, newStatus); // ✅ classId 전달
+                await updateClassGoalStatus(classId, goal.id, newStatus);
                 alert(`목표가 ${actionText} 처리되었습니다.`);
                 fetchGoals();
             } catch (error) {
@@ -1453,10 +1505,10 @@ function GoalManager() {
     };
 
     const handleGoalDelete = async (goalId) => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (window.confirm("정말로 이 목표를 삭제하시겠습니까? 기부 내역도 함께 사라집니다.")) {
             try {
-                await deleteClassGoal(classId, goalId); // ✅ classId 전달
+                await deleteClassGoal(classId, goalId);
                 alert('목표가 삭제되었습니다.');
                 fetchGoals();
             } catch (error) {
@@ -1466,10 +1518,10 @@ function GoalManager() {
     };
 
     const handleGoalComplete = async (goalId) => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (window.confirm("이 목표를 '완료' 처리하여 대시보드에서 숨기시겠습니까?")) {
             try {
-                await completeClassGoal(classId, goalId); // ✅ classId 전달
+                await completeClassGoal(classId, goalId);
                 alert('목표가 완료 처리되었습니다.');
                 fetchGoals();
             } catch (error) {
@@ -1546,7 +1598,7 @@ function GoalManager() {
 }
 
 function MissionManager({ onNavigate }) {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const {
         missions, archivedMissions, archiveMission, unarchiveMission,
         removeMission, reorderMissions, editMission
@@ -1574,7 +1626,7 @@ function MissionManager({ onNavigate }) {
             const oldIndex = missionsToDisplay.findIndex(m => m.id === active.id);
             const newIndex = missionsToDisplay.findIndex(m => m.id === over.id);
             const newList = arrayMove(missionsToDisplay, oldIndex, newIndex);
-            reorderMissions(newList, listKey); // reorderMissions는 내부에서 classId 처리
+            reorderMissions(newList, listKey);
         }
     };
 
@@ -1617,7 +1669,7 @@ function MissionManager({ onNavigate }) {
     };
 
     const handleSaveMission = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (!title.trim() || !rewards[0]) {
             return alert('미션 이름과 기본 보상 포인트를 모두 입력해주세요.');
         }
@@ -1635,10 +1687,10 @@ function MissionManager({ onNavigate }) {
 
         try {
             if (editMode) {
-                await editMission(editMode.id, missionData); // editMission은 내부에서 classId 처리
+                await editMission(editMode.id, missionData);
                 alert('미션이 성공적으로 수정되었습니다!');
             } else {
-                await createMission(classId, missionData); // ✅ createMission 호출 시 classId 전달
+                await createMission(classId, missionData);
                 alert('새로운 미션이 등록되었습니다!');
             }
             handleCancel();
@@ -1710,7 +1762,7 @@ function MissionManager({ onNavigate }) {
                                     <SortableListItem
                                         key={mission.id}
                                         id={mission.id}
-                                        classId={classId} // ✅ classId 전달
+                                        classId={classId}
                                         mission={mission}
                                         unarchiveMission={unarchiveMission}
                                         archiveMission={archiveMission}
@@ -1737,7 +1789,7 @@ function AvatarPartManager() {
     const [isUploading, setIsUploading] = useState(false);
     const [prices, setPrices] = useState({});
     const [displayNames, setDisplayNames] = useState({});
-    const [slots, setSlots] = useState({}); // <-- 이 부분을 추가해주세요.
+    const [slots, setSlots] = useState({});
     const [isSaleMode, setIsSaleMode] = useState(false);
     const [isSaleDayMode, setIsSaleDayMode] = useState(false);
     const [checkedItems, setCheckedItems] = useState(new Set());
@@ -1787,17 +1839,17 @@ function AvatarPartManager() {
     useEffect(() => {
         const initialPrices = {};
         const initialDisplayNames = {};
-        const initialSlots = {}; // slots 초기화 로직 추가
+        const initialSlots = {};
         avatarParts.forEach(part => {
             initialPrices[part.id] = part.price || 0;
             initialDisplayNames[part.id] = part.displayName || '';
             if (part.category === 'accessory') {
-                initialSlots[part.id] = part.slot || 'face'; // 기본값을 'face'로 설정
+                initialSlots[part.id] = part.slot || 'face';
             }
         });
         setPrices(initialPrices);
         setDisplayNames(initialDisplayNames);
-        setSlots(initialSlots); // slots state 업데이트
+        setSlots(initialSlots);
     }, [avatarParts]);
 
     useEffect(() => {
@@ -1814,7 +1866,7 @@ function AvatarPartManager() {
 
     const handlePriceChange = (partId, value) => setPrices(prev => ({ ...prev, [partId]: value }));
     const handleFileChange = (e) => setFiles(Array.from(e.target.files));
-    const handleSlotChange = (partId, value) => setSlots(prev => ({ ...prev, [partId]: value })); // <-- 이 부분을 추가해주세요.
+    const handleSlotChange = (partId, value) => setSlots(prev => ({ ...prev, [partId]: value }));
     const handleCheckboxChange = (partId) => {
         setCheckedItems(prev => {
             const newSet = new Set(prev);
@@ -1835,8 +1887,8 @@ function AvatarPartManager() {
         const newName = displayNames[partId].trim();
         try {
             await updateAvatarPartDisplayName(partId, newName);
-            updateLocalAvatarPartDisplayName(partId, newName); // 로컬 상태만 업데이트
-            alert('이름이 저장되었습니다.'); // 사용자에게 피드백
+            updateLocalAvatarPartDisplayName(partId, newName);
+            alert('이름이 저장되었습니다.');
         } catch (error) {
             alert(`이름 저장 실패: ${error.message}`);
         }
@@ -1863,7 +1915,6 @@ function AvatarPartManager() {
             await batchUpdateAvatarPartDetails(priceUpdates, slotUpdates);
 
             alert('변경사항이 성공적으로 저장되었습니다.');
-            // await fetchInitialData(); // 전체 데이터 새로고침 제거
         } catch (error) {
             console.error("저장 오류:", error);
             alert('저장 중 오류가 발생했습니다.');
@@ -1874,15 +1925,12 @@ function AvatarPartManager() {
         if (files.length === 0) return alert('파일을 선택해주세요.');
         setIsUploading(true);
         try {
-            // [수정] 올바른 아바타 파츠 업로드 함수를 호출합니다.
             const newItems = await Promise.all(files.map(file => uploadAvatarPart(file, uploadCategory)));
-            // [수정] 스토어의 avatarParts 상태를 업데이트합니다.
             useLeagueStore.setState(state => ({
                 avatarParts: [...state.avatarParts, ...newItems]
             }));
             alert(`${files.length}개의 아바타 아이템이 업로드되었습니다!`);
             setFiles([]);
-            // [수정] 올바른 파일 입력창 ID를 참조하여 초기화합니다.
             document.getElementById('avatar-file-input').value = "";
         } catch (error) {
             console.error("아바타 아이템 업로드 오류:", error);
@@ -1896,10 +1944,9 @@ function AvatarPartManager() {
         const newStatus = part.status === 'hidden' ? 'visible' : 'hidden';
         try {
             await updateAvatarPartStatus(part.id, newStatus);
-            updateLocalAvatarPartStatus(part.id, newStatus); // 로컬 상태만 업데이트
+            updateLocalAvatarPartStatus(part.id, newStatus);
         } catch (error) {
             alert(`오류: ${error.message}`);
-            // fetchInitialData(); // 전체 데이터 새로고침 제거
         }
     };
 
@@ -1910,7 +1957,6 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템에 ${salePercent}% 할인을 적용하시겠습니까?`)) {
             try {
                 await batchUpdateSaleInfo(Array.from(checkedItems), salePercent, startDate, endDate);
-                // ▼▼▼ [핵심 수정] 로컬 상태 업데이트 시, JS Date 객체를 Firestore Timestamp처럼 보이게 만듭니다. ▼▼▼
                 useLeagueStore.setState(state => {
                     const updatedAvatarParts = state.avatarParts.map(part => {
                         if (checkedItems.has(part.id)) {
@@ -1921,7 +1967,6 @@ function AvatarPartManager() {
                                 isSale: true,
                                 originalPrice,
                                 salePrice,
-                                // .toDate() 메서드를 가진 객체로 감싸서 데이터 형식을 맞춥니다.
                                 saleStartDate: { toDate: () => startDate },
                                 saleEndDate: { toDate: () => endDate }
                             };
@@ -1941,7 +1986,6 @@ function AvatarPartManager() {
         if (window.confirm(`'${partId}' 아이템의 세일을 즉시 종료하시겠습니까?`)) {
             try {
                 await batchEndSale([partId]);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
                 useLeagueStore.setState(state => ({
                     avatarParts: state.avatarParts.map(part =>
                         part.id === partId ? { ...part, isSale: false, salePrice: null, originalPrice: null, saleStartDate: null, saleEndDate: null } : part
@@ -1968,7 +2012,6 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템을 [${dayNames}] 요일에만 판매하도록 설정하시겠습니까?\n(선택한 요일이 없으면 상시 판매로 변경됩니다.)`)) {
             try {
                 await batchUpdateSaleDays(Array.from(checkedItems), dayArray);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
                 useLeagueStore.setState(state => ({
                     avatarParts: state.avatarParts.map(part =>
                         checkedItems.has(part.id) ? { ...part, saleDays: dayArray } : part
@@ -1990,7 +2033,6 @@ function AvatarPartManager() {
         if (window.confirm(`선택한 ${checkedItems.size}개 아이템(${itemNames})을 영구적으로 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`)) {
             try {
                 await batchDeleteAvatarParts(itemsToDelete);
-                // ▼▼▼ [수정] 로컬 상태 직접 업데이트 ▼▼▼
                 useLeagueStore.setState(state => ({
                     avatarParts: state.avatarParts.filter(part => !checkedItems.has(part.id))
                 }));
@@ -2003,23 +2045,30 @@ function AvatarPartManager() {
         }
     };
 
+    const isSuperAdmin = auth.currentUser?.uid === 'Zz6fKdtg00Yb3ju5dibOgkJkWS52';
+
+
     return (
         <FullWidthSection>
             <Section>
                 <SectionTitle>아바타 아이템 관리 🎨</SectionTitle>
 
-                <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
-                    <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png, image/gif" multiple />
-                    <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
-                        <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
-                        <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
-                        <option value="accessory">액세서리</option>
-                    </select>
-                    <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
-                        {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
-                    </SaveButton>
-                </InputGroup>
+                {/* ▼▼▼ [수정] isSuperAdmin일 때만 업로드 UI가 보이도록 수정 ▼▼▼ */}
+                {isSuperAdmin && (
+                    <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem', justifyContent: 'flex-start' }}>
+                        <input type="file" id="avatar-file-input" onChange={handleFileChange} accept="image/png, image/gif" multiple />
+                        <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                            <option value="hair">머리</option><option value="top">상의</option><option value="bottom">하의</option><option value="shoes">신발</option>
+                            <option value="face">얼굴</option><option value="eyes">눈</option><option value="nose">코</option><option value="mouth">입</option>
+                            <option value="accessory">액세서리</option>
+                        </select>
+                        <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
+                            {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
+                        </SaveButton>
+                    </InputGroup>
+                )}
 
+                {/* ▼▼▼ [수정] isSuperAdmin일 때만 이동/삭제 버튼이 보이도록 수정 ▼▼▼ */}
                 <InputGroup style={{ justifyContent: 'flex-start' }}>
                     <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                         {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
@@ -2027,16 +2076,18 @@ function AvatarPartManager() {
                     <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
                         {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
                     </SaveButton>
-                    {/* ▼▼▼ [수정] 아이템 이동 버튼 추가 ▼▼▼ */}
-                    <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
-                        {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
-                    </SaveButton>
-                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsMoveMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
-                        {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
-                    </SaveButton>
+                    {isSuperAdmin && (
+                        <>
+                            <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
+                                {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
+                            </SaveButton>
+                            <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsMoveMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                                {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
+                            </SaveButton>
+                        </>
+                    )}
                 </InputGroup>
 
-                {/* ▼▼▼ [추가] 아이템 이동 패널 ▼▼▼ */}
                 {isMoveMode && (<div style={{ border: '2px solid #ffc107', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff9e6' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <SaveButton onClick={handleSelectAll}>현재 페이지 전체 선택/해제</SaveButton>
@@ -2139,7 +2190,6 @@ function AvatarPartManager() {
                                 )}
                                 <ScoreInput type="number" value={prices[part.id] || ''} onChange={(e) => handlePriceChange(part.id, e.target.value)} placeholder="가격" style={{ width: '100%', margin: 0 }} />
 
-                                {/* ▼▼▼ 액세서리 탭일 때만 착용 부위 선택 UI를 보여줍니다. ▼▼▼ */}
                                 {activeTab === 'accessory' && (
                                     <select
                                         value={slots[part.id] || 'face'}
@@ -2195,14 +2245,8 @@ function AvatarPartManager() {
         </FullWidthSection>
     );
 }
-// src/pages/AdminPage.jsx (5/7)
 
-// =================================================================
-// ▼▼▼ [수정 완료] 마이룸 아이템 관리 컴포넌트 ▼▼▼
-// =================================================================
 function MyRoomItemManager() {
-    // 이 컴포넌트는 모든 학급이 공통으로 사용하는 아이템을 관리하므로 classId가 필요 없습니다.
-    // 따라서 보내주신 코드 그대로 유지합니다.
     const { fetchInitialData, updateLocalMyRoomItemDisplayName, batchMoveMyRoomItemCategory } = useLeagueStore();
     const myRoomItemsFromStore = useLeagueStore(state => state.myRoomItems);
 
@@ -2246,7 +2290,7 @@ function MyRoomItemManager() {
 
     const refreshItems = async () => {
         setIsLoading(true);
-        await fetchInitialData(); // fetchInitialData는 내부적으로 classId를 사용하므로 OK
+        await fetchInitialData();
         setIsLoading(false);
     };
 
@@ -2458,23 +2502,32 @@ function MyRoomItemManager() {
         }
     };
 
+    const isSuperAdmin = auth.currentUser?.uid === 'Zz6fKdtg00Yb3ju5dibOgkJkWS52';
+
+
     return (
         <FullWidthSection>
             <Section>
                 <SectionTitle>마이룸 아이템 관리 🏠</SectionTitle>
-                <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-                    <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg, image/gif" multiple />
-                    <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
-                        <option value="배경">배경</option>
-                        <option value="하우스">하우스</option>
-                        <option value="가구">가구</option>
-                        <option value="가전">가전</option>
-                        <option value="소품">소품</option>
-                    </select>
-                    <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
-                        {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
-                    </SaveButton>
-                </InputGroup>
+
+                {/* ▼▼▼ [수정] isSuperAdmin일 때만 업로드 UI가 보이도록 수정 ▼▼▼ */}
+                {isSuperAdmin && (
+                    <InputGroup style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+                        <input type="file" id="myroom-file-input" onChange={handleFileChange} accept="image/png, image/jpeg, image/gif" multiple />
+                        <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                            <option value="배경">배경</option>
+                            <option value="하우스">하우스</option>
+                            <option value="가구">가구</option>
+                            <option value="가전">가전</option>
+                            <option value="소품">소품</option>
+                        </select>
+                        <SaveButton onClick={handleUpload} disabled={isUploading || files.length === 0}>
+                            {isUploading ? '업로드 중...' : `${files.length}개 아이템 추가`}
+                        </SaveButton>
+                    </InputGroup>
+                )}
+
+                {/* ▼▼▼ [수정] isSuperAdmin일 때만 이동/삭제 버튼이 보이도록 수정 ▼▼▼ */}
                 <InputGroup>
                     <SaveButton onClick={() => { setIsSaleMode(p => !p); setIsSaleDayMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleMode ? '#6c757d' : '#007bff' }}>
                         {isSaleMode ? '세일 모드 취소' : '일괄 세일 적용'}
@@ -2482,12 +2535,16 @@ function MyRoomItemManager() {
                     <SaveButton onClick={() => { setIsSaleDayMode(p => !p); setIsSaleMode(false); setIsMoveMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isSaleDayMode ? '#6c757d' : '#17a2b8' }}>
                         {isSaleDayMode ? '요일 설정 취소' : '요일별 판매 설정'}
                     </SaveButton>
-                    <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
-                        {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
-                    </SaveButton>
-                    <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsMoveMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
-                        {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
-                    </SaveButton>
+                    {isSuperAdmin && (
+                        <>
+                            <SaveButton onClick={() => { setIsMoveMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsDeleteMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isMoveMode ? '#6c757d' : '#ffc107', color: 'black' }}>
+                                {isMoveMode ? '이동 모드 취소' : '아이템 이동'}
+                            </SaveButton>
+                            <SaveButton onClick={() => { setIsDeleteMode(p => !p); setIsSaleMode(false); setIsSaleDayMode(false); setIsMoveMode(false); setCheckedItems(new Set()); }} style={{ backgroundColor: isDeleteMode ? '#6c757d' : '#dc3545' }}>
+                                {isDeleteMode ? '삭제 모드 취소' : '아이템 삭제'}
+                            </SaveButton>
+                        </>
+                    )}
                 </InputGroup>
                 {isMoveMode && (<div style={{ border: '2px solid #ffc107', borderRadius: '8px', padding: '1.5rem', marginBottom: '1rem', backgroundColor: '#fff9e6' }}>
                     <InputGroup style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -2560,7 +2617,7 @@ function MyRoomItemManager() {
                                 return (
                                     <ItemCard key={item.id}>
                                         {(isSaleMode || isSaleDayMode || isMoveMode || isDeleteMode) && (
-                                            <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1 }}>
+                                            <div style={{ height: '25px', textAlign: 'left' }}>
                                                 <input type="checkbox" checked={checkedItems.has(item.id)} onChange={() => handleCheckboxChange(item.id)} style={{ width: '20px', height: '20px' }} />
                                             </div>
                                         )}
@@ -2616,7 +2673,7 @@ function MyRoomItemManager() {
 }
 
 function RoleManager() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, fetchInitialData } = useLeagueStore();
     const [selectedPlayerId, setSelectedPlayerId] = useState('');
     const [selectedRole, setSelectedRole] = useState('player');
@@ -2675,10 +2732,8 @@ function RoleManager() {
     );
 }
 
-// src/pages/AdminPage.jsx (6/7)
-
 function PointManager() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, batchAdjustPoints } = useLeagueStore();
     const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
     const [amount, setAmount] = useState(0);
@@ -2708,7 +2763,6 @@ function PointManager() {
     };
 
     const handleSubmit = () => {
-        // ✅ batchAdjustPoints 호출 시 classId 전달 (스토어 액션 내부에서 classId를 사용하므로 직접 전달)
         batchAdjustPoints(Array.from(selectedPlayerIds), Number(amount), reason.trim());
         setSelectedPlayerIds(new Set());
         setAmount(0);
@@ -2790,7 +2844,7 @@ function PointManager() {
 }
 
 function MatchRow({ match, isInitiallyOpen, onSave }) {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, teams, saveScores, currentSeason } = useLeagueStore();
 
     const teamA = useMemo(() => teams.find(t => t.id === match.teamA_id), [teams, match.teamA_id]);
@@ -2851,7 +2905,6 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
     };
 
     const handleSave = () => {
-        // ✅ saveScores 호출 시 classId 전달 (스토어 액션 내부에서 classId를 사용)
         saveScores(match.id, { a: scoreA, b: scoreB }, scorers);
         alert('저장되었습니다!');
         onSave(match.id);
@@ -2933,7 +2986,7 @@ function MatchRow({ match, isInitiallyOpen, onSave }) {
 }
 
 function PlayerManager({ onSendMessage }) {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, currentSeason, togglePlayerStatus } = useLeagueStore();
     const [showInactive, setShowInactive] = useState(false);
     const isNotPreparing = currentSeason?.status !== 'preparing';
@@ -2964,7 +3017,6 @@ function PlayerManager({ onSendMessage }) {
                                         <StyledButton style={{ backgroundColor: '#17a2b8' }}>프로필</StyledButton>
                                     </Link>
                                     <StyledButton
-                                        // ✅ togglePlayerStatus 호출 시 classId 전달 (스토어 액션 내부에서 classId를 사용)
                                         onClick={() => togglePlayerStatus(player.id, player.status)}
                                         disabled={isNotPreparing && !isInactive}
                                         title={isNotPreparing && !isInactive ? "시즌 중에는 학생을 비활성화할 수 없습니다." : ""}
@@ -2984,7 +3036,7 @@ function PlayerManager({ onSendMessage }) {
 
 
 function LeagueManager() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const {
         players, teams, matches, addNewTeam, removeTeam, assignPlayerToTeam, unassignPlayerFromTeam,
         autoAssignTeams, generateSchedule, batchCreateTeams, leagueType, setLeagueType,
@@ -3038,7 +3090,7 @@ function LeagueManager() {
         if (!newSeasonNameForCreate.trim()) return alert("새 시즌의 이름을 입력해주세요.");
         if (window.confirm(`'${newSeasonNameForCreate}' 시즌을 새로 시작하시겠습니까?`)) {
             try {
-                await createSeason(newSeasonNameForCreate); // 스토어 액션 내부에서 classId 처리
+                await createSeason(newSeasonNameForCreate);
                 setNewSeasonNameForCreate('');
                 alert('새로운 시즌이 생성되었습니다!');
             } catch (error) {
@@ -3053,7 +3105,7 @@ function LeagueManager() {
 
     const handleSavePrizes = async () => {
         try {
-            await updateSeasonDetails(currentSeason.id, { // 스토어 액션 내부에서 classId 처리
+            await updateSeasonDetails(currentSeason.id, {
                 winningPrize: prizes.first,
                 secondPlacePrize: prizes.second,
                 thirdPlacePrize: prizes.third,
@@ -3070,16 +3122,16 @@ function LeagueManager() {
     };
 
     const handleAssignPlayer = (teamId) => {
-        assignPlayerToTeam(teamId, selectedPlayer[teamId]); // 스토어 액션 내부에서 classId 처리
+        assignPlayerToTeam(teamId, selectedPlayer[teamId]);
     };
 
     const handleAddTeam = () => {
-        addNewTeam(newTeamName); // 스토어 액션 내부에서 classId 처리
+        addNewTeam(newTeamName);
         setNewTeamName('');
     };
 
     const handleBatchCreateTeams = () => {
-        batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount)); // 스토어 액션 내부에서 classId 처리
+        batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount));
     };
 
     return (
@@ -3179,7 +3231,7 @@ function LeagueManager() {
                                                 <MemberListItem key={memberId}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         <CaptainButton
-                                                            onClick={() => setTeamCaptain(team.id, memberId)} // 스토어 액션 내부에서 classId 처리
+                                                            onClick={() => setTeamCaptain(team.id, memberId)}
                                                             disabled={isNotPreparing || isCaptain}
                                                             $isCaptain={isCaptain}
                                                             title={isNotPreparing ? "시즌 중에는 주장을 변경할 수 없습니다." : (isCaptain ? "현재 주장" : "주장으로 임명")}
@@ -3237,7 +3289,7 @@ function LeagueManager() {
 }
 
 function TitleManager() {
-    const { classId } = useClassStore(); // ✅ classId 가져오기
+    const { classId } = useClassStore();
     const { players, fetchInitialData } = useLeagueStore();
     const [titles, setTitles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -3246,16 +3298,16 @@ function TitleManager() {
     const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
 
     const fetchTitles = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         setIsLoading(true);
-        const titlesData = await getTitles(classId); // ✅ classId 전달
+        const titlesData = await getTitles(classId);
         setTitles(titlesData);
         setIsLoading(false);
     };
 
     useEffect(() => {
         fetchTitles();
-    }, [classId]); // ✅ 의존성 배열에 classId 추가
+    }, [classId]);
 
     const handlePlayerSelect = (playerId) => {
         setSelectedPlayerIds(prev => {
@@ -3274,7 +3326,7 @@ function TitleManager() {
     };
 
     const handleSave = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (!editingTitle.name) return alert('칭호 이름을 입력하세요.');
         if (editingTitle.type === 'auto' && !editingTitle.conditionId) {
             return alert('자동 획득 칭호는 반드시 조건 ID를 입력해야 합니다.');
@@ -3282,10 +3334,10 @@ function TitleManager() {
 
         try {
             if (editingTitle.id) {
-                await updateTitle(classId, editingTitle.id, editingTitle); // ✅ classId 전달
+                await updateTitle(classId, editingTitle.id, editingTitle);
                 alert('칭호가 수정되었습니다.');
             } else {
-                await createTitle(classId, editingTitle); // ✅ classId 전달
+                await createTitle(classId, editingTitle);
                 alert('새로운 칭호가 생성되었습니다.');
             }
             setEditingTitle(null);
@@ -3296,10 +3348,10 @@ function TitleManager() {
     };
 
     const handleDelete = async (titleId, titleName) => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (window.confirm(`'${titleName}' 칭호를 정말로 삭제하시겠습니까?`)) {
             try {
-                await deleteTitle(classId, titleId); // ✅ classId 전달
+                await deleteTitle(classId, titleId);
                 alert('칭호가 삭제되었습니다.');
                 fetchTitles();
             } catch (error) {
@@ -3309,14 +3361,14 @@ function TitleManager() {
     };
 
     const handleAssignTitle = async () => {
-        if (!classId) return; // ✅ classId 가드 추가
+        if (!classId) return;
         if (selectedPlayerIds.size === 0) return alert('학생을 한 명 이상 선택하세요.');
         try {
-            await grantTitleToPlayersBatch(classId, Array.from(selectedPlayerIds), isAssignMode); // ✅ classId 전달
+            await grantTitleToPlayersBatch(classId, Array.from(selectedPlayerIds), isAssignMode);
             alert(`${selectedPlayerIds.size}명의 학생에게 칭호를 성공적으로 부여하고 500P 보상을 지급했습니다.`);
             setSelectedPlayerIds(new Set());
             setIsAssignMode(null);
-            fetchInitialData(); // fetchInitialData는 내부에서 classId 처리
+            fetchInitialData();
         } catch (error) {
             alert(`부여 실패: ${error.message}`);
         }
@@ -3443,9 +3495,6 @@ function TitleManager() {
     );
 }
 
-// =================================================================
-// ▼▼▼ [수정] 학급 관리 컴포넌트 기능 완성 ▼▼▼
-// =================================================================
 function ClassManager() {
     const { classId, setClassId } = useClassStore();
     const { initializeClass } = useLeagueStore();
@@ -3453,70 +3502,53 @@ function ClassManager() {
     const [newClassName, setNewClassName] = useState('');
     const [managedClasses, setManagedClasses] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-
-    const currentClass = useMemo(() => {
-        return managedClasses.find(c => c.id === classId);
-    }, [managedClasses, classId]);
+    const [isCreating, setIsCreating] = useState(false);
+    const [selectedClassForQR, setSelectedClassForQR] = useState(null);
 
     const fetchManagedClasses = useCallback(async () => {
-        console.log("1. fetchManagedClasses 함수 시작.");
-
         if (!currentUser) {
-            console.log("2. currentUser가 아직 없습니다. 함수를 종료합니다.");
             setIsLoading(false);
             return;
         }
-        console.log("2. currentUser 확인 완료. UID:", currentUser.uid);
-
         setIsLoading(true);
         try {
             const classesRef = collection(db, "classes");
-            console.log("3. 'classes' 컬렉션에 대한 쿼리를 준비합니다.");
             const q = query(classesRef, where("adminId", "==", currentUser.uid));
-
-            console.log("4. 쿼리를 실행합니다...");
             const querySnapshot = await getDocs(q);
-            console.log("5. 쿼리 실행 완료.");
-
-            if (querySnapshot.empty) {
-                console.log("6. 쿼리 결과가 비어있습니다. (문서 없음)");
-            } else {
-                console.log(`6. ${querySnapshot.size}개의 문서를 찾았습니다.`);
-            }
-
-            const classes = querySnapshot.docs.map(doc => {
-                console.log(" - 문서 ID:", doc.id, "데이터:", doc.data());
-                return { id: doc.id, ...doc.data() };
-            });
+            const classes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             setManagedClasses(classes);
-            console.log("7. managedClasses 상태가 업데이트되었습니다.", classes);
 
-            if (classes.length > 0 && (!classId || !classes.some(c => c.id === classId))) {
-                console.log("8. 현재 classId가 없거나 목록에 없으므로, 첫 번째 학급으로 자동 설정합니다:", classes[0].id);
-                setClassId(classes[0].id);
+            if (classes.length > 0) {
+                // 현재 classId가 유효하지 않거나 설정되지 않았다면 첫 번째 학급으로 설정
+                if (!classId || !classes.some(c => c.id === classId)) {
+                    const firstClassId = classes[0].id;
+                    setClassId(firstClassId);
+                    initializeClass(firstClassId);
+                    setSelectedClassForQR(classes[0]);
+                } else {
+                    setSelectedClassForQR(classes.find(c => c.id === classId));
+                }
+            } else {
+                setSelectedClassForQR(null);
             }
         } catch (error) {
-            console.error("!!! 관리 학급 목록을 불러오는 중 심각한 오류 발생:", error);
-            alert("학급 목록을 불러오는 중 오류가 발생했습니다. 개발자 콘솔을 확인해주세요.");
+            console.error("관리 학급 목록을 불러오는 중 오류 발생:", error);
         } finally {
             setIsLoading(false);
-            console.log("9. fetchManagedClasses 함수 종료.");
         }
     }, [currentUser, classId, setClassId, initializeClass]);
 
-
     useEffect(() => {
-        if (currentUser) {
-            fetchManagedClasses();
-        }
-    }, [currentUser, fetchManagedClasses]);
+        fetchManagedClasses();
+    }, [currentUser]);
 
-    const handleClassChange = (newClassId) => {
-        if (newClassId !== classId) {
-            setClassId(newClassId);
-            initializeClass(newClassId);
+    const handleClassCardClick = (cls) => {
+        if (cls.id !== classId) {
+            setClassId(cls.id);
+            initializeClass(cls.id);
         }
+        setSelectedClassForQR(cls);
     };
 
     const handleCreateClass = async () => {
@@ -3526,9 +3558,14 @@ function ClassManager() {
             const { classId: newClassId, name, inviteCode } = await createNewClass(newClassName, currentUser);
             alert(`'${newClassName}' 학급이 성공적으로 생성되었습니다!`);
 
-            setManagedClasses(prev => [...prev, { id: newClassId, name, inviteCode, adminId: currentUser.uid }]);
-            handleClassChange(newClassId);
+            // 새 학급 생성 후 목록을 다시 불러와서 최신 상태 유지
+            await fetchManagedClasses();
+
+            // 새로 만든 학급을 활성 학급으로 설정
+            handleClassCardClick({ id: newClassId, name, inviteCode });
+
             setNewClassName('');
+            setIsCreating(false);
 
         } catch (error) {
             alert(`학급 생성 실패: ${error.message}`);
@@ -3549,43 +3586,54 @@ function ClassManager() {
         <FullWidthSection>
             <Section>
                 <SectionTitle>학급 관리 🏫</SectionTitle>
-                <p>이곳에서 새로운 학급을 생성하거나, 관리할 학급을 선택할 수 있습니다.</p>
+                <p>관리할 학급을 선택하거나 새 학급을 만드세요.</p>
 
-                <InputGroup>
-                    <select value={classId || ''} onChange={(e) => handleClassChange(e.target.value)} style={{ flex: 1, padding: '0.75rem', fontSize: '1rem' }}>
-                        {managedClasses.length > 0 ? (
-                            managedClasses.map(cls => (
-                                <option key={cls.id} value={cls.id}>{cls.name}</option>
-                            ))
-                        ) : (
-                            <option value="">관리 중인 학급이 없습니다. 새 학급을 생성해주세요.</option>
-                        )}
-                    </select>
-                </InputGroup>
+                <ClassGrid>
+                    {managedClasses.map(cls => (
+                        <ClassCard
+                            key={cls.id}
+                            $isActive={cls.id === classId}
+                            onClick={() => handleClassCardClick(cls)}
+                        >
+                            <h3>{cls.name || '이름 없음'}</h3>
+                            <p>클릭하여 초대 정보 보기</p>
+                        </ClassCard>
+                    ))}
+                    <AddClassCard onClick={() => setIsCreating(true)}>
+                        <span className="plus-icon">+</span>
+                        <h3>새 학급 만들기</h3>
+                    </AddClassCard>
+                </ClassGrid>
 
-                {currentClass && (
-                    <InviteCodeWrapper>
-                        <h3>'{currentClass.name}' 초대 정보</h3>
-                        <div style={{ background: 'white', padding: '16px', borderRadius: '8px' }}>
-                            <QRCode value={`${window.location.origin}/join?inviteCode=${currentClass.inviteCode}`} size={128} />
-                        </div>
-                        <InviteCodeDisplay onClick={() => handleCopyToClipboard(currentClass.inviteCode)} title="클릭하여 복사">
-                            {currentClass.inviteCode}
-                        </InviteCodeDisplay>
-                        <small>학생들에게 위 QR코드를 보여주거나 초대 코드를 알려주세요.</small>
-                    </InviteCodeWrapper>
+                {isCreating && (
+                    <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
+                        <input
+                            type="text"
+                            value={newClassName}
+                            onChange={(e) => setNewClassName(e.target.value)}
+                            placeholder="새 학급 이름 (예: 26년 초 6-1)"
+                            style={{ flex: 1, padding: '0.75rem' }}
+                        />
+                        <StyledButton onClick={handleCreateClass} style={{ backgroundColor: '#28a745' }}>생성하기</StyledButton>
+                        <StyledButton onClick={() => setIsCreating(false)} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>
+                    </InputGroup>
                 )}
 
-                <InputGroup style={{ borderTop: '2px solid #eee', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
-                    <input
-                        type="text"
-                        value={newClassName}
-                        onChange={(e) => setNewClassName(e.target.value)}
-                        placeholder="새 학급 이름 (예: 26년 초 6-1)"
-                        style={{ flex: 1, padding: '0.75rem' }}
-                    />
-                    <StyledButton onClick={handleCreateClass} style={{ backgroundColor: '#28a745' }}>새 학급 생성</StyledButton>
-                </InputGroup>
+                {selectedClassForQR && (
+                    <QRCodeSection>
+                        <h3>'{selectedClassForQR.name}' 초대 정보</h3>
+                        <InviteCodeWrapper>
+                            <div style={{ background: 'white', padding: '16px', borderRadius: '8px' }}>
+                                <QRCode value={`${window.location.origin}/join?inviteCode=${selectedClassForQR.inviteCode}`} size={128} />
+                            </div>
+                            <InviteCodeDisplay onClick={() => handleCopyToClipboard(selectedClassForQR.inviteCode)} title="클릭하여 복사">
+                                {selectedClassForQR.inviteCode}
+                            </InviteCodeDisplay>
+                            <small>학생들에게 위 QR코드를 보여주거나 초대 코드를 알려주세요.</small>
+                        </InviteCodeWrapper>
+                    </QRCodeSection>
+                )}
+
             </Section>
         </FullWidthSection>
     );
@@ -3593,7 +3641,6 @@ function ClassManager() {
 
 
 function AdminPage() {
-    console.log('현재 관리자 UID:', auth.currentUser?.uid); // ◀◀◀ 이 줄을 추가하세요.
     const { players } = useLeagueStore();
     const { tab } = useParams();
     const location = useLocation();
@@ -3603,8 +3650,8 @@ function AdminPage() {
     const [studentSubMenu, setStudentSubMenu] = useState('point');
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
     const [preselectedStudentId, setPreselectedStudentId] = useState(null);
-    const [modalImageSrc, setModalImageSrc] = useState(null); // [추가] 이미지 모달 상태
-    const [missionSubMenu, setMissionSubMenu] = useState('approval'); // [추가]
+    const [modalImageSrc, setModalImageSrc] = useState(null);
+    const [missionSubMenu, setMissionSubMenu] = useState('approval');
     const [preselectedMissionId, setPreselectedMissionId] = useState(null);
 
     useEffect(() => {
@@ -3613,12 +3660,10 @@ function AdminPage() {
             setActiveMenu('social');
             setActiveSubMenu('messages');
             setPreselectedStudentId(studentIdFromState);
-            // 상태 사용 후에는 history에서 제거하여 새로고침 시 유지되지 않도록 함
             window.history.replaceState({}, document.title)
         }
     }, [location.state]);
 
-    // [수정] navigate 함수를 사용하여 상태와 함께 이동하도록 핸들러 수정
     const handleSendMessageClick = (studentId) => {
         navigate('/admin', { state: { preselectedStudentId: studentId } });
     };
@@ -3632,7 +3677,6 @@ function AdminPage() {
 
     const renderContent = () => {
         if (activeMenu === 'mission') {
-            // [수정] missionSubMenu 값에 따라 다른 컴포넌트를 보여줍니다.
             switch (missionSubMenu) {
                 case 'approval':
                     return (
@@ -3644,14 +3688,12 @@ function AdminPage() {
                     return (
                         <>
                             <GridContainer style={{ gridTemplateColumns: '1fr' }}>
-                                {/* [수정] MissionManager에 핸들러 함수를 prop으로 전달 */}
                                 <MissionManager onNavigate={handleNavigateToHistory} />
                             </GridContainer>
                             <GoalManager />
                         </>
                     );
                 case 'history':
-                    // [수정] RecorderPage에 preselectedMissionId를 prop으로 전달
                     return <RecorderPage isAdminView={true} initialMissionId={preselectedMissionId} />;
                 default:
                     return null;
@@ -3713,7 +3755,6 @@ function AdminPage() {
     };
     return (
         <>
-            {/* [수정된 부분] ImageModal에 src와 rotation을 분리해서 전달합니다. */}
             <ImageModal src={modalImageSrc?.src} rotation={modalImageSrc?.rotation} onClose={() => setModalImageSrc(null)} />
             <AdminWrapper>
                 <Sidebar>
@@ -3721,7 +3762,6 @@ function AdminPage() {
                     <NavList>
                         <NavItem>
                             <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
-                            {/* [추가] activeMenu가 'mission'일 때 하위 메뉴를 보여줍니다. */}
                             {activeMenu === 'mission' && (
                                 <SubNavList>
                                     <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>미션 승인</SubNavButton></SubNavItem>
