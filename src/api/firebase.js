@@ -2803,3 +2803,64 @@ export async function usePetItem(classId, playerId, itemId) {
     });
   });
 }
+
+// 교체할 내용 (파일 맨 아래에 추가)
+/**
+ * 아이템을 사용하여 펫을 진화시킵니다.
+ * @param {string} classId - 학급 ID
+ * @param {string} playerId - 플레이어 ID
+ * @param {string} evolutionStoneId - 사용할 진화 아이템 ID
+ */
+export async function evolvePet(classId, playerId, evolutionStoneId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    const inventory = playerData.petInventory || {};
+    const pet = playerData.pet;
+
+    if (!inventory[evolutionStoneId] || inventory[evolutionStoneId] <= 0) throw new Error("진화 아이템이 없습니다.");
+    if (!pet) throw new Error("진화시킬 펫이 없습니다.");
+
+    // 진화 조건 확인 (예: 레벨 10 이상)
+    if (pet.level < 10) {
+      throw new Error("레벨 10 이상만 진화할 수 있습니다.");
+    }
+    if (pet.level >= 20) { // 최종 진화 단계라고 가정
+      throw new Error("이미 최종 단계로 진화했습니다.");
+    }
+
+    let updatedPet = { ...pet };
+
+    // 진화 로직
+    const currentStage = parseInt(pet.appearanceId.slice(-1));
+    const nextStage = currentStage + 1;
+    updatedPet.appearanceId = `${pet.species}_lv${nextStage}`;
+
+    // 진화 시 스탯 대폭 상승
+    updatedPet.maxHp = Math.floor(pet.maxHp * 1.5);
+    updatedPet.maxSp = Math.floor(pet.maxSp * 1.5);
+    updatedPet.hp = updatedPet.maxHp; // 체력 전체 회복
+    updatedPet.sp = updatedPet.maxSp; // SP 전체 회복
+
+    const newInventory = { ...inventory };
+    newInventory[evolutionStoneId] -= 1;
+
+    transaction.update(playerRef, {
+      pet: updatedPet,
+      petInventory: newInventory
+    });
+
+    createNotification(
+      playerData.authUid,
+      `🎉 펫 진화 성공!`,
+      `${pet.name}(이)가 새로운 모습으로 진화했습니다!`,
+      'pet_evolution',
+      '/pet'
+    );
+  });
+}

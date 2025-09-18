@@ -148,6 +148,18 @@ export const useLeagueStore = create((set, get) => ({
         await get().fetchInitialData();
     },
 
+    evolvePet: async (evolutionStoneId) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await firebaseEvolvePet(classId, myPlayerData.id, evolutionStoneId);
+        await get().fetchInitialData(); // 진화 후 데이터 새로고침
+    },
+
+
     // --- [수정] Actions ---
     setLoading: (status) => set({ isLoading: status }),
     setLeagueType: (type) => set({ leagueType: type }),
