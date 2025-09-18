@@ -54,8 +54,10 @@ import {
     getTitles,
     seedInitialTitles,
     grantTitleToPlayer,
-    getTotalLikesForPlayer, // <<< 이 부분을 추가해주세요!
-    selectInitialPet as firebaseSelectInitialPet
+    getTotalLikesForPlayer,
+    selectInitialPet as firebaseSelectInitialPet,
+    buyPetItem as firebaseBuyPetItem,
+    usePetItem as firebaseUsePetItem,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -106,6 +108,43 @@ export const useLeagueStore = create((set, get) => ({
         const { classId } = get();
         await firebaseSelectInitialPet(classId, species, name);
         // 데이터 즉시 반영을 위해 fetchInitialData 호출
+        await get().fetchInitialData();
+    },
+
+    // ▼▼▼ [신규] 펫 아이템 구매/사용 액션 추가 ▼▼▼
+    buyPetItem: async (item) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await firebaseBuyPetItem(classId, myPlayerData.id, item);
+
+        // 로컬 상태 즉시 업데이트
+        set(state => {
+            const newInventory = { ...(myPlayerData.petInventory || {}) };
+            newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+            return {
+                players: state.players.map(p =>
+                    p.id === myPlayerData.id
+                        ? { ...p, points: p.points - item.price, petInventory: newInventory }
+                        : p
+                )
+            };
+        });
+    },
+
+    usePetItem: async (itemId) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await firebaseUsePetItem(classId, myPlayerData.id, itemId);
+
+        // 아이템 사용 후 변경된 펫 상태를 위해 데이터 다시 로드
         await get().fetchInitialData();
     },
 

@@ -221,7 +221,19 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
 
       // ▼▼▼ [추가] 펫 경험치 획득 로직 호출 ▼▼▼
       if (playerData.pet) {
-        await updatePetExperience(playerRef, MISSION_EXP_REWARD);
+        const pet = playerData.pet;
+        let { level, exp, maxExp, hp, maxHp, sp, maxSp } = pet;
+        exp += MISSION_EXP_REWARD;
+        while (exp >= maxExp) {
+          level++;
+          exp -= maxExp;
+          maxExp = Math.floor(maxExp * 1.2);
+          maxHp = Math.floor(maxHp * 1.1);
+          maxSp = Math.floor(maxSp * 1.1);
+          hp = Math.min(maxHp, hp + Math.floor(maxHp * 0.4));
+          sp = Math.min(maxSp, sp + Math.floor(maxSp * 0.4));
+        }
+        batch.update(playerRef, { pet: { ...pet, level, exp, maxExp, hp, maxHp, sp, maxSp } });
       }
 
       createNotification(
@@ -2692,4 +2704,102 @@ async function updatePetExperience(playerRef, expGained) {
 
   const updatedPetData = { ...pet, level, exp, maxExp, hp, maxHp, sp, maxSp };
   await updateDoc(playerRef, { pet: updatedPetData });
+}
+
+// 교체할 내용 (파일 맨 아래에 추가)
+// ▼▼▼ [신규] 펫 관련 아이템 구매 및 사용 함수 추가 ▼▼▼
+/**
+ * 펫 관련 아이템을 구매합니다.
+ * @param {string} classId - 학급 ID
+ * @param {string} playerId - 플레이어 ID
+ * @param {object} item - 구매할 아이템 정보 (id, price, name)
+ */
+export async function buyPetItem(classId, playerId, item) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    if (playerData.points < item.price) throw new Error("포인트가 부족합니다.");
+
+    const newInventory = { ...playerData.petInventory };
+    newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+
+    transaction.update(playerRef, {
+      points: increment(-item.price),
+      petInventory: newInventory
+    });
+
+    await addPointHistory(
+      classId,
+      playerData.authUid,
+      playerData.name,
+      -item.price,
+      `펫 아이템 '${item.name}' 구매`
+    );
+  });
+}
+
+/**
+ * 펫 관련 아이템을 사용합니다. (HP 회복, 경험치 획득 등)
+ * @param {string} classId - 학급 ID
+ * @param {string} playerId - 플레이어 ID
+ * @param {string} itemId - 사용할 아이템 ID
+ */
+export async function usePetItem(classId, playerId, itemId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    const inventory = playerData.petInventory || {};
+    const pet = playerData.pet;
+
+    if (!inventory[itemId] || inventory[itemId] <= 0) throw new Error("아이템이 없습니다.");
+    if (!pet) throw new Error("펫이 없습니다.");
+
+    let updatedPet = { ...pet };
+    let logReason = "";
+
+    // 아이템 효과 적용
+    switch (itemId) {
+      case 'brain_snack':
+        if (pet.hp === pet.maxHp) throw new Error("HP가 이미 가득 찼습니다.");
+        updatedPet.hp = Math.min(pet.maxHp, pet.hp + 50);
+        logReason = "두뇌 간식 사용 (HP 50 회복)";
+        break;
+      case 'growth_seed':
+        updatedPet.exp += 100;
+        while (updatedPet.exp >= updatedPet.maxExp) {
+          updatedPet.level++;
+          updatedPet.exp -= updatedPet.maxExp;
+          updatedPet.maxExp = Math.floor(updatedPet.maxExp * 1.2);
+          updatedPet.maxHp = Math.floor(updatedPet.maxHp * 1.1);
+          // 레벨업 시 HP/SP 회복 로직 추가 가능
+        }
+        logReason = "성장의 씨앗 사용 (경험치 100 획득)";
+        break;
+      case 'first_aid_kit':
+        if (pet.hp > 0) throw new Error("펫이 전투 불능 상태가 아닙니다.");
+        updatedPet.hp = Math.floor(pet.maxHp * 0.5); // 최대 체력의 50%로 부활
+        logReason = "구급상자 사용 (펫 부활)";
+        break;
+      default:
+        throw new Error("알 수 없는 아이템입니다.");
+    }
+
+    const newInventory = { ...inventory };
+    newInventory[itemId] -= 1;
+
+    transaction.update(playerRef, {
+      pet: updatedPet,
+      petInventory: newInventory
+    });
+  });
 }

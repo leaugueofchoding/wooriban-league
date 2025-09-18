@@ -1,13 +1,15 @@
+// src/features/pet/PetSelectionPage.jsx
+
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useNavigate } from 'react-router-dom';
+import { petImageMap } from '../../utils/petImageMap';
 
-// 임시 이미지 URL - 나중에 생성된 이미지로 교체합니다.
 const PET_IMAGES = {
-    dragon: 'https://via.placeholder.com/150/f08080/000000?Text=용',
-    rabbit: 'https://via.placeholder.com/150/ffffff/000000?Text=토끼',
-    turtle: 'https://via.placeholder.com/150/98fb98/000000?Text=거북이',
+  dragon: petImageMap.dragon_lv1_idle,
+  rabbit: petImageMap.rabbit_lv1_idle,
+  bird: petImageMap.bird_lv1_idle, // 거북이 -> 새로
 };
 
 const Wrapper = styled.div`
@@ -88,52 +90,54 @@ const ConfirmButton = styled.button`
 `;
 
 const PET_DATA = {
-    dragon: { name: '아기용', description: '강력한 한 방을 가진 공격형 펫입니다.' },
-    rabbit: { name: '아기토끼', description: '배틀을 유리하게 이끄는 지원형 펫입니다.' },
-    turtle: { name: '아기거북', description: '어떤 공격도 버텨내는 방어형 펫입니다.' },
+  dragon: { name: '아기용', description: '강력한 한 방을 가진 공격형 펫입니다.' },
+  rabbit: { name: '아기토끼', description: '배틀을 유리하게 이끄는 지원형 펫입니다.' },
+  bird: { name: '아기새', description: '어떤 공격도 버텨내는 방어형 펫입니다.' }, // 거북이 -> 새로
 };
 
 function PetSelectionPage() {
-    const [selectedPet, setSelectedPet] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const { selectInitialPet } = useLeagueStore();
-    const navigate = useNavigate();
+  const [selectedPet, setSelectedPet] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { selectInitialPet } = useLeagueStore();
+  const navigate = useNavigate();
 
-    const handleSelect = async () => {
-        if (!selectedPet) return;
-        setIsLoading(true);
-        try {
-            await selectInitialPet(selectedPet, PET_DATA[selectedPet].name);
-            alert(`${PET_DATA[selectedPet].name}와(과) 함께하게 된 것을 축하합니다!`);
-            navigate('/pet');
-        } catch (error) {
-            alert(`펫 선택 중 오류 발생: ${error.message}`);
-            setIsLoading(false);
-        }
-    };
+  const handleSelect = async () => {
+    if (!selectedPet) return;
+    setIsLoading(true);
+    try {
+      // species를 bird로 넘겨주도록 수정
+      const species = selectedPet === 'bird' ? 'turtle' : selectedPet; // DB에는 turtle로 저장되도록 임시 처리 (또는 DB 스키마 변경 필요)
+      await selectInitialPet(species, PET_DATA[selectedPet].name);
+      alert(`${PET_DATA[selectedPet].name}와(과) 함께하게 된 것을 축하합니다!`);
+      navigate('/pet');
+    } catch (error) {
+      alert(`펫 선택 중 오류 발생: ${error.message}`);
+      setIsLoading(false);
+    }
+  };
 
-    return (
-        <Wrapper>
-            <Title>첫 파트너를 선택하세요!</Title>
-            <Subtitle>한 번 선택한 펫은 바꿀 수 없으니 신중하게 골라주세요.</Subtitle>
-            <PetSelectionContainer>
-                {Object.keys(PET_DATA).map(petKey => (
-                    <PetCard
-                        key={petKey}
-                        $isSelected={selectedPet === petKey}
-                        onClick={() => setSelectedPet(petKey)}
-                    >
-                        <PetImage src={PET_IMAGES[petKey]} alt={PET_DATA[petKey].name} />
-                        <PetName>{PET_DATA[petKey].name}</PetName>
-                        <PetDescription>{PET_DATA[petKey].description}</PetDescription>
-                    </PetCard>
-                ))}
-            </PetSelectionContainer>
-            <ConfirmButton onClick={handleSelect} disabled={!selectedPet || isLoading}>
-                {isLoading ? '선택 중...' : '이 펫으로 결정할래요!'}
-            </ConfirmButton>
-        </Wrapper>
-    );
+  return (
+    <Wrapper>
+      <Title>첫 파트너를 선택하세요!</Title>
+      <Subtitle>한 번 선택한 펫은 바꿀 수 없으니 신중하게 골라주세요.</Subtitle>
+      <PetSelectionContainer>
+        {Object.keys(PET_DATA).map(petKey => (
+          <PetCard
+            key={petKey}
+            $isSelected={selectedPet === petKey}
+            onClick={() => setSelectedPet(petKey)}
+          >
+            <PetImage src={PET_IMAGES[petKey]} alt={PET_DATA[petKey].name} />
+            <PetName>{PET_DATA[petKey].name}</PetName>
+            <PetDescription>{PET_DATA[petKey].description}</PetDescription>
+          </PetCard>
+        ))}
+      </PetSelectionContainer>
+      <ConfirmButton onClick={handleSelect} disabled={!selectedPet || isLoading}>
+        {isLoading ? '선택 중...' : '이 펫으로 결정할래요!'}
+      </ConfirmButton>
+    </Wrapper>
+  );
 }
 
 export default PetSelectionPage;
