@@ -29,6 +29,7 @@ import JoinPage from './pages/JoinPage.jsx';
 // ▼▼▼ [추가] 새로운 펫 관련 페이지 import ▼▼▼
 import PetPage from './features/pet/PetPage.jsx';
 import PetSelectionPage from './features/pet/PetSelectionPage.jsx';
+import PetCenterPage from './features/pet/PetCenterPage.jsx';
 
 
 // Common Components
@@ -211,7 +212,8 @@ function App() {
             {/* ▼▼▼ [수정] 펫 관련 라우트 추가 ▼▼▼ */}
             <Route path="/pet" element={<ProtectedRoute><PetPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
-            <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} /> {/* ◀◀◀ 추가 */}
+            <Route path="/pet-center" element={<ProtectedRoute><PetCenterPage /></ProtectedRoute>} />
+            <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} />
 
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />

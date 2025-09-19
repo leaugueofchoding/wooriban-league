@@ -58,6 +58,12 @@ import {
     selectInitialPet as firebaseSelectInitialPet,
     buyPetItem as firebaseBuyPetItem,
     usePetItem as firebaseUsePetItem,
+    evolvePet as firebaseEvolvePet,
+    convertLikesToExp as firebaseConvertLikesToExp,
+    processBattleResults as firebaseProcessBattleResults,
+    updatePetName as firebaseUpdatePetName,
+    setPartnerPet as firebaseSetPartnerPet,
+    hatchPetEgg as firebaseHatchPetEgg
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -106,12 +112,16 @@ export const useLeagueStore = create((set, get) => ({
 
     selectInitialPet: async (species, name) => {
         const { classId } = get();
-        await firebaseSelectInitialPet(classId, species, name);
-        // 데이터 즉시 반영을 위해 fetchInitialData 호출
-        await get().fetchInitialData();
+        const updatedPlayerData = await firebaseSelectInitialPet(classId, species, name);
+
+        // DB에서 반환된 최신 데이터로 로컬 상태 즉시 업데이트
+        set(state => ({
+            players: state.players.map(p =>
+                p.authUid === auth.currentUser.uid ? updatedPlayerData : p
+            )
+        }));
     },
 
-    // ▼▼▼ [신규] 펫 아이템 구매/사용 액션 추가 ▼▼▼
     buyPetItem: async (item) => {
         const { classId } = get();
         const user = auth.currentUser;
@@ -119,55 +129,115 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        await firebaseBuyPetItem(classId, myPlayerData.id, item);
-
-        // 로컬 상태 즉시 업데이트
-        set(state => {
-            const newInventory = { ...(myPlayerData.petInventory || {}) };
-            newInventory[item.id] = (newInventory[item.id] || 0) + 1;
-            return {
-                players: state.players.map(p =>
-                    p.id === myPlayerData.id
-                        ? { ...p, points: p.points - item.price, petInventory: newInventory }
-                        : p
-                )
-            };
-        });
+        const updatedPlayerData = await firebaseBuyPetItem(classId, myPlayerData.id, item);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
     },
 
-    usePetItem: async (itemId) => {
+    usePetItem: async (itemId, petId) => {
         const { classId } = get();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        await firebaseUsePetItem(classId, myPlayerData.id, itemId);
-
-        // 아이템 사용 후 변경된 펫 상태를 위해 데이터 다시 로드
-        await get().fetchInitialData();
+        const updatedPlayerData = await firebaseUsePetItem(classId, myPlayerData.id, itemId, petId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
     },
 
-    evolvePet: async (evolutionStoneId) => {
+    evolvePet: async (petId, evolutionStoneId) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+
+        const updatedPlayerData = await firebaseEvolvePet(classId, myPlayerData.id, petId, evolutionStoneId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    convertLikesToExp: async () => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+
+        const { updatedPlayerData } = await firebaseConvertLikesToExp(classId, myPlayerData.id);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    processBattleResults: async (winnerId, loserId) => {
+        const { classId } = get();
+        await firebaseProcessBattleResults(classId, winnerId, loserId);
+        await get().fetchInitialData(); // 배틀 후 양쪽 플레이어 정보 전체 갱신
+    },
+
+    updatePetName: async (newName, petId) => {
         const { classId } = get();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        await firebaseEvolvePet(classId, myPlayerData.id, evolutionStoneId);
-        await get().fetchInitialData(); // 진화 후 데이터 새로고침
+        const updatedPlayerData = await firebaseUpdatePetName(classId, myPlayerData.id, petId, newName);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
     },
 
+    setPartnerPet: async (petId) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
 
+        const updatedPlayerData = await firebaseSetPartnerPet(classId, myPlayerData.id, petId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    hatchPetEgg: async () => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+
+        const { updatedPlayerData, hatchedPet } = await firebaseHatchPetEgg(classId, myPlayerData.id);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+        return hatchedPet; // 부화한 펫 정보 반환
+    },
     // --- [수정] Actions ---
     setLoading: (status) => set({ isLoading: status }),
     setLeagueType: (type) => set({ leagueType: type }),
 
     // [신규] classId를 설정하고 데이터를 다시 불러오는 액션
-    initializeClass: (newClassId) => {
+    initializeClass: async (newClassId) => {
+        if (!newClassId) return;
         set({ classId: newClassId, isLoading: true });
-        get().fetchInitialData();
+        await get().fetchInitialData();
+
+        const user = auth.currentUser;
+        if (user) {
+            const myPlayerData = get().players.find(p => p.authUid === user.uid);
+            if (myPlayerData && myPlayerData.pet && !myPlayerData.pets) {
+                const updatedPlayerData = await migratePetData(newClassId, myPlayerData);
+                if (updatedPlayerData) {
+                    set(state => ({
+                        players: state.players.map(p => p.id === updatedPlayerData.id ? updatedPlayerData : p)
+                    }));
+                }
+            }
+        }
+        set({ isLoading: false });
     },
 
     updateLocalAvatarPartStatus: (partId, newStatus) => {

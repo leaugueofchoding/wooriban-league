@@ -10,6 +10,8 @@ import {
 } from "firebase/firestore";
 import initialTitles from '../assets/titles.json';
 import imageCompression from 'browser-image-compression';
+import { PET_DATA } from "@/features/pet/petData";
+import { deleteField } from "firebase/firestore";
 
 // Firebase 구성 정보
 const firebaseConfig = {
@@ -2642,83 +2644,87 @@ export async function getTotalLikesForPlayer(classId, playerId) {
   return totalLikes;
 }
 
+export async function migratePetData(classId, player) {
+  if (!classId || !player) return null;
+  // 이미 새로운 pets 구조를 가지고 있거나, 기존 pet 객체가 없으면 변환할 필요 없음
+  if (!player.pet || (player.pets && player.pets.length > 0)) {
+    return null;
+  }
+
+  console.log(`[데이터 마이그레이션] ${player.name}님의 펫 데이터를 변환합니다...`);
+  const playerRef = doc(db, "classes", classId, "players", player.id);
+  const petId = Date.now().toString();
+
+  const newPetObject = {
+    ...player.pet,
+    id: petId, // 새로운 고유 ID 부여
+  };
+
+  // DB 업데이트: pets 배열 추가, partnerPetId 설정, 기존 pet 필드 삭제
+  await updateDoc(playerRef, {
+    pets: [newPetObject],
+    partnerPetId: petId,
+    pet: deleteField()
+  });
+
+  const updatedPlayerSnap = await getDoc(playerRef);
+  console.log(`[데이터 마이그레이션] 변환 완료!`);
+  return updatedPlayerSnap.data();
+}
+
 export async function selectInitialPet(classId, species, name) {
   const user = auth.currentUser;
   if (!classId || !user) throw new Error("사용자 또는 학급 정보가 없습니다.");
 
   const playerRef = doc(db, "classes", classId, "players", user.uid);
-
-  const skillMap = {
-    dragon: 'fiery_focus',
-    rabbit: 'quick_thinking',
-    turtle: 'shell_shield'
-  };
+  const skillId = PET_DATA[species]?.skill?.id || null;
+  const petId = Date.now().toString();
 
   const petData = {
+    id: petId,
     name: name,
     species: species,
-    level: 1,
-    exp: 0,
-    maxExp: 100,
-    hp: 100,      // 체력 추가
-    maxHp: 100,   // 최대 체력 추가
-    sp: 50,       // 스킬 포인트 추가
-    maxSp: 50,    // 최대 스킬 포인트 추가
-    skillId: skillMap[species] || null,
+    level: 1, exp: 0, maxExp: 100,
+    hp: 100, maxHp: 100,
+    sp: 50, maxSp: 50,
+    skillId: skillId,
     appearanceId: `${species}_lv1`
   };
 
   await updateDoc(playerRef, {
-    pet: petData
+    pets: [petData],
+    partnerPetId: petId,
+    pet: deleteField()
   });
-
   await adjustPlayerPoints(classId, user.uid, 200, "첫 파트너 펫 선택 보상");
-}
 
-async function updatePetExperience(playerRef, expGained) {
-  // 헬퍼 함수는 외부에 노출할 필요가 없으므로 export 하지 않습니다.
   const playerSnap = await getDoc(playerRef);
-  if (!playerSnap.exists() || !playerSnap.data().pet) {
-    return; // 펫이 없으면 아무것도 하지 않음
-  }
-
-  const pet = playerSnap.data().pet;
-  let { level, exp, maxExp, hp, maxHp, sp, maxSp } = pet;
-
-  exp += expGained;
-
-  // 레벨업 처리 (경험치가 maxExp를 넘는 동안 반복)
-  while (exp >= maxExp) {
-    level++;
-    exp -= maxExp;
-
-    // ▼▼▼ [수정] 경험치 요구량 복리(1.2배) 증가 및 최대 HP/SP 10% 증가 로직 ▼▼▼
-    maxExp = Math.floor(maxExp * 1.2);
-    maxHp = Math.floor(maxHp * 1.1);
-    maxSp = Math.floor(maxSp * 1.1);
-
-    // HP와 SP를 최대치의 40%만큼 회복 (최대치를 넘지 않음)
-    hp = Math.min(maxHp, hp + Math.floor(maxHp * 0.4));
-    sp = Math.min(maxSp, sp + Math.floor(maxSp * 0.4));
-  }
-
-  const updatedPetData = { ...pet, level, exp, maxExp, hp, maxHp, sp, maxSp };
-  await updateDoc(playerRef, { pet: updatedPetData });
+  return playerSnap.data();
 }
 
-// 교체할 내용 (파일 맨 아래에 추가)
-// ▼▼▼ [신규] 펫 관련 아이템 구매 및 사용 함수 추가 ▼▼▼
-/**
- * 펫 관련 아이템을 구매합니다.
- * @param {string} classId - 학급 ID
- * @param {string} playerId - 플레이어 ID
- * @param {object} item - 구매할 아이템 정보 (id, price, name)
- */
+function calculateLevelUp(pet) {
+  let leveledUpPet = { ...pet };
+  let levelUps = 0;
+  while (leveledUpPet.exp >= leveledUpPet.maxExp) {
+    leveledUpPet.level++;
+    leveledUpPet.exp -= leveledUpPet.maxExp;
+    leveledUpPet.maxExp = Math.floor(leveledUpPet.maxExp * 1.2);
+    leveledUpPet.maxHp = Math.floor(leveledUpPet.maxHp * 1.15);
+    leveledUpPet.maxSp = Math.floor(leveledUpPet.maxSp * 1.15);
+    levelUps++;
+  }
+  if (levelUps > 0) {
+    leveledUpPet.hp = leveledUpPet.maxHp;
+    leveledUpPet.sp = leveledUpPet.maxSp;
+  }
+  return { leveledUpPet, levelUps };
+}
+
 export async function buyPetItem(classId, playerId, item) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, 'classes', classId, 'players', playerId);
 
-  await runTransaction(db, async (transaction) => {
+  return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
@@ -2733,134 +2739,262 @@ export async function buyPetItem(classId, playerId, item) {
       petInventory: newInventory
     });
 
-    await addPointHistory(
-      classId,
-      playerData.authUid,
-      playerData.name,
-      -item.price,
-      `펫 아이템 '${item.name}' 구매`
-    );
+    await addPointHistory(classId, playerData.authUid, playerData.name, -item.price, `펫 아이템 '${item.name}' 구매`);
+    const updatedPlayerSnap = await transaction.get(playerRef);
+    return updatedPlayerSnap.data();
   });
 }
 
-/**
- * 펫 관련 아이템을 사용합니다. (HP 회복, 경험치 획득 등)
- * @param {string} classId - 학급 ID
- * @param {string} playerId - 플레이어 ID
- * @param {string} itemId - 사용할 아이템 ID
- */
-export async function usePetItem(classId, playerId, itemId) {
+export async function usePetItem(classId, playerId, itemId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
-  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+  const playerRef = doc(db, "classes", classId, "players", playerId);
 
-  await runTransaction(db, async (transaction) => {
+  return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
     const playerData = playerDoc.data();
     const inventory = playerData.petInventory || {};
-    const pet = playerData.pet;
+    let pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
 
+    if (petIndex === -1) throw new Error("대상이 되는 펫을 찾을 수 없습니다.");
     if (!inventory[itemId] || inventory[itemId] <= 0) throw new Error("아이템이 없습니다.");
-    if (!pet) throw new Error("펫이 없습니다.");
 
-    let updatedPet = { ...pet };
-    let logReason = "";
+    let pet = pets[petIndex];
 
-    // 아이템 효과 적용
     switch (itemId) {
       case 'brain_snack':
-        if (pet.hp === pet.maxHp) throw new Error("HP가 이미 가득 찼습니다.");
-        updatedPet.hp = Math.min(pet.maxHp, pet.hp + 50);
-        logReason = "두뇌 간식 사용 (HP 50 회복)";
-        break;
-      case 'growth_seed':
-        updatedPet.exp += 100;
-        while (updatedPet.exp >= updatedPet.maxExp) {
-          updatedPet.level++;
-          updatedPet.exp -= updatedPet.maxExp;
-          updatedPet.maxExp = Math.floor(updatedPet.maxExp * 1.2);
-          updatedPet.maxHp = Math.floor(updatedPet.maxHp * 1.1);
-          // 레벨업 시 HP/SP 회복 로직 추가 가능
-        }
-        logReason = "성장의 씨앗 사용 (경험치 100 획득)";
+        pet.exp += 100;
         break;
       case 'first_aid_kit':
         if (pet.hp > 0) throw new Error("펫이 전투 불능 상태가 아닙니다.");
-        updatedPet.hp = Math.floor(pet.maxHp * 0.5); // 최대 체력의 50%로 부활
-        logReason = "구급상자 사용 (펫 부활)";
+        pet.hp = Math.floor(pet.maxHp * 0.5);
         break;
       default:
         throw new Error("알 수 없는 아이템입니다.");
     }
 
+    const { leveledUpPet } = calculateLevelUp(pet);
+    pets[petIndex] = leveledUpPet;
+
     const newInventory = { ...inventory };
     newInventory[itemId] -= 1;
 
     transaction.update(playerRef, {
-      pet: updatedPet,
+      pets: pets,
       petInventory: newInventory
     });
+
+    const updatedPlayerSnap = await transaction.get(playerRef);
+    return updatedPlayerSnap.data();
   });
 }
 
-// 교체할 내용 (파일 맨 아래에 추가)
-/**
- * 아이템을 사용하여 펫을 진화시킵니다.
- * @param {string} classId - 학급 ID
- * @param {string} playerId - 플레이어 ID
- * @param {string} evolutionStoneId - 사용할 진화 아이템 ID
- */
-export async function evolvePet(classId, playerId, evolutionStoneId) {
+export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
-  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+  const playerRef = doc(db, "classes", classId, "players", playerId);
 
-  await runTransaction(db, async (transaction) => {
+  return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
     const playerData = playerDoc.data();
     const inventory = playerData.petInventory || {};
-    const pet = playerData.pet;
+    let pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+
+    if (petIndex === -1) throw new Error("진화할 펫을 찾을 수 없습니다.");
+    const pet = pets[petIndex];
 
     if (!inventory[evolutionStoneId] || inventory[evolutionStoneId] <= 0) throw new Error("진화 아이템이 없습니다.");
-    if (!pet) throw new Error("진화시킬 펫이 없습니다.");
 
-    // 진화 조건 확인 (예: 레벨 10 이상)
-    if (pet.level < 10) {
-      throw new Error("레벨 10 이상만 진화할 수 있습니다.");
-    }
-    if (pet.level >= 20) { // 최종 진화 단계라고 가정
-      throw new Error("이미 최종 단계로 진화했습니다.");
-    }
+    const currentStage = parseInt(pet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
+    const evolutionLevel = currentStage === 1 ? 10 : 20;
 
-    let updatedPet = { ...pet };
+    if (pet.level < evolutionLevel) throw new Error(`레벨 ${evolutionLevel} 이상만 진화할 수 있습니다.`);
+    if (currentStage >= 3) throw new Error("이미 최종 단계로 진화했습니다.");
 
-    // 진화 로직
-    const currentStage = parseInt(pet.appearanceId.slice(-1));
-    const nextStage = currentStage + 1;
-    updatedPet.appearanceId = `${pet.species}_lv${nextStage}`;
+    const evolutionData = PET_DATA[pet.species].evolution[`lv${evolutionLevel}`];
+    pet.appearanceId = evolutionData.appearanceId;
+    pet.name = evolutionData.name; // 진화 시 종족 이름으로 변경
 
-    // 진화 시 스탯 대폭 상승
-    updatedPet.maxHp = Math.floor(pet.maxHp * 1.5);
-    updatedPet.maxSp = Math.floor(pet.maxSp * 1.5);
-    updatedPet.hp = updatedPet.maxHp; // 체력 전체 회복
-    updatedPet.sp = updatedPet.maxSp; // SP 전체 회복
+    pet.maxHp = Math.floor(pet.maxHp * 1.5);
+    pet.maxSp = Math.floor(pet.maxSp * 1.2);
+    pet.hp = pet.maxHp;
+    pet.sp = pet.maxSp;
 
     const newInventory = { ...inventory };
     newInventory[evolutionStoneId] -= 1;
 
+    pets[petIndex] = pet;
     transaction.update(playerRef, {
-      pet: updatedPet,
+      pets: pets,
       petInventory: newInventory
     });
 
-    createNotification(
-      playerData.authUid,
-      `🎉 펫 진화 성공!`,
-      `${pet.name}(이)가 새로운 모습으로 진화했습니다!`,
-      'pet_evolution',
-      '/pet'
-    );
+    createNotification(playerData.authUid, `🎉 펫 진화 성공!`, `${playerData.pets[petIndex].name}(이)가 ${evolutionData.name}(으)로 진화했습니다!`, 'pet_evolution', '/pet');
+
+    const updatedPlayerSnap = await transaction.get(playerRef);
+    return updatedPlayerSnap.data();
+  });
+}
+
+export async function hatchPetEgg(classId, playerId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    const inventory = playerData.petInventory || {};
+    if (!inventory.pet_egg || inventory.pet_egg <= 0) throw new Error("부화할 알이 없습니다.");
+
+    const currentSpecies = (playerData.pets || []).map(p => p.species);
+    const availableSpecies = Object.keys(PET_DATA).filter(s => !currentSpecies.includes(s));
+
+    if (availableSpecies.length === 0) throw new Error("모든 종류의 펫을 이미 보유하고 있습니다!");
+
+    const randomSpecies = availableSpecies[Math.floor(Math.random() * availableSpecies.length)];
+    const petId = Date.now().toString();
+
+    const newPet = {
+      id: petId,
+      name: PET_DATA[randomSpecies].name,
+      species: randomSpecies,
+      level: 1, exp: 0, maxExp: 100,
+      hp: 100, maxHp: 100, sp: 50, maxSp: 50,
+      skillId: PET_DATA[randomSpecies].skill.id,
+      appearanceId: `${randomSpecies}_lv1`
+    };
+
+    const newInventory = { ...inventory };
+    newInventory.pet_egg -= 1;
+
+    transaction.update(playerRef, {
+      pets: arrayUnion(newPet),
+      petInventory: newInventory
+    });
+
+    const updatedPlayerSnap = await transaction.get(playerRef);
+    return { updatedPlayerData: updatedPlayerSnap.data(), hatchedPet: newPet };
+  });
+}
+
+export async function setPartnerPet(classId, playerId, petId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  await updateDoc(playerRef, { partnerPetId: petId });
+  const playerSnap = await getDoc(playerRef);
+  return playerSnap.data();
+}
+
+export async function updatePetName(classId, playerId, petId, newName) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  if (!newName || newName.length > 10) {
+    throw new Error("이름은 1자 이상 10자 이하로 입력해주세요.");
+  }
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    const pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+
+    if (petIndex === -1) throw new Error("펫을 찾을 수 없습니다.");
+
+    pets[petIndex].name = newName;
+    transaction.update(playerRef, { pets: pets });
+
+    const updatedPlayerSnap = await transaction.get(playerRef);
+    return updatedPlayerSnap.data();
+  });
+}
+
+export async function convertLikesToExp(classId, playerId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    const totalLikes = playerData.totalLikes || 0;
+    let pets = playerData.pets || [];
+    const partnerPetId = playerData.partnerPetId;
+    const petIndex = pets.findIndex(p => p.id === partnerPetId);
+
+    if (totalLikes <= 0) throw new Error("교환할 하트가 없습니다.");
+    if (petIndex === -1) throw new Error("경험치를 받을 파트너 펫이 없습니다.");
+
+    const expGained = totalLikes * 2;
+    let pet = pets[petIndex];
+    pet.exp += expGained;
+
+    const { leveledUpPet, levelUps } = calculateLevelUp(pet);
+    pets[petIndex] = leveledUpPet;
+
+    transaction.update(playerRef, {
+      pets: pets,
+      totalLikes: 0
+    });
+
+    if (levelUps > 0) {
+      createNotification(playerData.authUid, `🎉 레벨업!`, `${pet.name}의 레벨이 ${levelUps} 올랐습니다!`, 'pet_levelup', '/pet');
+    }
+
+    const updatedPlayerSnap = await transaction.get(playerRef);
+    return { expGained, updatedPlayerData: updatedPlayerSnap.data() };
+  });
+}
+
+export async function processBattleResults(classId, winnerId, loserId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const winnerRef = doc(db, "classes", classId, "players", winnerId);
+  const loserRef = doc(db, "classes", classId, "players", loserId);
+
+  return await runTransaction(db, async (transaction) => {
+    const winnerDoc = await transaction.get(winnerRef);
+    const loserDoc = await transaction.get(loserRef);
+
+    if (!winnerDoc.exists() || !loserDoc.exists()) {
+      throw new Error("플레이어 정보를 찾을 수 없습니다.");
+    }
+
+    const winnerData = winnerDoc.data();
+    const loserData = loserDoc.data();
+
+    const winnerPartnerId = winnerData.partnerPetId;
+    const loserPartnerId = loserData.partnerPetId;
+
+    const winnerPets = winnerData.pets || [];
+    const loserPets = loserData.pets || [];
+
+    const winnerPetIndex = winnerPets.findIndex(p => p.id === winnerPartnerId);
+    const loserPetIndex = loserPets.findIndex(p => p.id === loserPartnerId);
+
+    if (winnerPetIndex !== -1) {
+      winnerPets[winnerPetIndex].exp += 100;
+      const { leveledUpPet } = calculateLevelUp(winnerPets[winnerPetIndex]);
+      winnerPets[winnerPetIndex] = leveledUpPet;
+    }
+
+    if (loserPetIndex !== -1) {
+      loserPets[loserPetIndex].exp += 30;
+      const { leveledUpPet } = calculateLevelUp(loserPets[loserPetIndex]);
+      loserPets[loserPetIndex] = leveledUpPet;
+    }
+
+    transaction.update(winnerRef, { points: increment(150), pets: winnerPets });
+    transaction.update(loserRef, { points: increment(-50), pets: loserPets });
+
+    await addPointHistory(classId, winnerData.authUid, winnerData.name, 150, "퀴즈 배틀 승리");
+    await addPointHistory(classId, loserData.authUid, loserData.name, -50, "퀴즈 배틀 패배");
   });
 }
