@@ -5,7 +5,7 @@ import styled from 'styled-components';
 import { useLeagueStore } from '@/store/leagueStore';
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '@/utils/petImageMap';
-import { PET_DATA } from '@/features/pet/petData'; // ◀◀◀ [오류 해결] 이 줄을 추가합니다.
+import { PET_DATA } from '@/features/pet/petData'; 
 
 // --- (Styled Components는 이전과 동일하여 생략) ---
 const Wrapper = styled.div`

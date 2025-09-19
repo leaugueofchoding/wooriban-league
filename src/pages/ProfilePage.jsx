@@ -513,7 +513,7 @@ function ProfilePage() {
             {isMyProfile && <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>}
 
             {/* ▼▼▼ [수정] 펫 보유 여부 검사 로직을 테스트를 위해 임시 주석 처리 ▼▼▼ */}
-            {!isMyProfile && loggedInPlayer /* && loggedInPlayer.pet && playerData.pet */ && (
+            {!isMyProfile && loggedInPlayer && loggedInPlayer.pets?.length > 0 && playerData.pets?.length > 0 && (
               <StyledLink
                 to={`/battle/${playerData.id}`}
                 style={{ backgroundColor: '#dc3545', color: 'white' }}
@@ -526,10 +526,10 @@ function ProfilePage() {
             {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
             <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
             {isMyProfile && <Button onClick={() => setIsTitleAccordionOpen(prev => !prev)}>칭호 관리</Button>}
-            {/* ▼▼▼ [추가] 펫 관리 버튼 ▼▼▼ */}
+            {/* ▼▼▼ [수정] 펫 관리 버튼 링크 로직 수정 ▼▼▼ */}
             {isMyProfile && (
               <StyledLink
-                to={playerData.pet ? "/pet" : "/pet/select"}
+                to={(playerData.pets && playerData.pets.length > 0) || playerData.pet ? "/pet" : "/pet/select"}
                 style={{ backgroundColor: '#6f42c1', color: 'white' }}
               >
                 펫 관리

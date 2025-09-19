@@ -8,7 +8,6 @@ import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
-// '깨진 알' 이미지를 import 합니다. 실제 파일이 assets/items 폴더에 있어야 합니다.
 import petEggCrackedImg from '@/assets/items/item_pet_egg_cracked.png';
 
 // --- (Styled Components는 이전과 동일) ---
@@ -143,7 +142,7 @@ function PetPage() {
   const [hatchState, setHatchState] = useState({ step: 'start', hatchedPet: null });
 
   useEffect(() => {
-    if (myPlayerData && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
+    if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
       navigate('/pet/select');
     }
     if (myPlayerData && myPlayerData.pets && myPlayerData.pets.length > 0) {

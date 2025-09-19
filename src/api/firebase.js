@@ -2738,13 +2738,15 @@ export async function buyPetItem(classId, playerId, item) {
       points: increment(-item.price),
       petInventory: newInventory
     });
-
+  }).then(async () => {
+    const playerDoc = await getDoc(playerRef);
+    const playerData = playerDoc.data();
     await addPointHistory(classId, playerData.authUid, playerData.name, -item.price, `펫 아이템 '${item.name}' 구매`);
-    const updatedPlayerSnap = await transaction.get(playerRef);
-    return updatedPlayerSnap.data();
+    return playerData;
   });
 }
 
+// ▼▼▼ [수정] usePetItem 함수 수정 ▼▼▼
 export async function usePetItem(classId, playerId, itemId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
@@ -2765,7 +2767,8 @@ export async function usePetItem(classId, playerId, itemId, petId) {
 
     switch (itemId) {
       case 'brain_snack':
-        pet.exp += 100;
+        pet.hp = Math.min(pet.maxHp, pet.hp + Math.floor(pet.maxHp * 0.15));
+        pet.sp = Math.min(pet.maxSp, pet.sp + Math.floor(pet.maxSp * 0.15));
         break;
       case 'first_aid_kit':
         if (pet.hp > 0) throw new Error("펫이 전투 불능 상태가 아닙니다.");
@@ -2785,9 +2788,9 @@ export async function usePetItem(classId, playerId, itemId, petId) {
       pets: pets,
       petInventory: newInventory
     });
-
-    const updatedPlayerSnap = await transaction.get(playerRef);
-    return updatedPlayerSnap.data();
+  }).then(async () => {
+    const playerDoc = await getDoc(playerRef);
+    return playerDoc.data();
   });
 }
 
@@ -2817,7 +2820,7 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
 
     const evolutionData = PET_DATA[pet.species].evolution[`lv${evolutionLevel}`];
     pet.appearanceId = evolutionData.appearanceId;
-    pet.name = evolutionData.name; // 진화 시 종족 이름으로 변경
+    pet.name = evolutionData.name;
 
     pet.maxHp = Math.floor(pet.maxHp * 1.5);
     pet.maxSp = Math.floor(pet.maxSp * 1.2);
@@ -2835,14 +2838,16 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
 
     createNotification(playerData.authUid, `🎉 펫 진화 성공!`, `${playerData.pets[petIndex].name}(이)가 ${evolutionData.name}(으)로 진화했습니다!`, 'pet_evolution', '/pet');
 
-    const updatedPlayerSnap = await transaction.get(playerRef);
-    return updatedPlayerSnap.data();
+    return { ...playerData, pets, petInventory: newInventory };
   });
 }
 
+
+// ▼▼▼ [수정] hatchPetEgg 함수 수정 ▼▼▼
 export async function hatchPetEgg(classId, playerId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
+  let hatchedPetData = null;
 
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
@@ -2869,6 +2874,7 @@ export async function hatchPetEgg(classId, playerId) {
       skillId: PET_DATA[randomSpecies].skill.id,
       appearanceId: `${randomSpecies}_lv1`
     };
+    hatchedPetData = newPet; // 부화한 펫 정보 임시 저장
 
     const newInventory = { ...inventory };
     newInventory.pet_egg -= 1;
@@ -2877,9 +2883,9 @@ export async function hatchPetEgg(classId, playerId) {
       pets: arrayUnion(newPet),
       petInventory: newInventory
     });
-
-    const updatedPlayerSnap = await transaction.get(playerRef);
-    return { updatedPlayerData: updatedPlayerSnap.data(), hatchedPet: newPet };
+  }).then(async () => {
+    const updatedPlayerSnap = await getDoc(playerRef);
+    return { updatedPlayerData: updatedPlayerSnap.data(), hatchedPet: hatchedPetData };
   });
 }
 

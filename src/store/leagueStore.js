@@ -213,7 +213,8 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({
             players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
         }));
-        return hatchedPet; // 부화한 펫 정보 반환
+        // ▼▼▼ [수정] hatchedPet 객체만 반환하던 것을 객체 형태로 반환 ▼▼▼
+        return { updatedPlayerData, hatchedPet }; // 부화한 펫과 업데이트된 플레이어 정보 함께 반환
     },
     // --- [수정] Actions ---
     setLoading: (status) => set({ isLoading: status }),
@@ -228,6 +229,7 @@ export const useLeagueStore = create((set, get) => ({
         const user = auth.currentUser;
         if (user) {
             const myPlayerData = get().players.find(p => p.authUid === user.uid);
+            // ▼▼▼ [수정] 기존 펫 데이터(pet)를 새로운 pets 배열로 마이그레이션하는 로직 추가 ▼▼▼
             if (myPlayerData && myPlayerData.pet && !myPlayerData.pets) {
                 const updatedPlayerData = await migratePetData(newClassId, myPlayerData);
                 if (updatedPlayerData) {

@@ -9,7 +9,7 @@ import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 
-// --- (Styled Components는 이전과 동일하며 일부 추가) ---
+// --- (Styled Components는 이전과 동일) ---
 const Arena = styled.div`
   max-width: 900px;
   margin: 2rem auto;
@@ -140,7 +140,6 @@ const ResultModalContent = styled.div`
   button { margin-top: 2rem; padding: 0.8rem 2rem; }
 `;
 
-
 const allQuizzes = Object.values(allQuizzesData).flat();
 
 const DEFENSE_ACTIONS = {
@@ -152,7 +151,7 @@ const DEFENSE_ACTIONS = {
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
-    const { players } = useLeagueStore();
+    const { players, processBattleResults } = useLeagueStore();
 
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const opponentPlayerData = useMemo(() => players.find(p => p.id === opponentId), [players, opponentId]);
@@ -231,13 +230,20 @@ function BattlePage() {
 
     // Battle setup
     useEffect(() => {
-        if (!myPlayerData || !opponentPlayerData || !myPlayerData.pet || !opponentPlayerData.pet) {
-            alert("양쪽 플레이어 모두 펫을 선택해야 배틀을 시작할 수 있습니다.");
+        if (!myPlayerData || !opponentPlayerData || !myPlayerData.partnerPetId || !opponentPlayerData.partnerPetId) {
+            alert("양쪽 플레이어 모두 파트너 펫을 선택해야 배틀을 시작할 수 있습니다.");
             navigate('/league');
             return;
         }
-        const myPetData = { ...myPlayerData.pet, isHit: false };
-        const opponentPetData = { ...opponentPlayerData.pet, isHit: false };
+        const myPetData = { ...myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId), isHit: false };
+        const opponentPetData = { ...opponentPlayerData.pets.find(p => p.id === opponentPlayerData.partnerPetId), isHit: false };
+
+        if (!myPetData || !opponentPetData) {
+            alert("파트너 펫 정보를 찾을 수 없습니다.");
+            navigate('/league');
+            return;
+        }
+
         setMyPet(myPetData);
         setOpponentPet(opponentPetData);
         setLog(`${opponentPlayerData.name}에게 대결을 신청합니다!`);
@@ -246,14 +252,14 @@ function BattlePage() {
         setTurn(firstTurn);
 
         if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current);
-        turnTimeoutRef.current = setTimeout(() => startTurn(firstTurn), 2000);
+        turnTimeoutRef.current = setTimeout(() => startTurn(firstTurn, myPetData, opponentPetData), 2000);
     }, [myPlayerData, opponentPlayerData]);
 
     // Core Game Logic
-    const startTurn = (currentTurn) => {
+    const startTurn = (currentTurn, currentMyPet, currentOpponentPet) => {
         if (gameState === 'FINISHED') return;
         setPetAnimation({ my: 'idle', opponent: 'idle' });
-        const currentPet = currentTurn === 'my' ? myPet : opponentPet;
+        const currentPet = currentTurn === 'my' ? currentMyPet : currentOpponentPet;
         const currentStatus = currentTurn === 'my' ? petStatus.my : petStatus.opponent;
 
         if (currentStatus.recharging) {
@@ -318,7 +324,7 @@ function BattlePage() {
             } else { // 특수 공격
                 if (myPet.sp < mySkill.cost) {
                     setLog("SP가 부족하여 스킬을 사용할 수 없습니다!");
-                    turnTimeoutRef.current = setTimeout(() => startTurn(turn), 2000);
+                    turnTimeoutRef.current = setTimeout(() => startTurn(turn, myPet, opponentPet), 2000);
                     return;
                 }
                 handleAttack(mySkill.id);
@@ -348,16 +354,26 @@ function BattlePage() {
 
     const handleResolution = (attackId, defenseAction) => {
         const isMyTurn = turn === 'my';
-        const attacker = isMyTurn ? { ...myPet, status: { ...petStatus.my } } : { ...opponentPet, status: { ...petStatus.opponent } };
-        const defender = isMyTurn ? { ...opponentPet, status: { ...petStatus.opponent } } : { ...myPet, status: { ...petStatus.my } };
+        const attackerPet = isMyTurn ? myPet : opponentPet;
+        const defenderPet = isMyTurn ? opponentPet : myPet;
+
+        const attackerStatus = isMyTurn ? petStatus.my : petStatus.opponent;
+        const defenderStatus = isMyTurn ? petStatus.opponent : petStatus.my;
+
+        let attacker = { ...attackerPet, status: { ...attackerStatus } };
+        let defender = { ...defenderPet, status: { ...defenderStatus } };
 
         let logMessage = "";
 
+        // 방어 버프 턴 감소
+        if (attacker.status.defenseBuffTurns > 0) {
+            attacker.status.defenseBuffTurns--;
+        }
+
         if (attackId !== 'basic') {
-            const skill = SKILLS[attacker.species];
+            const skill = SKILLS[attackId];
             logMessage = skill.effect(attacker, defender);
-            if (isMyTurn) setMyPet(p => ({ ...p, sp: p.sp - skill.cost }));
-            else setOpponentPet(p => ({ ...p, sp: p.sp - skill.cost }));
+            attacker.sp -= skill.cost;
         } else {
             const baseDamage = 20;
             const focusMultiplier = 1 + (attacker.status.focusCharge || 0) * 0.5;
@@ -378,11 +394,13 @@ function BattlePage() {
         attacker.status.focusCharge = 0; // 공격 후 기 초기화
 
         if (isMyTurn) {
-            setOpponentPet(prev => ({ ...prev, hp: Math.max(0, defender.hp), isHit: true }));
+            setMyPet(attacker);
+            setOpponentPet({ ...defender, isHit: true });
             setPetStatus({ my: attacker.status, opponent: defender.status });
             setTimeout(() => setOpponentPet(prev => ({ ...prev, isHit: false })), 300);
         } else {
-            setMyPet(prev => ({ ...prev, hp: Math.max(0, defender.hp), isHit: true }));
+            setOpponentPet(attacker);
+            setMyPet({ ...defender, isHit: true });
             setPetStatus({ my: defender.status, opponent: attacker.status });
             setTimeout(() => setMyPet(prev => ({ ...prev, isHit: false })), 300);
         }
@@ -395,17 +413,16 @@ function BattlePage() {
     const switchTurn = async () => {
         if (gameState === 'FINISHED') return;
 
-        const currentMyPet = myPet;
-        const currentOpponentPet = opponentPet;
+        const updatedMyPet = get().players.find(p => p.id === myPlayerData.id)?.pets.find(p => p.id === myPet.id) || myPet;
+        const updatedOpponentPet = get().players.find(p => p.id === opponentPlayerData.id)?.pets.find(p => p.id === opponentPet.id) || opponentPet;
 
-        if ((currentMyPet && currentMyPet.hp <= 0) || (currentOpponentPet && currentOpponentPet.hp <= 0)) {
+        if ((updatedMyPet && updatedMyPet.hp <= 0) || (updatedOpponentPet && updatedOpponentPet.hp <= 0)) {
             setGameState('FINISHED');
-            const winner = currentMyPet.hp > 0 ? myPlayerData : opponentPlayerData;
-            const loser = currentMyPet.hp > 0 ? opponentPlayerData : myPlayerData;
+            const winner = updatedMyPet.hp > 0 ? myPlayerData : opponentPlayerData;
+            const loser = updatedMyPet.hp > 0 ? opponentPlayerData : myPlayerData;
             setLog(`${winner.name}의 승리!`);
 
-            // processBattleResults is not defined in the provided code
-            // await processBattleResults(winner.id, loser.id);
+            await processBattleResults(winner.id, loser.id);
 
             setBattleResult({
                 isWinner: winner.id === myPlayerData.id,
@@ -416,7 +433,7 @@ function BattlePage() {
         }
         const nextTurn = turn === 'my' ? 'opponent' : 'my';
         setTurn(nextTurn);
-        startTurn(nextTurn);
+        startTurn(nextTurn, updatedMyPet, updatedOpponentPet);
     };
 
     if (!myPet || !opponentPet) {
@@ -424,16 +441,14 @@ function BattlePage() {
     }
 
     const getPetImageSrc = (pet, owner) => {
-        if (!pet.appearanceId) return 'https://via.placeholder.com/200';
+        if (!pet || !pet.appearanceId) return 'https://via.placeholder.com/200';
         const animationState = petAnimation[owner];
         let pose = owner === 'my' ? 'battle' : 'idle';
         if (animationState === 'brace') {
             pose = owner === 'my' ? 'brace_back' : 'brace';
         }
-        const speciesKey = pet.species;
-        const imageKey = `${pet.appearanceId.replace(speciesKey, '')}_${pose}`;
 
-        return petImageMap[`${speciesKey}${imageKey}`] || 'https://via.placeholder.com/200';
+        return petImageMap[`${pet.appearanceId}_${pose}`] || petImageMap[`${pet.appearanceId}_idle`] || 'https://via.placeholder.com/200';
     };
 
     return (
