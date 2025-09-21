@@ -2751,7 +2751,7 @@ export async function usePetItem(classId, playerId, itemId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
 
-  return await runTransaction(db, async (transaction) => {
+  await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
@@ -2764,15 +2764,23 @@ export async function usePetItem(classId, playerId, itemId, petId) {
     if (!inventory[itemId] || inventory[itemId] <= 0) throw new Error("아이템이 없습니다.");
 
     let pet = pets[petIndex];
-
     switch (itemId) {
       case 'brain_snack':
         pet.hp = Math.min(pet.maxHp, pet.hp + Math.floor(pet.maxHp * 0.15));
         pet.sp = Math.min(pet.maxSp, pet.sp + Math.floor(pet.maxSp * 0.15));
         break;
-      case 'first_aid_kit':
-        if (pet.hp > 0) throw new Error("펫이 전투 불능 상태가 아닙니다.");
-        pet.hp = Math.floor(pet.maxHp * 0.5);
+      // ▼▼▼ [수정] 'secret_notebook' (비법 노트) 로직 ▼▼▼
+      case 'secret_notebook':
+        const currentSkills = pet.skills || [];
+        const allLearnableSkills = Object.keys(SKILLS).filter(id => SKILLS[id].type === 'common');
+        const availableSkills = allLearnableSkills.filter(id => !currentSkills.includes(id));
+
+        if (availableSkills.length === 0) {
+          throw new Error("이미 모든 스킬을 배웠습니다.");
+        }
+
+        const randomSkillId = availableSkills[Math.floor(Math.random() * availableSkills.length)];
+        pet.skills = [...currentSkills, randomSkillId];
         break;
       default:
         throw new Error("알 수 없는 아이템입니다.");
@@ -2788,10 +2796,10 @@ export async function usePetItem(classId, playerId, itemId, petId) {
       pets: pets,
       petInventory: newInventory
     });
-  }).then(async () => {
-    const playerDoc = await getDoc(playerRef);
-    return playerDoc.data();
   });
+
+  const updatedPlayerDoc = await getDoc(playerRef);
+  return updatedPlayerDoc.data();
 }
 
 export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
@@ -3002,5 +3010,125 @@ export async function processBattleResults(classId, winnerId, loserId) {
 
     await addPointHistory(classId, winnerData.authUid, winnerData.name, 150, "퀴즈 배틀 승리");
     await addPointHistory(classId, loserData.authUid, loserData.name, -50, "퀴즈 배틀 패배");
+  });
+}
+
+export async function revivePet(classId, playerId, petId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const REVIVE_COST = 500; // 부활 비용
+
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    let pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+
+    if (petIndex === -1) throw new Error("치료할 펫을 찾을 수 없습니다.");
+    if (pets[petIndex].hp > 0) throw new Error("이미 건강한 펫입니다.");
+
+    // 무료 부활 로직 (예: 하루에 한 번)
+    const todayStr = new Date().toLocaleDateString();
+    if (playerData.lastFreeRevive !== todayStr) {
+      pets[petIndex].hp = pets[petIndex].maxHp;
+      transaction.update(playerRef, { pets, lastFreeRevive: todayStr });
+      return { free: true, cost: 0, updatedData: { ...playerData, pets, lastFreeRevive: todayStr } };
+    }
+
+    // 유료 부활 로직
+    if (playerData.points < REVIVE_COST) {
+      throw new Error(`포인트가 부족합니다. (필요: ${REVIVE_COST}P)`);
+    }
+    pets[petIndex].hp = pets[petIndex].maxHp;
+    transaction.update(playerRef, {
+      pets,
+      points: increment(-REVIVE_COST)
+    });
+
+    return { free: false, cost: REVIVE_COST, updatedData: { ...playerData, points: playerData.points - REVIVE_COST, pets } };
+  }).then(async ({ free, cost, updatedData }) => {
+    if (!free) {
+      await addPointHistory(classId, updatedData.authUid, updatedData.name, -cost, "펫 센터 치료");
+    }
+    return updatedData;
+  });
+}
+
+export async function healPet(classId, playerId, petId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const HEAL_COST = 500;
+
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    if (playerData.points < HEAL_COST) {
+      throw new Error(`포인트가 부족합니다. (필요: ${HEAL_COST}P)`);
+    }
+
+    let pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+    if (petIndex === -1) throw new Error("치료할 펫을 찾을 수 없습니다.");
+
+    const pet = pets[petIndex];
+    if (pet.hp === pet.maxHp && pet.sp === pet.maxSp) {
+      throw new Error("이미 건강한 펫입니다.");
+    }
+
+    pets[petIndex].hp = pet.maxHp;
+    pets[petIndex].sp = pet.maxSp;
+
+    transaction.update(playerRef, {
+      pets: pets,
+      points: increment(-HEAL_COST)
+    });
+
+  }).then(async () => {
+    const playerDoc = await getDoc(playerRef);
+    const playerData = playerDoc.data();
+    await addPointHistory(classId, playerData.authUid, playerData.name, -HEAL_COST, "펫 센터 개별 치료");
+    return playerDoc.data();
+  });
+}
+
+export async function healAllPets(classId, playerId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const HEAL_ALL_COST = 800;
+
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    if (playerData.points < HEAL_ALL_COST) {
+      throw new Error(`포인트가 부족합니다. (필요: ${HEAL_ALL_COST}P)`);
+    }
+
+    let pets = playerData.pets || [];
+    if (pets.every(p => p.hp === p.maxHp && p.sp === p.maxSp)) {
+      throw new Error("모든 펫이 이미 건강합니다.");
+    }
+
+    const healedPets = pets.map(pet => ({
+      ...pet,
+      hp: pet.maxHp,
+      sp: pet.maxSp
+    }));
+
+    transaction.update(playerRef, {
+      pets: healedPets,
+      points: increment(-HEAL_ALL_COST)
+    });
+
+  }).then(async () => {
+    const playerDoc = await getDoc(playerRef);
+    const playerData = playerDoc.data();
+    await addPointHistory(classId, playerData.authUid, playerData.name, -HEAL_ALL_COST, "펫 센터 전체 치료");
+    return playerDoc.data();
   });
 }

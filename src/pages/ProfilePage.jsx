@@ -301,10 +301,9 @@ const SaveTitlesButton = styled(Button)`
     margin-top: 1.5rem;
 `;
 
-// 교체할 ProfilePage 컴포넌트 전체 코드
 function ProfilePage() {
   const { classId } = useClassStore();
-  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
+  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles, updateTotalLikes } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
@@ -324,17 +323,25 @@ function ProfilePage() {
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
 
+  // ▼▼▼ [수정] myPlayerData와 isMyProfile을 useEffect보다 먼저 선언합니다. ▼▼▼
+  const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
+  const isMyProfile = myPlayerData?.id === playerData?.id;
+
   useEffect(() => {
     const fetchLikes = async () => {
       if (classId && playerData?.id) {
         setLikeCount(null);
         const totalLikes = await getTotalLikesForPlayer(classId, playerData.id);
         setLikeCount(totalLikes);
+        // ▼▼▼ [수정] isMyProfile을 사용하여 현재 프로필이 내 것일 때만 스토어 업데이트 ▼▼▼
+        if (isMyProfile) {
+          updateTotalLikes(totalLikes);
+        }
       }
     };
 
     fetchLikes();
-  }, [playerData, classId]);
+  }, [playerData, classId, isMyProfile, updateTotalLikes]);
 
 
   useEffect(() => {
@@ -449,7 +456,6 @@ function ProfilePage() {
     );
   }
 
-  const isMyProfile = playerData.authUid === currentUser?.uid;
   const loggedInPlayer = useLeagueStore(state => state.players.find(p => p.authUid === currentUser?.uid));
   const isAdmin = loggedInPlayer?.role === 'admin';
 

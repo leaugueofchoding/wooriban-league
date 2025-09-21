@@ -63,7 +63,10 @@ import {
     processBattleResults as firebaseProcessBattleResults,
     updatePetName as firebaseUpdatePetName,
     setPartnerPet as firebaseSetPartnerPet,
-    hatchPetEgg as firebaseHatchPetEgg
+    hatchPetEgg as firebaseHatchPetEgg,
+    revivePet as firebaseRevivePet,
+    healPet as firebaseHealPet,
+    healAllPets as firebaseHealAllPets,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -110,6 +113,22 @@ export const useLeagueStore = create((set, get) => ({
     currentUser: null,
     pointAdjustmentNotification: null,
 
+    updateTotalLikes: (likes) => {
+        const user = auth.currentUser;
+        if (!user) return;
+        set(state => ({
+            players: state.players.map(p => {
+                if (p.authUid === user.uid) {
+                    // totalLikes가 이미 같은 값이면 불필요한 업데이트를 방지
+                    if (p.totalLikes === likes) return p;
+                    return { ...p, totalLikes: likes };
+                }
+                return p;
+            })
+        }));
+    },
+
+
     selectInitialPet: async (species, name) => {
         const { classId } = get();
         const updatedPlayerData = await firebaseSelectInitialPet(classId, species, name);
@@ -155,6 +174,45 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
 
         const updatedPlayerData = await firebaseEvolvePet(classId, myPlayerData.id, petId, evolutionStoneId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    revivePet: async (petId) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        const updatedPlayerData = await firebaseRevivePet(classId, myPlayerData.id, petId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    healPet: async (petId) => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        const updatedPlayerData = await firebaseHealPet(classId, myPlayerData.id, petId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    healAllPets: async () => {
+        const { classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        const updatedPlayerData = await firebaseHealAllPets(classId, myPlayerData.id);
         set(state => ({
             players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
         }));

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase'; // getTotalLikesForPlayer 추가
+import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
@@ -11,7 +11,7 @@ import { emblemMap } from '../utils/emblemMap';
 import QuizWidget from '../components/QuizWidget';
 import confetti from 'canvas-confetti';
 
-// --- Styled Components (기존과 동일하여 생략) ---
+// --- Styled Components ---
 const DashboardWrapper = styled.div`
   max-width: 1000px;
   margin: 1rem auto;
@@ -490,10 +490,10 @@ const RequestButton = styled.button`
     }
 `;
 
+
 // =================================================================
-// ▼▼▼ [신규] React Hooks 오류를 해결하기 위해 분리된 컴포넌트 ▼▼▼
+// ▼▼▼ React Hooks 오류 방지 및 성능 개선을 위해 컴포넌트 분리 ▼▼▼
 // =================================================================
-// 교체 후
 function MissionItem({ mission, mySubmissions, canSubmitMission }) {
     const navigate = useNavigate();
 
@@ -507,7 +507,6 @@ function MissionItem({ mission, mySubmissions, canSubmitMission }) {
     }
 
     const submissionType = mission.submissionType || ['simple'];
-    const isSimpleMission = submissionType.includes('simple') && submissionType.length === 1;
 
     const handleButtonClick = (e) => {
         e.preventDefault();
@@ -548,10 +547,9 @@ function MissionItem({ mission, mySubmissions, canSubmitMission }) {
     );
 }
 
-
 function DashboardPage() {
     const { classId } = useClassStore();
-    const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
+    const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles, updateTotalLikes } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
@@ -589,6 +587,7 @@ function DashboardPage() {
                 setLikeCount(null);
                 const totalLikes = await getTotalLikesForPlayer(classId, myPlayerData.id);
                 setLikeCount(totalLikes);
+                updateTotalLikes(totalLikes);
             }
         };
 
@@ -596,7 +595,7 @@ function DashboardPage() {
             fetchGoals();
             fetchLikes();
         }
-    }, [myPlayerData, classId]);
+    }, [myPlayerData, classId, updateTotalLikes]);
 
     const topContributor = useMemo(() => {
         if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) return null;
@@ -609,11 +608,9 @@ function DashboardPage() {
 
     const myAvatarUrls = useMemo(() => {
         if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
-
         const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
         const urls = [baseAvatar];
         const config = myPlayerData.avatarConfig;
-
         RENDER_ORDER.forEach(category => {
             const partId = config[category];
             if (partId) {
@@ -621,14 +618,12 @@ function DashboardPage() {
                 if (part) urls.push(part.src);
             }
         });
-
         if (config.accessories) {
             Object.values(config.accessories).forEach(partId => {
                 const part = avatarParts.find(p => p.id === partId);
                 if (part) urls.push(part.src);
             });
         }
-
         return Array.from(new Set(urls));
     }, [myPlayerData, avatarParts]);
 

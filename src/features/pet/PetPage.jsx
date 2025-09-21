@@ -1,4 +1,3 @@
-// src/features/pet/PetPage.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore } from '@/store/leagueStore';
@@ -8,9 +7,23 @@ import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
-import petEggCrackedImg from '@/assets/items/item_pet_egg_cracked.png';
 
-// --- (Styled Components는 이전과 동일) ---
+// ▼▼▼ [수정] ExchangeContainer 및 Input 스타일은 그대로 유지합니다 ▼▼▼
+const ExchangeContainer = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  grid-column: 1 / -1; /* 버튼 그룹의 전체 너비를 차지하도록 설정 */
+`;
+
+const ExchangeInput = styled.input`
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 1rem;
+`;
+
 const PageWrapper = styled.div`
   max-width: 1100px;
   margin: 2rem auto;
@@ -118,7 +131,10 @@ const StyledButton = styled.button`
 const EvolveButton = styled(StyledButton)` background-color: #ffc107; color: #343a40; &:hover:not(:disabled) { background-color: #e0a800; } `;
 const FeedButton = styled(StyledButton)` background-color: #e83e8c; &:hover:not(:disabled) { background-color: #c2185b; } `;
 const PetCenterButton = styled(StyledButton)` background-color: #17a2b8; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #117a8b; } `;
-const HeartExchangeButton = styled(StyledButton)` background-color: #fd7e14; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #e66a00; } `;
+
+// ▼▼▼ [삭제] 단일 버튼 스타일은 더 이상 사용하지 않으므로 삭제합니다. ▼▼▼
+// const HeartExchangeButton = styled(StyledButton)` background-color: #fd7e14; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #e66a00; } `;
+
 const shake = keyframes` 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); }`;
 const ModalBackground = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -140,6 +156,7 @@ function PetPage() {
   const [newName, setNewName] = useState('');
   const [isHatching, setIsHatching] = useState(false);
   const [hatchState, setHatchState] = useState({ step: 'start', hatchedPet: null });
+  const [exchangeAmount, setExchangeAmount] = useState(1);
 
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
@@ -198,14 +215,17 @@ function PetPage() {
   };
 
   const handleHeartExchange = async () => {
-    const { totalLikes } = myPlayerData;
-    if (!totalLikes || totalLikes === 0) {
-      alert("교환할 하트가 없습니다.");
-      return;
+    const amount = Number(exchangeAmount);
+    if (!amount || amount <= 0) {
+      return alert("교환할 하트 수량을 올바르게 입력해주세요.");
+    }
+    if (myPlayerData.totalLikes < amount) {
+      return alert("보유한 하트가 부족합니다.");
     }
     try {
-      await convertLikesToExp();
-      alert(`하트 ${totalLikes}개를 경험치 ${totalLikes * 2}로 교환했습니다!`);
+      await convertLikesToExp(amount);
+      alert(`하트 ${amount}개를 경험치 ${amount * 2}로 교환했습니다!`);
+      setExchangeAmount(1);
     } catch (error) {
       alert(error.message);
     }
@@ -258,7 +278,25 @@ function PetPage() {
             <ButtonGroup>
               <EvolveButton onClick={handleEvolve} disabled={!canEvolve}>진화 ({petInventory?.evolution_stone || 0}개)</EvolveButton>
               <FeedButton onClick={() => handleUseItem('brain_snack')} disabled={isFainted}>간식 주기 ({petInventory?.brain_snack || 0}개)</FeedButton>
-              <HeartExchangeButton onClick={handleHeartExchange} disabled={!totalLikes || totalLikes === 0}>❤️ {totalLikes || 0}개 경험치로 교환</HeartExchangeButton>
+
+              {/* ▼▼▼ [수정] 하트 교환 UI를 수량 입력 방식으로 변경 ▼▼▼ */}
+              <ExchangeContainer>
+                <ExchangeInput
+                  type="number"
+                  value={exchangeAmount}
+                  onChange={(e) => setExchangeAmount(e.target.value)}
+                  min="1"
+                  max={totalLikes || 1}
+                />
+                <StyledButton
+                  onClick={handleHeartExchange}
+                  disabled={!totalLikes || totalLikes === 0}
+                  style={{ backgroundColor: '#fd7e14', width: '200px' }}
+                >
+                  ❤️ {totalLikes || 0}개 교환
+                </StyledButton>
+              </ExchangeContainer>
+
               <PetCenterButton onClick={() => navigate('/pet-center')}>🏥 펫 센터 (상점/치료소)</PetCenterButton>
             </ButtonGroup>
           </PetInfo>
