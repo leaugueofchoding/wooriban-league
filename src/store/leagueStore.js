@@ -119,9 +119,10 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({
             players: state.players.map(p => {
                 if (p.authUid === user.uid) {
-                    // totalLikes가 이미 같은 값이면 불필요한 업데이트를 방지
-                    if (p.totalLikes === likes) return p;
-                    return { ...p, totalLikes: likes };
+                    // ▼▼▼ [수정] 저장하기 전에 숫자로 변환 ▼▼▼
+                    const numericLikes = Number(likes || 0);
+                    if (p.totalLikes === numericLikes) return p;
+                    return { ...p, totalLikes: numericLikes };
                 }
                 return p;
             })
@@ -218,16 +219,18 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    convertLikesToExp: async () => {
+    convertLikesToExp: async (amount) => { // [수정] amount 인자 추가
         const { classId } = get();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
 
-        const { updatedPlayerData } = await firebaseConvertLikesToExp(classId, myPlayerData.id);
+        // [수정] amount를 firebase 함수로 전달
+        const { expGained, updatedPlayerData } = await firebaseConvertLikesToExp(classId, myPlayerData.id, amount);
         set(state => ({
             players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
         }));
+        return { expGained }; // [수정] 교환된 경험치량 반환
     },
 
     processBattleResults: async (winnerId, loserId) => {

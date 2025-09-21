@@ -58,7 +58,6 @@ const RemainingQuizCount = styled.p`
 `;
 
 function QuizWidget() {
-    // ▼▼▼ [수정] 무한 루프를 유발하던 스토어 호출 방식을 원래대로 되돌렸습니다. ▼▼▼
     const currentUser = auth.currentUser;
     const myPlayerData = useLeagueStore(state =>
         currentUser ? state.players.find(p => p.authUid === currentUser.uid) : null
@@ -67,11 +66,10 @@ function QuizWidget() {
     const fetchDailyQuiz = useLeagueStore(state => state.fetchDailyQuiz);
     const submitQuizAnswer = useLeagueStore(state => state.submitQuizAnswer);
     const quizHistory = useLeagueStore(state => state.quizHistory);
-    // ▲▲▲ 여기까지 수정 ▲▲▲
 
     const [userAnswer, setUserAnswer] = useState('');
     const [feedback, setFeedback] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false); // [추가]
 
     useEffect(() => {
         if (myPlayerData?.id) {
@@ -80,9 +78,9 @@ function QuizWidget() {
     }, [myPlayerData?.id, fetchDailyQuiz]);
 
     const handleSubmit = async () => {
-        if (!userAnswer.trim() || !dailyQuiz) return;
+        if (!userAnswer.trim() || !dailyQuiz || isSubmitting) return; // [수정]
 
-        setIsSubmitting(true);
+        setIsSubmitting(true); // [추가]
         const currentQuizAnswer = dailyQuiz.answer;
         const isCorrect = await submitQuizAnswer(dailyQuiz.id, userAnswer);
 
@@ -96,19 +94,25 @@ function QuizWidget() {
 
         setTimeout(() => {
             setFeedback('');
-            setIsSubmitting(false);
+            // 퀴즈가 더 남아있으면 다시 제출 가능하도록 상태 변경
+            if (quizHistory.length < 4) {
+                setIsSubmitting(false);
+            }
         }, 2000);
     };
+
 
     if (!myPlayerData) {
         return <p>퀴즈를 풀려면 리그에 참가해야 합니다.</p>
     }
 
     const remainingQuizzes = 5 - quizHistory.length;
+    const isQuizFinished = remainingQuizzes <= 0 || !dailyQuiz;
+
 
     return (
         <QuizWrapper>
-            {remainingQuizzes > 0 && dailyQuiz ? (
+            {!isQuizFinished ? (
                 <>
                     <RemainingQuizCount>오늘 남은 퀴즈: {remainingQuizzes}개</RemainingQuizCount>
                     <QuestionText>Q. {dailyQuiz.question}</QuestionText>

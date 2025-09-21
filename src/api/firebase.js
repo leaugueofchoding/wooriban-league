@@ -221,21 +221,9 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
 
       batch.update(playerRef, { points: increment(reward) });
 
-      // ▼▼▼ [추가] 펫 경험치 획득 로직 호출 ▼▼▼
-      if (playerData.pet) {
-        const pet = playerData.pet;
-        let { level, exp, maxExp, hp, maxHp, sp, maxSp } = pet;
-        exp += MISSION_EXP_REWARD;
-        while (exp >= maxExp) {
-          level++;
-          exp -= maxExp;
-          maxExp = Math.floor(maxExp * 1.2);
-          maxHp = Math.floor(maxHp * 1.1);
-          maxSp = Math.floor(maxSp * 1.1);
-          hp = Math.min(maxHp, hp + Math.floor(maxHp * 0.4));
-          sp = Math.min(maxSp, sp + Math.floor(maxSp * 0.4));
-        }
-        batch.update(playerRef, { pet: { ...pet, level, exp, maxExp, hp, maxHp, sp, maxSp } });
+      // ▼▼▼ [수정] 펫 경험치 획득 로직을 공통 함수로 호출 ▼▼▼
+      if (playerData.pets && playerData.pets.length > 0) {
+        await updatePetExperience(playerRef, MISSION_EXP_REWARD);
       }
 
       createNotification(
@@ -1207,8 +1195,8 @@ export async function submitQuizAnswer(classId, studentId, quizId, userAnswer, c
       const playerData = playerDoc.data();
       await adjustPlayerPoints(classId, studentId, 50, `'${quizId}' 퀴즈 정답`);
 
-      // ▼▼▼ [추가] 펫 경험치 획득 로직 호출 ▼▼▼
-      if (playerData.pet) {
+      // ▼▼▼ [수정] 펫 경험치 획득 로직 호출 ▼▼▼
+      if (playerData.pets && playerData.pets.length > 0) {
         await updatePetExperience(playerRef, QUIZ_EXP_REWARD);
       }
 
@@ -2672,6 +2660,52 @@ export async function migratePetData(classId, player) {
   return updatedPlayerSnap.data();
 }
 
+async function updatePetExperience(playerRef, expAmount) {
+  const playerSnap = await getDoc(playerRef);
+  if (!playerSnap.exists()) return;
+
+  const playerData = playerSnap.data();
+  // 'pet'이 아닌 'pets' 배열을 확인하도록 수정
+  if (!playerData.pets || playerData.pets.length === 0) return;
+
+  let pets = [...playerData.pets];
+  // 파트너 펫이 없으면 첫 번째 펫을 대상으로 함
+  const partnerPetId = playerData.partnerPetId || pets[0].id;
+  const petIndex = pets.findIndex(p => p.id === partnerPetId);
+
+  if (petIndex === -1) return;
+
+  let pet = { ...pets[petIndex] };
+  pet.exp += expAmount;
+  let leveledUp = false;
+
+  // 레벨업 처리 로직
+  while (pet.exp >= pet.maxExp) {
+    pet.level++;
+    pet.exp -= pet.maxExp;
+    pet.maxExp = Math.floor(pet.maxExp * 1.2);
+    pet.maxHp = Math.floor(pet.maxHp * 1.15); // 최대 체력 증가
+    pet.maxSp = Math.floor(pet.maxSp * 1.15); // 최대 스킬 포인트 증가
+    leveledUp = true;
+  }
+
+  if (leveledUp) {
+    // 레벨업 시 HP와 SP를 모두 회복
+    pet.hp = pet.maxHp;
+    pet.sp = pet.maxSp;
+    createNotification(
+      playerData.authUid,
+      `🎉 레벨업!`,
+      `${pet.name}의 레벨이 ${pet.level}(으)로 올랐습니다!`,
+      'pet_levelup',
+      '/pet'
+    );
+  }
+
+  pets[petIndex] = pet;
+  await updateDoc(playerRef, { pets });
+}
+
 export async function selectInitialPet(classId, species, name) {
   const user = auth.currentUser;
   if (!classId || !user) throw new Error("사용자 또는 학급 정보가 없습니다.");
@@ -2930,7 +2964,7 @@ export async function updatePetName(classId, playerId, petId, newName) {
   });
 }
 
-export async function convertLikesToExp(classId, playerId) {
+export async function convertLikesToExp(classId, playerId, amount) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
 
@@ -2939,15 +2973,16 @@ export async function convertLikesToExp(classId, playerId) {
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
     const playerData = playerDoc.data();
-    const totalLikes = playerData.totalLikes || 0;
+    // ▼▼▼ [수정] totalLikes를 숫자로 변환하여 안정성 확보 ▼▼▼
+    const totalLikes = Number(playerData.totalLikes || 0);
     let pets = playerData.pets || [];
     const partnerPetId = playerData.partnerPetId;
     const petIndex = pets.findIndex(p => p.id === partnerPetId);
 
-    if (totalLikes <= 0) throw new Error("교환할 하트가 없습니다.");
+    if (totalLikes < amount) throw new Error("교환할 하트가 부족합니다.");
     if (petIndex === -1) throw new Error("경험치를 받을 파트너 펫이 없습니다.");
 
-    const expGained = totalLikes * 2;
+    const expGained = amount * 2;
     let pet = pets[petIndex];
     pet.exp += expGained;
 
@@ -2956,7 +2991,7 @@ export async function convertLikesToExp(classId, playerId) {
 
     transaction.update(playerRef, {
       pets: pets,
-      totalLikes: 0
+      totalLikes: increment(-amount)
     });
 
     if (levelUps > 0) {

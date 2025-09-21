@@ -1,14 +1,15 @@
+// src/features/pet/PetPage.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { useLeagueStore } from '@/store/leagueStore';
-import { auth } from '@/api/firebase';
+import { useLeagueStore, useClassStore } from '@/store/leagueStore';
+import { auth, getTotalLikesForPlayer } from '@/api/firebase';
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
 
-// ▼▼▼ [수정] ExchangeContainer 및 Input 스타일은 그대로 유지합니다 ▼▼▼
 const ExchangeContainer = styled.div`
   display: flex;
   gap: 0.5rem;
@@ -98,8 +99,8 @@ const StatBarContainer = styled.div`
   border-radius: 12.5px; position: relative;
 `;
 const StatBar = styled.div`
-  width: ${props => props.percent}%; height: 100%;
-  background: ${props => props.barColor}; border-radius: 12.5px;
+  width: ${props => props.$percent}%; height: 100%;
+  background: ${props => props.$barColor}; border-radius: 12.5px;
   transition: width 0.5s ease-in-out;
 `;
 const StatText = styled.span`
@@ -131,11 +132,7 @@ const StyledButton = styled.button`
 const EvolveButton = styled(StyledButton)` background-color: #ffc107; color: #343a40; &:hover:not(:disabled) { background-color: #e0a800; } `;
 const FeedButton = styled(StyledButton)` background-color: #e83e8c; &:hover:not(:disabled) { background-color: #c2185b; } `;
 const PetCenterButton = styled(StyledButton)` background-color: #17a2b8; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #117a8b; } `;
-
-// ▼▼▼ [삭제] 단일 버튼 스타일은 더 이상 사용하지 않으므로 삭제합니다. ▼▼▼
-// const HeartExchangeButton = styled(StyledButton)` background-color: #fd7e14; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #e66a00; } `;
-
-const shake = keyframes` 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); }`;
+const shake = keyframes` 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } `;
 const ModalBackground = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0, 0, 0, 0.7); display: flex;
@@ -148,9 +145,12 @@ const ModalContent = styled.div`
 `;
 
 function PetPage() {
+  const { classId } = useClassStore();
   const navigate = useNavigate();
-  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp } = useLeagueStore();
-  const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
+  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updateTotalLikes } = useLeagueStore();
+
+  const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
+
   const [selectedPetId, setSelectedPetId] = useState(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState('');
@@ -158,16 +158,28 @@ function PetPage() {
   const [hatchState, setHatchState] = useState({ step: 'start', hatchedPet: null });
   const [exchangeAmount, setExchangeAmount] = useState(1);
 
+  // useEffect for navigation and setting default pet
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
       navigate('/pet/select');
+      return;
     }
     if (myPlayerData && myPlayerData.pets && myPlayerData.pets.length > 0) {
-      if (!selectedPetId || !myPlayerData.pets.some(p => p.id === selectedPetId)) {
+      const hasSelectedPet = myPlayerData.pets.some(p => p.id === selectedPetId);
+      if (!hasSelectedPet) {
         setSelectedPetId(myPlayerData.partnerPetId || myPlayerData.pets[0].id);
       }
     }
   }, [myPlayerData, selectedPetId, navigate]);
+
+  // useEffect to fetch totalLikes when player data is available
+  useEffect(() => {
+    if (classId && myPlayerData?.id) {
+      getTotalLikesForPlayer(classId, myPlayerData.id)
+        .then(likes => updateTotalLikes(likes))
+        .catch(console.error);
+    }
+  }, [classId, myPlayerData?.id, updateTotalLikes]);
 
   const selectedPet = myPlayerData?.pets?.find(p => p.id === selectedPetId);
 
@@ -191,7 +203,8 @@ function PetPage() {
   };
 
   const handleEvolve = async () => {
-    if (!canEvolve) return;
+    const evolutionStone = myPlayerData?.petInventory?.evolution_stone || 0;
+    if (!canEvolve(evolutionStone)) return;
     try {
       await evolvePet(selectedPet.id, 'evolution_stone');
       alert("펫이 진화했습니다!");
@@ -223,13 +236,25 @@ function PetPage() {
       return alert("보유한 하트가 부족합니다.");
     }
     try {
-      await convertLikesToExp(amount);
-      alert(`하트 ${amount}개를 경험치 ${amount * 2}로 교환했습니다!`);
+      const { expGained } = await convertLikesToExp(amount);
+      alert(`하트 ${amount}개를 경험치 ${expGained}로 교환했습니다!`);
       setExchangeAmount(1);
     } catch (error) {
       alert(error.message);
     }
   }
+
+  const canEvolve = (evolutionStoneCount) => {
+    if (!selectedPet) return false;
+    const currentStage = parseInt(selectedPet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
+    const evolutionLevel = currentStage === 1 ? 10 : 20;
+    return (
+      PET_DATA[selectedPet.species]?.evolution &&
+      currentStage < 3 &&
+      selectedPet.level >= evolutionLevel &&
+      evolutionStoneCount > 0
+    );
+  };
 
   if (!myPlayerData || !myPlayerData.pets || myPlayerData.pets.length === 0 || !selectedPet) {
     return <PageWrapper><h2>펫 정보를 불러오는 중...</h2></PageWrapper>;
@@ -241,9 +266,8 @@ function PetPage() {
   const expPercent = (selectedPet.exp / selectedPet.maxExp) * 100;
   const hpPercent = (selectedPet.hp / selectedPet.maxHp) * 100;
   const isFainted = selectedPet.hp <= 0;
-  const currentStage = parseInt(selectedPet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
-  const evolutionLevel = currentStage === 1 ? 10 : 20;
-  const canEvolve = PET_DATA[selectedPet.species]?.evolution && (currentStage < 3) && (selectedPet.level >= evolutionLevel) && (petInventory?.evolution_stone > 0);
+  const evolutionStoneCount = petInventory?.evolution_stone || 0;
+  const isEvolvable = canEvolve(evolutionStoneCount);
 
   return (
     <PageWrapper>
@@ -265,9 +289,9 @@ function PetPage() {
             {isFainted && <p style={{ color: 'red', fontWeight: 'bold' }}>전투 불능!</p>}
           </PetProfile>
           <PetInfo>
-            <StatBarContainer><StatBar percent={hpPercent} barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
-            <StatBarContainer><StatBar percent={selectedPet.sp / selectedPet.maxSp * 100} barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
-            <StatBarContainer><StatBar percent={expPercent} barColor="linear-gradient(90deg, #ffc107, #ff9800)" /><StatText>EXP: {selectedPet.exp} / {selectedPet.maxExp}</StatText></StatBarContainer>
+            <StatBarContainer><StatBar $percent={hpPercent} $barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
+            <StatBarContainer><StatBar $percent={selectedPet.sp / selectedPet.maxSp * 100} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
+            <StatBarContainer><StatBar $percent={expPercent} $barColor="linear-gradient(90deg, #ffc107, #ff9800)" /><StatText>EXP: {selectedPet.exp} / {selectedPet.maxExp}</StatText></StatBarContainer>
             {petSkill && (<InfoCard><h4>고유 스킬: {petSkill.name}</h4><p>{petSkill.description}</p></InfoCard>)}
             <InfoCard>
               <h4>인벤토리</h4>
@@ -276,10 +300,8 @@ function PetPage() {
               ))}
             </InfoCard>
             <ButtonGroup>
-              <EvolveButton onClick={handleEvolve} disabled={!canEvolve}>진화 ({petInventory?.evolution_stone || 0}개)</EvolveButton>
+              <EvolveButton onClick={handleEvolve} disabled={!isEvolvable}>진화 ({evolutionStoneCount}개)</EvolveButton>
               <FeedButton onClick={() => handleUseItem('brain_snack')} disabled={isFainted}>간식 주기 ({petInventory?.brain_snack || 0}개)</FeedButton>
-
-              {/* ▼▼▼ [수정] 하트 교환 UI를 수량 입력 방식으로 변경 ▼▼▼ */}
               <ExchangeContainer>
                 <ExchangeInput
                   type="number"
@@ -290,10 +312,10 @@ function PetPage() {
                 />
                 <StyledButton
                   onClick={handleHeartExchange}
-                  disabled={!totalLikes || totalLikes === 0}
+                  disabled={!totalLikes || totalLikes < Number(exchangeAmount) || Number(exchangeAmount) <= 0}
                   style={{ backgroundColor: '#fd7e14', width: '200px' }}
                 >
-                  ❤️ {totalLikes || 0}개 교환
+                  ♥ 교환
                 </StyledButton>
               </ExchangeContainer>
 

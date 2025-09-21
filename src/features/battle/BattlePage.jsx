@@ -193,7 +193,7 @@ function BattlePage() {
             e.preventDefault();
             handleMenuSelect(selectedIndex);
         }
-    }, [gameState, actionMenu.selectedIndex]);
+    }, [gameState, actionMenu.selectedIndex, mainMenuItems, defenseMenuItems]);
 
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);
@@ -253,7 +253,7 @@ function BattlePage() {
 
         if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current);
         turnTimeoutRef.current = setTimeout(() => startTurn(firstTurn, myPetData, opponentPetData), 2000);
-    }, [myPlayerData, opponentPlayerData]);
+    }, [myPlayerData, opponentPlayerData, navigate]);
 
     // Core Game Logic
     const startTurn = (currentTurn, currentMyPet, currentOpponentPet) => {
@@ -364,23 +364,37 @@ function BattlePage() {
         let defender = { ...defenderPet, status: { ...defenderStatus } };
 
         let logMessage = "";
+        let isCritical = false;
 
-        // 방어 버프 턴 감소
-        if (attacker.status.defenseBuffTurns > 0) {
-            attacker.status.defenseBuffTurns--;
-        }
+        // 턴 시작 시 버프/디버프 턴 감소
+        if (attacker.status.defenseBuffTurns > 0) attacker.status.defenseBuffTurns--;
+        if (attacker.status.defenseDebuffTurns > 0) attacker.status.defenseDebuffTurns--;
 
-        if (attackId !== 'basic') {
-            const skill = SKILLS[attackId];
+
+        const skill = SKILLS[attackId.toUpperCase()];
+
+        if (skill && skill.type !== 'common' && skill.effect) { // 시그니처 또는 기타 효과 스킬
             logMessage = skill.effect(attacker, defender);
             attacker.sp -= skill.cost;
-        } else {
-            const baseDamage = 20;
+        } else { // 기본 공격 또는 공용 공격 스킬
+            const baseDamage = 20; // 기본 공격 데미지
+            let finalDamage = baseDamage;
+
+            // 크리티컬 히트 계산 (15% 확률)
+            if (Math.random() < 0.15) {
+                isCritical = true;
+                finalDamage *= 1.5;
+            }
+
+            // 공격자 버프/디버프 적용
             const focusMultiplier = 1 + (attacker.status.focusCharge || 0) * 0.5;
-            let finalDamage = baseDamage * focusMultiplier;
+            finalDamage *= focusMultiplier;
 
-            if (defender.status.defenseBuffTurns > 0) finalDamage *= 0.3;
+            // 수비자 버프/디버프 적용
+            if (defender.status.defenseBuffTurns > 0) finalDamage *= 0.7; // 단단해지기 효과
+            if (defender.status.defenseDebuffTurns > 0) finalDamage *= 1.2; // 도발 효과
 
+            // 방어 행동에 따른 데미지 조정
             switch (defenseAction) {
                 case DEFENSE_ACTIONS.BRACE: finalDamage *= 0.5; break;
                 case DEFENSE_ACTIONS.FOCUS: defender.status.focusCharge = (defender.status.focusCharge || 0) + 1; break;
@@ -388,8 +402,13 @@ function BattlePage() {
 
             const damage = Math.round(finalDamage);
             defender.hp -= damage;
-            logMessage = `'${attacker.name}'의 기본 공격! ${defender.name}에게 ${damage}의 피해!`;
+            logMessage = `'${attacker.name}'의 공격! ${defender.name}에게 ${damage}의 피해!`;
+
+            if (isCritical) {
+                logMessage = `✨ 급소에 맞았다! ${logMessage}`;
+            }
         }
+
 
         attacker.status.focusCharge = 0; // 공격 후 기 초기화
 
@@ -413,8 +432,8 @@ function BattlePage() {
     const switchTurn = async () => {
         if (gameState === 'FINISHED') return;
 
-        const updatedMyPet = get().players.find(p => p.id === myPlayerData.id)?.pets.find(p => p.id === myPet.id) || myPet;
-        const updatedOpponentPet = get().players.find(p => p.id === opponentPlayerData.id)?.pets.find(p => p.id === opponentPet.id) || opponentPet;
+        const updatedMyPet = players.find(p => p.id === myPlayerData.id)?.pets.find(p => p.id === myPet.id) || myPet;
+        const updatedOpponentPet = players.find(p => p.id === opponentPlayerData.id)?.pets.find(p => p.id === opponentPet.id) || opponentPet;
 
         if ((updatedMyPet && updatedMyPet.hp <= 0) || (updatedOpponentPet && updatedOpponentPet.hp <= 0)) {
             setGameState('FINISHED');
@@ -491,13 +510,13 @@ function BattlePage() {
                             const isDisabled = isSkill && mySkill && myPet.sp < mySkill.cost;
                             return (
                                 <MenuItem key={item} $isSelected={actionMenu.selectedIndex === index} $disabled={isDisabled} onClick={() => !isDisabled && setActionMenu(prev => ({ ...prev, selectedIndex: index }))} onTouchStart={() => !isDisabled && setActionMenu(prev => ({ ...prev, selectedIndex: index }))}>
-                                    {actionMenu.selectedIndex === index && '▶ '} {item}
+                                    {actionMenu.selectedIndex === index && '>'} {item}
                                 </MenuItem>
                             );
                         })}
                         {gameState === 'DEFENSE' && defenseMenuItems.map((item, index) => (
                             <MenuItem key={item} $isSelected={actionMenu.selectedIndex === index} onClick={() => setActionMenu(prev => ({ ...prev, selectedIndex: index }))} onTouchStart={() => setActionMenu(prev => ({ ...prev, selectedIndex: index }))}>
-                                {actionMenu.selectedIndex === index && '▶ '} {item}
+                                {actionMenu.selectedIndex === index && '>'} {item}
                             </MenuItem>
                         ))}
                     </ActionMenu>
@@ -506,7 +525,7 @@ function BattlePage() {
             {battleResult && (
                 <ResultModalBackground>
                     <ResultModalContent $isWinner={battleResult.isWinner}>
-                        <h2>{battleResult.isWinner ? "🎉 승리! 🎉" : "😥 패배..."}</h2>
+                        <h2>{battleResult.isWinner ? "승리! " : "패배..."}</h2>
                         <p>포인트: <span style={{ color: battleResult.isWinner ? '#28a745' : '#dc3545', fontWeight: 'bold' }}>{battleResult.points > 0 ? `+${battleResult.points}` : battleResult.points}P</span></p>
                         <p>펫 경험치: <span style={{ color: '#ffc107', fontWeight: 'bold' }}>+{battleResult.exp} EXP</span></p>
                         <button onClick={() => navigate('/league')}>확인</button>
