@@ -108,10 +108,10 @@ export const PET_DATA = {
         name: '스타룡',
         description: '강력한 한 방을 가진 공격형 펫입니다.',
         skill: SKILLS.FIERY_BREATH,
-        initialSkills: [SKILLS.TACKLE.id, SKILLS.FIERY_BREATH.id], // 기본 스킬 설정
+        initialSkills: [SKILLS.TACKLE.id, SKILLS.FIERY_BREATH.id],
         evolution: {
-            lv20: { appearanceId: 'dragon_lv2', name: '은하룡' },
-            lv40: { appearanceId: 'dragon_lv3', name: '스텔라곤' },
+            lv10: { appearanceId: 'dragon_lv2', name: '은하룡' }, // lv20 -> lv10
+            lv20: { appearanceId: 'dragon_lv3', name: '스텔라곤' }, // lv40 -> lv20
         }
     },
     [PET_SPECIES.RABBIT]: {
@@ -120,8 +120,8 @@ export const PET_DATA = {
         skill: SKILLS.QUICK_DISTURBANCE,
         initialSkills: [SKILLS.TACKLE.id, SKILLS.QUICK_DISTURBANCE.id],
         evolution: {
-            lv20: { appearanceId: 'rabbit_lv2', name: '버닉스' },
-            lv40: { appearanceId: 'rabbit_lv3', name: '하이버닉스' },
+            lv10: { appearanceId: 'rabbit_lv2', name: '버닉스' }, // lv20 -> lv10
+            lv20: { appearanceId: 'rabbit_lv3', name: '하이버닉스' }, // lv40 -> lv20
         }
     },
     [PET_SPECIES.TURTLE]: {
@@ -130,8 +130,8 @@ export const PET_DATA = {
         skill: SKILLS.FEATHER_SHIELD,
         initialSkills: [SKILLS.TACKLE.id, SKILLS.FEATHER_SHIELD.id],
         evolution: {
-            lv20: { appearanceId: 'bird_lv2', name: '꽃잎치' },
-            lv40: { appearanceId: 'bird_lv3', name: '열매치' },
+            lv10: { appearanceId: 'bird_lv2', name: '꽃잎치' }, // lv20 -> lv10
+            lv20: { appearanceId: 'bird_lv3', name: '열매치' }, // lv40 -> lv20
         }
     },
 };

@@ -54,7 +54,6 @@ import {
     getTitles,
     seedInitialTitles,
     grantTitleToPlayer,
-    getTotalLikesForPlayer,
     selectInitialPet as firebaseSelectInitialPet,
     buyPetItem as firebaseBuyPetItem,
     usePetItem as firebaseUsePetItem,
@@ -67,6 +66,7 @@ import {
     revivePet as firebaseRevivePet,
     healPet as firebaseHealPet,
     healAllPets as firebaseHealAllPets,
+    convertLikesToExp as apiConvertLikesToExp,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -112,22 +112,6 @@ export const useLeagueStore = create((set, get) => ({
     quizHistory: [],
     currentUser: null,
     pointAdjustmentNotification: null,
-
-    updateTotalLikes: (likes) => {
-        const user = auth.currentUser;
-        if (!user) return;
-        set(state => ({
-            players: state.players.map(p => {
-                if (p.authUid === user.uid) {
-                    // ▼▼▼ [수정] 저장하기 전에 숫자로 변환 ▼▼▼
-                    const numericLikes = Number(likes || 0);
-                    if (p.totalLikes === numericLikes) return p;
-                    return { ...p, totalLikes: numericLikes };
-                }
-                return p;
-            })
-        }));
-    },
 
 
     selectInitialPet: async (species, name) => {
@@ -219,18 +203,16 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    convertLikesToExp: async (amount) => { // [수정] amount 인자 추가
-        const { classId } = get();
+    convertLikesToExp: async (amount, petId) => { // petId 인자 추가
+        const { classId } = useClassStore.getState();
         const user = auth.currentUser;
-        if (!user) throw new Error("로그인이 필요합니다.");
-        const myPlayerData = get().players.find(p => p.authUid === user.uid);
-
-        // [수정] amount를 firebase 함수로 전달
-        const { expGained, updatedPlayerData } = await firebaseConvertLikesToExp(classId, myPlayerData.id, amount);
+        if (!user || !classId) return;
+        // firebase 함수 호출 시 petId 전달
+        const { expGained, updatedPlayerData } = await apiConvertLikesToExp(classId, user.uid, amount, petId);
         set(state => ({
-            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+            players: state.players.map(p => p.id === updatedPlayerData.id ? updatedPlayerData : p)
         }));
-        return { expGained }; // [수정] 교환된 경험치량 반환
+        return { expGained };
     },
 
     processBattleResults: async (winnerId, loserId) => {

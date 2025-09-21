@@ -3,13 +3,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, db, updatePlayerProfile, equipTitle, getTotalLikesForPlayer } from '../api/firebase.js'; // getTotalLikesForPlayer 추가
+import { auth, db, updatePlayerProfile, equipTitle } from '../api/firebase.js'; // getTotalLikesForPlayer 삭제
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
 
-// --- Styled Components (이전과 동일) ---
+// --- Styled Components (기존과 동일) ---
 const AvatarWrapper = styled.div`
   position: relative;
   width: 150px;
@@ -303,7 +303,7 @@ const SaveTitlesButton = styled(Button)`
 
 function ProfilePage() {
   const { classId } = useClassStore();
-  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles, updateTotalLikes } = useLeagueStore();
+  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore(); // updateTotalLikes 삭제
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
@@ -316,33 +316,18 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
-  const [likeCount, setLikeCount] = useState(null);
+  // const [likeCount, setLikeCount] = useState(null); // 삭제
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
   }, [players, currentUser, playerId]);
 
-  // ▼▼▼ [수정] myPlayerData와 isMyProfile을 useEffect보다 먼저 선언합니다. ▼▼▼
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyProfile = myPlayerData?.id === playerData?.id;
 
-  useEffect(() => {
-    const fetchLikes = async () => {
-      if (classId && playerData?.id) {
-        setLikeCount(null);
-        const totalLikes = await getTotalLikesForPlayer(classId, playerData.id);
-        setLikeCount(totalLikes);
-        // ▼▼▼ [수정] isMyProfile을 사용하여 현재 프로필이 내 것일 때만 스토어 업데이트 ▼▼▼
-        if (isMyProfile) {
-          updateTotalLikes(totalLikes);
-        }
-      }
-    };
-
-    fetchLikes();
-  }, [playerData, classId, isMyProfile, updateTotalLikes]);
-
+  // 삭제: 더 이상 하트를 별도로 불러오는 useEffect는 필요 없습니다.
+  // useEffect(() => { ... });
 
   useEffect(() => {
     if (playerData) {
@@ -510,7 +495,8 @@ function ProfilePage() {
 
         {playerData.role && <UserRole>{playerData.role}</UserRole>}
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
-        <LikeDisplay>❤️ {likeCount === null ? '...' : likeCount}</LikeDisplay>
+        {/* 수정: playerData.totalLikes를 직접 사용합니다. */}
+        <LikeDisplay>❤️ {playerData.totalLikes?.toLocaleString() || 0}</LikeDisplay>
 
         <ButtonGroup>
           <ButtonRow>
@@ -518,7 +504,6 @@ function ProfilePage() {
             {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
             {isMyProfile && <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>}
 
-            {/* ▼▼▼ [수정] 펫 보유 여부 검사 로직을 테스트를 위해 임시 주석 처리 ▼▼▼ */}
             {!isMyProfile && loggedInPlayer && loggedInPlayer.pets?.length > 0 && playerData.pets?.length > 0 && (
               <StyledLink
                 to={`/battle/${playerData.id}`}
@@ -532,7 +517,6 @@ function ProfilePage() {
             {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
             <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
             {isMyProfile && <Button onClick={() => setIsTitleAccordionOpen(prev => !prev)}>칭호 관리</Button>}
-            {/* ▼▼▼ [수정] 펫 관리 버튼 링크 로직 수정 ▼▼▼ */}
             {isMyProfile && (
               <StyledLink
                 to={(playerData.pets && playerData.pets.length > 0) || playerData.pet ? "/pet" : "/pet/select"}

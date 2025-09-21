@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal, getTotalLikesForPlayer } from '../api/firebase';
+import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultEmblem from '../assets/default-emblem.png';
@@ -549,12 +549,11 @@ function MissionItem({ mission, mySubmissions, canSubmitMission }) {
 
 function DashboardPage() {
     const { classId } = useClassStore();
-    const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles, updateTotalLikes } = useLeagueStore();
+    const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [donationAmount, setDonationAmount] = useState('');
     const navigate = useNavigate();
-    const [likeCount, setLikeCount] = useState(null);
 
     const myPlayerData = useMemo(() => {
         if (!currentUser) return null;
@@ -582,20 +581,10 @@ function DashboardPage() {
             }
         };
 
-        const fetchLikes = async () => {
-            if (myPlayerData?.id) {
-                setLikeCount(null);
-                const totalLikes = await getTotalLikesForPlayer(classId, myPlayerData.id);
-                setLikeCount(totalLikes);
-                updateTotalLikes(totalLikes);
-            }
-        };
-
         if (myPlayerData) {
             fetchGoals();
-            fetchLikes();
         }
-    }, [myPlayerData, classId, updateTotalLikes]);
+    }, [myPlayerData, classId]);
 
     const topContributor = useMemo(() => {
         if (!activeGoal || !activeGoal.contributions || activeGoal.contributions.length === 0) return null;
@@ -753,7 +742,7 @@ function DashboardPage() {
                             <InfoText>
                                 <WelcomeMessage>{myPlayerData.name}님, 환영합니다!</WelcomeMessage>
                                 <PointDisplay>💰 {myPlayerData.points?.toLocaleString() || 0} P</PointDisplay>
-                                <LikeDisplay>❤️ {likeCount === null ? '...' : likeCount.toLocaleString()}</LikeDisplay>
+                                <LikeDisplay>❤️ {myPlayerData?.totalLikes?.toLocaleString() || 0}</LikeDisplay>
                             </InfoText>
                         </ProfileLink>
                         <ActionButtonsWrapper>

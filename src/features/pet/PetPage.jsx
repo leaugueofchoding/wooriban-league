@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
-import { auth, getTotalLikesForPlayer } from '@/api/firebase';
+import { auth } from '@/api/firebase';
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA } from '@/features/pet/petData';
@@ -145,9 +145,8 @@ const ModalContent = styled.div`
 `;
 
 function PetPage() {
-  const { classId } = useClassStore();
   const navigate = useNavigate();
-  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updateTotalLikes } = useLeagueStore();
+  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp } = useLeagueStore();
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
@@ -158,7 +157,6 @@ function PetPage() {
   const [hatchState, setHatchState] = useState({ step: 'start', hatchedPet: null });
   const [exchangeAmount, setExchangeAmount] = useState(1);
 
-  // useEffect for navigation and setting default pet
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
       navigate('/pet/select');
@@ -171,15 +169,6 @@ function PetPage() {
       }
     }
   }, [myPlayerData, selectedPetId, navigate]);
-
-  // useEffect to fetch totalLikes when player data is available
-  useEffect(() => {
-    if (classId && myPlayerData?.id) {
-      getTotalLikesForPlayer(classId, myPlayerData.id)
-        .then(likes => updateTotalLikes(likes))
-        .catch(console.error);
-    }
-  }, [classId, myPlayerData?.id, updateTotalLikes]);
 
   const selectedPet = myPlayerData?.pets?.find(p => p.id === selectedPetId);
 
@@ -235,8 +224,11 @@ function PetPage() {
     if (myPlayerData.totalLikes < amount) {
       return alert("보유한 하트가 부족합니다.");
     }
+    if (!selectedPet) {
+      return alert("경험치를 받을 펫을 선택해주세요.");
+    }
     try {
-      const { expGained } = await convertLikesToExp(amount);
+      const { expGained } = await convertLikesToExp(amount, selectedPet.id);
       alert(`하트 ${amount}개를 경험치 ${expGained}로 교환했습니다!`);
       setExchangeAmount(1);
     } catch (error) {
