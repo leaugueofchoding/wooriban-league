@@ -2689,24 +2689,35 @@ export async function selectInitialPet(classId, species, name) {
   if (!classId || !user) throw new Error("사용자 또는 학급 정보가 없습니다.");
 
   const playerRef = doc(db, "classes", classId, "players", user.uid);
-  const skillId = PET_DATA[species]?.skill?.id || null;
   const petId = Date.now().toString();
+  const baseData = PET_DATA[species];
+
+  // 능력치 랜덤화 (+-10%)
+  const randomize = (stat) => Math.round(stat * (0.9 + Math.random() * 0.2));
+
+  // ▼▼▼ [수정] 랜덤 값을 한 번만 생성하여 변수에 저장 ▼▼▼
+  const randomizedMaxHp = randomize(baseData.baseStats.maxHp);
+  const randomizedMaxSp = randomize(baseData.baseStats.maxSp);
+  const randomizedAtk = randomize(baseData.baseStats.atk);
 
   const petData = {
     id: petId,
     name: name,
     species: species,
     level: 1, exp: 0, maxExp: 100,
-    hp: 100, maxHp: 100,
-    sp: 50, maxSp: 50,
-    skillId: skillId,
+    hp: randomizedMaxHp, // 저장된 변수 사용
+    maxHp: randomizedMaxHp, // 저장된 변수 사용
+    sp: randomizedMaxSp, // 저장된 변수 사용
+    maxSp: randomizedMaxSp, // 저장된 변수 사용
+    atk: randomizedAtk, // 저장된 변수 사용
+    equippedSkills: baseData.initialSkills,
+    skills: baseData.initialSkills,
     appearanceId: `${species}_lv1`
   };
 
   await updateDoc(playerRef, {
-    pets: [petData],
+    pets: arrayUnion(petData),
     partnerPetId: petId,
-    pet: deleteField()
   });
   await adjustPlayerPoints(classId, user.uid, 200, "첫 파트너 펫 선택 보상");
 
@@ -2717,12 +2728,22 @@ export async function selectInitialPet(classId, species, name) {
 function calculateLevelUp(pet) {
   let leveledUpPet = { ...pet };
   let levelUps = 0;
+  const growth = PET_DATA[pet.species].growth;
+
   while (leveledUpPet.exp >= leveledUpPet.maxExp) {
     leveledUpPet.level++;
     leveledUpPet.exp -= leveledUpPet.maxExp;
-    leveledUpPet.maxExp = Math.floor(leveledUpPet.maxExp * 1.2);
-    leveledUpPet.maxHp = Math.floor(leveledUpPet.maxHp * 1.15);
-    leveledUpPet.maxSp = Math.floor(leveledUpPet.maxSp * 1.15);
+
+    // ▼▼▼ [수정] 경험치 공식 변경 ▼▼▼
+    // 기존: leveledUpPet.maxExp = Math.floor(leveledUpPet.maxExp * 1.2);
+    // 신규: (현재 레벨 ^ 1.5) * 100, 즉 레벨이 오를수록 점진적으로 요구량이 늘어나는 방식
+    leveledUpPet.maxExp = Math.floor(100 * Math.pow(leveledUpPet.level, 1.5));
+
+    // 고정 수치 성장
+    leveledUpPet.maxHp += growth.hp;
+    leveledUpPet.maxSp += growth.sp;
+    leveledUpPet.atk += growth.atk;
+
     levelUps++;
   }
   if (levelUps > 0) {
@@ -2731,6 +2752,7 @@ function calculateLevelUp(pet) {
   }
   return { leveledUpPet, levelUps };
 }
+
 
 export async function buyPetItem(classId, playerId, item) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
@@ -2814,6 +2836,28 @@ export async function usePetItem(classId, playerId, itemId, petId) {
   return updatedPlayerDoc.data();
 }
 
+export async function updatePetSkills(classId, playerId, petId, equippedSkills) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+
+    const playerData = playerDoc.data();
+    const pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+
+    if (petIndex === -1) throw new Error("펫을 찾을 수 없습니다.");
+
+    pets[petIndex].equippedSkills = equippedSkills;
+    transaction.update(playerRef, { pets: pets });
+  });
+
+  const updatedPlayerSnap = await getDoc(playerRef);
+  return updatedPlayerSnap.data();
+}
+
 export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
@@ -2842,8 +2886,12 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     pet.appearanceId = evolutionData.appearanceId;
     pet.name = evolutionData.name;
 
-    pet.maxHp = Math.floor(pet.maxHp * 1.5);
-    pet.maxSp = Math.floor(pet.maxSp * 1.2);
+    // 진화 보너스 스탯 적용
+    pet.maxHp = Math.floor(pet.maxHp * evolutionData.statBoost.hp);
+    pet.maxSp = Math.floor(pet.maxSp * evolutionData.statBoost.sp);
+    pet.atk = Math.floor(pet.atk * evolutionData.statBoost.atk);
+
+    // 진화 시 체력/SP 완전 회복
     pet.hp = pet.maxHp;
     pet.sp = pet.maxSp;
 
@@ -2863,7 +2911,6 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
 }
 
 
-// ▼▼▼ [수정] hatchPetEgg 함수 수정 ▼▼▼
 export async function hatchPetEgg(classId, playerId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
@@ -2877,24 +2924,34 @@ export async function hatchPetEgg(classId, playerId) {
     const inventory = playerData.petInventory || {};
     if (!inventory.pet_egg || inventory.pet_egg <= 0) throw new Error("부화할 알이 없습니다.");
 
-    const currentSpecies = (playerData.pets || []).map(p => p.species);
-    const availableSpecies = Object.keys(PET_DATA).filter(s => !currentSpecies.includes(s));
-
-    if (availableSpecies.length === 0) throw new Error("모든 종류의 펫을 이미 보유하고 있습니다!");
-
+    const availableSpecies = Object.keys(PET_DATA);
     const randomSpecies = availableSpecies[Math.floor(Math.random() * availableSpecies.length)];
+
     const petId = Date.now().toString();
+    const baseData = PET_DATA[randomSpecies];
+
+    const randomize = (stat) => Math.round(stat * (0.9 + Math.random() * 0.2));
+
+    // ▼▼▼ [수정] 랜덤 값을 한 번만 생성하여 변수에 저장 ▼▼▼
+    const randomizedMaxHp = randomize(baseData.baseStats.maxHp);
+    const randomizedMaxSp = randomize(baseData.baseStats.maxSp);
+    const randomizedAtk = randomize(baseData.baseStats.atk);
 
     const newPet = {
       id: petId,
-      name: PET_DATA[randomSpecies].name,
+      name: baseData.name,
       species: randomSpecies,
       level: 1, exp: 0, maxExp: 100,
-      hp: 100, maxHp: 100, sp: 50, maxSp: 50,
-      skillId: PET_DATA[randomSpecies].skill.id,
+      hp: randomizedMaxHp, // 저장된 변수 사용
+      maxHp: randomizedMaxHp, // 저장된 변수 사용
+      sp: randomizedMaxSp, // 저장된 변수 사용
+      maxSp: randomizedMaxSp, // 저장된 변수 사용
+      atk: randomizedAtk, // 저장된 변수 사용
+      equippedSkills: baseData.initialSkills,
+      skills: baseData.initialSkills,
       appearanceId: `${randomSpecies}_lv1`
     };
-    hatchedPetData = newPet; // 부화한 펫 정보 임시 저장
+    hatchedPetData = newPet;
 
     const newInventory = { ...inventory };
     newInventory.pet_egg -= 1;

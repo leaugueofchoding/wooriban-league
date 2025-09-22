@@ -2,18 +2,18 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { useLeagueStore, useClassStore } from '@/store/leagueStore';
+import { useLeagueStore } from '@/store/leagueStore';
 import { auth } from '@/api/firebase';
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '@/utils/petImageMap';
-import { PET_DATA } from '@/features/pet/petData';
+import { PET_DATA, SKILLS } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
 
 const ExchangeContainer = styled.div`
   display: flex;
   gap: 0.5rem;
-  grid-column: 1 / -1; /* 버튼 그룹의 전체 너비를 차지하도록 설정 */
+  grid-column: 1 / -1;
 `;
 
 const ExchangeInput = styled.input`
@@ -55,9 +55,16 @@ const PetListPanel = styled.div`
   padding: 1.5rem;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  max-height: 70vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 `;
+
+const PetListWrapper = styled.div`
+    overflow-y: auto;
+    max-height: 270px; /* 펫 아이템 3개 정도의 높이 */
+    padding-right: 0.5rem; /* 스크롤바 공간 확보 */
+`;
+
 const PetListItem = styled.div`
   display: flex;
   align-items: center;
@@ -144,9 +151,70 @@ const ModalContent = styled.div`
   img.pet { max-width: 250px; }
 `;
 
+const AccordionContainer = styled.div`
+  width: 100%;
+  margin-top: 1rem;
+`;
+const AccordionButtonRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+`;
+const AccordionButton = styled(StyledButton)`
+  background-color: ${props => props.$isActive ? '#0056b3' : '#007bff'};
+  flex: 1;
+  padding: 0.6rem;
+  font-size: 0.9rem;
+`;
+const AccordionContent = styled.div`
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid #dee2e6;
+  margin-top: 0.5rem;
+`;
+
+const SkillGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+`;
+const SkillSlot = styled.div`
+  border: 2px dashed ${props => props.$isSelected ? '#dc3545' : '#ccc'};
+  border-radius: 8px;
+  padding: 0.5rem;
+  background-color: ${props => props.$isSignature ? '#fff3cd' : '#f8f9fa'};
+  cursor: ${props => props.$isSignature ? 'not-allowed' : 'pointer'};
+  p { font-weight: bold; margin: 0 0 0.25rem 0; }
+  small { font-size: 0.8rem; color: #6c757d; }
+`;
+const SkillList = styled.div`
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+  h5 { margin: 0 0 0.5rem 0; }
+`;
+const NotebookButton = styled(StyledButton)`
+  background-color: #6f42c1;
+  width: 100%;
+  &:hover:not(:disabled) { background-color: #5a32a3; }
+`;
+const StatGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  text-align: left;
+`;
+const StatItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  p:first-child { color: #6c757d; margin: 0; }
+  p:last-child { font-weight: bold; font-size: 1.2rem; margin: 0; }
+`;
+
 function PetPage() {
   const navigate = useNavigate();
-  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp } = useLeagueStore();
+  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updatePetSkills } = useLeagueStore();
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
@@ -156,6 +224,9 @@ function PetPage() {
   const [isHatching, setIsHatching] = useState(false);
   const [hatchState, setHatchState] = useState({ step: 'start', hatchedPet: null });
   const [exchangeAmount, setExchangeAmount] = useState(1);
+  const [activeAccordion, setActiveAccordion] = useState(null);
+  const [equippedSkills, setEquippedSkills] = useState([]);
+  const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
 
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
@@ -175,6 +246,8 @@ function PetPage() {
   useEffect(() => {
     if (selectedPet) {
       setNewName(selectedPet.name);
+      setEquippedSkills(selectedPet.equippedSkills || PET_DATA[selectedPet.species].initialSkills);
+      setSelectedSkillSlot(null);
     }
   }, [selectedPet]);
 
@@ -188,6 +261,9 @@ function PetPage() {
   const handleUseItem = async (itemId) => {
     try {
       await usePetItem(itemId, selectedPet.id);
+      if (itemId === 'secret_notebook') {
+        alert("펫이 새로운 스킬을 배웠습니다! 스킬 관리에서 확인해보세요.");
+      }
     } catch (error) { alert(error.message); }
   };
 
@@ -248,18 +324,56 @@ function PetPage() {
     );
   };
 
+  const handleSkillSlotClick = (index) => {
+    const signatureSkillId = PET_DATA[selectedPet.species].skill.id;
+    if (equippedSkills[index] === signatureSkillId) {
+      alert("고유 스킬은 교체할 수 없습니다.");
+      return;
+    }
+    setSelectedSkillSlot(index);
+  };
+
+  const handleLearnedSkillClick = (skillId) => {
+    if (selectedSkillSlot === null) return;
+    if (equippedSkills.includes(skillId)) {
+      alert("이미 장착된 스킬입니다.");
+      return;
+    }
+    const newEquippedSkills = [...equippedSkills];
+    newEquippedSkills[selectedSkillSlot] = skillId;
+    setEquippedSkills(newEquippedSkills);
+    setSelectedSkillSlot(null);
+  };
+
+  const handleSaveSkills = async () => {
+    try {
+      await updatePetSkills(selectedPet.id, equippedSkills);
+      alert("스킬 장착이 완료되었습니다.");
+      setActiveAccordion(null);
+    } catch (error) {
+      alert(`스킬 저장 실패: ${error.message}`);
+    }
+  };
+
   if (!myPlayerData || !myPlayerData.pets || myPlayerData.pets.length === 0 || !selectedPet) {
     return <PageWrapper><h2>펫 정보를 불러오는 중...</h2></PageWrapper>;
   }
 
   const { petInventory, totalLikes, partnerPetId } = myPlayerData;
-  const petSkill = PET_DATA[selectedPet.species]?.skill;
+  const currentStage = parseInt(selectedPet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
+  const skillSlotsCount = currentStage + 1;
+  const learnedSkills = selectedPet.skills || PET_DATA[selectedPet.species].initialSkills;
+  const unequippedSkills = learnedSkills.filter(id => !(equippedSkills || []).includes(id));
 
+  const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp) * 100));
+  const spPercent = Math.min(100, Math.max(0, (selectedPet.sp / selectedPet.maxSp) * 100));
   const expPercent = (selectedPet.exp / selectedPet.maxExp) * 100;
-  const hpPercent = (selectedPet.hp / selectedPet.maxHp) * 100;
+
   const isFainted = selectedPet.hp <= 0;
   const evolutionStoneCount = petInventory?.evolution_stone || 0;
   const isEvolvable = canEvolve(evolutionStoneCount);
+  const signatureSkillId = PET_DATA[selectedPet.species].skill.id;
+  const secretNotebookCount = petInventory?.secret_notebook || 0;
 
   return (
     <PageWrapper>
@@ -279,12 +393,73 @@ function PetPage() {
             </PetNameContainer>
             <PetLevel>Lv. {selectedPet.level} {PET_DATA[selectedPet.species].name}</PetLevel>
             {isFainted && <p style={{ color: 'red', fontWeight: 'bold' }}>전투 불능!</p>}
+
+            <AccordionContainer>
+              <AccordionButtonRow>
+                <AccordionButton onClick={() => setActiveAccordion(prev => prev === 'stats' ? null : 'stats')} $isActive={activeAccordion === 'stats'}>
+                  상세 정보
+                </AccordionButton>
+                <AccordionButton onClick={() => setActiveAccordion(prev => prev === 'skills' ? null : 'skills')} $isActive={activeAccordion === 'skills'}>
+                  스킬 관리
+                </AccordionButton>
+              </AccordionButtonRow>
+
+              {activeAccordion && (
+                <AccordionContent $isOpen={true}>
+                  {activeAccordion === 'stats' && (
+                    <StatGrid>
+                      <InfoCard style={{ padding: '0.5rem 1rem', marginBottom: '1rem', border: 'none', background: 'transparent' }}>
+                        <p>{PET_DATA[selectedPet.species].description}</p>
+                      </InfoCard>
+                      <StatItem>
+                        <p>공격력</p>
+                        <p>{selectedPet.atk || 0}</p>
+                      </StatItem>
+                    </StatGrid>
+                  )}
+                  {activeAccordion === 'skills' && (
+                    <>
+                      <SkillGrid>
+                        {Array.from({ length: skillSlotsCount }).map((_, index) => {
+                          const skillId = equippedSkills[index];
+                          const skill = skillId ? SKILLS[skillId.toUpperCase()] : null;
+                          return (
+                            <SkillSlot key={index} $isSignature={skill?.id === signatureSkillId} $isSelected={selectedSkillSlot === index} onClick={() => handleSkillSlotClick(index)}>
+                              {skill ? (<><p>{skill.name}</p><small>SP {skill.cost}</small></>) : <p>비어있음</p>}
+                            </SkillSlot>
+                          );
+                        })}
+                      </SkillGrid>
+                      <SkillList>
+                        <NotebookButton onClick={() => handleUseItem('secret_notebook')} disabled={secretNotebookCount <= 0}>
+                          비법 노트 사용 ({secretNotebookCount}개)
+                        </NotebookButton>
+                        <h5 style={{ marginTop: '1rem' }}>보유 스킬 (클릭하여 교체)</h5>
+                        <SkillGrid>
+                          {unequippedSkills.map(skillId => {
+                            const skill = SKILLS[skillId.toUpperCase()];
+                            return (
+                              <SkillSlot key={skillId} onClick={() => handleLearnedSkillClick(skillId)}>
+                                <p>{skill.name}</p><small>SP {skill.cost}</small>
+                              </SkillSlot>
+                            );
+                          })}
+                        </SkillGrid>
+                      </SkillList>
+                      <StyledButton onClick={handleSaveSkills} style={{ backgroundColor: '#28a745', width: '100%', marginTop: '1rem' }}>
+                        스킬 저장
+                      </StyledButton>
+                    </>
+                  )}
+                </AccordionContent>
+              )}
+            </AccordionContainer>
           </PetProfile>
           <PetInfo>
             <StatBarContainer><StatBar $percent={hpPercent} $barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
-            <StatBarContainer><StatBar $percent={selectedPet.sp / selectedPet.maxSp * 100} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
+            <StatBarContainer><StatBar $percent={spPercent} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
             <StatBarContainer><StatBar $percent={expPercent} $barColor="linear-gradient(90deg, #ffc107, #ff9800)" /><StatText>EXP: {selectedPet.exp} / {selectedPet.maxExp}</StatText></StatBarContainer>
-            {petSkill && (<InfoCard><h4>고유 스킬: {petSkill.name}</h4><p>{petSkill.description}</p></InfoCard>)}
+
             <InfoCard>
               <h4>인벤토리</h4>
               {Object.values(PET_ITEMS).map(item => (
@@ -310,28 +485,31 @@ function PetPage() {
                   ♥ 교환
                 </StyledButton>
               </ExchangeContainer>
-
               <PetCenterButton onClick={() => navigate('/pet-center')}>🏥 펫 센터 (상점/치료소)</PetCenterButton>
             </ButtonGroup>
           </PetInfo>
         </PetDashboard>
         <PetListPanel>
           <h4>보유 펫 목록</h4>
-          {myPlayerData.pets.map(pet => (
-            <PetListItem key={pet.id} onClick={() => setSelectedPetId(pet.id)} $isSelected={pet.id === selectedPetId}>
-              <img src={petImageMap[`${pet.appearanceId}_idle`]} alt={pet.name} />
-              <div>
-                <strong>{pet.name}</strong>
-                <p>Lv.{pet.level} {pet.id === partnerPetId && '⭐'}</p>
-              </div>
-            </PetListItem>
-          ))}
-          <StyledButton onClick={() => setPartnerPet(selectedPetId)} disabled={selectedPetId === partnerPetId} style={{ width: '100%', marginTop: '1rem', backgroundColor: '#6f42c1' }}>
-            파트너로 지정
-          </StyledButton>
-          <StyledButton onClick={handleHatch} disabled={!petInventory?.pet_egg} style={{ width: '100%', marginTop: '1rem', backgroundColor: '#20c997' }}>
-            알 부화시키기 ({petInventory?.pet_egg || 0}개)
-          </StyledButton>
+          <PetListWrapper>
+            {myPlayerData.pets.map(pet => (
+              <PetListItem key={pet.id} onClick={() => setSelectedPetId(pet.id)} $isSelected={pet.id === selectedPetId}>
+                <img src={petImageMap[`${pet.appearanceId}_idle`]} alt={pet.name} />
+                <div>
+                  <strong>{pet.name}</strong>
+                  <p>Lv.{pet.level} {pet.id === partnerPetId && '⭐'}</p>
+                </div>
+              </PetListItem>
+            ))}
+          </PetListWrapper>
+          <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
+            <StyledButton onClick={() => setPartnerPet(selectedPetId)} disabled={selectedPetId === partnerPetId} style={{ width: '100%', backgroundColor: '#6f42c1' }}>
+              파트너로 지정
+            </StyledButton>
+            <StyledButton onClick={handleHatch} disabled={!petInventory?.pet_egg} style={{ width: '100%', marginTop: '1rem', backgroundColor: '#20c997' }}>
+              알 부화시키기 ({petInventory?.pet_egg || 0}개)
+            </StyledButton>
+          </div>
         </PetListPanel>
       </MainLayout>
       {isHatching && (

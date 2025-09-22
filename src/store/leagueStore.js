@@ -67,6 +67,7 @@ import {
     healPet as firebaseHealPet,
     healAllPets as firebaseHealAllPets,
     convertLikesToExp as apiConvertLikesToExp,
+    updatePetSkills as apiUpdatePetSkills,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -149,6 +150,19 @@ export const useLeagueStore = create((set, get) => ({
         const updatedPlayerData = await firebaseUsePetItem(classId, myPlayerData.id, itemId, petId);
         set(state => ({
             players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+
+    // ▼▼▼ [신규] 스킬 저장 함수 추가 ▼▼▼
+    updatePetSkills: async (petId, equippedSkills) => {
+        const { classId } = useClassStore.getState();
+        const user = auth.currentUser;
+        if (!user || !classId) throw new Error("사용자 또는 학급 정보가 없습니다.");
+
+        const updatedPlayerData = await apiUpdatePetSkills(classId, user.uid, petId, equippedSkills);
+
+        set(state => ({
+            players: state.players.map(p => p.id === updatedPlayerData.id ? updatedPlayerData : p)
         }));
     },
 
