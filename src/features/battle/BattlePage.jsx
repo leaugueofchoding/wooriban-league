@@ -253,7 +253,7 @@ function BattlePage() {
 
         if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current);
         turnTimeoutRef.current = setTimeout(() => startTurn(firstTurn, myPetData, opponentPetData), 2000);
-    }, [myPlayerData, opponentPlayerData, navigate]);
+    }, [myPlayerData?.partnerPetId, opponentPlayerData?.partnerPetId, navigate]);
 
     // Core Game Logic
     const startTurn = (currentTurn, currentMyPet, currentOpponentPet) => {
@@ -352,18 +352,25 @@ function BattlePage() {
         turnTimeoutRef.current = setTimeout(() => handleResolution(attackType, opponentDefenseChoice), 2000);
     };
 
-    handleResolution
+    const handleResolution = (attackType, defenseChoice) => {
+        // 이 함수는 공격과 방어의 결과를 계산하고 상태를 업데이트해야 합니다.
+        // 현재는 구현되어 있지 않으므로, 이 부분을 채워야 완전한 게임 로직이 완성됩니다.
+        // 예: 데미지 계산, 상태 효과 적용 등
+        console.log(`[Resolution] Attack: ${attackType}, Defense: ${defenseChoice}`);
+
+        // 임시로 턴을 넘기는 로직만 유지합니다.
+        turnTimeoutRef.current = setTimeout(() => switchTurn(), 2000);
+    };
 
     const switchTurn = async () => {
         if (gameState === 'FINISHED') return;
 
-        const updatedMyPet = players.find(p => p.id === myPlayerData.id)?.pets.find(p => p.id === myPet.id) || myPet;
-        const updatedOpponentPet = players.find(p => p.id === opponentPlayerData.id)?.pets.find(p => p.id === opponentPet.id) || opponentPet;
-
-        if ((updatedMyPet && updatedMyPet.hp <= 0) || (updatedOpponentPet && updatedOpponentPet.hp <= 0)) {
+        // **수정된 부분 시작**
+        // DB를 다시 조회하는 대신, 현재 컴포넌트의 state를 기준으로 승패를 판단합니다.
+        if (myPet.hp <= 0 || opponentPet.hp <= 0) {
             setGameState('FINISHED');
-            const winner = updatedMyPet.hp > 0 ? myPlayerData : opponentPlayerData;
-            const loser = updatedMyPet.hp > 0 ? opponentPlayerData : myPlayerData;
+            const winner = myPet.hp > 0 ? myPlayerData : opponentPlayerData;
+            const loser = myPet.hp > 0 ? opponentPlayerData : myPlayerData;
             setLog(`${winner.name}의 승리!`);
 
             await processBattleResults(winner.id, loser.id);
@@ -375,9 +382,11 @@ function BattlePage() {
             });
             return;
         }
+        // **수정된 부분 끝**
+
         const nextTurn = turn === 'my' ? 'opponent' : 'my';
         setTurn(nextTurn);
-        startTurn(nextTurn, updatedMyPet, updatedOpponentPet);
+        startTurn(nextTurn, myPet, opponentPet);
     };
 
     if (!myPet || !opponentPet) {

@@ -15,10 +15,10 @@ export const SKILLS = {
     TACKLE: {
         id: 'tackle',
         name: '몸통박치기',
-        cost: 10,
+        cost: 0, // SP 소모 0으로 변경
         type: 'common',
         description: '기본적인 몸통박치기로 피해를 줍니다.',
-        basePower: 20, // 기본 데미지 설정
+        basePower: 20,
         effect: (attacker, defender) => {
             const damage = SKILLS.TACKLE.basePower + attacker.atk;
             defender.hp -= damage;
@@ -108,11 +108,11 @@ export const SKILLS = {
 export const PET_DATA = {
     [PET_SPECIES.DRAGON]: {
         name: '스타룡',
-        description: '별의 바다 깊은 곳에서 태어난 고대 용의 후예입니다. 몸에 새겨진 별자리는 밤하늘의 신비를, 반짝이는 날개는 은하수의 흐름을 닮았다고 합니다. 강력한 한 방을 위해 오랫동안 힘을 모으는 것을 좋아합니다.',
+        description: "별의 바다 깊은 곳에서 태어난 고대 용의 후예입니다. 몸에 새겨진 별자리는 밤하늘의 신비를, 반짝이는 날개는 은하수의 흐름을 닮았다고 합니다. 강력한 한 방을 위해 오랫동안 힘을 모으는 것을 좋아합니다.",
         baseStats: { maxHp: 100, maxSp: 50, atk: 12 },
         growth: { hp: 10, sp: 3, atk: 2 },
         skill: SKILLS.FIERY_BREATH,
-        initialSkills: [SKILLS.TACKLE.id, SKILLS.FIERY_BREATH.id],
+        initialSkills: [SKILLS.FIERY_BREATH.id], // 몸통박치기 제거
         evolution: {
             lv10: { appearanceId: 'dragon_lv2', name: '은하룡', statBoost: { hp: 1.2, sp: 1.1, atk: 1.3 } },
             lv20: { appearanceId: 'dragon_lv3', name: '스텔라곤', statBoost: { hp: 1.25, sp: 1.15, atk: 1.35 } },
@@ -120,11 +120,11 @@ export const PET_DATA = {
     },
     [PET_SPECIES.RABBIT]: {
         name: '버니니',
-        description: '장난기 많은 바람의 정령들이 데이터 조각에 깃들어 태어난 존재입니다. 전광석화 같은 움직임으로 상대의 허를 찌르는 전략적인 전투를 즐기며, 전투의 흐름을 바꾸는 것을 가장 좋아합니다.',
+        description: "장난기 많은 바람의 정령들이 데이터 조각에 깃들어 태어난 존재입니다. 전광석화 같은 움직임으로 상대의 허를 찌르는 전략적인 전투를 즐기며, 전투의 흐름을 바꾸는 것을 가장 좋아합니다.",
         baseStats: { maxHp: 90, maxSp: 60, atk: 8 },
         growth: { hp: 8, sp: 5, atk: 1 },
         skill: SKILLS.QUICK_DISTURBANCE,
-        initialSkills: [SKILLS.TACKLE.id, SKILLS.QUICK_DISTURBANCE.id],
+        initialSkills: [SKILLS.QUICK_DISTURBANCE.id], // 몸통박치기 제거
         evolution: {
             lv10: { appearanceId: 'rabbit_lv2', name: '버닉스', statBoost: { hp: 1.15, sp: 1.3, atk: 1.1 } },
             lv20: { appearanceId: 'rabbit_lv3', name: '하이버닉스', statBoost: { hp: 1.2, sp: 1.35, atk: 1.15 } },
@@ -132,11 +132,11 @@ export const PET_DATA = {
     },
     [PET_SPECIES.TURTLE]: {
         name: '새싹치',
-        description: '고요한 숲, 생명의 나무 꼭대기에서 이슬을 머금고 태어난 숲의 수호자입니다. 두터운 깃털 방패는 어떤 공격도 막아낼 만큼 견고하며, 동료를 지키기 위해서라면 결코 물러서지 않는 끈기를 지녔습니다.',
+        description: "고요한 숲, 생명의 나무 꼭대기에서 이슬을 머금고 태어난 숲의 수호자입니다. 두터운 깃털 방패는 어떤 공격도 막아낼 만큼 견고하며, 동료를 지키기 위해서라면 결코 물러서지 않는 끈기를 지녔습니다.",
         baseStats: { maxHp: 120, maxSp: 40, atk: 6 },
         growth: { hp: 15, sp: 2, atk: 1 },
         skill: SKILLS.FEATHER_SHIELD,
-        initialSkills: [SKILLS.TACKLE.id, SKILLS.FEATHER_SHIELD.id],
+        initialSkills: [SKILLS.FEATHER_SHIELD.id], // 몸통박치기 제거
         evolution: {
             lv10: { appearanceId: 'bird_lv2', name: '꽃잎치', statBoost: { hp: 1.3, sp: 1.1, atk: 1.1 } },
             lv20: { appearanceId: 'bird_lv3', name: '열매치', statBoost: { hp: 1.35, sp: 1.15, atk: 1.15 } },
