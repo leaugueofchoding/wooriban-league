@@ -3,8 +3,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { auth, updateUserProfile } from '../api/firebase.js';
-import { useLeagueStore } from '../store/leagueStore.js';
+import { auth, updateUserProfile, db } from '../api/firebase.js';
+import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
+import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import styled from 'styled-components';
 
 const AuthWrapper = styled.div`
@@ -98,7 +99,7 @@ const NotificationList = styled.div`
     position: absolute;
     top: 120%;
     right: 0;
-    width: 350px; /* 너비 확장 */
+    width: 350px;
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -158,12 +159,34 @@ const BonusNotificationItem = styled(NotificationItem)`
     border-bottom: 2px solid #bce0fd;
 `;
 
+const ModalBackground = styled.div`
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 3000;
+`;
+
+const ModalContent = styled.div`
+  padding: 2rem 3rem; background: white; border-radius: 12px;
+  text-align: center;
+  h2 { font-size: 2.5rem; margin-bottom: 1rem; }
+  p { font-size: 1.2rem; margin: 0.5rem 0; }
+  button { margin-top: 1rem; margin-left: 0.5rem; margin-right: 0.5rem; padding: 0.8rem 2rem; }
+`;
+
 
 function Auth({ user }) {
     const { players, notifications, unreadNotificationCount, markAsRead, approvalBonus, removeAllNotifications } = useLeagueStore();
+    const { classId } = useClassStore();
     const navigate = useNavigate();
     const [showNotifications, setShowNotifications] = useState(false);
+    const [battleChallenge, setBattleChallenge] = useState(null);
     const notificationRef = useRef(null);
+
+    const myPlayerData = useMemo(() => {
+        if (!user) return null;
+        return players.find(p => p.authUid === user.uid);
+    }, [players, user]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -181,10 +204,25 @@ function Auth({ user }) {
         };
     }, [showNotifications]);
 
-    const myPlayerData = useMemo(() => {
-        if (!user) return null;
-        return players.find(p => p.authUid === user.uid);
-    }, [players, user]);
+    // 실시간으로 배틀 신청을 감지하는 리스너
+    useEffect(() => {
+        if (!myPlayerData?.id || !classId) return;
+
+        const battlesRef = collection(db, 'classes', classId, 'battles');
+        const q = query(battlesRef, where("opponent.id", "==", myPlayerData.id), where("status", "==", "pending"));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+                const challengeDoc = snapshot.docs[0];
+                setBattleChallenge({ id: challengeDoc.id, ...challengeDoc.data() });
+            } else {
+                setBattleChallenge(null);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [myPlayerData, classId]);
+
 
     const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
 
@@ -211,12 +249,9 @@ function Auth({ user }) {
         });
 
         const requestSummaries = Object.entries(missionRequests).map(([title, data]) => ({
-            id: title,
-            isGrouped: true,
-            title: `승인 요청 (${data.count}건)`,
+            id: title, isGrouped: true, title: `승인 요청 (${data.count}건)`,
             body: `${title} 미션의 승인 요청이 ${data.count}건 있습니다.`,
-            link: data.link,
-            createdAt: data.latestCreatedAt
+            link: data.link, createdAt: data.latestCreatedAt
         }));
 
         const sortedNotifications = [...requestSummaries, ...otherNotifications].sort((a, b) => {
@@ -228,7 +263,6 @@ function Auth({ user }) {
         return sortedNotifications;
 
     }, [notifications, isRecorderOrAdmin]);
-
 
     const handleGoogleLogin = () => {
         const provider = new GoogleAuthProvider();
@@ -246,9 +280,23 @@ function Auth({ user }) {
         }
     }
 
-    // ▼▼▼ [수정] 확인 팝업 제거 ▼▼▼
     const handleClearAll = () => {
         removeAllNotifications(user.uid);
+    };
+
+    const handleAcceptBattle = async () => {
+        if (!battleChallenge || !classId) return;
+        const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
+        await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
+        navigate(`/battle/${battleChallenge.challenger.id}`);
+        setBattleChallenge(null);
+    };
+
+    const handleRejectBattle = async () => {
+        if (!battleChallenge || !classId) return;
+        const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
+        await updateDoc(battleRef, { status: 'rejected' });
+        setBattleChallenge(null);
     };
 
     return (
@@ -311,6 +359,17 @@ function Auth({ user }) {
                 </UserProfile>
             ) : (
                 <Button onClick={handleGoogleLogin}>Google 로그인</Button>
+            )}
+
+            {battleChallenge && (
+                <ModalBackground>
+                    <ModalContent>
+                        <h2>⚔️ 대결 신청 ⚔️</h2>
+                        <p><strong>{battleChallenge.challenger.name}</strong>님이 대결을 신청했습니다!</p>
+                        <button onClick={handleAcceptBattle} style={{ backgroundColor: '#28a745', color: 'white' }}>수락</button>
+                        <button onClick={handleRejectBattle} style={{ backgroundColor: '#dc3545', color: 'white' }}>거절</button>
+                    </ModalContent>
+                </ModalBackground>
             )}
         </AuthWrapper>
     );

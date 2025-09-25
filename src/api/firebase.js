@@ -1,17 +1,17 @@
-// src/api/firebase.js
-
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore, collection, getDocs, query, where, doc,
   updateDoc, addDoc, deleteDoc, writeBatch, orderBy, setDoc,
-  runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp, limit, collectionGroup
+  runTransaction, arrayUnion, getDoc, increment, Timestamp, serverTimestamp, limit, collectionGroup, onSnapshot
 } from "firebase/firestore";
 import initialTitles from '../assets/titles.json';
 import imageCompression from 'browser-image-compression';
 import { PET_DATA, SKILLS } from "@/features/pet/petData";
 import { deleteField } from "firebase/firestore";
+import allQuizzesData from '../assets/missions.json';
+
 
 // Firebase 구성 정보
 const firebaseConfig = {
@@ -3053,7 +3053,7 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
   return { expGained, updatedPlayerData: updatedPlayerSnap.data() };
 }
 
-export async function processBattleResults(classId, winnerId, loserId) {
+export async function processBattleResults(classId, winnerId, loserId, fled = false) { // 'fled' 파라미터 추가
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
   const loserRef = doc(db, "classes", classId, "players", loserId);
@@ -3085,16 +3085,18 @@ export async function processBattleResults(classId, winnerId, loserId) {
     }
 
     if (loserPetIndex !== -1) {
-      loserPets[loserPetIndex].exp += 30;
+      // 도망친 경우는 경험치를 적게 받도록 수정
+      loserPets[loserPetIndex].exp += fled ? 10 : 30;
       const { leveledUpPet } = calculateLevelUp(loserPets[loserPetIndex]);
       loserPets[loserPetIndex] = leveledUpPet;
     }
 
     transaction.update(winnerRef, { points: increment(150), pets: winnerPets });
-    transaction.update(loserRef, { points: increment(-50), pets: loserPets });
+    // 도망친 경우 감점은 없도록 수정
+    transaction.update(loserRef, { points: increment(fled ? 0 : -50), pets: loserPets });
 
     await addPointHistory(classId, winnerData.authUid, winnerData.name, 150, "퀴즈 배틀 승리");
-    await addPointHistory(classId, loserData.authUid, loserData.name, -50, "퀴즈 배틀 패배");
+    await addPointHistory(classId, loserData.authUid, loserData.name, fled ? 0 : -50, fled ? "퀴즈 배틀에서 도망침" : "퀴즈 배틀 패배");
   });
 }
 
@@ -3216,4 +3218,174 @@ export async function healAllPets(classId, playerId) {
     await addPointHistory(classId, playerData.authUid, playerData.name, -HEAL_ALL_COST, "펫 센터 전체 치료");
     return playerDoc.data();
   });
+}
+// =================================================================
+// ▼▼▼ [수정] 실시간 배틀 시스템을 위한 함수들 ▼▼▼
+// =================================================================
+
+/**
+ * 새로운 배틀 문서를 생성하거나 기존 배틀에 참가합니다.
+ * @param {string} classId 학급 ID
+ * @param {string} matchId 경기 ID
+ * @param {object} myPlayerData 내 플레이어 데이터
+ * @param {object} opponentPlayerData 상대 플레이어 데이터
+ * @param {object} randomQuiz 배틀에 사용할 퀴즈 객체
+ * @returns {string} 배틀 문서 ID
+ */
+// ▼▼▼ [수정] createOrJoinBattle 함수가 randomQuiz를 인자로 받도록 변경 ▼▼▼
+export async function createOrJoinBattle(classId, matchId, myPlayerData, opponentPlayerData, randomQuiz) {
+  const battleRef = doc(db, "classes", classId, "battles", matchId);
+  const battleSnap = await getDoc(battleRef);
+
+  if (battleSnap.exists()) {
+    return matchId;
+  }
+
+  const myPet = myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId);
+  const opponentPet = opponentPlayerData.pets.find(p => p.id === opponentPlayerData.partnerPetId);
+  const firstTurnPlayerId = Math.random() < 0.5 ? myPlayerData.id : opponentPlayerData.id;
+
+  const initialBattleState = {
+    matchId: matchId,
+    playerA: { id: myPlayerData.id, name: myPlayerData.name, pet: { ...myPet, status: {} } },
+    playerB: { id: opponentPlayerData.id, name: opponentPlayerData.name, pet: { ...opponentPet, status: {} } },
+    turn: firstTurnPlayerId,
+    gameState: 'TURN_START',
+    log: `${myPlayerData.name}이(가) ${opponentPlayerData.name}에게 대결을 신청했습니다!`,
+    currentQuestion: randomQuiz, // 외부에서 전달받은 퀴즈 사용
+    winner: null,
+    createdAt: serverTimestamp(),
+  };
+
+  await setDoc(battleRef, initialBattleState);
+  return matchId;
+}
+
+/**
+ * 배틀 상태에 대한 실시간 리스너를 설정합니다.
+ */
+export function listenToBattle(classId, battleId, callback) {
+  const battleRef = doc(db, "classes", classId, "battles", battleId);
+  return onSnapshot(battleRef, (doc) => {
+    if (doc.exists()) {
+      callback(doc.data());
+    }
+  });
+}
+
+/**
+ * 플레이어의 행동을 받아 배틀 상태를 업데이트합니다.
+ */
+// ▼▼▼ [수정] submitBattleAction 함수에 allQuizzesData를 인자로 전달 ▼▼▼
+export async function submitBattleAction(classId, battleId, actionData, allQuizzesData) {
+  const battleRef = doc(db, "classes", classId, "battles", battleId);
+
+  return runTransaction(db, async (transaction) => {
+    const battleDoc = await transaction.get(battleRef);
+    if (!battleDoc.exists()) throw new Error("배틀을 찾을 수 없습니다.");
+
+    let battleData = battleDoc.data();
+    if (battleData.gameState === 'FINISHED') return;
+
+    const { type, payload } = actionData;
+    const isPlayerA_Turn = battleData.turn === battleData.playerA.id;
+
+    const attackerKey = isPlayerA_Turn ? 'playerA' : 'playerB';
+    const defenderKey = isPlayerA_Turn ? 'playerB' : 'playerA';
+
+    let attacker = battleData[attackerKey];
+    let defender = battleData[defenderKey];
+    let newBattleData = { ...battleData };
+
+    switch (type) {
+      case 'quiz':
+        const { userAnswer } = payload;
+        const isCorrect = userAnswer.trim().toLowerCase() === newBattleData.currentQuestion.answer.toLowerCase();
+        if (isCorrect) {
+          newBattleData.log = "정답! 행동을 선택하세요!";
+          newBattleData.gameState = 'ACTION';
+        } else {
+          newBattleData.log = `오답! 상대방 턴! (정답: ${newBattleData.currentQuestion.answer})`;
+          newBattleData.turn = defender.id;
+          newBattleData.gameState = 'TURN_START';
+        }
+        break;
+
+      case 'attack':
+        const { skillId } = payload;
+        const skill = SKILLS[skillId.toUpperCase()];
+
+        if (attacker.pet.sp < skill.cost) {
+          newBattleData.log = "SP가 부족하여 스킬을 사용할 수 없습니다!";
+          newBattleData.gameState = 'ACTION';
+          break;
+        }
+
+        const skillLog = skill.effect(attacker.pet, defender.pet);
+        if (skill.cost > 0) attacker.pet.sp -= skill.cost;
+        newBattleData.log = skillLog;
+
+        if (defender.pet.hp <= 0) {
+          defender.pet.hp = 0;
+          newBattleData.gameState = 'FINISHED';
+          newBattleData.winner = attacker.id;
+          newBattleData.log = `${attacker.name}의 승리!`;
+        } else {
+          newBattleData.turn = defender.id;
+          newBattleData.gameState = 'TURN_START';
+        }
+        break;
+    }
+
+    if (newBattleData.gameState === 'TURN_START') {
+      const allQuizList = Object.values(allQuizzesData).flat();
+      newBattleData.currentQuestion = allQuizList[Math.floor(Math.random() * allQuizList.length)];
+    }
+
+    transaction.update(battleRef, newBattleData);
+  });
+}
+
+export async function createBattleChallenge(classId, challenger, opponent) {
+  if (!classId || !challenger || !opponent) throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
+  if (!challenger.partnerPetId || !opponent.partnerPetId) {
+    throw new Error("양쪽 플레이어 모두 파트너 펫을 선택해야 배틀을 시작할 수 있습니다.");
+  }
+
+  const battleId = [challenger.id, opponent.id].sort().join('_');
+  const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+  const battleSnap = await getDoc(battleRef);
+
+  // 이미 진행중이거나 대기중인 배틀이 있으면 새로 만들지 않음
+  if (battleSnap.exists() && ['pending', 'starting', 'turn'].includes(battleSnap.data().status)) {
+    throw new Error("이미 해당 상대와 진행중인 대결이 있습니다.");
+  }
+
+  const challengerPet = challenger.pets.find(p => p.id === challenger.partnerPetId);
+  const opponentPet = opponent.pets.find(p => p.id === opponent.partnerPetId);
+
+  const battleData = {
+    id: battleId,
+    status: 'pending',
+    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet },
+    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false },
+    log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
+    turn: null,
+    question: null,
+    turnStartTime: null,
+    createdAt: serverTimestamp(),
+  };
+
+  await setDoc(battleRef, battleData);
+
+  // 상대방에게 알림 생성
+  createNotification(
+    opponent.authUid,
+    '⚔️ 대결 신청!',
+    `${challenger.name}님이 퀴즈 대결을 신청했습니다!`,
+    'battle_request'
+    // 링크를 제거하여 Auth 컴포넌트의 모달이 즉시 반응하도록 함
+  );
+
+  return battleId;
 }

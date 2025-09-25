@@ -3,11 +3,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, db, updatePlayerProfile, equipTitle } from '../api/firebase.js'; // getTotalLikesForPlayer 삭제
+import { auth, db, updatePlayerProfile, equipTitle, createBattleChallenge } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
+
 
 // --- Styled Components (기존과 동일) ---
 const AvatarWrapper = styled.div`
@@ -303,7 +304,7 @@ const SaveTitlesButton = styled(Button)`
 
 function ProfilePage() {
   const { classId } = useClassStore();
-  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore(); // updateTotalLikes 삭제
+  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
@@ -316,7 +317,6 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
-  // const [likeCount, setLikeCount] = useState(null); // 삭제
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
@@ -326,9 +326,6 @@ function ProfilePage() {
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyProfile = myPlayerData?.id === playerData?.id;
 
-  // 삭제: 더 이상 하트를 별도로 불러오는 useEffect는 필요 없습니다.
-  // useEffect(() => { ... });
-
   useEffect(() => {
     if (playerData) {
       setNewName(playerData.name);
@@ -336,6 +333,17 @@ function ProfilePage() {
       setSelectedTitleId(playerData.equippedTitle || null);
     }
   }, [playerData]);
+
+  const handleBattleRequest = async () => {
+    if (!classId || !myPlayerData || !playerData) return;
+
+    try {
+      await createBattleChallenge(classId, myPlayerData, playerData);
+      navigate(`/battle/${playerData.id}`);
+    } catch (error) {
+      alert(`대결 신청 실패: ${error.message}`);
+    }
+  };
 
   const equippedTitle = useMemo(() => {
     if (!playerData?.equippedTitle || !titles.length) return null;
@@ -495,7 +503,6 @@ function ProfilePage() {
 
         {playerData.role && <UserRole>{playerData.role}</UserRole>}
         <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
-        {/* 수정: playerData.totalLikes를 직접 사용합니다. */}
         <LikeDisplay>❤️ {playerData.totalLikes?.toLocaleString() || 0}</LikeDisplay>
 
         <ButtonGroup>
@@ -505,12 +512,14 @@ function ProfilePage() {
             {isMyProfile && <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>}
 
             {!isMyProfile && loggedInPlayer && loggedInPlayer.pets?.length > 0 && playerData.pets?.length > 0 && (
-              <StyledLink
-                to={`/battle/${playerData.id}`}
+              <Button
+                onClick={handleBattleRequest}
                 style={{ backgroundColor: '#dc3545', color: 'white' }}
+                disabled={!myPlayerData?.partnerPetId || !playerData?.partnerPetId}
+                title={!myPlayerData?.partnerPetId || !playerData?.partnerPetId ? "양쪽 모두 파트너 펫을 선택해야 합니다." : ""}
               >
                 퀴즈 대결 신청
-              </StyledLink>
+              </Button>
             )}
           </ButtonRow>
           <ButtonRow>

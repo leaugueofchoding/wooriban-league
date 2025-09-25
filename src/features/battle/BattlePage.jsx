@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLeagueStore } from '@/store/leagueStore';
-import { auth } from '@/api/firebase';
+import { useLeagueStore, useClassStore } from '@/store/leagueStore';
+import { auth, db } from '@/api/firebase';
+import { doc, onSnapshot, updateDoc, runTransaction } from "firebase/firestore";
 import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
@@ -97,7 +98,7 @@ const QuizArea = styled.div`
   border: 3px solid #333;
   border-radius: 8px;
   display: grid;
-  grid-template-columns: 1fr 250px;
+  grid-template-columns: 1fr 280px;
   gap: 2rem;
   min-height: 200px;
 `;
@@ -117,14 +118,13 @@ const AnswerInput = styled.input`
   margin-top: 1rem;
 `;
 const ActionMenu = styled.div`
-  border-left: 2px solid #eee;
-  padding-left: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 0.75rem;
 `;
 const MenuItem = styled.div`
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   font-weight: bold;
   padding: 0.75rem;
   border-radius: 8px;
@@ -133,9 +133,13 @@ const MenuItem = styled.div`
   opacity: ${props => props.$disabled ? 0.5 : 1};
   cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
   transition: background-color 0.2s;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
   
-  &:active {
-    background-color: #ccc;
+  &:hover:not([disabled]) {
+    background-color: #e9ecef;
   }
 `;
 const Timer = styled.div`
@@ -152,7 +156,7 @@ const Timer = styled.div`
     border: 3px solid #dc3545;
     z-index: 10;
 `;
-const ResultModalBackground = styled.div`
+const ModalBackground = styled.div`
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0, 0, 0, 0.7);
@@ -161,346 +165,242 @@ const ResultModalBackground = styled.div`
   align-items: center;
   z-index: 3000;
 `;
-const ResultModalContent = styled.div`
+const ModalContent = styled.div`
   padding: 2rem 3rem;
   background: white;
   border-radius: 12px;
   text-align: center;
-  h2 { font-size: 2.5rem; margin-bottom: 1rem; color: ${props => props.$isWinner ? '#007bff' : '#dc3545'}; }
+  h2 { font-size: 2.5rem; margin-bottom: 1rem; color: ${props => props.$color || '#333'}; }
   p { font-size: 1.2rem; margin: 0.5rem 0; }
-  button { margin-top: 2rem; padding: 0.8rem 2rem; }
+  button { margin-top: 1rem; margin-left: 0.5rem; margin-right: 0.5rem; padding: 0.8rem 2rem; }
+`;
+const WaitingText = styled.div`
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    font-size: 1.5rem;
+    color: #495057;
 `;
 
 const allQuizzes = Object.values(allQuizzesData).flat();
-const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기' };
+const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
+
 
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
     const { players, processBattleResults } = useLeagueStore();
+    const { classId } = useClassStore();
 
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
-    const opponentPlayerData = useMemo(() => players.find(p => p.id === opponentId), [players, opponentId]);
+    const battleId = useMemo(() => [myPlayerData?.id, opponentId].sort().join('_'), [myPlayerData, opponentId]);
 
-    const [myPet, setMyPet] = useState(null);
-    const [opponentPet, setOpponentPet] = useState(null);
-    const [gameState, setGameState] = useState('PREPARING');
-    const [turn, setTurn] = useState(null);
-    const [log, setLog] = useState("");
-    const [question, setQuestion] = useState(null);
-    const [answer, setAnswer] = useState("");
-    const [actionMenu, setActionMenu] = useState({ view: 'main', selectedIndex: null });
-    const [petStatus, setPetStatus] = useState({ my: {}, opponent: {} });
-    const [timeLeft, setTimeLeft] = useState(10);
-    const [battleResult, setBattleResult] = useState(null);
+    const [battleState, setBattleState] = useState(null);
+    const [timeLeft, setTimeLeft] = useState(20);
+    const [answer, setAnswer] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
     const timerRef = useRef(null);
-    const turnTimeoutRef = useRef(null);
+    const actionTimeoutRef = useRef(null);
+    const resolutionTimeoutRef = useRef(null);
 
-    const myEquippedSkills = useMemo(() => {
-        if (!myPet?.equippedSkills) return [];
-        return myPet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
-    }, [myPet]);
-
-    const opponentEquippedSkills = useMemo(() => {
-        if (!opponentPet?.equippedSkills) return [];
-        return opponentPet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
-    }, [opponentPet]);
-
-    const mainMenuItems = ['기본 공격', '특수 공격'];
-    const defenseMenuItems = Object.values(DEFENSE_ACTIONS);
-
-    const handleKeyDown = useCallback((e) => {
-        if (gameState !== 'ACTION' && gameState !== 'DEFENSE') return;
-        const currentMenu = actionMenu.view === 'main' ? mainMenuItems : (actionMenu.view === 'skills' ? myEquippedSkills : defenseMenuItems);
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setActionMenu(prev => ({ ...prev, selectedIndex: Math.max(0, (prev.selectedIndex ?? 1) - 1) }));
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setActionMenu(prev => ({ ...prev, selectedIndex: Math.min(currentMenu.length - 1, (prev.selectedIndex ?? -1) + 1) }));
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (actionMenu.selectedIndex !== null) {
-                handleMenuSelect(actionMenu.selectedIndex);
+    // Battle state listener
+    useEffect(() => {
+        if (!myPlayerData || !classId) return;
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+        const unsubscribe = onSnapshot(battleRef, (doc) => {
+            if (doc.exists()) {
+                const data = doc.data();
+                setBattleState(data);
+                if (data.status === 'rejected') {
+                    alert("상대방이 대결을 거절했습니다.");
+                    navigate('/league');
+                }
+            } else {
+                setBattleState(null);
             }
-        } else if (e.key === 'Backspace' && actionMenu.view === 'skills') {
-            e.preventDefault();
-            setActionMenu({ view: 'main', selectedIndex: null });
+        });
+        return () => unsubscribe();
+    }, [myPlayerData, battleId, classId, navigate]);
+
+    // Game state progression & Timer
+    useEffect(() => {
+        if (!battleState) return;
+
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+        const iAmChallenger = myPlayerData.id === battleState.challenger.id;
+
+        clearTimeout(actionTimeoutRef.current);
+        clearTimeout(resolutionTimeoutRef.current);
+
+        if (battleState.log.includes('선공입니다!')) {
+            actionTimeoutRef.current = setTimeout(() => {
+                updateDoc(battleRef, { status: 'action' });
+            }, 2000);
         }
-    }, [gameState, actionMenu, mainMenuItems, myEquippedSkills, defenseMenuItems]);
 
-    useEffect(() => {
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleKeyDown]);
-
-    useEffect(() => {
-        if (gameState === 'QUIZ' || gameState === 'DEFENSE') {
+        clearInterval(timerRef.current);
+        if ((battleState.status === 'first_quiz') && battleState.turnStartTime) {
             timerRef.current = setInterval(() => {
-                setTimeLeft(prev => {
-                    if (prev <= 1) {
-                        clearInterval(timerRef.current);
-                        if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current);
-                        turnTimeoutRef.current = setTimeout(() => {
-                            setLog("시간 초과! 턴이 넘어갑니다.");
-                            switchTurn();
-                        }, 1500);
-                        return 0;
-                    }
-                    return prev - 1;
-                });
+                const elapsed = (Date.now() - battleState.turnStartTime) / 1000;
+                const newTimeLeft = Math.floor(Math.max(0, 20 - elapsed));
+                setTimeLeft(newTimeLeft);
+
+                if (newTimeLeft === 0 && iAmChallenger) {
+                    clearInterval(timerRef.current);
+                    updateDoc(battleRef, {
+                        log: '시간 초과! 다음 문제로 넘어갑니다.',
+                        question: allQuizzes[Math.floor(Math.random() * allQuizzes.length)],
+                        turnStartTime: Date.now()
+                    });
+                }
             }, 1000);
-        } else {
-            clearInterval(timerRef.current);
         }
+
+        // 양쪽 모두 행동 선택을 완료하면 결과 처리
+        if (battleState.attackerAction && battleState.defenderAction) {
+            resolutionTimeoutRef.current = setTimeout(() => handleResolution(), 1000);
+        }
+
         return () => {
             clearInterval(timerRef.current);
-            clearTimeout(turnTimeoutRef.current);
+            clearTimeout(actionTimeoutRef.current);
+            clearTimeout(resolutionTimeoutRef.current);
         };
-    }, [gameState]);
+    }, [battleState, battleId, classId, myPlayerData]);
 
 
-    useEffect(() => {
-        if (gameState !== 'PREPARING') return;
-        if (!myPlayerData || !opponentPlayerData || !myPlayerData.partnerPetId || !opponentPlayerData.partnerPetId) {
-            alert("양쪽 플레이어 모두 파트너 펫을 선택해야 배틀을 시작할 수 있습니다.");
-            navigate('/league');
-            return;
-        }
-        setMyPet({ ...myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId), isHit: false, ownerId: myPlayerData.id });
-        setOpponentPet({ ...opponentPlayerData.pets.find(p => p.id === opponentPlayerData.partnerPetId), isHit: false, ownerId: opponentPlayerData.id });
-        setLog(`${opponentPlayerData.name}에게 대결을 신청합니다!`);
-        const firstTurn = Math.random() < 0.5 ? 'my' : 'opponent';
-        setTurn(firstTurn);
-        turnTimeoutRef.current = setTimeout(() => startTurn(firstTurn), 2000);
-    }, [myPlayerData, opponentPlayerData, navigate, gameState]);
-
-    const startTurn = (currentTurn) => {
-        setTimeLeft(10);
-        setActionMenu({ view: 'main', selectedIndex: null });
-        setGameState('TURN_START');
-
-        const activePet = currentTurn === 'my' ? myPet : opponentPet;
-        const activeStatusKey = currentTurn === 'my' ? 'my' : 'opponent';
-
-        if (petStatus[activeStatusKey]?.stunned) {
-            setLog(`${activePet.name}(이)가 혼란스러워 움직이지 못합니다!`);
-            setPetStatus(prev => ({ ...prev, [activeStatusKey]: { ...prev[activeStatusKey], stunned: false } }));
-
-            turnTimeoutRef.current = setTimeout(() => {
-                setLog("상대가 행동불능 상태라 턴을 한번 더 가져옵니다!");
-                startTurn('my'); // 무조건 나의 턴으로
-            }, 2000);
-            return;
-        }
-
-        if (currentTurn === 'my') {
-            setLog("나의 턴! 문제를 풀어주세요.");
-            fetchNewQuestion();
-            setGameState('QUIZ');
-        } else {
-            setLog("상대방의 턴! 방어 태세를 선택하세요.");
-            setGameState('DEFENSE');
-            setActionMenu({ view: 'defense', selectedIndex: null });
-        }
-    };
-
-    const fetchNewQuestion = () => {
-        const randomIndex = Math.floor(Math.random() * allQuizzes.length);
-        setQuestion(allQuizzes[randomIndex]);
-    };
-
-    const handleSubmit = (e) => {
+    const handleQuizSubmit = async (e) => {
         e.preventDefault();
-        if (gameState !== 'QUIZ' || !question) return;
-        clearTimeout(turnTimeoutRef.current);
-        clearInterval(timerRef.current);
-        const isCorrect = answer.trim().toLowerCase() === question.answer.toLowerCase();
-        if (isCorrect) {
-            setLog("정답! 행동을 선택하세요!");
-            setGameState('ACTION');
-            setActionMenu({ view: 'main', selectedIndex: null });
-        } else {
-            setLog("오답입니다! 상대방의 턴!");
-            turnTimeoutRef.current = setTimeout(() => switchTurn(), 2000);
-        }
-        setAnswer("");
-    };
+        if (!battleState.question || !answer.trim() || isProcessing) return;
 
-    const handleMenuSelect = (index) => {
-        if (gameState === 'ACTION' || gameState === 'DEFENSE') {
-            clearTimeout(turnTimeoutRef.current);
-            clearInterval(timerRef.current);
-            setActionMenu(prev => ({ ...prev, selectedIndex: index }));
+        setIsProcessing(true);
+        const isCorrect = answer.trim().toLowerCase() === battleState.question.answer.toLowerCase();
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
 
-            if (gameState === 'ACTION') {
-                if (actionMenu.view === 'main') {
-                    if (index === 0) handleAttack('tackle');
-                    else setActionMenu({ view: 'skills', selectedIndex: null });
-                } else if (actionMenu.view === 'skills') {
-                    const skill = myEquippedSkills[index];
-                    if (myPet.sp < skill.cost) {
-                        setLog("SP가 부족하여 스킬을 사용할 수 없습니다!");
-                        turnTimeoutRef.current = setTimeout(() => startTurn(turn), 2000);
-                        return;
-                    }
-                    handleAttack(skill.id);
-                }
-            } else if (gameState === 'DEFENSE') {
-                const defenseChoice = defenseMenuItems[index];
-                setLog(`'${defenseChoice}' 태세를 취합니다. 상대의 공격...`);
-                turnTimeoutRef.current = setTimeout(() => {
-                    const randomSkill = opponentEquippedSkills[Math.floor(Math.random() * opponentEquippedSkills.length)];
-                    const randomAttack = Math.random() < 0.5 ? 'tackle' : (randomSkill?.id || 'tackle');
-                    handleResolution(randomAttack, defenseChoice);
-                }, 2000);
+        if (battleState.status === 'first_quiz') {
+            if (isCorrect) {
+                try {
+                    await runTransaction(db, async (transaction) => {
+                        const battleDoc = await transaction.get(battleRef);
+                        if (!battleDoc.exists() || battleDoc.data().status !== 'first_quiz') { return; }
+
+                        const attackerRole = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
+
+                        transaction.update(battleRef, {
+                            turn: attackerRole,
+                            log: `정답! ${myPlayerData.name}님의 선공입니다!`,
+                            question: null,
+                        });
+                    });
+                } catch (error) { console.error("선공 퀴즈 처리 오류:", error); }
+            } else {
+                alert('오답입니다!');
             }
         }
+        setAnswer('');
+        setIsProcessing(false);
     };
 
-    const handleAttack = (attackId) => {
-        const skillName = SKILLS[attackId.toUpperCase()].name;
-        setLog(`'${skillName}' 공격!`);
+    const handleActionSelect = async (actionId) => {
+        if (isProcessing) return;
+        setIsProcessing(true);
 
-        const isOpponentStunned = petStatus.opponent.stunned;
-        const opponentDefenseChoice = isOpponentStunned ? null : defenseMenuItems[Math.floor(Math.random() * defenseMenuItems.length)];
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+        const iAmAttacker = battleState.turn === (myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent');
 
-        if (isOpponentStunned) {
-            setLog(prev => prev + ' 상대는 혼란스러워 방어하지 못합니다!');
+        if (iAmAttacker) {
+            await updateDoc(battleRef, { attackerAction: actionId, log: `${myPlayerData.name}이(가) 공격 준비를 마쳤습니다! 상대의 방어를 기다립니다...` });
         } else {
-            setLog(prev => prev + ' 상대방이 방어 태세를 취합니다...');
+            await updateDoc(battleRef, { defenderAction: actionId, log: `${myPlayerData.name}이(가) 방어 준비를 마쳤습니다!` });
         }
-
-        turnTimeoutRef.current = setTimeout(() => handleResolution(attackId, opponentDefenseChoice), 2000);
+        setIsProcessing(false);
     };
 
-    const handleResolution = (attackId, defenseAction) => {
-        const isMyTurn = turn === 'my';
-        let attacker = isMyTurn ? { ...myPet, status: { ...petStatus.my } } : { ...opponentPet, status: { ...petStatus.opponent } };
-        let defender = isMyTurn ? { ...opponentPet, status: { ...petStatus.opponent } } : { ...myPet, status: { ...petStatus.my } };
-
-        if (attacker.status.defenseBuffTurns > 0) attacker.status.defenseBuffTurns--;
-        if (defender.status.defenseBuffTurns > 0) defender.status.defenseBuffTurns--;
-
-        const skill = SKILLS[attackId.toUpperCase()];
-        let logMessage = skill.effect(attacker, defender);
-        if (skill.cost > 0) attacker.sp -= skill.cost;
-
-        const finalAttackerState = { ...attacker, isHit: false };
-        const finalDefenderState = { ...defender, isHit: true };
-        delete finalAttackerState.status;
-        delete finalDefenderState.status;
-
-        if (isMyTurn) {
-            setMyPet(finalAttackerState);
-            setOpponentPet(finalDefenderState);
-        } else {
-            setOpponentPet(finalAttackerState);
-            setMyPet(finalDefenderState);
-        }
-        setPetStatus({ my: isMyTurn ? attacker.status : defender.status, opponent: isMyTurn ? defender.status : attacker.status });
-        setLog(logMessage);
-
-        turnTimeoutRef.current = setTimeout(() => {
-            if (isMyTurn) setOpponentPet(prev => ({ ...prev, isHit: false }));
-            else setMyPet(prev => ({ ...prev, isHit: false }));
-            switchTurn(finalAttackerState, finalDefenderState);
-        }, 2000);
+    const handleResolution = async () => {
+        // ... (결과 처리 로직: 다음 단계에서 구현)
+        alert('결과 처리 로직 실행!');
     };
 
-    const switchTurn = async (attacker, defender) => {
-        if (gameState === 'FINISHED') return;
 
-        const currentAttacker = attacker || (turn === 'my' ? myPet : opponentPet);
-        const currentDefender = defender || (turn === 'my' ? opponentPet : myPet);
+    if (!myPlayerData) return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
+    if (!battleState) return <Arena><WaitingText>상대방의 수락을 기다리는 중...</WaitingText></Arena>;
 
-        if (currentDefender.hp <= 0) {
-            setGameState('FINISHED');
-            const winner = players.find(p => p.id === currentAttacker.ownerId);
-            const loser = players.find(p => p.id === currentDefender.ownerId);
-            setLog(`${winner.name}의 승리!`);
-            await processBattleResults(winner.id, loser.id);
-            setBattleResult({ isWinner: winner.id === myPlayerData.id, points: winner.id === myPlayerData.id ? 150 : -50, exp: winner.id === myPlayerData.id ? 100 : 30 });
-            return;
-        }
+    const IamChallenger = myPlayerData.id === battleState.challenger.id;
+    const myInfo = IamChallenger ? battleState.challenger : battleState.opponent;
+    const opponentInfo = IamChallenger ? battleState.opponent : battleState.challenger;
+    const isAttacker = battleState.turn === (IamChallenger ? 'challenger' : 'opponent');
+    const myRole = IamChallenger ? 'challenger' : 'opponent';
 
-        const nextTurn = turn === 'my' ? 'opponent' : 'my';
-        setTurn(nextTurn);
-        startTurn(nextTurn);
-    };
-
-    if (!myPet || !opponentPet) {
-        return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
-    }
+    const mainMenuItems = ['기본 공격', '특수 공격'];
+    const myEquippedSkills = myInfo.pet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
 
     return (
         <>
             <Arena>
-                <BattleField>
-                    {(gameState === 'QUIZ' || gameState === 'DEFENSE') && <Timer>{timeLeft}</Timer>}
-                    <MyInfoBox>
-                        <span>{myPet.name} (Lv.{myPet.level})</span>
-                        <StatBar><BarFill $percent={Math.max(0, (myPet.hp / myPet.maxHp) * 100)} color="#28a745">HP: {myPet.hp}/{myPet.maxHp}</BarFill></StatBar>
-                        <StatBar><BarFill $percent={Math.max(0, (myPet.sp / myPet.maxSp) * 100)} color="#007bff">SP: {myPet.sp}/{myPet.maxSp}</BarFill></StatBar>
-                    </MyInfoBox>
-                    <OpponentInfoBox>
-                        <span>{opponentPet.name} (Lv.{opponentPet.level})</span>
-                        <StatBar><BarFill $percent={Math.max(0, (opponentPet.hp / opponentPet.maxHp) * 100)} color="#28a745">HP: {opponentPet.hp}/{opponentPet.maxHp}</BarFill></StatBar>
-                        <StatBar><BarFill $percent={Math.max(0, (opponentPet.sp / opponentPet.maxSp) * 100)} color="#007bff">SP: {opponentPet.sp}/{opponentPet.maxSp}</BarFill></StatBar>
-                    </OpponentInfoBox>
+                {battleState.status === 'pending' ? (
+                    <WaitingText>상대방의 수락을 기다리는 중...</WaitingText>
+                ) : (
+                    <>
+                        <BattleField>
+                            {(battleState.status === 'first_quiz') && <Timer>{timeLeft}</Timer>}
+                            <MyInfoBox>
+                                <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
+                                <StatBar><BarFill $percent={Math.max(0, (myInfo.pet.hp / myInfo.pet.maxHp) * 100)} color="#28a745">HP: {myInfo.pet.hp}/{myInfo.pet.maxHp}</BarFill></StatBar>
+                                <StatBar><BarFill $percent={Math.max(0, (myInfo.pet.sp / myInfo.pet.maxSp) * 100)} color="#007bff">SP: {myInfo.pet.sp}/{myInfo.pet.maxSp}</BarFill></StatBar>
+                            </MyInfoBox>
+                            <OpponentInfoBox>
+                                <span>{opponentInfo.pet.name} (Lv.{opponentInfo.pet.level})</span>
+                                <StatBar><BarFill $percent={Math.max(0, (opponentInfo.pet.hp / opponentInfo.pet.maxHp) * 100)} color="#28a745">HP: {opponentInfo.pet.hp}/{opponentInfo.pet.maxHp}</BarFill></StatBar>
+                                <StatBar><BarFill $percent={Math.max(0, (opponentInfo.pet.sp / opponentInfo.pet.maxSp) * 100)} color="#007bff">SP: {opponentInfo.pet.sp}/{opponentInfo.pet.maxSp}</BarFill></StatBar>
+                            </OpponentInfoBox>
 
-                    <OpponentPetContainer $isHit={opponentPet.isHit}>
-                        <PetImage src={petImageMap[`${opponentPet.appearanceId}_idle`]} alt="상대 펫" $isFainted={opponentPet.hp <= 0} className="opponent" />
-                    </OpponentPetContainer>
+                            <OpponentPetContainer $isHit={false}>
+                                <PetImage src={petImageMap[`${opponentInfo.pet.appearanceId}_idle`]} alt="상대 펫" $isFainted={opponentInfo.pet.hp <= 0} />
+                            </OpponentPetContainer>
 
-                    <MyPetContainer $isHit={myPet.isHit}>
-                        <PetImage src={petImageMap[`${myPet.appearanceId}_battle`]} alt="나의 펫" $isFainted={myPet.hp <= 0} />
-                    </MyPetContainer>
-                </BattleField>
-                <QuizArea>
-                    <div>
-                        <LogText>{log}</LogText>
-                        {gameState === 'QUIZ' && question && (
-                            <>
-                                <h3>Q. {question.question}</h3>
-                                <form onSubmit={handleSubmit}>
-                                    <AnswerInput type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="정답을 입력하세요" autoFocus />
-                                </form>
-                            </>
-                        )}
-                    </div>
-                    <ActionMenu>
-                        {gameState === 'ACTION' && actionMenu.view === 'main' && mainMenuItems.map((item, index) => (
-                            <MenuItem key={item} $isSelected={actionMenu.selectedIndex === index} onClick={() => handleMenuSelect(index)}>
-                                {actionMenu.selectedIndex === index && '>'} {item}
-                            </MenuItem>
-                        ))}
-                        {gameState === 'ACTION' && actionMenu.view === 'skills' && myEquippedSkills.map((skill, index) => {
-                            const isDisabled = myPet.sp < skill.cost;
-                            return (
-                                <MenuItem key={skill.id} $isSelected={actionMenu.selectedIndex === index} $disabled={isDisabled} onClick={() => !isDisabled && handleMenuSelect(index)}>
-                                    {actionMenu.selectedIndex === index && '>'} {skill.name} ({skill.cost} SP)
-                                </MenuItem>
-                            )
-                        })}
-                        {gameState === 'DEFENSE' && defenseMenuItems.map((item, index) => (
-                            <MenuItem key={item} $isSelected={actionMenu.selectedIndex === index} onClick={() => handleMenuSelect(index)}>
-                                {actionMenu.selectedIndex === index && '>'} {item}
-                            </MenuItem>
-                        ))}
-                    </ActionMenu>
-                </QuizArea>
+                            <MyPetContainer $isHit={false}>
+                                <PetImage src={petImageMap[`${myInfo.pet.appearanceId}_battle`]} alt="나의 펫" $isFainted={myInfo.pet.hp <= 0} />
+                            </MyPetContainer>
+                        </BattleField>
+                        <QuizArea>
+                            <div>
+                                <LogText>{battleState.log}</LogText>
+                                {battleState.status === 'first_quiz' && battleState.question && (
+                                    <>
+                                        <h3>Q. {battleState.question.question}</h3>
+                                        <form onSubmit={handleQuizSubmit}>
+                                            <AnswerInput
+                                                name="answer"
+                                                value={answer}
+                                                onChange={(e) => setAnswer(e.target.value)}
+                                                placeholder="정답을 입력하세요"
+                                                autoFocus
+                                                disabled={isProcessing}
+                                            />
+                                        </form>
+                                    </>
+                                )}
+                            </div>
+                            <ActionMenu>
+                                {battleState.status === 'action' && isAttacker && !battleState.attackerAction && (
+                                    <>
+                                        <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
+                                        {myEquippedSkills.map(skill => (
+                                            <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
+                                        ))}
+                                    </>
+                                )}
+                                {battleState.status === 'action' && !isAttacker && !battleState.defenderAction && (
+                                    Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
+                                        <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
+                                    ))
+                                )}
+                            </ActionMenu>
+                        </QuizArea>
+                    </>
+                )}
             </Arena>
-            {battleResult && (
-                <ResultModalBackground>
-                    <ResultModalContent $isWinner={battleResult.isWinner}>
-                        <h2>{battleResult.isWinner ? "승리!" : "패배..."}</h2>
-                        <p>포인트: <span style={{ color: battleResult.isWinner ? '#28a745' : '#dc3545', fontWeight: 'bold' }}>{battleResult.points > 0 ? `+${battleResult.points}` : battleResult.points}P</span></p>
-                        <p>펫 경험치: <span style={{ color: '#ffc107', fontWeight: 'bold' }}>+{battleResult.exp} EXP</span></p>
-                        <button onClick={() => navigate('/league')}>확인</button>
-                    </ResultModalContent>
-                </ResultModalBackground>
-            )}
         </>
     );
 }
