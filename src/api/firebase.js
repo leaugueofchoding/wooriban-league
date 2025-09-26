@@ -3389,3 +3389,36 @@ export async function createBattleChallenge(classId, challenger, opponent) {
 
   return battleId;
 }
+
+/**
+ * 배틀 채팅 메시지를 업데이트합니다. (정답/오답 여부 포함)
+ * @param {string} classId - 학급 ID
+ * @param {string} battleId - 배틀 ID
+ * @param {string} playerId - 메시지를 보낸 플레이어 ID
+ * @param {string} message - 메시지 내용
+ * @param {boolean} isCorrect - 정답 여부
+ */
+export async function updateBattleChat(classId, battleId, playerId, message, isCorrect) {
+  if (!classId || !battleId || !playerId) return;
+  const battleRef = doc(db, "classes", classId, "battles", battleId);
+
+  const chatData = {
+    text: message,
+    isCorrect: isCorrect,
+    timestamp: Date.now(), // 타임스탬프 추가
+  };
+
+  await updateDoc(battleRef, {
+    [`chat.${playerId}`]: chatData
+  });
+
+  // 2초 뒤에 해당 플레이어의 채팅만 초기화
+  setTimeout(async () => {
+    const currentBattleDoc = await getDoc(battleRef);
+    if (currentBattleDoc.exists() && currentBattleDoc.data().chat?.[playerId]?.timestamp === chatData.timestamp) {
+      await updateDoc(battleRef, {
+        [`chat.${playerId}`]: null
+      });
+    }
+  }, 2000);
+}
