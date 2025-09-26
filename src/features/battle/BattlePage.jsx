@@ -10,7 +10,7 @@ import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 
-// --- Styled Components (이전과 동일) ---
+// --- Styled Components ---
 const Arena = styled.div`
   max-width: 1200px; margin: 2rem auto; padding: 2rem; background-color: #f0f8ff;
   border-radius: 12px; border: 5px solid #add8e6; overflow: hidden;
@@ -22,16 +22,12 @@ const BattleField = styled.div`
   height: 550px; position: relative; margin-bottom: 2rem; background-color: rgba(255, 255, 255, 0.5); border-radius: 10px;
 `;
 const PetContainerWrapper = styled.div`
-  position: absolute;
-  width: 400px;
-  height: 400px;
+  position: absolute; width: 400px; height: 400px;
 `;
 const MyPetContainerWrapper = styled(PetContainerWrapper)` bottom: 10px; left: 10px; `;
 const OpponentPetContainerWrapper = styled(PetContainerWrapper)` top: 10px; right: 10px; `;
 const PetContainer = styled.div`
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: relative; width: 100%; height: 100%;
   animation: ${props => props.$isHit ? shake : 'none'} 0.3s;
   display: flex; flex-direction: column; align-items: center;
 `;
@@ -107,12 +103,12 @@ const ChatBubble = styled.div`
     font-weight: ${props => props.$isCorrect === true ? 'bold' : 'normal'};
     
     /* 빨간색 박스 근처 (나) */
-    ${props => props.$isMine ? 'top: -60px; left: 50%; transform: translateX(-50%);' : ''}
+    ${props => props.$isMine ? 'top: -60px; left: 50%;' : ''}
     
     /* 파란색 박스 근처 (상대) */
-    ${props => !props.$isMine ? 'top: 100%; left: 50%; transform: translateX(-50%);' : ''}
+    ${props => !props.$isMine ? 'bottom: -60px; left: 50%;' : ''}
+    transform: translateX(-50%);
 
-    /* 말풍선 꼬리 */
     &::after {
         content: '';
         position: absolute;
@@ -126,11 +122,11 @@ const ChatBubble = styled.div`
             border-width: 10px 10px 0 10px;
             border-color: #333 transparent transparent transparent;
         ` : `
-            top: -10px;
+            top: 100%;
             left: 50%;
             transform: translateX(-50%);
             border-width: 0 10px 10px 10px;
-            border-color: transparent transparent #333 transparent;
+            border-color: #333 transparent transparent transparent;
         `}
     }
 `;
@@ -228,7 +224,6 @@ function BattlePage() {
             const damage = 10;
             challenger.pet.hp = Math.max(0, challenger.pet.hp - damage);
             opponent.pet.hp = Math.max(0, opponent.pet.hp - damage);
-
             transaction.update(battleRef, { challenger, opponent, log: `시간 초과! 양쪽 모두 ${damage}의 피해를 입었다!` });
         });
         timeoutRef.current = setTimeout(() => startNewTurn(battleRef, "다시! 퀴즈를 풀어 선공을 차지하세요!"), 2000);
@@ -256,7 +251,7 @@ function BattlePage() {
                     transaction.update(battleRef, {
                         status: 'action',
                         turn: myRole,
-                        log: `정답! ${myPlayerData.name}의 공격!`,
+                        log: `정답! ${myPlayerData.name}의 공격! 상대는 방어하세요!`,
                         question: null,
                     });
                 });
@@ -272,24 +267,10 @@ function BattlePage() {
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
         const myRole = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
 
-        if (battleState.status === 'action' && battleState.turn === myRole) {
-            await updateDoc(battleRef, {
-                attackerAction: actionId,
-                log: `${myPlayerData.name}이(가) 공격 준비 완료! 상대방의 방어를 기다립니다.`,
-                status: 'defense'
-            });
-        } else if (battleState.status === 'defense' && battleState.turn !== myRole) {
-            if (actionId === 'FLEE') {
-                if (Math.random() < 0.5) {
-                    const winnerId = battleState.turn === 'challenger' ? battleState.challenger.id : battleState.opponent.id;
-                    await updateDoc(battleRef, { status: 'finished', winner: winnerId, log: `${myPlayerData.name}이(가) 도망쳤습니다!` });
-                    await processBattleResults(winnerId, myPlayerData.id, true);
-                } else {
-                    await updateDoc(battleRef, { defenderAction: 'FLEE_FAILED', status: 'resolution', log: '도망치기에 실패했다!' });
-                }
-            } else {
-                await updateDoc(battleRef, { defenderAction: actionId, status: 'resolution' });
-            }
+        if (battleState.turn === myRole) {
+            await updateDoc(battleRef, { attackerAction: actionId });
+        } else {
+            await updateDoc(battleRef, { defenderAction: actionId });
         }
         setActionSubMenu(null);
         setIsProcessing(false);
@@ -301,7 +282,7 @@ function BattlePage() {
 
         await runTransaction(db, async (transaction) => {
             const battleDoc = await transaction.get(battleRef);
-            if (!battleDoc.exists() || battleDoc.data().status !== 'resolution') return;
+            if (!battleDoc.exists() || !battleDoc.data().attackerAction || !battleDoc.data().defenderAction) return;
 
             let { challenger, opponent, turn, attackerAction, defenderAction } = battleDoc.data();
 
@@ -378,11 +359,13 @@ function BattlePage() {
     const myRole = IamChallenger ? 'challenger' : 'opponent';
     const myInfo = battleState[myRole];
     const opponentInfo = battleState[IamChallenger ? 'opponent' : 'challenger'];
-    const isMyTurnToAct =
-        (battleState.status === 'action' && battleState.turn === myRole) ||
-        (battleState.status === 'defense' && battleState.turn !== myRole && myInfo.pet.status?.stunned !== true);
+
+    const isAttacker = battleState.turn === myRole;
 
     const myEquippedSkills = myInfo.pet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
+
+    const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
+    const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
 
     return (
         <>
@@ -438,23 +421,20 @@ function BattlePage() {
                                 )}
                             </div>
                             <ActionMenu>
-                                {isMyTurnToAct && battleState.status === 'action' && !actionSubMenu && (
-                                    <>
-                                        <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
-                                        <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
-                                        <MenuItem disabled></MenuItem>
-                                        <MenuItem disabled></MenuItem>
-                                    </>
+                                {showActionMenu && (
+                                    !actionSubMenu ?
+                                        <>
+                                            <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
+                                            <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
+                                        </> :
+                                        <>
+                                            {myEquippedSkills.map(skill => (
+                                                <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
+                                            ))}
+                                            <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
+                                        </>
                                 )}
-                                {isMyTurnToAct && battleState.status === 'action' && actionSubMenu === 'skills' && (
-                                    <>
-                                        {myEquippedSkills.map(skill => (
-                                            <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
-                                        ))}
-                                        <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
-                                    </>
-                                )}
-                                {isMyTurnToAct && battleState.status === 'defense' && (
+                                {showDefenseMenu && (
                                     Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
                                         <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
                                     ))
