@@ -102,11 +102,7 @@ const ChatBubble = styled.div`
     color: ${props => props.$isCorrect === false ? 'red' : (props.$isCorrect === true ? 'blue' : 'black')};
     font-weight: ${props => props.$isCorrect === true ? 'bold' : 'normal'};
     
-    /* 빨간색 박스 근처 (나) */
-    ${props => props.$isMine ? 'top: -60px; left: 50%;' : ''}
-    
-    /* 파란색 박스 근처 (상대) */
-    ${props => !props.$isMine ? 'bottom: -60px; left: 50%;' : ''}
+    ${props => props.$isMine ? 'top: -60px; left: 50%;' : 'bottom: -60px; left: 50%;'}
     transform: translateX(-50%);
 
     &::after {
@@ -153,6 +149,7 @@ function BattlePage() {
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
 
+    // Battle state listener
     useEffect(() => {
         if (!myPlayerData || !classId) return;
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
@@ -163,6 +160,7 @@ function BattlePage() {
         return () => unsubscribe();
     }, [myPlayerData, battleId, classId]);
 
+    // Game state progression
     useEffect(() => {
         if (!battleState || !myPlayerData) return;
 
@@ -172,16 +170,20 @@ function BattlePage() {
         clearTimeout(timeoutRef.current);
         clearInterval(timerRef.current);
 
+        // State machine logic (challenger is the master)
         if (iAmChallenger) {
             if (battleState.status === 'starting') {
                 timeoutRef.current = setTimeout(() => {
                     startNewTurn(battleRef, "대결 시작! 퀴즈를 풀어 선공을 차지하세요!");
                 }, 2000);
+            } else if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
+                updateDoc(battleRef, { status: 'resolution', log: '결과 계산 중...' });
             } else if (battleState.status === 'resolution') {
-                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 3000);
+                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 2000);
             }
         }
 
+        // Timer logic (runs on both clients)
         if (battleState.status === 'quiz' && battleState.turnStartTime) {
             const updateTimer = () => {
                 const elapsed = (Date.now() - battleState.turnStartTime) / 1000;
@@ -219,14 +221,32 @@ function BattlePage() {
     const handleTimeout = async (battleRef) => {
         await runTransaction(db, async (transaction) => {
             const battleDoc = await transaction.get(battleRef);
-            if (!battleDoc.exists()) return;
+            if (!battleDoc.exists() || battleDoc.data().status !== 'quiz') return;
             let { challenger, opponent } = battleDoc.data();
             const damage = 10;
             challenger.pet.hp = Math.max(0, challenger.pet.hp - damage);
             opponent.pet.hp = Math.max(0, opponent.pet.hp - damage);
-            transaction.update(battleRef, { challenger, opponent, log: `시간 초과! 양쪽 모두 ${damage}의 피해를 입었다!` });
+
+            if (challenger.pet.hp <= 0 || opponent.pet.hp <= 0) {
+                transaction.update(battleRef, {
+                    status: 'finished',
+                    winner: challenger.pet.hp > 0 ? challenger.id : opponent.id, // 둘 다 0이면 임의로 승자
+                    log: `시간 초과! 펫이 쓰러졌습니다!`,
+                    challenger,
+                    opponent
+                });
+            } else {
+                transaction.update(battleRef, { challenger, opponent, log: `시간 초과! 양쪽 모두 ${damage}의 피해를 입었다!` });
+            }
         });
-        timeoutRef.current = setTimeout(() => startNewTurn(battleRef, "다시! 퀴즈를 풀어 선공을 차지하세요!"), 2000);
+
+        const finalState = (await getDoc(battleRef)).data();
+        if (finalState.status === 'finished') {
+            await processBattleResults(finalState.winner, finalState.winner === finalState.challenger.id ? finalState.opponent.id : finalState.challenger.id);
+            setTimeout(() => navigate('/pet'), 5000);
+        } else {
+            timeoutRef.current = setTimeout(() => startNewTurn(battleRef, "다시! 퀴즈를 풀어 선공을 차지하세요!"), 2000);
+        }
     };
 
     const handleQuizSubmit = async (e) => {
@@ -270,7 +290,17 @@ function BattlePage() {
         if (battleState.turn === myRole) {
             await updateDoc(battleRef, { attackerAction: actionId });
         } else {
-            await updateDoc(battleRef, { defenderAction: actionId });
+            if (actionId === 'FLEE') {
+                if (Math.random() < 0.5) {
+                    const winnerId = battleState.turn === 'challenger' ? battleState.opponent.id : battleState.challenger.id;
+                    await updateDoc(battleRef, { status: 'finished', winner: winnerId, log: `${myPlayerData.name}이(가) 도망쳤습니다!` });
+                    await processBattleResults(winnerId, myPlayerData.id, true);
+                } else {
+                    await updateDoc(battleRef, { defenderAction: 'FLEE_FAILED', log: '도망치기에 실패했다!' });
+                }
+            } else {
+                await updateDoc(battleRef, { defenderAction: actionId });
+            }
         }
         setActionSubMenu(null);
         setIsProcessing(false);
@@ -289,11 +319,8 @@ function BattlePage() {
             const attackerRole = turn;
             const defenderRole = turn === 'challenger' ? 'opponent' : 'challenger';
 
-            let attacker = JSON.parse(JSON.stringify(challenger));
-            let defender = JSON.parse(JSON.stringify(opponent));
-            if (attackerRole === 'opponent') {
-                [attacker, defender] = [defender, attacker];
-            }
+            let attacker = attackerRole === 'challenger' ? { ...challenger } : { ...opponent };
+            let defender = attackerRole === 'challenger' ? { ...opponent } : { ...challenger };
 
             const skill = SKILLS[attackerAction.toUpperCase()];
             let damage = skill.basePower + attacker.pet.atk;
@@ -316,6 +343,9 @@ function BattlePage() {
                     attacker.pet.status = { ...(attacker.pet.status || {}), focusCharge: 1 };
                     log += ` ${defender.pet.name}은(는) 공격을 받아내며 기를 모은다!`;
                     break;
+                case 'FLEE_FAILED':
+                    log += ` ${defender.pet.name}은(는) 도망에 실패해 무방비 상태!`;
+                    break;
             }
 
             damage = Math.round(damage);
@@ -336,7 +366,14 @@ function BattlePage() {
                 transaction.update(battleRef, {
                     log,
                     challenger: attackerRole === 'challenger' ? attacker : defender,
-                    opponent: attackerRole === 'opponent' ? attacker : defender
+                    opponent: attackerRole === 'opponent' ? attacker : defender,
+                    status: 'quiz',
+                    question: allQuizzes[Math.floor(Math.random() * allQuizzes.length)],
+                    turnStartTime: Date.now(),
+                    turn: null,
+                    attackerAction: null,
+                    defenderAction: null,
+                    chat: {}
                 });
             }
         });
@@ -345,8 +382,6 @@ function BattlePage() {
         if (finalState.status === 'finished') {
             await processBattleResults(finalState.winner, finalState.winner === finalState.challenger.id ? finalState.opponent.id : finalState.challenger.id);
             setTimeout(() => navigate('/pet'), 5000);
-        } else {
-            timeoutRef.current = setTimeout(() => startNewTurn(battleRef, "다음 턴! 퀴즈를 풀어 선공을 차지하세요!"), 3000);
         }
 
         setIsProcessing(false);
@@ -362,10 +397,10 @@ function BattlePage() {
 
     const isAttacker = battleState.turn === myRole;
 
-    const myEquippedSkills = myInfo.pet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
-
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
+
+    const myEquippedSkills = myInfo.pet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
 
     return (
         <>
