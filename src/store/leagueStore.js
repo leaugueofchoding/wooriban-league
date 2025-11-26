@@ -268,10 +268,18 @@ export const useLeagueStore = create((set, get) => ({
         return { expGained };
     },
 
-    processBattleResults: async (winnerId, loserId, fled = false, winnerPet, loserPet) => {
-        const { classId } = get();
-        await firebaseProcessBattleResults(classId, winnerId, loserId, fled, winnerPet, loserPet);
-        await get().fetchInitialData(); // 배틀 후 양쪽 플레이어 정보 전체 갱신
+    processBattleResults: async (classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet) => {
+        try {
+            // [수정] firebaseApi. 제거하고 import한 이름 사용
+            await firebaseProcessBattleResults(classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet);
+
+            // [수정] firebaseApi. 제거하고 import한 이름 사용
+            const updatedPlayers = await getPlayers(classId);
+            set({ players: updatedPlayers });
+        } catch (error) {
+            console.error("Battle result processing failed:", error);
+            // 에러 처리 로직 (필요 시)
+        }
     },
 
     updatePetName: async (newName, petId) => {

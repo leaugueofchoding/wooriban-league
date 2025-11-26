@@ -3033,9 +3033,7 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     const winnerDoc = await transaction.get(winnerRef);
     const loserDoc = await transaction.get(loserRef);
 
-    if (!winnerDoc.exists() || !loserDoc.exists()) {
-      throw new Error("플레이어 정보를 찾을 수 없습니다.");
-    }
+    if (!winnerDoc.exists() || !loserDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
     const winnerData = winnerDoc.data();
     const loserData = loserDoc.data();
@@ -3043,50 +3041,42 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     let winnerPets = winnerData.pets || [];
     let loserPets = loserData.pets || [];
 
-    // 전달받은 최종 펫 ID로 인덱스 찾기
     const winnerPetIndex = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
     const loserPetIndex = loserPets.findIndex(p => p.id === finalLoserPet.id);
 
-    // 승자 펫 업데이트
+    // [승자 업데이트]
     if (winnerPetIndex !== -1) {
       const battledPet = { ...winnerPets[winnerPetIndex] };
-      // 배틀 종료 시점의 HP/SP 상태를 덮어씌움
-      battledPet.hp = finalWinnerPet.hp;
-      battledPet.sp = finalWinnerPet.sp;
-      battledPet.status = {}; // 상태이상 해제
+      battledPet.hp = finalWinnerPet.hp; // ★ 배틀 종료 시점 HP 적용
+      battledPet.sp = finalWinnerPet.sp; // ★ 배틀 종료 시점 SP 적용
+      battledPet.status = {}; 
 
-      // 펫이 살아있을 때만 경험치 지급 및 레벨업 체크
       if (battledPet.hp > 0) {
-        battledPet.exp += 100; // 승리 경험치
+        battledPet.exp += 100;
         const { leveledUpPet } = calculateLevelUp(battledPet);
         winnerPets[winnerPetIndex] = leveledUpPet;
       } else {
-        // 죽었으면 경험치 획득 없이 상태만 저장
         winnerPets[winnerPetIndex] = battledPet;
       }
     }
 
-    // 패자 펫 업데이트
+    // [패자 업데이트]
     if (loserPetIndex !== -1) {
       const battledPet = { ...loserPets[loserPetIndex] };
-      // 배틀 종료 시점의 HP/SP 상태를 덮어씌움
-      battledPet.hp = finalLoserPet.hp;
-      battledPet.sp = finalLoserPet.sp;
-      battledPet.status = {}; // 상태이상 해제
+      battledPet.hp = finalLoserPet.hp; // ★ 배틀 종료 시점 HP 적용
+      battledPet.sp = finalLoserPet.sp; // ★ 배틀 종료 시점 SP 적용
+      battledPet.status = {}; 
 
-      // 펫이 살아있을 때만 (도망 등) 경험치 지급
       if (battledPet.hp > 0) {
-        battledPet.exp += fled ? 10 : 30; // 패배/도망 경험치
+        battledPet.exp += fled ? 10 : 30;
         const { leveledUpPet } = calculateLevelUp(battledPet);
         loserPets[loserPetIndex] = leveledUpPet;
       } else {
-        // 죽었으면 HP 0 상태로 저장하고 경험치 없음
         battledPet.hp = 0;
         loserPets[loserPetIndex] = battledPet;
       }
     }
 
-    // 플레이어 포인트 및 펫 배열 업데이트
     transaction.update(winnerRef, { points: increment(150), pets: winnerPets });
     transaction.update(loserRef, { points: increment(fled ? 0 : -50), pets: loserPets });
 

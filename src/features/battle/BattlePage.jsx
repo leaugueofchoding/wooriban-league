@@ -267,8 +267,7 @@ function BattlePage() {
         });
     };
 
-    // [수정 3] handleTimeout 로직 강화
-    // 문제점 해결: 트랜잭션 내부에서 시간을 다시 확인하여 중복 데미지 방지
+   // [수정] handleTimeout: 5% 데미지 + 문제 교체 로직 적용
     const handleTimeout = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -279,18 +278,20 @@ function BattlePage() {
                 if (!battleDoc.exists() || battleDoc.data().status !== 'quiz') return null;
 
                 const data = battleDoc.data();
-
-                // ★ 중요: DB상 시간과 현재 시간을 비교하여 이미 초기화된 경우 패스
-                // 15초 + 1초 버퍼 = 14000ms 보다 적게 지났으면 이미 누군가 처리한 것임
+                
+                // 중복 실행 방지 (15초 + 1초 버퍼)
                 if (Date.now() - data.turnStartTime < 14000) {
-                    return null;
+                    return null; 
                 }
 
                 let { challenger, opponent } = data;
-                const damage = 10;
+                
+                // [과제 2] 전체 체력의 5%로 데미지 수정 (최소 1 데미지는 들어가도록 설정)
+                const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
+                const damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
 
-                challenger.pet.hp = Math.max(0, challenger.pet.hp - damage);
-                opponent.pet.hp = Math.max(0, opponent.pet.hp - damage);
+                challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
+                opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
 
                 const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
                 let winnerId = null;
@@ -304,11 +305,14 @@ function BattlePage() {
                 const updateData = {
                     challenger,
                     opponent,
-                    log: isFinished ? `시간 초과! 펫이 쓰러졌습니다!` : `시간 초과! 양쪽 모두 ${damage}의 피해를 입었다!`,
+                    log: isFinished ? `시간 초과! 펫이 쓰러졌습니다!` : `시간 초과! 양쪽 모두 체력이 감소했습니다!`,
                     status: isFinished ? 'finished' : 'quiz',
                     winner: winnerId,
-                    // ★ 턴 시간을 갱신해주어야 다음 틱에서 걸러짐
-                    ...(!isFinished && { turnStartTime: Date.now() })
+                    // [과제 1] 시간이 초과되었는데 안 끝났으면, 새로운 문제로 교체
+                    ...(!isFinished && { 
+                        turnStartTime: Date.now(),
+                        question: allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
+                    })
                 };
 
                 transaction.update(battleRef, updateData);
