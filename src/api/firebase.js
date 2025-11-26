@@ -2725,35 +2725,6 @@ export async function selectInitialPet(classId, species, name) {
   return playerSnap.data();
 }
 
-function calculateLevelUp(pet) {
-  let leveledUpPet = { ...pet };
-  let levelUps = 0;
-  const growth = PET_DATA[pet.species].growth;
-
-  while (leveledUpPet.exp >= leveledUpPet.maxExp) {
-    leveledUpPet.level++;
-    leveledUpPet.exp -= leveledUpPet.maxExp;
-
-    // ▼▼▼ [수정] 경험치 공식 변경 ▼▼▼
-    // 기존: leveledUpPet.maxExp = Math.floor(leveledUpPet.maxExp * 1.2);
-    // 신규: (현재 레벨 ^ 1.5) * 100, 즉 레벨이 오를수록 점진적으로 요구량이 늘어나는 방식
-    leveledUpPet.maxExp = Math.floor(100 * Math.pow(leveledUpPet.level, 1.5));
-
-    // 고정 수치 성장
-    leveledUpPet.maxHp += growth.hp;
-    leveledUpPet.maxSp += growth.sp;
-    leveledUpPet.atk += growth.atk;
-
-    levelUps++;
-  }
-  if (levelUps > 0) {
-    leveledUpPet.hp = leveledUpPet.maxHp;
-    leveledUpPet.sp = leveledUpPet.maxSp;
-  }
-  return { leveledUpPet, levelUps };
-}
-
-
 export async function buyPetItem(classId, playerId, item) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, 'classes', classId, 'players', playerId);
@@ -3053,7 +3024,7 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
   return { expGained, updatedPlayerData: updatedPlayerSnap.data() };
 }
 
-export async function processBattleResults(classId, winnerId, loserId, fled = false) { // 'fled' 파라미터 추가
+export async function processBattleResults(classId, winnerId, loserId, fled = false, finalWinnerPet, finalLoserPet) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
   const loserRef = doc(db, "classes", classId, "players", loserId);
@@ -3069,30 +3040,54 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     const winnerData = winnerDoc.data();
     const loserData = loserDoc.data();
 
-    const winnerPartnerId = winnerData.partnerPetId;
-    const loserPartnerId = loserData.partnerPetId;
+    let winnerPets = winnerData.pets || [];
+    let loserPets = loserData.pets || [];
 
-    const winnerPets = winnerData.pets || [];
-    const loserPets = loserData.pets || [];
+    // 전달받은 최종 펫 ID로 인덱스 찾기
+    const winnerPetIndex = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
+    const loserPetIndex = loserPets.findIndex(p => p.id === finalLoserPet.id);
 
-    const winnerPetIndex = winnerPets.findIndex(p => p.id === winnerPartnerId);
-    const loserPetIndex = loserPets.findIndex(p => p.id === loserPartnerId);
-
+    // 승자 펫 업데이트
     if (winnerPetIndex !== -1) {
-      winnerPets[winnerPetIndex].exp += 100;
-      const { leveledUpPet } = calculateLevelUp(winnerPets[winnerPetIndex]);
-      winnerPets[winnerPetIndex] = leveledUpPet;
+      const battledPet = { ...winnerPets[winnerPetIndex] };
+      // 배틀 종료 시점의 HP/SP 상태를 덮어씌움
+      battledPet.hp = finalWinnerPet.hp;
+      battledPet.sp = finalWinnerPet.sp;
+      battledPet.status = {}; // 상태이상 해제
+
+      // 펫이 살아있을 때만 경험치 지급 및 레벨업 체크
+      if (battledPet.hp > 0) {
+        battledPet.exp += 100; // 승리 경험치
+        const { leveledUpPet } = calculateLevelUp(battledPet);
+        winnerPets[winnerPetIndex] = leveledUpPet;
+      } else {
+        // 죽었으면 경험치 획득 없이 상태만 저장
+        winnerPets[winnerPetIndex] = battledPet;
+      }
     }
 
+    // 패자 펫 업데이트
     if (loserPetIndex !== -1) {
-      // 도망친 경우는 경험치를 적게 받도록 수정
-      loserPets[loserPetIndex].exp += fled ? 10 : 30;
-      const { leveledUpPet } = calculateLevelUp(loserPets[loserPetIndex]);
-      loserPets[loserPetIndex] = leveledUpPet;
+      const battledPet = { ...loserPets[loserPetIndex] };
+      // 배틀 종료 시점의 HP/SP 상태를 덮어씌움
+      battledPet.hp = finalLoserPet.hp;
+      battledPet.sp = finalLoserPet.sp;
+      battledPet.status = {}; // 상태이상 해제
+
+      // 펫이 살아있을 때만 (도망 등) 경험치 지급
+      if (battledPet.hp > 0) {
+        battledPet.exp += fled ? 10 : 30; // 패배/도망 경험치
+        const { leveledUpPet } = calculateLevelUp(battledPet);
+        loserPets[loserPetIndex] = leveledUpPet;
+      } else {
+        // 죽었으면 HP 0 상태로 저장하고 경험치 없음
+        battledPet.hp = 0;
+        loserPets[loserPetIndex] = battledPet;
+      }
     }
 
+    // 플레이어 포인트 및 펫 배열 업데이트
     transaction.update(winnerRef, { points: increment(150), pets: winnerPets });
-    // 도망친 경우 감점은 없도록 수정
     transaction.update(loserRef, { points: increment(fled ? 0 : -50), pets: loserPets });
 
     await addPointHistory(classId, winnerData.authUid, winnerData.name, 150, "퀴즈 배틀 승리");
@@ -3422,3 +3417,33 @@ export async function updateBattleChat(classId, battleId, playerId, message, isC
     }
   }, 2000);
 }
+
+// ▼▼▼ [신규 추가] 펫 레벨업 계산 헬퍼 함수 ▼▼▼
+function calculateLevelUp(pet) {
+  let leveledUpPet = { ...pet };
+  let levelUps = 0;
+  // PET_DATA를 import해야 합니다.
+  const growth = PET_DATA[pet.species].growth;
+
+  while (leveledUpPet.exp >= leveledUpPet.maxExp) {
+    leveledUpPet.level++;
+    leveledUpPet.exp -= leveledUpPet.maxExp;
+
+    // 레벨업 시 최대 경험치 공식 (petData.js와 동일하게)
+    leveledUpPet.maxExp = Math.floor(100 * Math.pow(leveledUpPet.level, 1.5));
+
+    // 고정 수치 성장
+    leveledUpPet.maxHp += growth.hp;
+    leveledUpPet.maxSp += growth.sp;
+    leveledUpPet.atk += growth.atk;
+
+    levelUps++;
+  }
+  if (levelUps > 0) {
+    // 레벨업 시 HP/SP 완전 회복
+    leveledUpPet.hp = leveledUpPet.maxHp;
+    leveledUpPet.sp = leveledUpPet.maxSp;
+  }
+  return { leveledUpPet, levelUps };
+}
+// ▲▲▲ [신규 추가] 펫 레벨업 계산 헬퍼 함수 ▲▲▲

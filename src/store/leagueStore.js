@@ -59,7 +59,6 @@ import {
     usePetItem as firebaseUsePetItem,
     evolvePet as firebaseEvolvePet,
     convertLikesToExp as firebaseConvertLikesToExp,
-    processBattleResults as firebaseProcessBattleResults,
     updatePetName as firebaseUpdatePetName,
     setPartnerPet as firebaseSetPartnerPet,
     hatchPetEgg as firebaseHatchPetEgg,
@@ -68,6 +67,10 @@ import {
     healAllPets as firebaseHealAllPets,
     convertLikesToExp as apiConvertLikesToExp,
     updatePetSkills as apiUpdatePetSkills,
+    createOrJoinBattle,
+    listenToBattle,
+    submitBattleAction,
+    processBattleResults as firebaseProcessBattleResults,
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -113,7 +116,43 @@ export const useLeagueStore = create((set, get) => ({
     quizHistory: [],
     currentUser: null,
     pointAdjustmentNotification: null,
+    battleState: null, // [추가] 실시간 배틀 상태
+    battleListener: null, // [추가] 배틀 리스너 해제 함수
 
+    // [신규] 배틀 시작 및 실시간 데이터 수신
+    startListeningToBattle: async (matchId, myPlayerData, opponentPlayerData) => {
+        const { classId } = useClassStore.getState();
+        if (!classId) return;
+
+        const oldListener = get().battleListener;
+        if (oldListener) oldListener();
+
+        // ▼▼▼ [수정] 퀴즈를 선택하여 createOrJoinBattle 함수에 전달합니다. ▼▼▼
+        const allQuizList = Object.values(allQuizzesData).flat();
+        const randomQuiz = allQuizList[Math.floor(Math.random() * allQuizList.length)];
+        const battleId = await createOrJoinBattle(classId, matchId, myPlayerData, opponentPlayerData, randomQuiz);
+
+        const unsubscribe = listenToBattle(classId, battleId, (data) => {
+            set({ battleState: data });
+        });
+
+        set({ battleListener: unsubscribe });
+    },
+
+    stopListeningToBattle: () => {
+        const unsubscribe = get().battleListener;
+        if (unsubscribe) {
+            unsubscribe();
+            set({ battleListener: null, battleState: null });
+        }
+    },
+
+    // ▼▼▼ [수정] dispatchBattleAction 함수에 allQuizzesData를 전달합니다. ▼▼▼
+    dispatchBattleAction: async (battleId, actionData) => {
+        const { classId } = useClassStore.getState();
+        if (!classId) return;
+        await submitBattleAction(classId, battleId, actionData, allQuizzesData);
+    },
 
     selectInitialPet: async (species, name) => {
         const { classId } = get();
@@ -229,9 +268,9 @@ export const useLeagueStore = create((set, get) => ({
         return { expGained };
     },
 
-    processBattleResults: async (winnerId, loserId) => {
+    processBattleResults: async (winnerId, loserId, fled = false, winnerPet, loserPet) => {
         const { classId } = get();
-        await firebaseProcessBattleResults(classId, winnerId, loserId);
+        await firebaseProcessBattleResults(classId, winnerId, loserId, fled, winnerPet, loserPet);
         await get().fetchInitialData(); // 배틀 후 양쪽 플레이어 정보 전체 갱신
     },
 
