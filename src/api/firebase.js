@@ -3024,6 +3024,7 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
   return { expGained, updatedPlayerData: updatedPlayerSnap.data() };
 }
 
+// [수정] 승패 처리 함수 (★ 중요: HP/SP 연동 로직 포함)
 export async function processBattleResults(classId, winnerId, loserId, fled = false, finalWinnerPet, finalLoserPet) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
@@ -3041,39 +3042,37 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     let winnerPets = winnerData.pets || [];
     let loserPets = loserData.pets || [];
 
-    const winnerPetIndex = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
-    const loserPetIndex = loserPets.findIndex(p => p.id === finalLoserPet.id);
+    // [승자 펫 업데이트] - 전달받은 최종 상태(HP, SP)를 덮어씌움
+    if (finalWinnerPet) {
+      const idx = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
+      if (idx !== -1) {
+        // 배틀 중 깎인 HP/SP 적용
+        winnerPets[idx] = { ...winnerPets[idx], hp: finalWinnerPet.hp, sp: finalWinnerPet.sp, status: {} };
 
-    // [승자 업데이트]
-    if (winnerPetIndex !== -1) {
-      const battledPet = { ...winnerPets[winnerPetIndex] };
-      battledPet.hp = finalWinnerPet.hp; // ★ 배틀 종료 시점 HP 적용
-      battledPet.sp = finalWinnerPet.sp; // ★ 배틀 종료 시점 SP 적용
-      battledPet.status = {}; 
-
-      if (battledPet.hp > 0) {
-        battledPet.exp += 100;
-        const { leveledUpPet } = calculateLevelUp(battledPet);
-        winnerPets[winnerPetIndex] = leveledUpPet;
-      } else {
-        winnerPets[winnerPetIndex] = battledPet;
+        // 살아있다면 경험치 지급 및 레벨업
+        if (winnerPets[idx].hp > 0) {
+          winnerPets[idx].exp += 100;
+          const { leveledUpPet } = calculateLevelUp(winnerPets[idx]);
+          winnerPets[idx] = leveledUpPet;
+        }
       }
     }
 
-    // [패자 업데이트]
-    if (loserPetIndex !== -1) {
-      const battledPet = { ...loserPets[loserPetIndex] };
-      battledPet.hp = finalLoserPet.hp; // ★ 배틀 종료 시점 HP 적용
-      battledPet.sp = finalLoserPet.sp; // ★ 배틀 종료 시점 SP 적용
-      battledPet.status = {}; 
+    // [패자 펫 업데이트] - 전달받은 최종 상태(HP, SP)를 덮어씌움
+    if (finalLoserPet) {
+      const idx = loserPets.findIndex(p => p.id === finalLoserPet.id);
+      if (idx !== -1) {
+        loserPets[idx] = { ...loserPets[idx], hp: finalLoserPet.hp, sp: finalLoserPet.sp, status: {} };
 
-      if (battledPet.hp > 0) {
-        battledPet.exp += fled ? 10 : 30;
-        const { leveledUpPet } = calculateLevelUp(battledPet);
-        loserPets[loserPetIndex] = leveledUpPet;
-      } else {
-        battledPet.hp = 0;
-        loserPets[loserPetIndex] = battledPet;
+        // 펫이 살아있다면 (도망 등) 소량의 경험치
+        if (loserPets[idx].hp > 0) {
+          loserPets[idx].exp += fled ? 10 : 30;
+          const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
+          loserPets[idx] = leveledUpPet;
+        } else {
+          // 확실하게 기절 처리 (HP 0)
+          loserPets[idx].hp = 0;
+        }
       }
     }
 
@@ -3331,24 +3330,82 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
   });
 }
 
-export async function createBattleChallenge(classId, challenger, opponent) {
-  if (!classId || !challenger || !opponent) throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
-  if (!challenger.partnerPetId || !opponent.partnerPetId) {
-    throw new Error("양쪽 플레이어 모두 파트너 펫을 선택해야 배틀을 시작할 수 있습니다.");
+export async function createBattleChallenge(classId, challengerObj, opponentObj) {
+  if (!classId || !challengerObj?.id || !opponentObj?.id) {
+    throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
   }
 
-  const battleId = [challenger.id, opponent.id].sort().join('_');
-  const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-  const battleSnap = await getDoc(battleRef);
+  const challengerId = challengerObj.id;
+  const opponentId = opponentObj.id;
 
-  // 이미 진행중이거나 대기중인 배틀이 있으면 새로 만들지 않음
-  if (battleSnap.exists() && ['pending', 'starting', 'turn'].includes(battleSnap.data().status)) {
-    throw new Error("이미 해당 상대와 진행중인 대결이 있습니다.");
+  // 1. 최신 정보 조회
+  const [challengerSnap, opponentSnap] = await Promise.all([
+    getDoc(doc(db, 'classes', classId, 'players', challengerId)),
+    getDoc(doc(db, 'classes', classId, 'players', opponentId))
+  ]);
+
+  if (!challengerSnap.exists() || !opponentSnap.exists()) throw new Error("선수 정보를 찾을 수 없습니다.");
+
+  const challenger = { id: challengerSnap.id, ...challengerSnap.data() };
+  const opponent = { id: opponentSnap.id, ...opponentSnap.data() };
+
+  // 쿨타임 체크 (3분)
+  if (challenger.battleCooldowns && challenger.battleCooldowns[opponentId]) {
+    const cooldownTime = challenger.battleCooldowns[opponentId];
+    const now = Date.now();
+    const remainingTime = cooldownTime - now;
+
+    if (remainingTime > 0) {
+      const minutes = Math.floor(remainingTime / 60000);
+      const seconds = Math.floor((remainingTime % 60000) / 1000);
+      throw new Error(`거절당한 상대입니다. 잠시 뒤 다시 신청해주세요. (${minutes}분 ${seconds}초 남음)`);
+    }
   }
+
+  if (!challenger.partnerPetId || !opponent.partnerPetId) throw new Error("양쪽 플레이어 모두 파트너 펫을 선택해야 합니다.");
 
   const challengerPet = challenger.pets.find(p => p.id === challenger.partnerPetId);
   const opponentPet = opponent.pets.find(p => p.id === opponent.partnerPetId);
 
+  // 기절 체크
+  if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
+  if (opponentPet.hp <= 0) throw new Error("상대방의 펫이 기절 상태라 대결을 신청할 수 없습니다.");
+
+  // 배틀 ID 생성
+  const battleId = [challenger.id, opponent.id].sort().join('_');
+  const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+  const battleSnap = await getDoc(battleRef);
+
+  // ★ 중요: 기존 배틀이 있는지 확인하고, 좀비(멈춘) 배틀이면 덮어쓰기
+  if (battleSnap.exists()) {
+    const data = battleSnap.data();
+    const status = data.status;
+    const lastActivity = data.turnStartTime || data.createdAt?.toMillis() || 0;
+    const timeSinceLastActivity = Date.now() - lastActivity;
+
+    // (A) 대기 중인 배틀
+    if (status === 'pending') {
+      if (data.challenger.id === challenger.id) return battleId; // 내가 만든 방이면 재입장
+      if (data.opponent.id === challenger.id) {
+        // 상대가 만든 방이 있는데 오래됐으면(5분) 덮어쓰기, 아니면 에러
+        if (timeSinceLastActivity < 5 * 60 * 1000) {
+          throw new Error("상대방이 이미 대결을 신청해둔 상태입니다. 알림을 확인해주세요.");
+        }
+      }
+    }
+
+    // (B) 진행 중인 배틀인데 멈춘 지 오래됨 (1분 이상 턴이 안 넘어감) -> 좀비 배틀로 간주하고 덮어쓰기(재경기)
+    if (['starting', 'quiz', 'action', 'resolution'].includes(status)) {
+      if (timeSinceLastActivity > 60 * 1000) { // 1분 이상 지체됨
+        console.log("좀비 배틀 감지! 새로 생성합니다.");
+        // 덮어쓰기 위해 아래 로직으로 진행 (return 안 함)
+      } else {
+        return battleId; // 정상 진행 중이면 재입장
+      }
+    }
+  }
+
+  // 2. 새 배틀 데이터 생성 (덮어쓰기)
   const battleData = {
     id: battleId,
     status: 'pending',
@@ -3362,17 +3419,68 @@ export async function createBattleChallenge(classId, challenger, opponent) {
   };
 
   await setDoc(battleRef, battleData);
-
-  // 상대방에게 알림 생성
-  createNotification(
-    opponent.authUid,
-    '⚔️ 대결 신청!',
-    `${challenger.name}님이 퀴즈 대결을 신청했습니다!`,
-    'battle_request'
-    // 링크를 제거하여 Auth 컴포넌트의 모달이 즉시 반응하도록 함
-  );
+  createNotification(opponent.authUid, '⚔️ 대결 신청!', `${challenger.name}님이 퀴즈 대결을 신청했습니다!`, 'battle_request');
 
   return battleId;
+}
+
+// [신규] 배틀 거절 함수 (쿨타임 부여)
+export async function rejectBattleChallenge(classId, battleId) {
+  if (!classId || !battleId) return;
+  const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+  const battleSnap = await getDoc(battleRef);
+
+  if (!battleSnap.exists()) return;
+  const { challenger } = battleSnap.data();
+
+  await updateDoc(battleRef, {
+    status: 'rejected',
+    log: '상대방이 대결을 거절했습니다.'
+  });
+
+  // 신청자에게 3분 쿨타임 부여
+  if (challenger && challenger.id) {
+    const challengerRef = doc(db, 'classes', classId, 'players', challenger.id);
+    const cooldownKey = `battleCooldowns.${battleSnap.data().opponent.id}`;
+    const expireTime = Date.now() + (3 * 60 * 1000); // 3분
+
+    await updateDoc(challengerRef, { [cooldownKey]: expireTime });
+  }
+}
+
+// [신규] 배틀 신청 취소 함수
+export async function cancelBattleChallenge(classId, battleId) {
+  if (!classId || !battleId) return;
+  const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+  await updateDoc(battleRef, {
+    status: 'cancelled',
+    log: '배틀 신청이 취소되었습니다.'
+  });
+}
+
+// [신규] 배틀 무승부/도망 처리 (HP/SP만 저장)
+export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet) {
+  if (!classId) return;
+  const p1Ref = doc(db, "classes", classId, "players", player1Id);
+  const p2Ref = doc(db, "classes", classId, "players", player2Id);
+
+  await runTransaction(db, async (transaction) => {
+    const p1Doc = await transaction.get(p1Ref);
+    const p2Doc = await transaction.get(p2Ref);
+    if (!p1Doc.exists() || !p2Doc.exists()) return;
+
+    const updatePetState = (playerData, finalPetState) => {
+      const pets = playerData.pets || [];
+      const idx = pets.findIndex(p => p.id === finalPetState.id);
+      if (idx !== -1) {
+        pets[idx] = { ...pets[idx], hp: finalPetState.hp, sp: finalPetState.sp, status: {} };
+      }
+      return pets;
+    };
+
+    transaction.update(p1Ref, { pets: updatePetState(p1Doc.data(), player1Pet) });
+    transaction.update(p2Ref, { pets: updatePetState(p2Doc.data(), player2Pet) });
+  });
 }
 
 /**

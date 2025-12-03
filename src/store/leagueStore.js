@@ -71,6 +71,7 @@ import {
     listenToBattle,
     submitBattleAction,
     processBattleResults as firebaseProcessBattleResults,
+    processBattleDraw as firebaseProcessBattleDraw, // [추가]
 } from '../api/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
 import { auth } from '../api/firebase';
@@ -270,15 +271,27 @@ export const useLeagueStore = create((set, get) => ({
 
     processBattleResults: async (classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet) => {
         try {
-            // [수정] firebaseApi. 제거하고 import한 이름 사용
+            // firebaseApi. 제거하고 직접 호출
             await firebaseProcessBattleResults(classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet);
 
-            // [수정] firebaseApi. 제거하고 import한 이름 사용
+            // ★ DB 업데이트 후 최신 데이터 다시 불러오기 (화면 갱신)
             const updatedPlayers = await getPlayers(classId);
             set({ players: updatedPlayers });
         } catch (error) {
             console.error("Battle result processing failed:", error);
-            // 에러 처리 로직 (필요 시)
+        }
+    },
+
+    // [신규] 무승부/도망 처리 (상태만 저장)
+    processBattleDraw: async (classId, p1Id, p2Id, p1Pet, p2Pet) => {
+        try {
+            await firebaseProcessBattleDraw(classId, p1Id, p2Id, p1Pet, p2Pet);
+
+            // ★ DB 업데이트 후 최신 데이터 다시 불러오기 (화면 갱신)
+            const updatedPlayers = await getPlayers(classId);
+            set({ players: updatedPlayers });
+        } catch (error) {
+            console.error("Battle draw processing failed:", error);
         }
     },
 

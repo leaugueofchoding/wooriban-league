@@ -1,9 +1,8 @@
-// src/components/Auth.jsx
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { auth, updateUserProfile, db } from '../api/firebase.js';
+// [중요] rejectBattleChallenge 추가
+import { auth, updateUserProfile, db, rejectBattleChallenge } from '../api/firebase.js';
 import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
 import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import styled from 'styled-components';
@@ -286,6 +285,14 @@ function Auth({ user }) {
 
     const handleAcceptBattle = async () => {
         if (!battleChallenge || !classId) return;
+
+        // [수정] 내 펫 기절 상태 체크
+        const myPet = myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId);
+        if (!myPet || myPet.hp <= 0) {
+            alert("나의 펫이 기절 상태라 대결을 수락할 수 없습니다.\n펫 센터에서 치료해주세요.");
+            return;
+        }
+
         const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
         await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
         navigate(`/battle/${battleChallenge.challenger.id}`);
@@ -294,8 +301,7 @@ function Auth({ user }) {
 
     const handleRejectBattle = async () => {
         if (!battleChallenge || !classId) return;
-        const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
-        await updateDoc(battleRef, { status: 'rejected' });
+        await rejectBattleChallenge(classId, battleChallenge.id);
         setBattleChallenge(null);
     };
 
