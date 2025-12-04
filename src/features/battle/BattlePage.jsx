@@ -130,7 +130,6 @@ const ChatBubble = styled.div`
     }
 `;
 
-// 퀴즈 데이터 안전하게 로드
 const allQuizzes = Object.values(allQuizzesData || {}).flat();
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 const profanityList = ['바보', '멍청이', 'xx'];
@@ -152,7 +151,6 @@ function BattlePage() {
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
 
-    // 뒤로가기 함수
     const goBack = () => {
         if (window.history.length > 1) {
             navigate(-1);
@@ -161,7 +159,6 @@ function BattlePage() {
         }
     };
 
-    // Battle state listener
     useEffect(() => {
         if (!myPlayerData || !classId) return;
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
@@ -183,7 +180,6 @@ function BattlePage() {
         return () => unsubscribe();
     }, [myPlayerData, battleId, classId, navigate]);
 
-    // Game state progression
     useEffect(() => {
         if (!battleState || !myPlayerData) return;
 
@@ -203,7 +199,6 @@ function BattlePage() {
             }
         }
 
-        // UI Timer Logic
         if (battleState.status === 'quiz' || battleState.status === 'action') {
             const updateTimer = () => {
                 const now = Date.now();
@@ -231,7 +226,18 @@ function BattlePage() {
         };
     }, [battleState, myPlayerData, isProcessing]);
 
-    // 신청 취소 (대기 중일 때)
+    useEffect(() => {
+        if (!battleState) return;
+        const { status, attackerAction, defenderAction } = battleState;
+
+        if ((status === 'quiz' || status === 'action') && attackerAction && defenderAction) {
+            if (!isProcessing) {
+                const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+                handleResolution(battleRef);
+            }
+        }
+    }, [battleState, isProcessing, classId, battleId]);
+
     const handleCancel = async () => {
         if (!classId || !battleId) return;
         if (window.confirm("대결 신청을 취소하시겠습니까?")) {
@@ -240,53 +246,10 @@ function BattlePage() {
         }
     };
 
-    // [신규] 기권하기 (게임 중일 때 탈출용)
-    const handleForfeit = async () => {
-        if (!window.confirm("정말 기권하시겠습니까? 패배로 처리됩니다.")) return;
-        if (isProcessing) return;
-        setIsProcessing(true);
-
-        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-
-        // 기권은 '상대방 승리'로 처리하거나, 별도의 'forfeit' 상태로 처리
-        // 여기서는 '도망 실패'처럼 패배 처리로 유도 (상대방 승리)
-        const opponentId = myPlayerData.id === battleState.challenger.id ? battleState.opponent.id : battleState.challenger.id;
-        const myPet = myPlayerData.id === battleState.challenger.id ? battleState.challenger.pet : battleState.opponent.pet;
-        const opponentPet = myPlayerData.id === battleState.challenger.id ? battleState.opponent.pet : battleState.challenger.pet;
-
-        try {
-            await updateDoc(battleRef, {
-                status: 'finished',
-                winner: opponentId,
-                log: `${myPlayerData.name}님이 기권했습니다.`
-            });
-            // 패배 처리 (HP/SP 저장)
-            await processBattleResults(classId, opponentId, myPlayerData.id, true, opponentPet, myPet);
-            setTimeout(() => goBack(), 2000);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
     const startNewTurn = async (battleRef, log) => {
-        if (!allQuizzes || allQuizzes.length === 0) {
-            console.error("퀴즈 데이터가 없습니다.");
-            const fallbackQuiz = { question: "퀴즈 데이터가 없습니다. 아무거나 입력하세요.", answer: "1" };
-            await updateDoc(battleRef, {
-                status: 'quiz',
-                log: log,
-                question: fallbackQuiz,
-                turnStartTime: Date.now(),
-                turn: null,
-                attackerAction: null,
-                defenderAction: null,
-                chat: {}
-            });
-            return;
-        }
-        const randomQuiz = allQuizzes[Math.floor(Math.random() * allQuizzes.length)];
+        const randomQuiz = (allQuizzes && allQuizzes.length > 0)
+            ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
+            : { question: "퀴즈 데이터 없음", answer: "1" };
 
         await updateDoc(battleRef, {
             status: 'quiz',
@@ -398,10 +361,12 @@ function BattlePage() {
                 await runTransaction(db, async (transaction) => {
                     const battleDoc = await transaction.get(battleRef);
                     if (!battleDoc.exists() || battleDoc.data().status !== 'quiz') return;
-                    const myRole = myPlayerData.id === battleDoc.data().challenger.id ? 'challenger' : 'opponent';
+
+                    const winnerId = myPlayerData.id;
+
                     transaction.update(battleRef, {
                         status: 'action',
-                        turn: myRole,
+                        turn: winnerId,
                         log: `정답! ${myPlayerData.name}의 공격! 상대는 방어하세요!`,
                         question: null,
                         turnStartTime: Date.now()
@@ -417,17 +382,22 @@ function BattlePage() {
         if (isProcessing) return;
         setIsProcessing(true);
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-        const myRole = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
+
+        // [수정] 내 턴인지 확인 (ID 비교)
+        const isMyTurn = battleState.turn === myPlayerData.id;
 
         try {
-            if (battleState.turn === myRole) {
+            if (isMyTurn) {
                 await updateDoc(battleRef, { attackerAction: actionId });
             } else {
                 if (actionId === 'FLEE') {
                     if (Math.random() < 0.3) {
-                        const opponentId = battleState.turn === 'challenger' ? battleState.opponent.id : battleState.challenger.id;
-                        const myPet = battleState.turn === 'challenger' ? battleState.opponent.pet : battleState.challenger.pet;
-                        const opponentPet = battleState.turn === 'challenger' ? battleState.challenger.pet : battleState.opponent.pet;
+                        const opponentId = battleState.turn;
+                        const myId = myPlayerData.id;
+
+                        const isChallengerMe = myPlayerData.id === battleState.challenger.id;
+                        const myPet = isChallengerMe ? battleState.challenger.pet : battleState.opponent.pet;
+                        const opponentPet = isChallengerMe ? battleState.opponent.pet : battleState.challenger.pet;
 
                         await updateDoc(battleRef, {
                             status: 'finished',
@@ -435,7 +405,8 @@ function BattlePage() {
                             defenderAction: 'FLEE_SUCCESS',
                             log: `${myPlayerData.name}이(가) 도망쳤습니다!`
                         });
-                        await processBattleDraw(classId, myPlayerData.id, opponentId, myPet, opponentPet);
+
+                        await processBattleDraw(classId, myId, opponentId, myPet, opponentPet);
                         setTimeout(() => goBack(), 2000);
                     } else {
                         await updateDoc(battleRef, { defenderAction: 'FLEE_FAILED', log: '도망치기에 실패했다!' });
@@ -461,42 +432,30 @@ function BattlePage() {
                 if (!battleDoc.exists() || !battleDoc.data().attackerAction || !battleDoc.data().defenderAction) return null;
                 let { challenger, opponent, turn, attackerAction, defenderAction } = battleDoc.data();
 
-                const attackerRole = turn;
-                let attacker = attackerRole === 'challenger' ? { ...challenger } : { ...opponent };
-                let defender = attackerRole === 'challenger' ? { ...opponent } : { ...challenger };
+                // [수정] ID 비교로 공격자 역할 확인
+                const isChallengerAttacker = turn === challenger.id;
+
+                let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
+                let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
                 const skill = SKILLS[attackerAction.toUpperCase()];
                 let damage = skill.basePower + attacker.pet.atk;
                 let log = `${attacker.pet.name}의 ${skill.name}!`;
 
-                switch (defenderAction) {
-                    case 'BRACE':
-                        damage *= 0.5;
-                        log += ` ${defender.pet.name}은(는) 웅크려 피해를 줄였다!`;
-                        break;
-                    case 'EVADE':
-                        if (Math.random() < 0.5) {
-                            damage = 0;
-                            log += ` 하지만 ${defender.pet.name}은(는) 공격을 회피했다!`;
-                        } else {
-                            log += ` 하지만 회피에 실패했다!`;
-                        }
-                        break;
-                    case 'FOCUS':
-                        attacker.pet.status = { ...(attacker.pet.status || {}), focusCharge: 1 };
-                        log += ` ${defender.pet.name}은(는) 공격을 받아내며 기를 모은다!`;
-                        break;
-                    case 'FLEE_FAILED':
-                        log += ` ${defender.pet.name}은(는) 도망에 실패해 무방비 상태!`;
-                        break;
-                    default:
-                        break;
+                // 스킬 효과 적용
+                if (skill && skill.effect) {
+                    log = skill.effect(attacker.pet, defender.pet, defenderAction);
+                } else {
+                    let damage = 20 + attacker.pet.atk;
+                    if (defenderAction === 'BRACE') damage *= 0.5;
+                    damage = Math.round(damage);
+                    defender.pet.hp = Math.max(0, defender.pet.hp - damage);
+                    log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
                 }
 
-                damage = Math.round(damage);
-                defender.pet.hp = Math.max(0, defender.pet.hp - damage);
-                log += ` ${defender.pet.name}에게 ${damage}의 피해!`;
-                attacker.pet.sp -= skill.cost;
+                if (skill) {
+                    attacker.pet.sp = Math.max(0, attacker.pet.sp - skill.cost);
+                }
 
                 const isFinished = defender.pet.hp <= 0;
                 let winnerId = null;
@@ -511,8 +470,8 @@ function BattlePage() {
 
                 const updateData = {
                     log,
-                    challenger: attackerRole === 'challenger' ? attacker : defender,
-                    opponent: attackerRole === 'opponent' ? attacker : defender,
+                    challenger: isChallengerAttacker ? attacker : defender,
+                    opponent: isChallengerAttacker ? defender : attacker,
                     status: isFinished ? 'finished' : 'quiz',
                     winner: winnerId,
                     ...(!isFinished && {
@@ -561,9 +520,12 @@ function BattlePage() {
     const myInfo = battleState[myRole];
     const opponentInfo = battleState[IamChallenger ? 'opponent' : 'challenger'];
 
-    const isAttacker = battleState.turn === myRole;
+    // [수정] 렌더링 시 공격자 여부 판단 (ID 비교)
+    const isAttacker = battleState.turn === myPlayerData.id;
+
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
+
     const myEquippedSkills = myInfo.pet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
     const showTimer = (battleState.status === 'quiz' || battleState.status === 'action');
 
@@ -639,8 +601,6 @@ function BattlePage() {
                                         <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
                                     ))
                                 )}
-                                {/* [신규] 기권하기 버튼 추가 (우측 하단 등에 배치) */}
-                                <MenuItem onClick={handleForfeit} style={{ backgroundColor: '#dc3545', color: 'white' }}>기권하기</MenuItem>
                             </ActionMenu>
                         </QuizArea>
                     </>

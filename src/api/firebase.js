@@ -3024,7 +3024,6 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
   return { expGained, updatedPlayerData: updatedPlayerSnap.data() };
 }
 
-// [수정] 승패 처리 함수 (★ 중요: HP/SP 연동 로직 포함)
 export async function processBattleResults(classId, winnerId, loserId, fled = false, finalWinnerPet, finalLoserPet) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
@@ -3042,36 +3041,30 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     let winnerPets = winnerData.pets || [];
     let loserPets = loserData.pets || [];
 
-    // [승자 펫 업데이트] - 전달받은 최종 상태(HP, SP)를 덮어씌움
+    // 승자 펫 업데이트 (배틀 중 깎인 체력 반영)
     if (finalWinnerPet) {
       const idx = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
       if (idx !== -1) {
-        // 배틀 중 깎인 HP/SP 적용
         winnerPets[idx] = { ...winnerPets[idx], hp: finalWinnerPet.hp, sp: finalWinnerPet.sp, status: {} };
-
-        // 살아있다면 경험치 지급 및 레벨업
         if (winnerPets[idx].hp > 0) {
-          winnerPets[idx].exp += 100;
+          winnerPets[idx].exp += 100; // 승리 경험치
           const { leveledUpPet } = calculateLevelUp(winnerPets[idx]);
           winnerPets[idx] = leveledUpPet;
         }
       }
     }
 
-    // [패자 펫 업데이트] - 전달받은 최종 상태(HP, SP)를 덮어씌움
+    // 패자 펫 업데이트 (배틀 중 깎인 체력 반영)
     if (finalLoserPet) {
       const idx = loserPets.findIndex(p => p.id === finalLoserPet.id);
       if (idx !== -1) {
         loserPets[idx] = { ...loserPets[idx], hp: finalLoserPet.hp, sp: finalLoserPet.sp, status: {} };
-
-        // 펫이 살아있다면 (도망 등) 소량의 경험치
         if (loserPets[idx].hp > 0) {
-          loserPets[idx].exp += fled ? 10 : 30;
+          loserPets[idx].exp += fled ? 10 : 30; // 패배/도망 경험치
           const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
           loserPets[idx] = leveledUpPet;
         } else {
-          // 확실하게 기절 처리 (HP 0)
-          loserPets[idx].hp = 0;
+          loserPets[idx].hp = 0; // 확실하게 기절 처리
         }
       }
     }
@@ -3081,6 +3074,32 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
 
     await addPointHistory(classId, winnerData.authUid, winnerData.name, 150, "퀴즈 배틀 승리");
     await addPointHistory(classId, loserData.authUid, loserData.name, fled ? 0 : -50, fled ? "퀴즈 배틀에서 도망침" : "퀴즈 배틀 패배");
+  });
+}
+
+// [추가] 무승부/도망 처리 (경험치/포인트 변화 없이 상태만 저장)
+export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet) {
+  if (!classId) return;
+  const p1Ref = doc(db, "classes", classId, "players", player1Id);
+  const p2Ref = doc(db, "classes", classId, "players", player2Id);
+
+  await runTransaction(db, async (transaction) => {
+    const p1Doc = await transaction.get(p1Ref);
+    const p2Doc = await transaction.get(p2Ref);
+    if (!p1Doc.exists() || !p2Doc.exists()) return;
+
+    // 펫 상태 업데이트 헬퍼
+    const updatePetState = (playerData, finalPetState) => {
+      const pets = playerData.pets || [];
+      const idx = pets.findIndex(p => p.id === finalPetState.id);
+      if (idx !== -1) {
+        pets[idx] = { ...pets[idx], hp: finalPetState.hp, sp: finalPetState.sp, status: {} };
+      }
+      return pets;
+    };
+
+    transaction.update(p1Ref, { pets: updatePetState(p1Doc.data(), player1Pet) });
+    transaction.update(p2Ref, { pets: updatePetState(p2Doc.data(), player2Pet) });
   });
 }
 
@@ -3354,7 +3373,6 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     const cooldownTime = challenger.battleCooldowns[opponentId];
     const now = Date.now();
     const remainingTime = cooldownTime - now;
-
     if (remainingTime > 0) {
       const minutes = Math.floor(remainingTime / 60000);
       const seconds = Math.floor((remainingTime % 60000) / 1000);
@@ -3367,45 +3385,36 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   const challengerPet = challenger.pets.find(p => p.id === challenger.partnerPetId);
   const opponentPet = opponent.pets.find(p => p.id === opponent.partnerPetId);
 
-  // 기절 체크
   if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
   if (opponentPet.hp <= 0) throw new Error("상대방의 펫이 기절 상태라 대결을 신청할 수 없습니다.");
 
-  // 배틀 ID 생성
   const battleId = [challenger.id, opponent.id].sort().join('_');
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
   const battleSnap = await getDoc(battleRef);
 
-  // ★ 중요: 기존 배틀이 있는지 확인하고, 좀비(멈춘) 배틀이면 덮어쓰기
+  // ★ 좀비 배틀(멈춘 방) 정리 및 재입장 로직
   if (battleSnap.exists()) {
     const data = battleSnap.data();
     const status = data.status;
     const lastActivity = data.turnStartTime || data.createdAt?.toMillis() || 0;
     const timeSinceLastActivity = Date.now() - lastActivity;
 
-    // (A) 대기 중인 배틀
     if (status === 'pending') {
-      if (data.challenger.id === challenger.id) return battleId; // 내가 만든 방이면 재입장
+      if (data.challenger.id === challenger.id) return battleId; // 내 방이면 재입장
       if (data.opponent.id === challenger.id) {
-        // 상대가 만든 방이 있는데 오래됐으면(5분) 덮어쓰기, 아니면 에러
-        if (timeSinceLastActivity < 5 * 60 * 1000) {
-          throw new Error("상대방이 이미 대결을 신청해둔 상태입니다. 알림을 확인해주세요.");
-        }
+        if (timeSinceLastActivity < 5 * 60 * 1000) throw new Error("상대방이 이미 대결을 신청해둔 상태입니다.");
       }
     }
 
-    // (B) 진행 중인 배틀인데 멈춘 지 오래됨 (1분 이상 턴이 안 넘어감) -> 좀비 배틀로 간주하고 덮어쓰기(재경기)
+    // 진행 중인데 1분 이상 멈춰있으면 좀비 방 -> 덮어쓰기 허용
     if (['starting', 'quiz', 'action', 'resolution'].includes(status)) {
-      if (timeSinceLastActivity > 60 * 1000) { // 1분 이상 지체됨
-        console.log("좀비 배틀 감지! 새로 생성합니다.");
-        // 덮어쓰기 위해 아래 로직으로 진행 (return 안 함)
-      } else {
+      if (timeSinceLastActivity <= 60 * 1000) {
         return battleId; // 정상 진행 중이면 재입장
       }
     }
   }
 
-  // 2. 새 배틀 데이터 생성 (덮어쓰기)
+  // 새 배틀 생성 (덮어쓰기)
   const battleData = {
     id: battleId,
     status: 'pending',
@@ -3424,63 +3433,30 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   return battleId;
 }
 
-// [신규] 배틀 거절 함수 (쿨타임 부여)
+// [2. 수정] 배틀 거절 (쿨타임 부여)
 export async function rejectBattleChallenge(classId, battleId) {
   if (!classId || !battleId) return;
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
   const battleSnap = await getDoc(battleRef);
-
   if (!battleSnap.exists()) return;
+
+  await updateDoc(battleRef, { status: 'rejected', log: '상대방이 대결을 거절했습니다.' });
+
+  // 신청자에게 쿨타임 부여
   const { challenger } = battleSnap.data();
-
-  await updateDoc(battleRef, {
-    status: 'rejected',
-    log: '상대방이 대결을 거절했습니다.'
-  });
-
-  // 신청자에게 3분 쿨타임 부여
   if (challenger && challenger.id) {
     const challengerRef = doc(db, 'classes', classId, 'players', challenger.id);
     const cooldownKey = `battleCooldowns.${battleSnap.data().opponent.id}`;
-    const expireTime = Date.now() + (3 * 60 * 1000); // 3분
-
+    const expireTime = Date.now() + (3 * 60 * 1000);
     await updateDoc(challengerRef, { [cooldownKey]: expireTime });
   }
 }
 
-// [신규] 배틀 신청 취소 함수
+// [3. 추가] 배틀 신청 취소
 export async function cancelBattleChallenge(classId, battleId) {
   if (!classId || !battleId) return;
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-  await updateDoc(battleRef, {
-    status: 'cancelled',
-    log: '배틀 신청이 취소되었습니다.'
-  });
-}
-
-// [신규] 배틀 무승부/도망 처리 (HP/SP만 저장)
-export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet) {
-  if (!classId) return;
-  const p1Ref = doc(db, "classes", classId, "players", player1Id);
-  const p2Ref = doc(db, "classes", classId, "players", player2Id);
-
-  await runTransaction(db, async (transaction) => {
-    const p1Doc = await transaction.get(p1Ref);
-    const p2Doc = await transaction.get(p2Ref);
-    if (!p1Doc.exists() || !p2Doc.exists()) return;
-
-    const updatePetState = (playerData, finalPetState) => {
-      const pets = playerData.pets || [];
-      const idx = pets.findIndex(p => p.id === finalPetState.id);
-      if (idx !== -1) {
-        pets[idx] = { ...pets[idx], hp: finalPetState.hp, sp: finalPetState.sp, status: {} };
-      }
-      return pets;
-    };
-
-    transaction.update(p1Ref, { pets: updatePetState(p1Doc.data(), player1Pet) });
-    transaction.update(p2Ref, { pets: updatePetState(p2Doc.data(), player2Pet) });
-  });
+  await updateDoc(battleRef, { status: 'cancelled', log: '배틀 신청이 취소되었습니다.' });
 }
 
 /**

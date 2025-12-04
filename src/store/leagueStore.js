@@ -273,8 +273,6 @@ export const useLeagueStore = create((set, get) => ({
         try {
             // firebaseApi. 제거하고 직접 호출
             await firebaseProcessBattleResults(classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet);
-
-            // ★ DB 업데이트 후 최신 데이터 다시 불러오기 (화면 갱신)
             const updatedPlayers = await getPlayers(classId);
             set({ players: updatedPlayers });
         } catch (error) {
@@ -282,12 +280,10 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // [신규] 무승부/도망 처리 (상태만 저장)
+    // [추가] 무승부/도망 처리
     processBattleDraw: async (classId, p1Id, p2Id, p1Pet, p2Pet) => {
         try {
             await firebaseProcessBattleDraw(classId, p1Id, p2Id, p1Pet, p2Pet);
-
-            // ★ DB 업데이트 후 최신 데이터 다시 불러오기 (화면 갱신)
             const updatedPlayers = await getPlayers(classId);
             set({ players: updatedPlayers });
         } catch (error) {
