@@ -8,14 +8,59 @@ import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 
-// --- Styled Components ---
+// --- Styled Components & Keyframes ---
+
+// 1. 애니메이션 정의
+const rotate = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`;
+
+const float = keyframes`
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+`;
+
+const shake = keyframes`
+  0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); }
+`;
+
+// 2. 이펙트 컴포넌트
+const StunEffect = styled.div`
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 3rem;
+  animation: ${rotate} 2s linear infinite;
+  z-index: 20;
+  
+  &::after {
+    content: '💫'; 
+    display: block;
+  }
+`;
+
+const RechargeEffect = styled.div`
+  position: absolute;
+  bottom: 10px;
+  width: 100%;
+  text-align: center;
+  color: #ff4500;
+  font-weight: bold;
+  font-size: 1.2rem;
+  animation: ${float} 1s ease-in-out infinite;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+  z-index: 20;
+  pointer-events: none;
+`;
+
 const Arena = styled.div`
   max-width: 1200px; margin: 2rem auto; padding: 2rem; background-color: #f0f8ff;
   border-radius: 12px; border: 5px solid #add8e6; overflow: hidden;
 `;
-const shake = keyframes`
-  0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); }
-`;
+
 const BattleField = styled.div`
   height: 550px; position: relative; margin-bottom: 2rem; background-color: rgba(255, 255, 255, 0.5); border-radius: 10px;
 `;
@@ -226,7 +271,6 @@ function BattlePage() {
         };
     }, [battleState, myPlayerData, isProcessing]);
 
-    // 게임 결과 처리 감지
     useEffect(() => {
         if (!battleState) return;
         const { status, attackerAction, defenderAction } = battleState;
@@ -244,6 +288,48 @@ function BattlePage() {
         if (window.confirm("대결 신청을 취소하시겠습니까?")) {
             await cancelBattleChallenge(classId, battleId);
             goBack();
+        }
+    };
+
+    const handleSkipTurn = async () => {
+        if (isProcessing) return;
+        setIsProcessing(true);
+
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const battleDoc = await transaction.get(battleRef);
+                if (!battleDoc.exists()) return;
+
+                const data = battleDoc.data();
+                const myRole = myPlayerData.id === data.challenger.id ? 'challenger' : 'opponent';
+                const myData = data[myRole];
+
+                const newStatus = { ...myData.pet.status };
+                delete newStatus.stunned;
+
+                const nextQuiz = (allQuizzes && allQuizzes.length > 0)
+                    ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
+                    : { question: "퀴즈 데이터 없음", answer: "1" };
+
+                const updates = {
+                    [`${myRole}.pet.status`]: newStatus,
+                    turn: null,
+                    status: 'quiz',
+                    log: `${myData.name}은(는) 정신을 차렸지만 기회를 놓쳤다!`,
+                    question: nextQuiz,
+                    turnStartTime: Date.now(),
+                    attackerAction: null,
+                    defenderAction: null
+                };
+
+                transaction.update(battleRef, updates);
+            });
+        } catch (error) {
+            console.error("Skip turn error:", error);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -369,7 +455,6 @@ function BattlePage() {
                     const myPet = data[myRole].pet;
                     let newStatus = { ...myPet.status };
 
-                    // [용의 숨결] 재충전 상태면 턴 넘김 (공격 불가)
                     if (newStatus.recharging) {
                         delete newStatus.recharging;
                         const nextQuiz = (allQuizzes && allQuizzes.length > 0)
@@ -377,7 +462,7 @@ function BattlePage() {
                             : { question: "퀴즈 데이터 없음", answer: "1" };
 
                         transaction.update(battleRef, {
-                            status: 'quiz', // 퀴즈 단계로 복귀
+                            status: 'quiz',
                             turn: null,
                             [`${myRole}.pet.status`]: newStatus,
                             log: `정답! ${myPlayerData.name}은(는) 숨을 고르며 반동을 회복했습니다. (공격 기회 없음)`,
@@ -385,7 +470,6 @@ function BattlePage() {
                             turnStartTime: Date.now()
                         });
                     } else {
-                        // 정상 공격
                         transaction.update(battleRef, {
                             status: 'action',
                             turn: winnerId,
@@ -409,27 +493,25 @@ function BattlePage() {
         const isMyTurn = battleState.turn === myPlayerData.id;
 
         try {
-            if (isMyTurn) { // 내가 공격자일 때
+            if (isMyTurn) {
                 const updates = { attackerAction: actionId };
 
-                // [수정] 상대방이 스턴 상태인지 확인
                 const myRole = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
                 const opponentRole = myRole === 'challenger' ? 'opponent' : 'challenger';
                 const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
 
                 if (opponentIsStunned) {
-                    // 상대방 강제 무방비 상태로 설정 -> 즉시 결과 처리됨
                     updates.defenderAction = 'STUNNED';
                     updates.log = `${myPlayerData.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
                 }
 
                 await updateDoc(battleRef, updates);
-
-            } else { // 내가 방어자일 때
+            } else {
                 if (actionId === 'FLEE') {
                     if (Math.random() < 0.3) {
                         const opponentId = battleState.turn;
                         const myId = myPlayerData.id;
+
                         const isChallengerMe = myPlayerData.id === battleState.challenger.id;
                         const myPet = isChallengerMe ? battleState.challenger.pet : battleState.opponent.pet;
                         const opponentPet = isChallengerMe ? battleState.opponent.pet : battleState.challenger.pet;
@@ -472,31 +554,51 @@ function BattlePage() {
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
-                // [수정] 턴이 끝나면 스턴 상태 해제
                 if (defender.pet.status?.stunned) {
                     delete defender.pet.status.stunned;
                 }
 
-                const skillId = attackerAction.toUpperCase();
-                const skill = SKILLS[skillId];
-                let log = `${attacker.pet.name}의 ${skill?.name || '공격'}!`;
+                let skillId = attackerAction.toUpperCase();
+                let skill = SKILLS[skillId];
 
-                // 방어자가 스턴이었을 때 (무방비)
+                // [수정] SP 부족 체크 로직 추가
+                let isSpInsufficient = false;
+                const originalSkillName = skill?.name;
+
+                if (skill && skill.cost > attacker.pet.sp) {
+                    skillId = 'TACKLE'; // 기본 공격으로 강제 변경
+                    skill = SKILLS.TACKLE;
+                    isSpInsufficient = true;
+                }
+
+                let log = "";
+
+                // 방어자가 스턴 상태(무방비)였는지 확인
                 if (defenderAction === 'STUNNED') {
-                    log += ` ${defender.pet.name}은(는) 아무런 저항도 하지 못했다!`;
+                    // 로그는 skill.effect 결과에 덧붙여질 예정
                 }
 
                 if (skill && skill.effect) {
                     log = skill.effect(attacker.pet, defender.pet, defenderAction);
+
+                    // SP 부족으로 스킬이 바뀌었음을 로그에 표시
+                    if (isSpInsufficient) {
+                        log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
+                    }
+
+                    if (defenderAction === 'STUNNED') {
+                        log += ` (상대는 혼란에 빠져 무방비했다!)`;
+                    }
                 } else {
-                    // 기본 공격
-                    let damage = 20 + attacker.pet.atk * 2; // 공격력 계수 2배
+                    // 예외 처리 (스킬 데이터가 없는 경우 등)
+                    let damage = 20 + attacker.pet.atk * 2;
                     if (defenderAction === 'BRACE') damage *= 0.5;
                     damage = Math.round(damage);
                     defender.pet.hp = Math.max(0, defender.pet.hp - damage);
-                    log += ` ${damage}의 피해!`;
+                    log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
                 }
 
+                // SP 소모 (TACKLE은 0이므로 안전)
                 if (skill) {
                     attacker.pet.sp = Math.max(0, attacker.pet.sp - skill.cost);
                 }
@@ -565,8 +667,10 @@ function BattlePage() {
     const opponentInfo = battleState[IamChallenger ? 'opponent' : 'challenger'];
 
     const isAttacker = battleState.turn === myPlayerData.id;
+
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
+
     const myEquippedSkills = myInfo.pet.equippedSkills
         .filter(id => id.toLowerCase() !== 'tackle')
         .map(id => SKILLS[id.toUpperCase()])
@@ -597,6 +701,8 @@ function BattlePage() {
 
                             <OpponentPetContainerWrapper>
                                 <PetContainer $isHit={hitState.opponent}>
+                                    {opponentInfo.pet.status?.stunned && <StunEffect />}
+                                    {opponentInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[opponentInfo.id] && <ChatBubble $isMine={false} $isCorrect={battleState.chat[opponentInfo.id].isCorrect}>{battleState.chat[opponentInfo.id].text}</ChatBubble>}
                                     <PetImage src={petImageMap[`${opponentInfo.pet.appearanceId}_idle`]} alt="상대 펫" $isFainted={opponentInfo.pet.hp <= 0} />
                                 </PetContainer>
@@ -604,6 +710,8 @@ function BattlePage() {
 
                             <MyPetContainerWrapper>
                                 <PetContainer $isHit={hitState.my}>
+                                    {myInfo.pet.status?.stunned && <StunEffect />}
+                                    {myInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[myInfo.id] && <ChatBubble $isMine={true} $isCorrect={battleState.chat[myInfo.id].isCorrect}>{battleState.chat[myInfo.id].text}</ChatBubble>}
                                     <PetImage src={petImageMap[`${myInfo.pet.appearanceId}_battle`]} alt="나의 펫" $isFainted={myInfo.pet.hp <= 0} />
                                 </PetContainer>
@@ -615,7 +723,6 @@ function BattlePage() {
                                 {battleState.status === 'quiz' && battleState.question && (
                                     <>
                                         <h3>Q. {battleState.question.question}</h3>
-                                        {/* [수정] 스턴 상태면 입력창 숨김 및 메시지 표시 */}
                                         {isStunned ? (
                                             <div style={{ textAlign: 'center', marginTop: '20px' }}>
                                                 <p style={{ color: 'red', fontWeight: 'bold', fontSize: '1.2rem' }}>😵 혼란 상태! 아무것도 할 수 없습니다.</p>
@@ -637,7 +744,6 @@ function BattlePage() {
                                 )}
                             </div>
                             <ActionMenu>
-                                {/* [수정] 스턴 상태일 때는 메뉴도 숨김 */}
                                 {!isStunned && (
                                     <>
                                         {showActionMenu && (
@@ -674,7 +780,7 @@ function BattlePage() {
                                 : (battleState.winner === myPlayerData.id ? "승리!" : "패배...")}
                         </h2>
                         <p>{battleState.log}</p>
-                        <button onClick={() => goBack()}>확인</button>
+                        <button onClick={() => navigate('/pet')}>확인</button>
                     </ModalContent>
                 </ModalBackground>
             )}
