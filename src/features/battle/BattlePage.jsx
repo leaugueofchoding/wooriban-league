@@ -226,6 +226,7 @@ function BattlePage() {
         };
     }, [battleState, myPlayerData, isProcessing]);
 
+    // 게임 결과 처리 감지
     useEffect(() => {
         if (!battleState) return;
         const { status, attackerAction, defenderAction } = battleState;
@@ -362,15 +363,37 @@ function BattlePage() {
                     const battleDoc = await transaction.get(battleRef);
                     if (!battleDoc.exists() || battleDoc.data().status !== 'quiz') return;
 
+                    const data = battleDoc.data();
                     const winnerId = myPlayerData.id;
+                    const myRole = winnerId === data.challenger.id ? 'challenger' : 'opponent';
+                    const myPet = data[myRole].pet;
+                    let newStatus = { ...myPet.status };
 
-                    transaction.update(battleRef, {
-                        status: 'action',
-                        turn: winnerId,
-                        log: `정답! ${myPlayerData.name}의 공격! 상대는 방어하세요!`,
-                        question: null,
-                        turnStartTime: Date.now()
-                    });
+                    // [용의 숨결] 재충전 상태면 턴 넘김 (공격 불가)
+                    if (newStatus.recharging) {
+                        delete newStatus.recharging;
+                        const nextQuiz = (allQuizzes && allQuizzes.length > 0)
+                            ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
+                            : { question: "퀴즈 데이터 없음", answer: "1" };
+
+                        transaction.update(battleRef, {
+                            status: 'quiz', // 퀴즈 단계로 복귀
+                            turn: null,
+                            [`${myRole}.pet.status`]: newStatus,
+                            log: `정답! ${myPlayerData.name}은(는) 숨을 고르며 반동을 회복했습니다. (공격 기회 없음)`,
+                            question: nextQuiz,
+                            turnStartTime: Date.now()
+                        });
+                    } else {
+                        // 정상 공격
+                        transaction.update(battleRef, {
+                            status: 'action',
+                            turn: winnerId,
+                            log: `정답! ${myPlayerData.name}의 공격! 상대는 방어하세요!`,
+                            question: null,
+                            turnStartTime: Date.now()
+                        });
+                    }
                 });
             } catch (error) { console.error("퀴즈 처리 오류:", error); }
         }
@@ -383,18 +406,30 @@ function BattlePage() {
         setIsProcessing(true);
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
 
-        // [수정] 내 턴인지 확인 (ID 비교)
         const isMyTurn = battleState.turn === myPlayerData.id;
 
         try {
-            if (isMyTurn) {
-                await updateDoc(battleRef, { attackerAction: actionId });
-            } else {
+            if (isMyTurn) { // 내가 공격자일 때
+                const updates = { attackerAction: actionId };
+
+                // [수정] 상대방이 스턴 상태인지 확인
+                const myRole = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
+                const opponentRole = myRole === 'challenger' ? 'opponent' : 'challenger';
+                const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
+
+                if (opponentIsStunned) {
+                    // 상대방 강제 무방비 상태로 설정 -> 즉시 결과 처리됨
+                    updates.defenderAction = 'STUNNED';
+                    updates.log = `${myPlayerData.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
+                }
+
+                await updateDoc(battleRef, updates);
+
+            } else { // 내가 방어자일 때
                 if (actionId === 'FLEE') {
                     if (Math.random() < 0.3) {
                         const opponentId = battleState.turn;
                         const myId = myPlayerData.id;
-
                         const isChallengerMe = myPlayerData.id === battleState.challenger.id;
                         const myPet = isChallengerMe ? battleState.challenger.pet : battleState.opponent.pet;
                         const opponentPet = isChallengerMe ? battleState.opponent.pet : battleState.challenger.pet;
@@ -432,25 +467,34 @@ function BattlePage() {
                 if (!battleDoc.exists() || !battleDoc.data().attackerAction || !battleDoc.data().defenderAction) return null;
                 let { challenger, opponent, turn, attackerAction, defenderAction } = battleDoc.data();
 
-                // [수정] ID 비교로 공격자 역할 확인
                 const isChallengerAttacker = turn === challenger.id;
 
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
-                const skill = SKILLS[attackerAction.toUpperCase()];
-                let damage = skill.basePower + attacker.pet.atk;
-                let log = `${attacker.pet.name}의 ${skill.name}!`;
+                // [수정] 턴이 끝나면 스턴 상태 해제
+                if (defender.pet.status?.stunned) {
+                    delete defender.pet.status.stunned;
+                }
 
-                // 스킬 효과 적용
+                const skillId = attackerAction.toUpperCase();
+                const skill = SKILLS[skillId];
+                let log = `${attacker.pet.name}의 ${skill?.name || '공격'}!`;
+
+                // 방어자가 스턴이었을 때 (무방비)
+                if (defenderAction === 'STUNNED') {
+                    log += ` ${defender.pet.name}은(는) 아무런 저항도 하지 못했다!`;
+                }
+
                 if (skill && skill.effect) {
                     log = skill.effect(attacker.pet, defender.pet, defenderAction);
                 } else {
-                    let damage = 20 + attacker.pet.atk;
+                    // 기본 공격
+                    let damage = 20 + attacker.pet.atk * 2; // 공격력 계수 2배
                     if (defenderAction === 'BRACE') damage *= 0.5;
                     damage = Math.round(damage);
                     defender.pet.hp = Math.max(0, defender.pet.hp - damage);
-                    log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
+                    log += ` ${damage}의 피해!`;
                 }
 
                 if (skill) {
@@ -520,14 +564,16 @@ function BattlePage() {
     const myInfo = battleState[myRole];
     const opponentInfo = battleState[IamChallenger ? 'opponent' : 'challenger'];
 
-    // [수정] 렌더링 시 공격자 여부 판단 (ID 비교)
     const isAttacker = battleState.turn === myPlayerData.id;
-
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
+    const myEquippedSkills = myInfo.pet.equippedSkills
+        .filter(id => id.toLowerCase() !== 'tackle')
+        .map(id => SKILLS[id.toUpperCase()])
+        .filter(Boolean);
 
-    const myEquippedSkills = myInfo.pet.equippedSkills.map(id => SKILLS[id.toUpperCase()]).filter(Boolean);
     const showTimer = (battleState.status === 'quiz' || battleState.status === 'action');
+    const isStunned = myInfo.pet.status?.stunned;
 
     return (
         <>
@@ -569,37 +615,50 @@ function BattlePage() {
                                 {battleState.status === 'quiz' && battleState.question && (
                                     <>
                                         <h3>Q. {battleState.question.question}</h3>
-                                        <form onSubmit={handleQuizSubmit}>
-                                            <AnswerInput
-                                                name="answer"
-                                                value={answer}
-                                                onChange={(e) => setAnswer(e.target.value)}
-                                                placeholder="정답을 입력하세요"
-                                                autoFocus
-                                                disabled={isProcessing}
-                                            />
-                                        </form>
+                                        {/* [수정] 스턴 상태면 입력창 숨김 및 메시지 표시 */}
+                                        {isStunned ? (
+                                            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                                                <p style={{ color: 'red', fontWeight: 'bold', fontSize: '1.2rem' }}>😵 혼란 상태! 아무것도 할 수 없습니다.</p>
+                                                <p>(상대방의 행동을 기다리는 중...)</p>
+                                            </div>
+                                        ) : (
+                                            <form onSubmit={handleQuizSubmit}>
+                                                <AnswerInput
+                                                    name="answer"
+                                                    value={answer}
+                                                    onChange={(e) => setAnswer(e.target.value)}
+                                                    placeholder="정답을 입력하세요"
+                                                    autoFocus
+                                                    disabled={isProcessing}
+                                                />
+                                            </form>
+                                        )}
                                     </>
                                 )}
                             </div>
                             <ActionMenu>
-                                {showActionMenu && (
-                                    !actionSubMenu ?
-                                        <>
-                                            <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
-                                            <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
-                                        </> :
-                                        <>
-                                            {myEquippedSkills.map(skill => (
-                                                <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
-                                            ))}
-                                            <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
-                                        </>
-                                )}
-                                {showDefenseMenu && (
-                                    Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
-                                        <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
-                                    ))
+                                {/* [수정] 스턴 상태일 때는 메뉴도 숨김 */}
+                                {!isStunned && (
+                                    <>
+                                        {showActionMenu && (
+                                            !actionSubMenu ?
+                                                <>
+                                                    <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
+                                                    <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
+                                                </> :
+                                                <>
+                                                    {myEquippedSkills.map(skill => (
+                                                        <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
+                                                    ))}
+                                                    <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
+                                                </>
+                                        )}
+                                        {showDefenseMenu && (
+                                            Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
+                                                <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
+                                            ))
+                                        )}
+                                    </>
                                 )}
                             </ActionMenu>
                         </QuizArea>
