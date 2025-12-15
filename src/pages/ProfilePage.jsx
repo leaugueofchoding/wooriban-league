@@ -1,16 +1,20 @@
-// src/pages/ProfilePage.jsx
-
 import React, { useMemo, useState, useEffect } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, db, updatePlayerProfile, equipTitle, createBattleChallenge } from '../api/firebase.js';
+import {
+  auth, db, updatePlayerProfile, equipTitle,
+  createBattleChallenge, rejectBattleChallenge
+} from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import {
+  collection, query, where, orderBy, getDocs, onSnapshot, updateDoc, doc, deleteDoc
+} from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
+import { petImageMap } from '@/utils/petImageMap';
 
+// --- Styled Components ---
 
-// --- Styled Components (기존과 동일) ---
 const AvatarWrapper = styled.div`
   position: relative;
   width: 150px;
@@ -182,6 +186,8 @@ const GenderLabel = styled.label`
   }
 `;
 
+const shake = keyframes` 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } `;
+
 const ModalBackground = styled.div`
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -199,6 +205,20 @@ const ModalContent = styled.div`
   padding: 2rem;
   background-color: #fff;
   border-radius: 12px;
+  
+  &.white-modal {
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 400px;
+    width: 90%;
+  }
+
+  &.battle-request-modal {
+    padding: 1.5rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
 `;
 
 const ModalAvatar = styled.div`
@@ -208,6 +228,11 @@ const ModalAvatar = styled.div`
   background-color: #e9ecef;
   position: relative;
   overflow: hidden;
+  
+  @media (max-width: 768px) {
+    width: 200px;
+    height: 200px;
+  }
 `;
 
 const ItemList = styled.div`
@@ -302,6 +327,60 @@ const SaveTitlesButton = styled(Button)`
     margin-top: 1.5rem;
 `;
 
+// --- [추가] 펫 페이지의 카드 디자인 스타일 (수락창용) ---
+const OpponentItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #fff;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+  width: 100%;
+  
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+    margin-bottom: 0.8rem;
+    width: 100%;
+    
+    img {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 3px solid #f8f9fa;
+      object-fit: cover;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    strong { font-size: 1.1rem; color: #333; margin-top: 5px; display: block; word-break: keep-all;}
+    span { font-size: 0.9rem; color: #888; background-color: #f1f3f5; padding: 2px 8px; border-radius: 10px; margin-top: 4px;}
+  }
+`;
+
+const ChallengeButton = styled.button`
+  width: 100%;
+  background-color: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 10px 0;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 0 #fa5252;
+  
+  &:hover { background-color: #fa5252; }
+  &:active { transform: translateY(2px); box-shadow: none; }
+  &:disabled { background-color: #ccc; cursor: not-allowed; box-shadow: none; }
+`;
+
 function ProfilePage() {
   const { classId } = useClassStore();
   const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
@@ -318,6 +397,9 @@ function ProfilePage() {
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
 
+  // --- ★ [추가] 대전 수신용 State ---
+  const [incomingChallenge, setIncomingChallenge] = useState(null);
+
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
@@ -333,6 +415,55 @@ function ProfilePage() {
       setSelectedTitleId(playerData.equippedTitle || null);
     }
   }, [playerData]);
+
+  // --- ★ [추가] 실시간 대전 신청 감지 리스너 ---
+  useEffect(() => {
+    if (!currentUser || !db || !classId || !myPlayerData) return;
+
+    const q = query(
+      collection(db, "classes", classId, "battles"),
+      where("opponent.id", "==", myPlayerData.id),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const docData = snapshot.docs[0];
+        setIncomingChallenge({ id: docData.id, ...docData.data() });
+      } else {
+        setIncomingChallenge(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, classId, myPlayerData]);
+
+  // --- ★ [추가] 수락/거절 핸들러 ---
+  const handleAcceptChallenge = async () => {
+    if (!incomingChallenge) return;
+    try {
+      await updateDoc(doc(db, "classes", classId, "battles", incomingChallenge.id), {
+        status: "accepted"
+      });
+      alert("도전을 수락했습니다! 경기장으로 이동합니다.");
+      navigate(`/battle/${incomingChallenge.challenger.id}`);
+    } catch (error) {
+      console.error(error);
+      alert("수락 중 오류 발생");
+    }
+  };
+
+  const handleRejectChallenge = async () => {
+    if (!incomingChallenge) return;
+    try {
+      if (confirm("대전을 거절하시겠습니까?")) {
+        await rejectBattleChallenge(classId, incomingChallenge.id);
+        setIncomingChallenge(null);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleBattleRequest = async () => {
     if (!classId || !myPlayerData || !playerData) return;
@@ -599,6 +730,44 @@ function ProfilePage() {
                 ))}
               </ul>
             </ItemList>
+          </ModalContent>
+        </ModalBackground>
+      )}
+
+      {/* ★ [수정됨] 대결 수락 팝업 (PetPage와 동일한 카드 디자인 적용) ★ */}
+      {incomingChallenge && (
+        <ModalBackground>
+          <ModalContent className="white-modal battle-request-modal">
+            <h3 style={{ marginBottom: '1rem', color: '#333' }}>⚔️ 대결 신청이 왔습니다!</h3>
+
+            {/* 펫 페이지와 동일한 카드 디자인 (OpponentItem) 사용 */}
+            <OpponentItem style={{ marginBottom: '1rem', boxShadow: 'none', border: '1px solid #ddd' }}>
+              <div className="user-info">
+                <img
+                  src={petImageMap[`${incomingChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                  alt="도전자 펫"
+                />
+                <div>
+                  <strong>{incomingChallenge.challenger?.name}</strong>
+                  <span>{incomingChallenge.challenger?.pet?.name} (Lv.{incomingChallenge.challenger?.pet?.level})</span>
+                </div>
+              </div>
+            </OpponentItem>
+
+            <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+              <ChallengeButton
+                onClick={handleAcceptChallenge}
+                style={{ backgroundColor: '#20c997', flex: 1 }}
+              >
+                수락
+              </ChallengeButton>
+              <ChallengeButton
+                onClick={handleRejectChallenge}
+                style={{ backgroundColor: '#adb5bd', flex: 1 }}
+              >
+                거절
+              </ChallengeButton>
+            </div>
           </ModalContent>
         </ModalBackground>
       )}

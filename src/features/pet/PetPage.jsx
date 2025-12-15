@@ -1,14 +1,20 @@
-// src/features/pet/PetPage.jsx
-
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { useLeagueStore } from '@/store/leagueStore';
-import { auth } from '@/api/firebase';
+import { useLeagueStore, useClassStore } from '@/store/leagueStore'; // useClassStore 추가
+import { auth, db, createBattleChallenge, rejectBattleChallenge } from '@/api/firebase'; // 핵심 함수 import
+import {
+  collection,
+  query,
+  where,
+  onSnapshot
+} from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
+
+// --- 스타일 정의 ---
 
 const ExchangeContainer = styled.div`
   display: flex;
@@ -61,8 +67,8 @@ const PetListPanel = styled.div`
 
 const PetListWrapper = styled.div`
     overflow-y: auto;
-    max-height: 270px; /* 펫 아이템 3개 정도의 높이 */
-    padding-right: 0.5rem; /* 스크롤바 공간 확보 */
+    max-height: 270px; 
+    padding-right: 0.5rem; 
 `;
 
 const PetListItem = styled.div`
@@ -139,6 +145,87 @@ const StyledButton = styled.button`
 const EvolveButton = styled(StyledButton)` background-color: #ffc107; color: #343a40; &:hover:not(:disabled) { background-color: #e0a800; } `;
 const FeedButton = styled(StyledButton)` background-color: #e83e8c; &:hover:not(:disabled) { background-color: #c2185b; } `;
 const PetCenterButton = styled(StyledButton)` background-color: #17a2b8; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #117a8b; } `;
+
+// --- 대전 관련 스타일 (바둑판 그리드) ---
+const BattleRequestButton = styled(StyledButton)`
+  background-color: #dc3545; 
+  grid-column: 1 / -1; 
+  box-shadow: 0 4px 0 #a71d2a;
+  &:hover:not(:disabled) { background-color: #c82333; }
+  &:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 #a71d2a; }
+`;
+
+const OpponentList = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 10px;
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+`;
+
+const OpponentItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #fff;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+  
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    border-color: #ff9999;
+  }
+
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+    margin-bottom: 0.8rem;
+    width: 100%;
+    
+    img {
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      border: 3px solid #f8f9fa;
+      object-fit: cover;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    strong { font-size: 1rem; color: #333; margin-top: 5px; display: block; word-break: keep-all;}
+    span { font-size: 0.8rem; color: #888; background-color: #f1f3f5; padding: 2px 8px; border-radius: 10px; margin-top: 4px;}
+  }
+`;
+
+const ChallengeButton = styled.button`
+  width: 100%;
+  background-color: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 8px 0;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 0 #fa5252;
+  
+  &:hover { background-color: #fa5252; }
+  &:active { transform: translateY(2px); box-shadow: none; }
+  &:disabled { background-color: #ccc; cursor: not-allowed; box-shadow: none; }
+`;
+
+// ---------------------------
+
 const shake = keyframes` 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } `;
 const ModalBackground = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -147,6 +234,21 @@ const ModalBackground = styled.div`
 `;
 const ModalContent = styled.div`
   text-align: center; position: relative; color: white;
+  min-width: 320px;
+  
+  &.white-modal {
+    background-color: #fff;
+    color: #333;
+    padding: 20px;
+    border-radius: 15px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  h3 { margin-top: 0; }
   img.egg { animation: ${props => props.$isShaking ? shake : 'none'} 0.5s infinite; }
   img.pet { max-width: 250px; }
 `;
@@ -172,7 +274,6 @@ const AccordionContent = styled.div`
   border: 1px solid #dee2e6;
   margin-top: 0.5rem;
 `;
-
 const SkillGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -215,6 +316,7 @@ const StatItem = styled.div`
 function PetPage() {
   const navigate = useNavigate();
   const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updatePetSkills } = useLeagueStore();
+  const { classId } = useClassStore(); // ★ [추가] classId 가져오기
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
@@ -227,6 +329,34 @@ function PetPage() {
   const [activeAccordion, setActiveAccordion] = useState(null);
   const [equippedSkills, setEquippedSkills] = useState([]);
   const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
+
+  // --- 대전 관련 State ---
+  const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
+  const [incomingChallenge, setIncomingChallenge] = useState(null);
+
+  // --- ★ [신규] 나에게 온 대전 신청 실시간 감지 ---
+  useEffect(() => {
+    if (!auth.currentUser || !db || !classId) return;
+
+    // 내가 'opponent'로 지정되어 있고, 상태가 'pending'(대기중)인 배틀 찾기
+    // (ProfilePage 로직에 맞춰 경로와 필드를 수정했습니다)
+    const q = query(
+      collection(db, "classes", classId, "battles"),
+      where("opponent.id", "==", myPlayerData?.id),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const docData = snapshot.docs[0];
+        setIncomingChallenge({ id: docData.id, ...docData.data() });
+      } else {
+        setIncomingChallenge(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser, classId, myPlayerData]);
 
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
@@ -250,6 +380,14 @@ function PetPage() {
       setSelectedSkillSlot(null);
     }
   }, [selectedPet]);
+
+  const opponents = useMemo(() => {
+    if (!players || !auth.currentUser) return [];
+    return players.filter(p =>
+      p.authUid !== auth.currentUser.uid &&
+      p.pets && p.pets.length > 0
+    );
+  }, [players]);
 
   const handleSaveName = async () => {
     try {
@@ -354,6 +492,58 @@ function PetPage() {
       alert(`스킬 저장 실패: ${error.message}`);
     }
   };
+
+  // --- ★ [수정] 대전 신청 핸들러 (ProfilePage와 동일한 로직 적용) ---
+  const handleOpenOpponentModal = () => {
+    if (selectedPet.hp <= 0) {
+      alert("기절한 펫은 대전을 신청할 수 없습니다. 먼저 치료해주세요!");
+      return;
+    }
+    setIsOpponentModalOpen(true);
+  };
+
+  const handleBattleRequest = async (opponent) => {
+    // 1. 필수 데이터 검증
+    if (!classId || !myPlayerData || !opponent) {
+      alert("데이터가 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    try {
+      // 2. 검증된 함수(createBattleChallenge) 사용
+      // 이 함수가 classId 포함 경로에 데이터를 저장하고, 모든 유효성 검사를 대신 수행합니다.
+      await createBattleChallenge(classId, myPlayerData, opponent);
+
+      // 3. 신청 즉시 배틀 대기실로 이동 (친구 프로필 페이지와 동일한 UX)
+      navigate(`/battle/${opponent.id}`);
+
+    } catch (error) {
+      console.error("대전 신청 실패:", error);
+      alert(`대결 신청 실패: ${error.message}`);
+    }
+  };
+
+  // --- ★ [수정] 수락/거절 핸들러 (수신자용) ---
+  const handleAcceptChallenge = () => {
+    if (!incomingChallenge) return;
+    // 수락 시, 도전자의 ID를 이용해 배틀룸으로 이동
+    // (BattlePage에서 입장 시 자동으로 매칭을 성사시키는 구조로 추정됨)
+    navigate(`/battle/${incomingChallenge.challenger.id}`);
+  };
+
+  const handleRejectChallenge = async () => {
+    if (!incomingChallenge) return;
+    try {
+      if (confirm("대전을 거절하시겠습니까?")) {
+        await rejectBattleChallenge(classId, incomingChallenge.id);
+        setIncomingChallenge(null);
+      }
+    } catch (error) {
+      console.error("거절 처리 중 오류:", error);
+    }
+  };
+
+  // ----------------------
 
   if (!myPlayerData || !myPlayerData.pets || myPlayerData.pets.length === 0 || !selectedPet) {
     return <PageWrapper><h2>펫 정보를 불러오는 중...</h2></PageWrapper>;
@@ -486,6 +676,11 @@ function PetPage() {
                 </StyledButton>
               </ExchangeContainer>
               <PetCenterButton onClick={() => navigate('/pet-center')}>🏥 펫 센터 (상점/치료소)</PetCenterButton>
+
+              <BattleRequestButton onClick={handleOpenOpponentModal} disabled={isFainted}>
+                ⚔️ 대결 신청 (친구 목록)
+              </BattleRequestButton>
+
             </ButtonGroup>
           </PetInfo>
         </PetDashboard>
@@ -512,6 +707,7 @@ function PetPage() {
           </div>
         </PetListPanel>
       </MainLayout>
+
       {isHatching && (
         <ModalBackground>
           <ModalContent $isShaking={hatchState.step === 'shaking'}>
@@ -529,6 +725,81 @@ function PetPage() {
           </ModalContent>
         </ModalBackground>
       )}
+
+      {/* 대결 상대 선택 모달 (친구 목록) */}
+      {isOpponentModalOpen && (
+        <ModalBackground onClick={() => setIsOpponentModalOpen(false)}>
+          <ModalContent className="white-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>⚔️ 대결 상대 선택</h3>
+              <button onClick={() => setIsOpponentModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>✖</button>
+            </div>
+
+            <OpponentList>
+              {opponents.length === 0 ? (
+                <p style={{ color: '#888', padding: '2rem 0', gridColumn: '1 / -1' }}>대결 가능한 친구가 없습니다.<br />(펫을 보유한 친구만 표시됩니다)</p>
+              ) : (
+                opponents.map(opp => {
+                  const oppPet = opp.pets.find(p => p.id === opp.partnerPetId) || opp.pets[0];
+                  return (
+                    <OpponentItem key={opp.authUid}>
+                      <div className="user-info">
+                        <img src={petImageMap[`${oppPet.appearanceId}_idle`]} alt={oppPet.name} />
+                        <div>
+                          <strong>{opp.name}</strong>
+                          <span>{oppPet.name} (Lv.{oppPet.level})</span>
+                        </div>
+                      </div>
+                      <ChallengeButton onClick={() => handleBattleRequest(opp)}>
+                        신청하기
+                      </ChallengeButton>
+                    </OpponentItem>
+                  );
+                })
+              )}
+            </OpponentList>
+          </ModalContent>
+        </ModalBackground>
+      )}
+
+      {/* 도전장 수신 팝업 */}
+      {incomingChallenge && (
+        <ModalBackground>
+          <ModalContent className="white-modal" style={{ maxWidth: '400px' }}>
+            <h2 style={{ color: '#dc3545', margin: '0 0 10px 0' }}>📢 도전장이 도착했습니다!</h2>
+
+            <div style={{ margin: '20px 0', textAlign: 'center' }}>
+              <img
+                src={petImageMap[`${incomingChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                alt="도전자 펫"
+                style={{ width: '100px', height: '100px', borderRadius: '50%', border: '3px solid #ff6b6b', objectFit: 'cover' }}
+              />
+              <h3 style={{ margin: '10px 0 5px 0', color: '#333' }}>
+                {incomingChallenge.challenger?.name}님의 도전!
+              </h3>
+              <p style={{ color: '#666', margin: 0 }}>
+                상대 펫: {incomingChallenge.challenger?.pet?.name} (Lv.{incomingChallenge.challenger?.pet?.level})
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <StyledButton
+                onClick={handleAcceptChallenge}
+                style={{ flex: 1, backgroundColor: '#20c997', padding: '15px', fontSize: '1.1rem' }}
+              >
+                ⚔️ 수락하고 싸우기
+              </StyledButton>
+              <StyledButton
+                onClick={handleRejectChallenge}
+                style={{ flex: 1, backgroundColor: '#adb5bd', padding: '15px', fontSize: '1.1rem' }}
+              >
+                거절하기
+              </StyledButton>
+            </div>
+          </ModalContent>
+        </ModalBackground>
+      )}
+
     </PageWrapper>
   );
 }
