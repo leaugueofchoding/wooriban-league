@@ -1,12 +1,15 @@
+// src/components/Auth.jsx
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-// [중요] rejectBattleChallenge 추가
 import { auth, updateUserProfile, db, rejectBattleChallenge } from '../api/firebase.js';
 import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
 import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import styled from 'styled-components';
+import { petImageMap } from '../utils/petImageMap'; // [추가] 이미지 맵 import
 
+// ... (기존 상단 스타일: AuthWrapper, UserProfile, Button, IconContainer 등 유지) ...
 const AuthWrapper = styled.div`
   padding: 1rem;
   text-align: right;
@@ -55,7 +58,6 @@ const IconContainer = styled.div`
     align-items: center;
     gap: 0.75rem;
 `;
-
 
 const NotificationContainer = styled.div`
     position: relative;
@@ -158,6 +160,7 @@ const BonusNotificationItem = styled(NotificationItem)`
     border-bottom: 2px solid #bce0fd;
 `;
 
+// ▼▼▼ [추가] 펫 페이지 디자인 이식 ▼▼▼
 const ModalBackground = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0, 0, 0, 0.7);
@@ -166,13 +169,52 @@ const ModalBackground = styled.div`
 `;
 
 const ModalContent = styled.div`
-  padding: 2rem 3rem; background: white; border-radius: 12px;
-  text-align: center;
-  h2 { font-size: 2.5rem; margin-bottom: 1rem; }
-  p { font-size: 1.2rem; margin: 0.5rem 0; }
-  button { margin-top: 1rem; margin-left: 0.5rem; margin-right: 0.5rem; padding: 0.8rem 2rem; }
+  padding: 2rem; background: white; border-radius: 15px;
+  text-align: center; max-width: 400px; width: 90%;
+  display: flex; flex-direction: column;
 `;
 
+const OpponentItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #fff;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  box-shadow: none;
+  margin-bottom: 1rem;
+
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+    width: 100%;
+    
+    img {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 3px solid #f8f9fa;
+      object-fit: cover;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    strong { font-size: 1.1rem; color: #333; margin-top: 5px; display: block; }
+    span { font-size: 0.9rem; color: #888; background-color: #f1f3f5; padding: 2px 8px; border-radius: 10px; margin-top: 4px;}
+  }
+`;
+
+const StyledButton = styled.button`
+  padding: 0.8rem; font-size: 1rem; font-weight: bold;
+  border: none; border-radius: 8px; cursor: pointer;
+  transition: background-color 0.2s; color: white;
+  &:disabled { background-color: #6c757d; cursor: not-allowed; }
+`;
+// ▲▲▲ 추가 끝 ▲▲▲
 
 function Auth({ user }) {
     const { players, notifications, unreadNotificationCount, markAsRead, approvalBonus, removeAllNotifications } = useLeagueStore();
@@ -286,17 +328,24 @@ function Auth({ user }) {
     const handleAcceptBattle = async () => {
         if (!battleChallenge || !classId) return;
 
-        // [수정] 내 펫 기절 상태 체크
-        const myPet = myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId);
+        // [수정] 내 펫 기절 상태 체크 (안전하게 처리)
+        const myPet = myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
+
         if (!myPet || myPet.hp <= 0) {
             alert("나의 펫이 기절 상태라 대결을 수락할 수 없습니다.\n펫 센터에서 치료해주세요.");
             return;
         }
 
-        const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
-        await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
-        navigate(`/battle/${battleChallenge.challenger.id}`);
-        setBattleChallenge(null);
+        try {
+            const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
+            // ★ 여기가 핵심: DB 상태를 starting으로 바꿔야 게임이 시작됨 ★
+            await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
+            navigate(`/battle/${battleChallenge.challenger.id}`);
+            setBattleChallenge(null);
+        } catch (error) {
+            console.error("수락 처리 중 오류:", error);
+            alert("대결 수락 중 오류가 발생했습니다.");
+        }
     };
 
     const handleRejectBattle = async () => {
@@ -367,13 +416,39 @@ function Auth({ user }) {
                 <Button onClick={handleGoogleLogin}>Google 로그인</Button>
             )}
 
+            {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
             {battleChallenge && (
                 <ModalBackground>
                     <ModalContent>
-                        <h2>⚔️ 대결 신청 ⚔️</h2>
-                        <p><strong>{battleChallenge.challenger.name}</strong>님이 대결을 신청했습니다!</p>
-                        <button onClick={handleAcceptBattle} style={{ backgroundColor: '#28a745', color: 'white' }}>수락</button>
-                        <button onClick={handleRejectBattle} style={{ backgroundColor: '#dc3545', color: 'white' }}>거절</button>
+                        <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
+
+                        <OpponentItem>
+                            <div className="user-info">
+                                <img
+                                    src={petImageMap[`${battleChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                                    alt="도전자 펫"
+                                />
+                                <div>
+                                    <strong>{battleChallenge.challenger?.name}</strong>
+                                    <span>{battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})</span>
+                                </div>
+                            </div>
+                        </OpponentItem>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <StyledButton
+                                onClick={handleAcceptBattle}
+                                style={{ flex: 1, backgroundColor: '#20c997', padding: '10px', fontSize: '1.1rem' }}
+                            >
+                                ⚔️ 수락
+                            </StyledButton>
+                            <StyledButton
+                                onClick={handleRejectBattle}
+                                style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1.1rem' }}
+                            >
+                                거절
+                            </StyledButton>
+                        </div>
                     </ModalContent>
                 </ModalBackground>
             )}

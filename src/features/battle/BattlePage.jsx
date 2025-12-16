@@ -1,16 +1,17 @@
+// src/features/battle/BattlePage.jsx
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
 import { auth, db, updateBattleChat, cancelBattleChallenge } from '@/api/firebase';
-import { doc, onSnapshot, updateDoc, runTransaction, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, runTransaction } from "firebase/firestore"; // getDoc 제거 (안 씀)
 import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
-import { PET_DATA, SKILLS } from '@/features/pet/petData';
+import { SKILLS } from '@/features/pet/petData'; // PET_DATA 제거 (안 씀)
 
 // --- Styled Components & Keyframes ---
 
-// 1. 애니메이션 정의
 const rotate = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -26,7 +27,6 @@ const shake = keyframes`
   0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); }
 `;
 
-// 2. 이펙트 컴포넌트
 const StunEffect = styled.div`
   position: absolute;
   top: -40px;
@@ -88,7 +88,7 @@ const StatBar = styled.div`
   width: 100%; height: 20px; background-color: #e9ecef; border-radius: 10px; overflow: hidden;
 `;
 const BarFill = styled.div`
-  width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease;
+  width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease, background-color 0.5s ease;
   display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: #fff;
   text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
 `;
@@ -179,6 +179,13 @@ const allQuizzes = Object.values(allQuizzesData || {}).flat();
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 const profanityList = ['바보', '멍청이', 'xx'];
 
+const getHpColor = (current, max) => {
+    const percentage = (current / max) * 100;
+    if (percentage <= 25) return '#dc3545';
+    if (percentage <= 50) return '#fd7e14';
+    return '#28a745';
+};
+
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -195,6 +202,32 @@ function BattlePage() {
     const [actionSubMenu, setActionSubMenu] = useState(null);
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
+
+    // [핵심] 펫 이미지 상태 결정 함수 (웅크리기 이미지 적용)
+    const getPetImageSrc = (info, isMine) => {
+        if (!info || !info.pet) return null;
+        const { appearanceId, status } = info.pet;
+
+        // 1. 현재 수비 턴(action 또는 resolution 단계)이고, 내가 수비자인 경우 -> 웅크리기 이미지
+        const isDefenderTurn = (battleState?.status === 'action' || battleState?.status === 'resolution')
+            && battleState?.turn !== info.id;
+
+        if (isDefenderTurn) {
+            return isMine
+                ? (petImageMap[`${appearanceId}_brace_back`] || petImageMap[`${appearanceId}_battle`]) // 내 펫: 뒷모습 웅크리기
+                : (petImageMap[`${appearanceId}_brace`] || petImageMap[`${appearanceId}_idle`]);       // 상대 펫: 앞모습 웅크리기
+        }
+
+        // 2. 스킬 반동으로 인한 '지침(Recharging)' 상태일 때 -> 웅크리기 이미지
+        if (status?.recharging) {
+            return isMine
+                ? (petImageMap[`${appearanceId}_brace_back`] || petImageMap[`${appearanceId}_battle`])
+                : (petImageMap[`${appearanceId}_brace`] || petImageMap[`${appearanceId}_idle`]);
+        }
+
+        // 3. 기본 상태 (공격자이거나 평상시)
+        return isMine ? petImageMap[`${appearanceId}_battle`] : petImageMap[`${appearanceId}_idle`];
+    };
 
     const goBack = () => {
         if (window.history.length > 1) {
@@ -561,7 +594,6 @@ function BattlePage() {
                 let skillId = attackerAction.toUpperCase();
                 let skill = SKILLS[skillId];
 
-                // [수정] SP 부족 체크 로직 추가
                 let isSpInsufficient = false;
                 const originalSkillName = skill?.name;
 
@@ -573,15 +605,12 @@ function BattlePage() {
 
                 let log = "";
 
-                // 방어자가 스턴 상태(무방비)였는지 확인
                 if (defenderAction === 'STUNNED') {
-                    // 로그는 skill.effect 결과에 덧붙여질 예정
                 }
 
                 if (skill && skill.effect) {
                     log = skill.effect(attacker.pet, defender.pet, defenderAction);
 
-                    // SP 부족으로 스킬이 바뀌었음을 로그에 표시
                     if (isSpInsufficient) {
                         log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                     }
@@ -590,7 +619,6 @@ function BattlePage() {
                         log += ` (상대는 혼란에 빠져 무방비했다!)`;
                     }
                 } else {
-                    // 예외 처리 (스킬 데이터가 없는 경우 등)
                     let damage = 20 + attacker.pet.atk * 2;
                     if (defenderAction === 'BRACE') damage *= 0.5;
                     damage = Math.round(damage);
@@ -598,7 +626,6 @@ function BattlePage() {
                     log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
                 }
 
-                // SP 소모 (TACKLE은 0이므로 안전)
                 if (skill) {
                     attacker.pet.sp = Math.max(0, attacker.pet.sp - skill.cost);
                 }
@@ -690,12 +717,26 @@ function BattlePage() {
                             {showTimer && <Timer>{timeLeft}</Timer>}
                             <MyInfoBox>
                                 <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
-                                <StatBar><BarFill $percent={Math.max(0, (myInfo.pet.hp / myInfo.pet.maxHp) * 100)} color="#28a745">HP: {myInfo.pet.hp}/{myInfo.pet.maxHp}</BarFill></StatBar>
+                                <StatBar>
+                                    <BarFill
+                                        $percent={Math.max(0, (myInfo.pet.hp / myInfo.pet.maxHp) * 100)}
+                                        color={getHpColor(myInfo.pet.hp, myInfo.pet.maxHp)}
+                                    >
+                                        HP: {myInfo.pet.hp}/{myInfo.pet.maxHp}
+                                    </BarFill>
+                                </StatBar>
                                 <StatBar><BarFill $percent={Math.max(0, (myInfo.pet.sp / myInfo.pet.maxSp) * 100)} color="#007bff">SP: {myInfo.pet.sp}/{myInfo.pet.maxSp}</BarFill></StatBar>
                             </MyInfoBox>
                             <OpponentInfoBox>
                                 <span>{opponentInfo.pet.name} (Lv.{opponentInfo.pet.level})</span>
-                                <StatBar><BarFill $percent={Math.max(0, (opponentInfo.pet.hp / opponentInfo.pet.maxHp) * 100)} color="#28a745">HP: {opponentInfo.pet.hp}/{opponentInfo.pet.maxHp}</BarFill></StatBar>
+                                <StatBar>
+                                    <BarFill
+                                        $percent={Math.max(0, (opponentInfo.pet.hp / opponentInfo.pet.maxHp) * 100)}
+                                        color={getHpColor(opponentInfo.pet.hp, opponentInfo.pet.maxHp)}
+                                    >
+                                        HP: {opponentInfo.pet.hp}/{opponentInfo.pet.maxHp}
+                                    </BarFill>
+                                </StatBar>
                                 <StatBar><BarFill $percent={Math.max(0, (opponentInfo.pet.sp / opponentInfo.pet.maxSp) * 100)} color="#007bff">SP: {opponentInfo.pet.sp}/{opponentInfo.pet.maxSp}</BarFill></StatBar>
                             </OpponentInfoBox>
 
@@ -704,7 +745,7 @@ function BattlePage() {
                                     {opponentInfo.pet.status?.stunned && <StunEffect />}
                                     {opponentInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[opponentInfo.id] && <ChatBubble $isMine={false} $isCorrect={battleState.chat[opponentInfo.id].isCorrect}>{battleState.chat[opponentInfo.id].text}</ChatBubble>}
-                                    <PetImage src={petImageMap[`${opponentInfo.pet.appearanceId}_idle`]} alt="상대 펫" $isFainted={opponentInfo.pet.hp <= 0} />
+                                    <PetImage src={getPetImageSrc(opponentInfo, false)} alt="상대 펫" $isFainted={opponentInfo.pet.hp <= 0} />
                                 </PetContainer>
                             </OpponentPetContainerWrapper>
 
@@ -713,7 +754,7 @@ function BattlePage() {
                                     {myInfo.pet.status?.stunned && <StunEffect />}
                                     {myInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[myInfo.id] && <ChatBubble $isMine={true} $isCorrect={battleState.chat[myInfo.id].isCorrect}>{battleState.chat[myInfo.id].text}</ChatBubble>}
-                                    <PetImage src={petImageMap[`${myInfo.pet.appearanceId}_battle`]} alt="나의 펫" $isFainted={myInfo.pet.hp <= 0} />
+                                    <PetImage src={getPetImageSrc(myInfo, true)} alt="나의 펫" $isFainted={myInfo.pet.hp <= 0} />
                                 </PetContainer>
                             </MyPetContainerWrapper>
                         </BattleField>
