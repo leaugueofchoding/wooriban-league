@@ -8,6 +8,7 @@ import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { Link } from 'react-router-dom';
 import CommentThread from '../components/CommentThread';
 import ImageModal from '../components/ImageModal';
+import { filterProfanity } from '../utils/profanityFilter';
 
 // --- Styled Components ---
 
@@ -327,11 +328,16 @@ function MissionGalleryPage() {
 
     const handleCommentSubmit = async () => {
         if (!classId || !newComment.trim() || !myPlayerData) return;
+
+        // [수정] 필터링 적용
+        const filteredText = filterProfanity(newComment);
+
         const student = players.find(p => p.id === selectedSubmission.studentId);
         await addMissionComment(
             classId,
             selectedSubmission.id,
-            { commenterId: myPlayerData.id, commenterName: myPlayerData.name, commenterRole: myPlayerData.role, text: newComment },
+            // [수정] text에 filteredText 넣기
+            { commenterId: myPlayerData.id, commenterName: myPlayerData.name, commenterRole: myPlayerData.role, text: filteredText },
             student?.authUid,
             getMissionTitle(selectedSubmission.missionId)
         );

@@ -8,6 +8,7 @@ import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from "fir
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
+import { filterProfanity } from '../utils/profanityFilter';
 
 
 // --- Styled Components ---
@@ -834,11 +835,15 @@ function MyRoomPage() {
 
   const handlePostComment = async () => {
     if (!classId || !newComment.trim() || !myPlayerData) return;
+
+    // [수정] 입력한 댓글 내용 필터링
+    const filteredComment = filterProfanity(newComment);
+
     try {
       await addMyRoomComment(classId, playerId, {
         commenterId: myPlayerData.id,
         commenterName: myPlayerData.name,
-        text: newComment,
+        text: filteredComment, // [수정] newComment 대신 filteredComment 전송
       });
       setNewComment("");
       fetchRoomSocialData();
@@ -849,11 +854,15 @@ function MyRoomPage() {
 
   const handleAddMyRoomReply = async (commentId) => {
     if (!classId || !replyContent.trim() || !myPlayerData) return;
+
+    // [수정] 입력한 답글 내용 필터링
+    const filteredReply = filterProfanity(replyContent);
+
     try {
       await addMyRoomReply(classId, playerId, commentId, {
         replierId: myPlayerData.id,
         replierName: myPlayerData.name,
-        text: replyContent,
+        text: filteredReply, // [수정] replyContent 대신 filteredReply 전송
       });
       setReplyContent("");
       setReplyingTo(null);

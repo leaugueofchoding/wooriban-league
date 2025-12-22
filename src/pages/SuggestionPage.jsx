@@ -6,6 +6,7 @@ import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정
 import { auth, db, submitSuggestion } from '../api/firebase';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
+import { filterProfanity } from '../utils/profanityFilter';
 
 // --- Styled Components ---
 
@@ -168,14 +169,17 @@ function SuggestionPage() {
 
 
     const handleSuggestionSubmit = async () => {
-        if (!classId || !myPlayerData) return alert('선수 정보가 없습니다.'); // [수정]
+        if (!classId || !myPlayerData) return alert('선수 정보가 없습니다.');
         if (!content.trim()) return alert('내용을 입력해주세요.');
 
+        // [수정]
+        const filteredMessage = filterProfanity(content);
+
         try {
-            await submitSuggestion(classId, { // [수정]
+            await submitSuggestion(classId, {
                 studentId: myPlayerData.id,
                 studentName: myPlayerData.name,
-                message: content,
+                message: filteredMessage, // [수정] 변환된 메시지 전송
             });
             setContent('');
         } catch (error) {

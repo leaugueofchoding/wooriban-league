@@ -9,6 +9,7 @@ import { doc, onSnapshot, updateDoc, runTransaction } from "firebase/firestore";
 import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { SKILLS } from '@/features/pet/petData'; // PET_DATA 제거 (안 씀)
+import { filterProfanity } from '@/utils/profanityFilter'; // [추가]
 
 // --- Styled Components & Keyframes ---
 
@@ -177,7 +178,6 @@ const ChatBubble = styled.div`
 
 const allQuizzes = Object.values(allQuizzesData || {}).flat();
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
-const profanityList = ['바보', '멍청이', 'xx'];
 
 const getHpColor = (current, max) => {
     const percentage = (current / max) * 100;
@@ -473,7 +473,8 @@ function BattlePage() {
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
         const isCorrect = submittedAnswer.toLowerCase() === battleState.question.answer.toLowerCase();
 
-        const filteredAnswer = profanityList.reduce((acc, profanity) => acc.replace(new RegExp(profanity, 'gi'), '**'), submittedAnswer);
+        // [수정] 공용 필터 함수 사용
+        const filteredAnswer = filterProfanity(submittedAnswer);
         await updateBattleChat(classId, battleId, myPlayerData.id, filteredAnswer, isCorrect);
 
         if (isCorrect) {

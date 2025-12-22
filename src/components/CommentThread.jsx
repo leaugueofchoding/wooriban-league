@@ -5,8 +5,9 @@ import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, addMissionReply, updateMissionComment, deleteMissionComment, toggleCommentLike, toggleReplyLike } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { filterProfanity } from '../utils/profanityFilter'; // [추가] 필터 함수 import
 
-// Styled Components
+// ... (스타일 컴포넌트들은 기존과 동일하므로 생략, 아래 로직이 핵심입니다) ...
 const CommentCard = styled.div`
     background-color: #e7f5ff;
     padding: 1rem;
@@ -89,8 +90,14 @@ function ReplyItem({ submissionId, commentId, reply, permissions }) {
 
     const handleUpdate = () => {
         if (!editedText.trim()) return;
-        updateMissionComment(submissionId, commentId, editedText.trim(), reply.id)
-            .then(() => setIsEditing(false))
+        // [수정] 필터링 적용
+        const cleanText = filterProfanity(editedText.trim());
+
+        updateMissionComment(submissionId, commentId, cleanText, reply.id)
+            .then(() => {
+                setIsEditing(false);
+                setEditedText(cleanText); // 화면에도 반영
+            })
             .catch(e => alert("답글 수정 실패: " + e.message));
     };
 
@@ -151,8 +158,14 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
 
     const handleUpdateComment = () => {
         if (!editedText.trim()) return;
-        updateMissionComment(submissionId, comment.id, editedText.trim())
-            .then(() => setIsEditing(false))
+        // [수정] 필터링 적용
+        const cleanText = filterProfanity(editedText.trim());
+
+        updateMissionComment(submissionId, comment.id, cleanText)
+            .then(() => {
+                setIsEditing(false);
+                setEditedText(cleanText);
+            })
             .catch(e => alert("댓글 수정 실패: " + e.message));
     };
 
@@ -165,11 +178,15 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
 
     const handleReplySubmit = () => {
         if (!replyContent.trim() || !myPlayerData) return;
+
+        // [수정] 필터링 적용
+        const cleanText = filterProfanity(replyContent.trim());
+
         const originalCommenter = players.find(p => p.id === comment.commenterId);
         addMissionReply(
             submissionId,
             comment.id,
-            { replierId: myPlayerData.id, replierName: myPlayerData.name, text: replyContent, likes: [] },
+            { replierId: myPlayerData.id, replierName: myPlayerData.name, text: cleanText, likes: [] }, // cleanText 전송
             { missionTitle, commenterAuthUid: originalCommenter?.authUid }
         ).then(() => {
             setReplyContent('');
