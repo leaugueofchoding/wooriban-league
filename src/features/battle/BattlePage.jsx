@@ -5,11 +5,11 @@ import styled, { keyframes } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
 import { auth, db, updateBattleChat, cancelBattleChallenge } from '@/api/firebase';
-import { doc, onSnapshot, updateDoc, runTransaction } from "firebase/firestore"; // getDoc 제거 (안 씀)
+import { doc, onSnapshot, updateDoc, runTransaction } from "firebase/firestore";
 import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
-import { SKILLS } from '@/features/pet/petData'; // PET_DATA 제거 (안 씀)
-import { filterProfanity } from '@/utils/profanityFilter'; // [추가]
+import { SKILLS } from '@/features/pet/petData';
+import { filterProfanity } from '@/utils/profanityFilter';
 
 // --- Styled Components & Keyframes ---
 
@@ -203,29 +203,29 @@ function BattlePage() {
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
 
-    // [핵심] 펫 이미지 상태 결정 함수 (웅크리기 이미지 적용)
+    // [수정] Hooks 에러 방지를 위해 최상단으로 이동
+    const prevHpRef = useRef({ my: null, opponent: null });
+
+    // [핵심] 펫 이미지 상태 결정 함수
     const getPetImageSrc = (info, isMine) => {
         if (!info || !info.pet) return null;
         const { appearanceId, status } = info.pet;
 
-        // 1. 현재 수비 턴(action 또는 resolution 단계)이고, 내가 수비자인 경우 -> 웅크리기 이미지
         const isDefenderTurn = (battleState?.status === 'action' || battleState?.status === 'resolution')
             && battleState?.turn !== info.id;
 
         if (isDefenderTurn) {
             return isMine
-                ? (petImageMap[`${appearanceId}_brace_back`] || petImageMap[`${appearanceId}_battle`]) // 내 펫: 뒷모습 웅크리기
-                : (petImageMap[`${appearanceId}_brace`] || petImageMap[`${appearanceId}_idle`]);       // 상대 펫: 앞모습 웅크리기
+                ? (petImageMap[`${appearanceId}_brace_back`] || petImageMap[`${appearanceId}_battle`])
+                : (petImageMap[`${appearanceId}_brace`] || petImageMap[`${appearanceId}_idle`]);
         }
 
-        // 2. 스킬 반동으로 인한 '지침(Recharging)' 상태일 때 -> 웅크리기 이미지
         if (status?.recharging) {
             return isMine
                 ? (petImageMap[`${appearanceId}_brace_back`] || petImageMap[`${appearanceId}_battle`])
                 : (petImageMap[`${appearanceId}_brace`] || petImageMap[`${appearanceId}_idle`]);
         }
 
-        // 3. 기본 상태 (공격자이거나 평상시)
         return isMine ? petImageMap[`${appearanceId}_battle`] : petImageMap[`${appearanceId}_idle`];
     };
 
@@ -236,6 +236,43 @@ function BattlePage() {
             navigate('/pet');
         }
     };
+
+    // [수정] Hooks 에러 방지를 위해 조건부 return 이전에 배치
+    useEffect(() => {
+        if (!battleState || !myPlayerData) return;
+
+        const IamChallenger = myPlayerData.id === battleState.challenger.id;
+        const myRole = IamChallenger ? 'challenger' : 'opponent';
+        const opponentRole = IamChallenger ? 'opponent' : 'challenger';
+
+        // 펫 데이터가 로드되지 않았을 경우 방어
+        if (!battleState[myRole]?.pet || !battleState[opponentRole]?.pet) return;
+
+        const currentMyHp = battleState[myRole].pet.hp;
+        const currentOpponentHp = battleState[opponentRole].pet.hp;
+
+        // 첫 로드 시 현재 HP로 초기화
+        if (prevHpRef.current.my === null) {
+            prevHpRef.current = { my: currentMyHp, opponent: currentOpponentHp };
+            return;
+        }
+
+        // 내 펫의 HP가 줄어들었으면 -> 내 펫 흔들기
+        if (currentMyHp < prevHpRef.current.my) {
+            setHitState(prev => ({ ...prev, my: true }));
+            setTimeout(() => setHitState(prev => ({ ...prev, my: false })), 500);
+        }
+
+        // 상대 펫의 HP가 줄어들었으면 -> 상대 펫 흔들기
+        if (currentOpponentHp < prevHpRef.current.opponent) {
+            setHitState(prev => ({ ...prev, opponent: true }));
+            setTimeout(() => setHitState(prev => ({ ...prev, opponent: false })), 500);
+        }
+
+        // 현재 HP를 기준으로 Ref 업데이트
+        prevHpRef.current = { my: currentMyHp, opponent: currentOpponentHp };
+
+    }, [battleState, myPlayerData]);
 
     useEffect(() => {
         if (!myPlayerData || !classId) return;
@@ -473,7 +510,6 @@ function BattlePage() {
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
         const isCorrect = submittedAnswer.toLowerCase() === battleState.question.answer.toLowerCase();
 
-        // [수정] 공용 필터 함수 사용
         const filteredAnswer = filterProfanity(submittedAnswer);
         await updateBattleChat(classId, battleId, myPlayerData.id, filteredAnswer, isCorrect);
 

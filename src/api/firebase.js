@@ -194,7 +194,7 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     throw new Error("미션을 찾을 수 없습니다.");
   }
   const missionData = missionSnap.data();
-  const MISSION_EXP_REWARD = 20; // 미션 완료 시 펫 경험치 20 지급
+  const MISSION_EXP_REWARD = 100; // 미션 완료 시 펫 경험치 20 지급
 
   for (const studentId of studentIds) {
     const playerRef = doc(db, 'classes', classId, 'players', studentId);
@@ -2655,32 +2655,21 @@ async function updatePetExperience(playerRef, expAmount) {
 
   let pet = { ...pets[petIndex] };
   pet.exp += expAmount;
-  let leveledUp = false;
 
-  // 레벨업 처리 로직
-  while (pet.exp >= pet.maxExp) {
-    pet.level++;
-    pet.exp -= pet.maxExp;
-    pet.maxExp = Math.floor(pet.maxExp * 1.2);
-    pet.maxHp = Math.floor(pet.maxHp * 1.15); // 최대 체력 증가
-    pet.maxSp = Math.floor(pet.maxSp * 1.15); // 최대 스킬 포인트 증가
-    leveledUp = true;
-  }
+  // [변경] 공통 계산 함수 호출로 로직 단순화
+  const { leveledUpPet, levelUps } = calculateLevelUp(pet);
 
-  if (leveledUp) {
-    // 레벨업 시 HP와 SP를 모두 회복
-    pet.hp = pet.maxHp;
-    pet.sp = pet.maxSp;
+  if (levelUps > 0) {
     createNotification(
       playerData.authUid,
       `🎉 레벨업!`,
-      `${pet.name}의 레벨이 ${pet.level}(으)로 올랐습니다!`,
+      `${leveledUpPet.name}의 레벨이 ${leveledUpPet.level}(으)로 올랐습니다!`,
       'pet_levelup',
       '/pet'
     );
   }
 
-  pets[petIndex] = pet;
+  pets[petIndex] = leveledUpPet;
   await updateDoc(playerRef, { pets });
 }
 
@@ -2692,10 +2681,8 @@ export async function selectInitialPet(classId, species, name) {
   const petId = Date.now().toString();
   const baseData = PET_DATA[species];
 
-  // 능력치 랜덤화 (+-10%)
   const randomize = (stat) => Math.round(stat * (0.9 + Math.random() * 0.2));
 
-  // ▼▼▼ [수정] 랜덤 값을 한 번만 생성하여 변수에 저장 ▼▼▼
   const randomizedMaxHp = randomize(baseData.baseStats.maxHp);
   const randomizedMaxSp = randomize(baseData.baseStats.maxSp);
   const randomizedAtk = randomize(baseData.baseStats.atk);
@@ -2704,12 +2691,14 @@ export async function selectInitialPet(classId, species, name) {
     id: petId,
     name: name,
     species: species,
-    level: 1, exp: 0, maxExp: 100,
-    hp: randomizedMaxHp, // 저장된 변수 사용
-    maxHp: randomizedMaxHp, // 저장된 변수 사용
-    sp: randomizedMaxSp, // 저장된 변수 사용
-    maxSp: randomizedMaxSp, // 저장된 변수 사용
-    atk: randomizedAtk, // 저장된 변수 사용
+    level: 1,
+    exp: 0,
+    maxExp: 270, // [수정] 공식: 150 + (50 * 1) = 200
+    hp: randomizedMaxHp,
+    maxHp: randomizedMaxHp,
+    sp: randomizedMaxSp,
+    maxSp: randomizedMaxSp,
+    atk: randomizedAtk,
     equippedSkills: baseData.initialSkills,
     skills: baseData.initialSkills,
     appearanceId: `${species}_lv1`
@@ -2881,7 +2870,6 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
   });
 }
 
-
 export async function hatchPetEgg(classId, playerId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
@@ -2903,7 +2891,6 @@ export async function hatchPetEgg(classId, playerId) {
 
     const randomize = (stat) => Math.round(stat * (0.9 + Math.random() * 0.2));
 
-    // ▼▼▼ [수정] 랜덤 값을 한 번만 생성하여 변수에 저장 ▼▼▼
     const randomizedMaxHp = randomize(baseData.baseStats.maxHp);
     const randomizedMaxSp = randomize(baseData.baseStats.maxSp);
     const randomizedAtk = randomize(baseData.baseStats.atk);
@@ -2912,12 +2899,14 @@ export async function hatchPetEgg(classId, playerId) {
       id: petId,
       name: baseData.name,
       species: randomSpecies,
-      level: 1, exp: 0, maxExp: 100,
-      hp: randomizedMaxHp, // 저장된 변수 사용
-      maxHp: randomizedMaxHp, // 저장된 변수 사용
-      sp: randomizedMaxSp, // 저장된 변수 사용
-      maxSp: randomizedMaxSp, // 저장된 변수 사용
-      atk: randomizedAtk, // 저장된 변수 사용
+      level: 1,
+      exp: 0,
+      maxExp: 270, // [수정] 공식: 150 + (50 * 1) = 200
+      hp: randomizedMaxHp,
+      maxHp: randomizedMaxHp,
+      sp: randomizedMaxSp,
+      maxSp: randomizedMaxSp,
+      atk: randomizedAtk,
       equippedSkills: baseData.initialSkills,
       skills: baseData.initialSkills,
       appearanceId: `${randomSpecies}_lv1`
@@ -2970,7 +2959,7 @@ export async function updatePetName(classId, playerId, petId, newName) {
   });
 }
 
-export async function convertLikesToExp(classId, playerId, amount, petId) { // petId 인자 추가
+export async function convertLikesToExp(classId, playerId, amount, petId) { // petId 인자 확인
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
   let expGained = 0;
@@ -2998,7 +2987,10 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
       throw new Error("경험치를 받을 펫을 찾을 수 없습니다.");
     }
 
-    expGained = amount * 10;
+    // [수정] 하트 1개당 경험치 50으로 상향 (기존 10 -> 50)
+    // 미션 보상(100XP)의 절반 가치로 설정하여 소셜 활동의 의미 부여
+    expGained = amount * 50;
+
     let pet = { ...pets[petIndex] };
     pet.exp += expGained;
 
@@ -3358,8 +3350,9 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   const opponentId = opponentObj.id;
 
   // 1. 최신 정보 조회
+  const challengerRef = doc(db, 'classes', classId, 'players', challengerId);
   const [challengerSnap, opponentSnap] = await Promise.all([
-    getDoc(doc(db, 'classes', classId, 'players', challengerId)),
+    getDoc(challengerRef),
     getDoc(doc(db, 'classes', classId, 'players', opponentId))
   ]);
 
@@ -3382,11 +3375,42 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
 
   if (!challenger.partnerPetId || !opponent.partnerPetId) throw new Error("양쪽 플레이어 모두 파트너 펫을 선택해야 합니다.");
 
-  const challengerPet = challenger.pets.find(p => p.id === challenger.partnerPetId);
+  // 펫 정보 가져오기
+  let challengerPets = challenger.pets || [];
+  const petIndex = challengerPets.findIndex(p => p.id === challenger.partnerPetId);
+  const challengerPet = challengerPets[petIndex];
+
   const opponentPet = opponent.pets.find(p => p.id === opponent.partnerPetId);
 
+  // 기절 상태 체크
   if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
   if (opponentPet.hp <= 0) throw new Error("상대방의 펫이 기절 상태라 대결을 신청할 수 없습니다.");
+
+  // ▼▼▼ [신규] 하루 배틀 횟수 제한 로직 (펫별 5회) ▼▼▼
+  const todayStr = new Date().toLocaleDateString();
+  let dailyCount = challengerPet.dailyBattleCount || 0;
+
+  // 날짜가 바뀌었으면 카운트 초기화
+  if (challengerPet.lastBattleDate !== todayStr) {
+    dailyCount = 0;
+  }
+
+  // 5회 이상이면 차단 (안내 문구 출력)
+  if (dailyCount >= 5) {
+    throw new Error(`'${challengerPet.name}'(은)는 오늘 너무 지쳤어요! 🛌\n파트너펫을 교체하여 배틀을 진행해주세요.`);
+  }
+
+  // 배틀 횟수 증가 및 저장 (신청 시점에 카운트)
+  challengerPets[petIndex] = {
+    ...challengerPet,
+    lastBattleDate: todayStr,
+    dailyBattleCount: dailyCount + 1
+  };
+
+  // 플레이어 정보 업데이트 (펫 상태 저장)
+  await updateDoc(challengerRef, { pets: challengerPets });
+  // ▲▲▲ [신규] 로직 종료 ▲▲▲
+
 
   const battleId = [challenger.id, opponent.id].sort().join('_');
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
@@ -3418,7 +3442,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   const battleData = {
     id: battleId,
     status: 'pending',
-    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet },
+    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet }, // 업데이트된 펫 정보 사용
     opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false },
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
@@ -3433,7 +3457,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   return battleId;
 }
 
-// [2. 수정] 배틀 거절 (쿨타임 부여)
+// [2. 수정] 배틀 거절 (쿨타임 부여) //
 export async function rejectBattleChallenge(classId, battleId) {
   if (!classId || !battleId) return;
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
@@ -3492,21 +3516,24 @@ export async function updateBattleChat(classId, battleId, playerId, message, isC
   }, 2000);
 }
 
-// ▼▼▼ [신규 추가] 펫 레벨업 계산 헬퍼 함수 ▼▼▼
 function calculateLevelUp(pet) {
   let leveledUpPet = { ...pet };
   let levelUps = 0;
-  // PET_DATA를 import해야 합니다.
-  const growth = PET_DATA[pet.species].growth;
+  const growth = PET_DATA[pet.species] ? PET_DATA[pet.species].growth : { hp: 10, sp: 5, atk: 2 };
 
   while (leveledUpPet.exp >= leveledUpPet.maxExp) {
     leveledUpPet.level++;
     leveledUpPet.exp -= leveledUpPet.maxExp;
 
-    // 레벨업 시 최대 경험치 공식 (petData.js와 동일하게)
-    leveledUpPet.maxExp = Math.floor(100 * Math.pow(leveledUpPet.level, 1.5));
+    const nextLevel = leveledUpPet.level;
 
-    // 고정 수치 성장
+    // [핵심 변경] 공식: 200 + (70 * Level)
+    // - Lv 1->2 필요량: 270 XP
+    // - Lv 29->30 필요량: 2,230 XP
+    // - 총 누적: 36,250 XP (미션 경험치 상향에 맞춘 밸런스)
+    leveledUpPet.maxExp = 200 + (70 * nextLevel);
+
+    // 스탯 성장
     leveledUpPet.maxHp += growth.hp;
     leveledUpPet.maxSp += growth.sp;
     leveledUpPet.atk += growth.atk;
@@ -3514,10 +3541,8 @@ function calculateLevelUp(pet) {
     levelUps++;
   }
   if (levelUps > 0) {
-    // 레벨업 시 HP/SP 완전 회복
     leveledUpPet.hp = leveledUpPet.maxHp;
     leveledUpPet.sp = leveledUpPet.maxSp;
   }
   return { leveledUpPet, levelUps };
 }
-// ▲▲▲ [신규 추가] 펫 레벨업 계산 헬퍼 함수 ▲▲▲
