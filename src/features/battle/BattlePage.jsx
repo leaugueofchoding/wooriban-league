@@ -301,19 +301,24 @@ function BattlePage() {
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
         const iAmChallenger = myPlayerData.id === battleState.challenger.id;
 
+        // 타이머 초기화
         clearTimeout(timeoutRef.current);
         clearInterval(timerRef.current);
 
-        if (iAmChallenger) {
-            if (battleState.status === 'starting') {
-                timeoutRef.current = setTimeout(() => {
-                    startNewTurn(battleRef, "대결 시작! 퀴즈를 풀어 선공을 차지하세요!");
-                }, 1500);
-            } else if (battleState.status === 'resolution') {
-                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 2000);
-            }
+        // 1. 배틀 시작 처리 (도전자만 실행)
+        if (iAmChallenger && battleState.status === 'starting') {
+            timeoutRef.current = setTimeout(() => {
+                startNewTurn(battleRef, "대결 시작! 퀴즈를 풀어 선공을 차지하세요!");
+            }, 1500);
+            return;
         }
 
+        // 2. 이미 종료된 배틀이면 타이머 중단 및 아무것도 하지 않음
+        if (battleState.status === 'finished') {
+            return;
+        }
+
+        // 3. 타이머 로직 (퀴즈: 15초, 액션: 10초)
         if (battleState.status === 'quiz' || battleState.status === 'action') {
             const updateTimer = () => {
                 const now = Date.now();
@@ -323,7 +328,7 @@ function BattlePage() {
 
                 setTimeLeft(remaining);
 
-                if (isProcessing) return;
+                if (isProcessing) return; // 처리 중이면 타임아웃 트리거 방지
 
                 if (elapsed > limitSeconds * 1000) {
                     clearInterval(timerRef.current);
@@ -331,15 +336,25 @@ function BattlePage() {
                     else handleActionTimeout(battleRef);
                 }
             };
-            updateTimer();
+
+            updateTimer(); // 즉시 1회 실행
             timerRef.current = setInterval(updateTimer, 1000);
+        }
+
+        // 4. 액션 결과 처리 (양쪽 모두 액션을 선택했을 때)
+        // 주의: 처리 중(isProcessing)이 아니고, 결과가 아직 안 나왔을 때만 실행
+        if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
+            if (!isProcessing) {
+                // 딜레이를 주어 UI에서 선택 효과를 볼 시간을 줌
+                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 1000);
+            }
         }
 
         return () => {
             clearInterval(timerRef.current);
             clearTimeout(timeoutRef.current);
         };
-    }, [battleState, myPlayerData, isProcessing]);
+    }, [battleState, myPlayerData, isProcessing, classId, battleId]);
 
     useEffect(() => {
         if (!battleState) return;
@@ -449,16 +464,17 @@ function BattlePage() {
         try {
             const result = await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
+                if (!battleDoc.exists()) return null;
 
-                // [추가] 배틀 문서가 없거나 이미 종료된 상태면 중단
-                if (!battleDoc.exists() || battleDoc.data().status === 'finished') return null;
-
-                // [추가] 상태가 quiz가 아니면 중단 (타임아웃 꼬임 방지)
-                if (battleDoc.data().status !== 'quiz') return null;
                 const data = battleDoc.data();
+                // 이미 종료되었거나 상태가 퀴즈가 아니면 중단
+                if (data.status === 'finished' || data.status !== 'quiz') return null;
+
+                // 타임아웃 검증 (네트워크 지연 고려 14.5초)
                 if (Date.now() - data.turnStartTime < 14500) return null;
 
                 let { challenger, opponent } = data;
+                // 양쪽 모두에게 최대 체력의 5% 데미지
                 const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
                 const damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
 
@@ -467,10 +483,11 @@ function BattlePage() {
 
                 const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
                 let winnerId = null;
+
                 if (isFinished) {
                     if (challenger.pet.hp > 0) winnerId = challenger.id;
                     else if (opponent.pet.hp > 0) winnerId = opponent.id;
-                    else winnerId = challenger.id;
+                    else winnerId = null; // 무승부 (둘 다 쓰러짐)
                 }
 
                 const nextQuiz = (allQuizzes && allQuizzes.length > 0)
@@ -480,9 +497,13 @@ function BattlePage() {
                 const updateData = {
                     challenger,
                     opponent,
-                    log: isFinished ? `시간 초과! 펫이 쓰러졌습니다!` : `시간 초과! 양쪽 모두 체력이 감소했습니다!`,
+                    log: isFinished ? `시간 초과! 펫이 지쳐 쓰러졌습니다!` : `시간 초과! 서로 눈치만 보다가 체력이 감소했습니다!`,
                     status: isFinished ? 'finished' : 'quiz',
                     winner: winnerId,
+                    attackerAction: null,
+                    defenderAction: null,
+                    turn: null,
+                    // 게임이 안 끝났으면 다음 턴 세팅
                     ...(!isFinished && {
                         turnStartTime: Date.now(),
                         question: nextQuiz
@@ -493,16 +514,18 @@ function BattlePage() {
             });
 
             if (result && result.isFinished) {
+                // [중요] 결과 처리는 여기서 하되, 페이지 이동은 모달 버튼에 맡김
                 const winnerPet = result.winnerId === result.finalChallenger.id ? result.finalChallenger.pet : result.finalOpponent.pet;
                 const loserPet = result.winnerId === result.finalChallenger.id ? result.finalOpponent.pet : result.finalChallenger.pet;
                 const loserId = result.winnerId === result.finalChallenger.id ? result.finalOpponent.id : result.finalChallenger.id;
+
                 await processBattleResults(classId, result.winnerId, loserId, false, winnerPet, loserPet);
-                setTimeout(() => goBack(), 3000);
+                // setTimeout(() => goBack(), 3000); // [삭제] 자동 이동 제거
             }
         } catch (error) {
             console.error("Timeout handling error:", error);
         } finally {
-            setTimeout(() => setIsProcessing(false), 500);
+            setIsProcessing(false);
         }
     };
 
@@ -621,47 +644,51 @@ function BattlePage() {
         try {
             const result = await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
-                // [추가] 이미 종료된 배틀이면 중단
-                if (!battleDoc.exists() || battleDoc.data().status === 'finished') return null;
-                let { challenger, opponent, turn, attackerAction, defenderAction } = battleDoc.data();
+                if (!battleDoc.exists()) return null;
+
+                const data = battleDoc.data();
+                // 이미 종료된 상태면 중단
+                if (data.status === 'finished') return null;
+
+                let { challenger, opponent, turn, attackerAction, defenderAction } = data;
+
+                // 액션이 모두 있어야 처리 가능
+                if (!attackerAction || !defenderAction) return null;
 
                 const isChallengerAttacker = turn === challenger.id;
-
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
+                // 스턴 해제
                 if (defender.pet.status?.stunned) {
                     delete defender.pet.status.stunned;
                 }
 
                 let skillId = attackerAction.toUpperCase();
                 let skill = SKILLS[skillId];
-
                 let isSpInsufficient = false;
                 const originalSkillName = skill?.name;
 
+                // SP 확인 및 차감 로직
                 if (skill && skill.cost > attacker.pet.sp) {
-                    skillId = 'TACKLE'; // 기본 공격으로 강제 변경
+                    skillId = 'TACKLE';
                     skill = SKILLS.TACKLE;
                     isSpInsufficient = true;
                 }
 
                 let log = "";
 
-                if (defenderAction === 'STUNNED') {
-                }
-
+                // 스킬 효과 적용
                 if (skill && skill.effect) {
                     log = skill.effect(attacker.pet, defender.pet, defenderAction);
-
                     if (isSpInsufficient) {
                         log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                     }
-
                     if (defenderAction === 'STUNNED') {
-                        log += ` (상대는 혼란에 빠져 무방비했다!)`;
+                        log += ` (상대는 혼란 상태라 방어하지 못했다!)`;
                     }
                 } else {
+                    // 스킬 데이터가 없을 경우 기본 데미지 로직
                     let damage = 20 + attacker.pet.atk * 2;
                     if (defenderAction === 'BRACE') damage *= 0.5;
                     damage = Math.round(damage);
@@ -669,10 +696,12 @@ function BattlePage() {
                     log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
                 }
 
+                // SP 차감
                 if (skill) {
                     attacker.pet.sp = Math.max(0, attacker.pet.sp - skill.cost);
                 }
 
+                // 종료 조건 확인
                 const isFinished = defender.pet.hp <= 0;
                 let winnerId = null;
                 if (isFinished) {
@@ -690,6 +719,7 @@ function BattlePage() {
                     opponent: isChallengerAttacker ? defender : attacker,
                     status: isFinished ? 'finished' : 'quiz',
                     winner: winnerId,
+                    // 게임 계속되면 다음 턴 준비
                     ...(!isFinished && {
                         question: nextQuiz,
                         turnStartTime: Date.now(),
@@ -699,6 +729,7 @@ function BattlePage() {
                         chat: {}
                     })
                 };
+
                 transaction.update(battleRef, updateData);
                 return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
             });
@@ -707,8 +738,9 @@ function BattlePage() {
                 const winnerPet = result.winnerId === result.finalChallenger.id ? result.finalChallenger.pet : result.finalOpponent.pet;
                 const loserPet = result.winnerId === result.finalChallenger.id ? result.finalOpponent.pet : result.finalChallenger.pet;
                 const loserId = result.winnerId === result.finalChallenger.id ? result.finalOpponent.id : result.finalChallenger.id;
+
                 await processBattleResults(classId, result.winnerId, loserId, false, winnerPet, loserPet);
-                setTimeout(() => goBack(), 3000);
+                // setTimeout(() => goBack(), 3000); // [삭제] 자동 이동 제거
             }
         } catch (error) {
             console.error("Battle resolution error:", error);
