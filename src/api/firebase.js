@@ -2714,8 +2714,13 @@ export async function selectInitialPet(classId, species, name) {
   return playerSnap.data();
 }
 
-export async function buyPetItem(classId, playerId, item) {
+export async function buyPetItem(classId, playerId, item, quantity = 1) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
+
+  // 수량 안전 장치
+  const count = parseInt(quantity, 10);
+  if (isNaN(count) || count <= 0) throw new Error("구매 수량이 올바르지 않습니다.");
+
   const playerRef = doc(db, 'classes', classId, 'players', playerId);
 
   return await runTransaction(db, async (transaction) => {
@@ -2723,19 +2728,25 @@ export async function buyPetItem(classId, playerId, item) {
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
     const playerData = playerDoc.data();
-    if (playerData.points < item.price) throw new Error("포인트가 부족합니다.");
+    const totalCost = item.price * count; // 가격 * 수량
+
+    if (playerData.points < totalCost) {
+      throw new Error(`포인트가 부족합니다. (필요: ${totalCost}P, 보유: ${playerData.points}P)`);
+    }
 
     const newInventory = { ...playerData.petInventory };
-    newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+    // [핵심] 기존 수량에 구매 수량(count)만큼 더하기
+    newInventory[item.id] = (newInventory[item.id] || 0) + count;
 
     transaction.update(playerRef, {
-      points: increment(-item.price),
+      points: increment(-totalCost),
       petInventory: newInventory
     });
   }).then(async () => {
     const playerDoc = await getDoc(playerRef);
     const playerData = playerDoc.data();
-    await addPointHistory(classId, playerData.authUid, playerData.name, -item.price, `펫 아이템 '${item.name}' 구매`);
+    const totalCost = item.price * count;
+    await addPointHistory(classId, playerData.authUid, playerData.name, -totalCost, `펫 아이템 '${item.name}' ${count}개 구매`);
     return playerData;
   });
 }

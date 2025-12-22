@@ -569,6 +569,10 @@ function PetPage() {
                         <SkillGrid>
                           {unequippedSkills.map(skillId => {
                             const skill = SKILLS[skillId.toUpperCase()];
+
+                            // [수정] 스킬 정보가 없으면 렌더링하지 않고 넘어감 (에러 방지)
+                            if (!skill) return null;
+
                             return (
                               <SkillSlot key={skillId} onClick={() => handleLearnedSkillClick(skillId)}>
                                 <p>{skill.name}</p><small>SP {skill.cost}</small>

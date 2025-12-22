@@ -449,7 +449,12 @@ function BattlePage() {
         try {
             const result = await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists() || battleDoc.data().status !== 'quiz') return null;
+
+                // [추가] 배틀 문서가 없거나 이미 종료된 상태면 중단
+                if (!battleDoc.exists() || battleDoc.data().status === 'finished') return null;
+
+                // [추가] 상태가 quiz가 아니면 중단 (타임아웃 꼬임 방지)
+                if (battleDoc.data().status !== 'quiz') return null;
                 const data = battleDoc.data();
                 if (Date.now() - data.turnStartTime < 14500) return null;
 
@@ -616,7 +621,8 @@ function BattlePage() {
         try {
             const result = await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists() || !battleDoc.data().attackerAction || !battleDoc.data().defenderAction) return null;
+                // [추가] 이미 종료된 배틀이면 중단
+                if (!battleDoc.exists() || battleDoc.data().status === 'finished') return null;
                 let { challenger, opponent, turn, attackerAction, defenderAction } = battleDoc.data();
 
                 const isChallengerAttacker = turn === challenger.id;

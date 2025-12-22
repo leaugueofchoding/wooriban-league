@@ -167,14 +167,16 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    buyPetItem: async (item) => {
+    buyPetItem: async (item, quantity = 1) => {
         const { classId } = get();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        const updatedPlayerData = await firebaseBuyPetItem(classId, myPlayerData.id, item);
+        // [핵심] 4번째 인자로 quantity 전달!
+        const updatedPlayerData = await firebaseBuyPetItem(classId, myPlayerData.id, item, quantity);
+
         set(state => ({
             players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
         }));
