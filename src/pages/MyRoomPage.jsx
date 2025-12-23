@@ -3,13 +3,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
-import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply } from '../api/firebase';
+import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply, storage } from '../api/firebase';
 import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
+import { ref, uploadString, getDownloadURL } from "firebase/storage"; // [추가] Storage 관련 함수
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
 import { filterProfanity } from '../utils/profanityFilter';
-
+import html2canvas from 'html2canvas';
 
 // --- Styled Components ---
 
@@ -533,6 +534,8 @@ function MyRoomPage() {
   });
 
   const roomContainerRef = useRef(null);
+  const [snapshotUrl, setSnapshotUrl] = useState(null); // [추가] 스냅샷 URL 상태
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false); // [추가] 로딩 상태
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [likes, setLikes] = useState([]);
@@ -621,13 +624,22 @@ function MyRoomPage() {
     setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
+  // [수정 C단계] 데이터 로드 useEffect 교체
   useEffect(() => {
     if (!classId || !roomOwnerData) return;
 
     const playerRef = doc(db, 'classes', classId, 'players', roomOwnerData.id);
     getDoc(playerRef).then(playerSnap => {
       if (playerSnap.exists()) {
-        const configData = playerSnap.data().myRoomConfig || {};
+        const data = playerSnap.data();
+        const configData = data.myRoomConfig || {};
+
+        // [추가] 스냅샷 URL이 존재하면 상태에 저장
+        if (data.myRoomSnapshotUrl) {
+          setSnapshotUrl(data.myRoomSnapshotUrl);
+        }
+
+        // 기존 설정값 로드 로직 (배열/객체 호환 처리)
         if (!Array.isArray(configData.items)) {
           const convertedItems = Object.entries(configData)
             .filter(([key, value]) => typeof value === 'object' && value.left !== undefined)
@@ -809,15 +821,74 @@ function MyRoomPage() {
     setRoomConfig(prev => ({ ...prev, backgroundId: prev.backgroundId === item.id ? null : item.id }));
   };
 
+  // [수정] 저장 함수 (캡처 시 padding-top 기반 반응형을 고정 픽셀 크기로 변환하여 캡처)
   const handleSaveLayout = async () => {
     if (!classId || !isMyRoom || !isEditing) return;
+    if (!roomContainerRef.current) return;
+
+    setIsLoadingSnapshot(true);
+
+    // 1. 현재 컨테이너의 실제 픽셀 너비 측정
+    const currentWidth = roomContainerRef.current.offsetWidth;
+    // 2. 4:3 비율에 맞는 정확한 높이 계산 (너비 * 0.75)
+    const fixedHeight = currentWidth * 0.75;
+
+    // 3. 기존 스타일 백업
+    const originalStyle = {
+      width: roomContainerRef.current.style.width,
+      height: roomContainerRef.current.style.height,
+      paddingTop: roomContainerRef.current.style.paddingTop,
+      position: roomContainerRef.current.style.position
+    };
+
+    // 4. 캡처를 위해 강제로 스타일 변경 (반응형 해제 -> 고정 픽셀)
+    // padding-top을 제거하고 height를 명시해야 html2canvas가 정확히 인식합니다.
+    roomContainerRef.current.style.width = `${currentWidth}px`;
+    roomContainerRef.current.style.height = `${fixedHeight}px`;
+    roomContainerRef.current.style.paddingTop = '0px';
+    // position이 relative여야 내부 absolute 아이템들이 기준을 잡음 (이미 설정되어 있지만 안전장치)
+    roomContainerRef.current.style.position = 'relative';
+
     try {
-      await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig });
-      alert('마이룸이 저장되었습니다!');
+      // 5. html2canvas 실행 (옵션 없이 요소 크기 그대로 캡처)
+      const canvas = await html2canvas(roomContainerRef.current, {
+        useCORS: true,
+        scale: 2, // 선명도 향상
+        backgroundColor: null,
+        scrollX: 0,
+        scrollY: 0,
+      });
+
+      const imageDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+      const storageRef = ref(storage, `classes/${classId}/players/${playerId}/myRoomSnapshot.jpg`);
+      await uploadString(storageRef, imageDataUrl, 'data_url');
+
+      const originalDownloadUrl = await getDownloadURL(storageRef);
+      // 캐시 버스팅(새로고침 없이 즉시 반영)을 위해 시간 파라미터 추가
+      const downloadUrlWithCache = `${originalDownloadUrl}?t=${Date.now()}`;
+
+      await updateDoc(doc(db, 'classes', classId, 'players', playerId), {
+        myRoomConfig: roomConfig,
+        myRoomSnapshotUrl: downloadUrlWithCache
+      });
+
+      setSnapshotUrl(downloadUrlWithCache);
       setIsEditing(false);
       setSelectedItemId(null);
+
+      alert('마이룸이 저장되었습니다!');
     } catch (error) {
+      console.error("마이룸 저장 중 오류:", error);
       alert('저장 중 오류가 발생했습니다.');
+    } finally {
+      // 6. 스타일 원상복구 (필수)
+      roomContainerRef.current.style.width = originalStyle.width;
+      roomContainerRef.current.style.height = originalStyle.height;
+      roomContainerRef.current.style.paddingTop = ''; // 원래 CSS(Styled-component) 값으로 복귀됨
+      roomContainerRef.current.style.position = originalStyle.position;
+
+      setIsLoadingSnapshot(false);
     }
   };
 
@@ -830,6 +901,34 @@ function MyRoomPage() {
         playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false } // 아바타는 기본 위치로
       });
       setSelectedItemId(null);
+    }
+  };
+
+  // [추가] 마이룸 스냅샷 저장 함수
+  const handleSaveSnapshot = async () => {
+    if (!roomContainerRef.current) return;
+
+    // 버튼을 잠시 숨기고 싶다면 state를 추가하여 제어할 수 있으나, 
+    // html2canvas는 캡처 시 특정 요소를 ignore할 수 있습니다. 
+    // 여기서는 전체 컨테이너를 찍되, 컨트롤러(화살표 등)는 
+    // isEditing 상태일 때만 보이므로 '저장' 버튼을 누른 시점(isEditing이 아닐 때)에 호출하면 깔끔합니다.
+
+    try {
+      const canvas = await html2canvas(roomContainerRef.current, {
+        useCORS: true, // Firebase Storage 이미지 등 외부 이미지 허용
+        scale: 2,      // 고해상도 캡처
+        backgroundColor: null // 투명 배경 유지 (필요 시 '#fff'로 변경)
+      });
+
+      // 이미지 다운로드 로직
+      const image = canvas.toDataURL("image/png");
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `${roomOwnerData.name}_마이룸_${new Date().toLocaleDateString()}.png`;
+      link.click();
+    } catch (error) {
+      console.error("스냅샷 저장 실패:", error);
+      alert("마이룸 사진을 저장하는 중 오류가 발생했습니다. (외부 이미지 보안 설정 등을 확인해주세요)");
     }
   };
 
@@ -988,43 +1087,67 @@ function MyRoomPage() {
           </LikeDisplay>
         )}
       </Header>
+      {/* [수정] RoomContainer 렌더링 부분 */}
       <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
-        <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
-        {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
-        {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
 
-        {roomConfig.playerAvatar && (
-          <InteractiveItem
-            $width={15} $height={25}
-            $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
-            $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
-            $isEditing={isEditing}
-            $isSelected={selectedItemId === 'playerAvatar'}
-            onClick={(e) => handleSelect(e, 'playerAvatar')}
-          >
-            {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
-          </InteractiveItem>
+        {!isEditing && snapshotUrl ? (
+          <img
+            src={snapshotUrl}
+            alt="마이룸 스냅샷"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'fill', // [수정] fill: 컨테이너와 이미지 비율이 같으므로 꽉 채움 (왜곡 없음)
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              pointerEvents: 'none'
+            }}
+          />
+        ) : (
+          /* 편집 모드 렌더링 (기존 코드 유지) */
+          <>
+            <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
+            {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
+            {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
+
+            {/* 아바타 */}
+            {roomConfig.playerAvatar && (
+              <InteractiveItem
+                $width={15} $height={25}
+                $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
+                $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
+                $isEditing={isEditing}
+                $isSelected={selectedItemId === 'playerAvatar'}
+                onClick={(e) => handleSelect(e, 'playerAvatar')}
+              >
+                {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
+              </InteractiveItem>
+            )}
+
+            {/* 아이템들 */}
+            {roomConfig.items.map((itemInstance) => {
+              const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
+              if (!itemInfo) return null;
+
+              return (
+                <InteractiveItem
+                  key={itemInstance.instanceId}
+                  $width={itemInfo.width || 15}
+                  $left={itemInstance.left} $top={itemInstance.top}
+                  $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
+                  $isEditing={isEditing}
+                  $isSelected={selectedItemId === itemInstance.instanceId}
+                  onClick={(e) => handleSelect(e, itemInstance.instanceId)}
+                >
+                  <img src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id} />
+                </InteractiveItem>
+              );
+            })}
+          </>
         )}
 
-        {roomConfig.items.map((itemInstance) => {
-          const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
-          if (!itemInfo) return null;
-
-          return (
-            <InteractiveItem
-              key={itemInstance.instanceId}
-              $width={itemInfo.width || 15}
-              $left={itemInstance.left} $top={itemInstance.top}
-              $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
-              $isEditing={isEditing}
-              $isSelected={selectedItemId === itemInstance.instanceId}
-              onClick={(e) => handleSelect(e, itemInstance.instanceId)}
-            >
-              <img src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id} />
-            </InteractiveItem>
-          );
-        })}
-
+        {/* 컨트롤러 (기존 코드 유지) */}
         {isEditing && selectedItemId && (
           <>
             <LeftControllerWrapper>
@@ -1051,7 +1174,10 @@ function MyRoomPage() {
               <h3 style={{ margin: 0 }}>내 아이템 목록</h3>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <ResetButton onClick={handleResetLayout}>초기화</ResetButton>
-                <SaveButton onClick={handleSaveLayout}>마이룸 저장</SaveButton>
+                {/* 저장 중일 때 버튼 비활성화 및 텍스트 변경 */}
+                <SaveButton onClick={handleSaveLayout} disabled={isLoadingSnapshot}>
+                  {isLoadingSnapshot ? '저장 중...' : '마이룸 저장'}
+                </SaveButton>
               </div>
             </div>
 
