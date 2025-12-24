@@ -73,7 +73,18 @@ import {
     processBattleResults as firebaseProcessBattleResults,
     processBattleDraw as firebaseProcessBattleDraw, // [추가]
 } from '../api/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, doc, Timestamp } from "firebase/firestore";
+import {
+    collection,
+    query,
+    where,
+    orderBy,
+    limit,
+    onSnapshot,
+    doc,
+    Timestamp,
+    updateDoc, // ◀◀◀ [추가] 문서 업데이트 함수
+    increment  // ◀◀◀ [추가] 숫자 자동 증가 함수
+} from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
 
@@ -888,17 +899,21 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) { console.error("시즌 시작 오류:", error); }
     },
 
+    // src/store/leagueStore.js 내부의 actions 영역
+
     endSeason: async () => {
         const { classId, currentSeason } = get();
         if (!classId || !currentSeason || currentSeason.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
         if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
 
         try {
+            // 최신 데이터 가져오기
             const players = await getPlayers(classId);
             const teams = await getTeams(classId, currentSeason.id);
             const matches = await getMatches(classId, currentSeason.id);
             const completedMatches = matches.filter(m => m.status === '완료');
 
+            // 1. 순위 산정 로직 (기존과 동일)
             let stats = teams.map(team => ({
                 id: team.id, teamName: team.teamName, emblemId: team.emblemId, emblemUrl: team.emblemUrl,
                 played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0, goalDifference: 0
@@ -922,15 +937,42 @@ export const useLeagueStore = create((set, get) => ({
                 return b.goalsFor - a.goalsFor;
             });
 
+            // 2. 우승팀 처리 및 [자동 우승 횟수 증가]
             if (stats.length > 0) {
                 const winningTeam = teams.find(t => t.id === stats[0].id);
                 if (winningTeam?.members.length > 0) {
+                    // (1) 칭호 지급 (기존 로직)
                     for (const memberId of winningTeam.members) {
                         await grantTitleToPlayer(classId, memberId, 'ruler_of_the_league');
                     }
+
+                    // ▼▼▼ [추가됨] 우승 횟수 자동 증가 로직 ▼▼▼
+                    // 별도의 동기화 버튼 없이 여기서 바로 처리합니다.
+                    try {
+                        const winningPlayers = players.filter(p => winningTeam.members.includes(p.id));
+
+                        // 우승한 팀원들의 users 테이블 정보를 업데이트 (win_count + 1)
+                        const updatePromises = winningPlayers.map(player => {
+                            if (player.authUid) {
+                                const userRef = doc(db, 'users', player.authUid);
+                                return updateDoc(userRef, {
+                                    win_count: increment(1) // 기존 값에서 1 증가
+                                });
+                            }
+                            return Promise.resolve();
+                        });
+
+                        await Promise.all(updatePromises);
+                        console.log(`${winningTeam.teamName} 팀원들의 우승 횟수가 반영되었습니다.`);
+                    } catch (err) {
+                        console.error("우승 횟수 자동 반영 실패:", err);
+                        // 에러가 나더라도 시즌 종료 프로세스는 계속 진행되도록 함
+                    }
+                    // ▲▲▲ [여기까지 추가] ▲▲▲
                 }
             }
 
+            // 3. 순위별 보상 지급 (기존과 동일)
             const prizeConfig = [
                 { rank: 1, prize: currentSeason.winningPrize || 0, label: "우승" },
                 { rank: 2, prize: currentSeason.secondPlacePrize || 0, label: "준우승" },
@@ -946,6 +988,7 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
+            // 4. 득점왕 보상 (기존과 동일)
             const topScorerPrize = currentSeason.topScorerPrize || 0;
             const scorerPoints = {};
             completedMatches.forEach(match => {
@@ -969,6 +1012,7 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
+            // 5. 아바타 박제 (기존과 동일)
             const playersInSeason = teams.flatMap(team => team.members)
                 .map(playerId => players.find(p => p.id === playerId)).filter(Boolean);
 
@@ -981,9 +1025,11 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
+            // 6. 시즌 상태 종료로 변경 (기존과 동일)
             await updateSeason(classId, currentSeason.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));
-            alert('시즌이 종료되고 순위별 보상 및 칭호가 지급되었습니다.');
+
+            alert('시즌이 종료되었습니다.\n- 순위별 보상 지급 완료\n- 우승 횟수 자동 반영 완료\n- 명예의 전당 등록 완료');
 
         } catch (error) {
             console.error("시즌 종료 및 보상 지급 오류:", error);
