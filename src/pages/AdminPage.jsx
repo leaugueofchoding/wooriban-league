@@ -1742,6 +1742,61 @@ function GoalManager() {
     );
 }
 
+function SortableListItem(props) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+    } = useSortable({ id: props.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    const { mission, classId, handleEditClick, archiveMission, unarchiveMission, removeMission, onNavigate } = props;
+
+    const handleDelete = () => {
+        if (window.confirm("정말로 이 미션을 삭제하시겠습니까? 제출된 기록도 모두 삭제됩니다.")) {
+            removeMission(classId, mission.id);
+        }
+    };
+
+    const handleArchive = () => {
+        if (mission.status === 'active') {
+            archiveMission(classId, mission.id);
+        } else {
+            unarchiveMission(classId, mission.id);
+        }
+    };
+
+    return (
+        <ListItem ref={setNodeRef} style={style} {...attributes}>
+            <DragHandle {...listeners}>⋮⋮</DragHandle>
+            <div>
+                <strong>{mission.title}</strong>
+                <span style={{ marginLeft: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
+                    ({mission.reward}P)
+                    {mission.submissionType?.includes('text') && ' [글]'}
+                    {mission.submissionType?.includes('photo') && ' [사진]'}
+                </span>
+                {mission.adminOnly && <span style={{ marginLeft: '0.5rem', color: 'red', fontSize: '0.8rem' }}>[관리자전용]</span>}
+                {mission.isFixed && <span style={{ marginLeft: '0.5rem', color: 'blue', fontSize: '0.8rem' }}>[반복]</span>}
+            </div>
+            <MissionControls>
+                <StyledButton onClick={() => onNavigate(mission.id)} style={{ backgroundColor: '#17a2b8' }}>기록</StyledButton>
+                <StyledButton onClick={() => handleEditClick(mission)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
+                <StyledButton onClick={handleArchive} style={{ backgroundColor: '#6c757d' }}>
+                    {mission.status === 'active' ? '숨김' : '복구'}
+                </StyledButton>
+                <StyledButton onClick={handleDelete} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
+            </MissionControls>
+        </ListItem>
+    );
+}
+
 function MissionManager({ onNavigate }) {
     const { classId } = useClassStore();
     const {

@@ -972,12 +972,28 @@ function MyRoomPage() {
   };
 
   const handleLikeRoom = async () => {
+    // 1. 예외 처리: 내 방이거나, 로그인 안 했거나, 이미 이번 달에 눌렀으면 중단
     if (!classId || isMyRoom || !myPlayerData) return;
+    if (hasLikedThisMonth) return;
+
     try {
+      // 2. [핵심] 화면 숫자 먼저 올리기 (낙관적 업데이트)
+      // 서버 응답을 기다리지 않고, 내 가짜 데이터를 리스트에 쏙 넣어서 숫자를 1 올립니다.
+      setLikes(prev => [
+        ...prev,
+        { id: myPlayerData.id, name: myPlayerData.name, lastLikedMonth: new Date().toISOString().slice(0, 7) }
+      ]);
+
+      // 3. 실제 서버에 저장 요청
       await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name);
+
+      // 4. 확실한 동기화를 위해 데이터 다시 불러오기 (혹시 실패했을 경우를 대비)
       fetchRoomSocialData();
+
     } catch (error) {
-      alert(error.message);
+      console.error(error);
+      alert("좋아요 반영에 실패했습니다.");
+      fetchRoomSocialData(); // 에러 나면 원래대로 돌리기
     }
   };
 
