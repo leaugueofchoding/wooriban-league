@@ -94,6 +94,7 @@ export const useClassStore = create((set) => ({
     setClassId: (classId) => set({ classId }),
 }));
 
+const SUPER_ADMIN_UID = 'Zz6fKdtg00Yb3ju5dibOgkJkWS52';
 
 export const useLeagueStore = create((set, get) => ({
     // --- [수정] State ---
@@ -394,41 +395,67 @@ export const useLeagueStore = create((set, get) => ({
 
     fetchInitialData: async () => {
         const { classId } = get();
+        // 학급 ID가 없으면 중단
         if (!classId) {
-            // console.log("학급 ID가 설정되지 않아 데이터 로딩을 중단합니다.");
             return set({ isLoading: false });
         }
+
         try {
             set({ isLoading: true });
 
+            // 타이틀 데이터 초기화 (필요 시)
             await seedInitialTitles(classId);
 
+            // 현재 로그인한 사용자 확인
             const currentUser = auth.currentUser;
             set({ currentUser });
 
+            // ★ [핵심] 슈퍼 관리자 여부 확인
+            const isSuperAdmin = currentUser?.uid === SUPER_ADMIN_UID;
+
+            // 시즌 데이터 가져오기
             const seasonsData = await getSeasons(classId);
             set({ seasons: seasonsData });
             const activeSeason = seasonsData.find(s => s.status === 'active' || s.status === 'preparing') || seasonsData[0] || null;
 
+            // 기존 리스너 정리
             get().cleanupListeners();
 
+            // 시즌이 없는 경우 (초기화 직후 등)
             if (!activeSeason) {
                 const [usersData, avatarPartsData, myRoomItemsData] = await Promise.all([getUsers(), getAvatarParts(), getMyRoomItems()]);
+
+                // ★ 슈퍼 관리자라면 가짜 플레이어 데이터를 만들어서라도 넣어줌 (그래야 관리자 페이지 접근 가능)
+                let initialPlayers = [];
+                if (isSuperAdmin) {
+                    console.log("👑 [슈퍼 관리자] 시즌 없음 상태에서도 관리자 권한 부여");
+                    initialPlayers = [{
+                        id: 'super_admin',
+                        name: '슈퍼 관리자',
+                        role: 'admin',
+                        authUid: currentUser.uid,
+                        status: 'active',
+                        points: 999999
+                    }];
+                }
+
                 return set({
                     isLoading: false,
+                    players: initialPlayers, // 여기서 슈퍼 관리자 포함된 배열 설정
                     teams: [], matches: [], missions: [],
                     users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null
                 });
             }
 
+            // 시즌이 있는 경우 - 전체 데이터 로딩
             get().subscribeToMatches(activeSeason.id);
             const [
-                playersData, teamsData, usersData,
+                fetchedPlayers, teamsData, usersData,
                 avatarPartsData, myRoomItemsData,
                 titlesData,
                 allMissionsData, submissionsData
             ] = await Promise.all([
-                get().players.length > 0 ? Promise.resolve(get().players) : getPlayers(classId),
+                getPlayers(classId), // 항상 최신 데이터 가져오기
                 getTeams(classId, activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
@@ -438,6 +465,30 @@ export const useLeagueStore = create((set, get) => ({
                 getMissionSubmissions(classId)
             ]);
 
+            // ★ [핵심] 가져온 플레이어 목록에 슈퍼 관리자 로직 적용
+            let finalPlayers = [...fetchedPlayers];
+
+            if (isSuperAdmin) {
+                const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
+                if (myIndex !== -1) {
+                    // 이미 데이터가 있다면 역할(role)을 강제로 'admin'으로 고정
+                    console.log("👑 [슈퍼 관리자] 기존 계정에 관리자 권한 강제 부여");
+                    finalPlayers[myIndex] = { ...finalPlayers[myIndex], role: 'admin' };
+                } else {
+                    // 데이터가 없다면(삭제됐다면) 가짜 관리자 객체 추가
+                    console.log("👑 [슈퍼 관리자] 삭제된 계정 복구 (가상 관리자 생성)");
+                    finalPlayers.push({
+                        id: 'super_admin',
+                        name: '슈퍼 관리자',
+                        role: 'admin',
+                        authUid: currentUser.uid,
+                        status: 'active',
+                        points: 999999
+                    });
+                }
+            }
+
+            // 미션 정렬 로직
             const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
             const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
 
@@ -449,8 +500,10 @@ export const useLeagueStore = create((set, get) => ({
                 });
             };
 
+            // 상태 업데이트
             set({
-                players: playersData, teams: teamsData, users: usersData,
+                players: finalPlayers, // 수정된 플레이어 목록 적용
+                teams: teamsData, users: usersData,
                 avatarParts: avatarPartsData,
                 myRoomItems: myRoomItemsData,
                 titles: titlesData,

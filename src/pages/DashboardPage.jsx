@@ -9,6 +9,8 @@ import baseAvatar from '../assets/base-avatar.png';
 import QuizWidget from '../components/QuizWidget';
 import confetti from 'canvas-confetti';
 import { petImageMap } from '../utils/petImageMap';
+import { writeBatch, collection, getDocs, doc } from "firebase/firestore"; // ◀◀◀ 이거 꼭 추가!
+import { db } from '../api/firebase'; // ◀◀◀ 이것도 없으면 추가!
 
 // --- Animations ---
 const float = keyframes`
@@ -471,8 +473,6 @@ function DashboardPage() {
 
     return (
         <DashboardWrapper>
-            {/* [변경] 동기화 버튼 삭제됨 */}
-
             {currentUser && !myPlayerData && (
                 <JoinLeagueButton onClick={registerAsPlayer}>
                     👋 안녕! 선수 등록하고 시작하기
