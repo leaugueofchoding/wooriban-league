@@ -1,13 +1,14 @@
 // src/features/pet/PetSelectionPage.jsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '@/store/leagueStore';
 import { useNavigate } from 'react-router-dom';
+import { auth } from '@/api/firebase'; // auth 추가
 import { petImageMap } from '@/utils/petImageMap';
-import { PET_DATA } from '@/features/pet/petData'; 
+import { PET_DATA } from '@/features/pet/petData';
 
-// --- (Styled Components는 이전과 동일하여 생략) ---
+// --- Styled Components ---
 const Wrapper = styled.div`
   max-width: 800px;
   margin: 2rem auto;
@@ -95,14 +96,29 @@ function PetSelectionPage() {
   const [selectedPet, setSelectedPet] = useState(null);
   const [nickname, setNickname] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { selectInitialPet } = useLeagueStore();
+  const { selectInitialPet, players } = useLeagueStore(); // players 가져오기
   const navigate = useNavigate();
+  const currentUser = auth.currentUser; // 현재 유저 확인용
 
   const PET_SELECTION_DATA = {
     dragon: { ...PET_DATA.dragon, image: petImageMap.dragon_lv1_idle },
     rabbit: { ...PET_DATA.rabbit, image: petImageMap.rabbit_lv1_idle },
     turtle: { ...PET_DATA.turtle, image: petImageMap.turtle_lv1_idle },
   };
+
+  // ▼▼▼ [추가] 진입 시 펫 보유 여부 체크 및 차단 로직 ▼▼▼
+  useEffect(() => {
+    if (currentUser && players.length > 0) {
+      const myData = players.find(p => p.authUid === currentUser.uid);
+
+      // 이미 펫이 있거나(pets 배열), 파트너 펫이 설정된 경우
+      if (myData && (myData.partnerPetId || (myData.pets && myData.pets.length > 0))) {
+        alert("이미 파트너 펫이 있습니다! 마이펫 페이지로 이동합니다.");
+        navigate('/pet'); // 펫 페이지로 강제 이동
+      }
+    }
+  }, [currentUser, players, navigate]);
+  // ▲▲▲ --------------------------------------------- ▲▲▲
 
   const handleSelect = async () => {
     if (!selectedPet) return;

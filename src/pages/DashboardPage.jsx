@@ -9,8 +9,8 @@ import baseAvatar from '../assets/base-avatar.png';
 import QuizWidget from '../components/QuizWidget';
 import confetti from 'canvas-confetti';
 import { petImageMap } from '../utils/petImageMap';
-import { writeBatch, collection, getDocs, doc } from "firebase/firestore"; // ◀◀◀ 이거 꼭 추가!
-import { db } from '../api/firebase'; // ◀◀◀ 이것도 없으면 추가!
+import { writeBatch, collection, getDocs, doc } from "firebase/firestore";
+import { db } from '../api/firebase';
 
 // --- Animations ---
 const float = keyframes`
@@ -46,7 +46,7 @@ const JoinLeagueButton = styled.button`
   &:hover { transform: translateY(-3px); }
 `;
 
-// === 1. Hero Section ===
+// === 1. Hero Section (파란색 영역) ===
 const HeroSection = styled.section`
   display: flex;
   gap: 1.5rem;
@@ -68,12 +68,13 @@ const IDCard = styled(Link)`
   position: relative;
   overflow: hidden;
 
+  /* 파란색 배경 효과 */
   &::before {
     content: '';
     position: absolute;
     top: 0; right: 0;
     width: 150px; height: 100%;
-    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(241, 243, 245, 0.5) 100%);
+    background: linear-gradient(135deg, rgba(77, 171, 247, 0.1) 0%, rgba(28, 126, 214, 0.1) 100%);
     clip-path: polygon(20% 0, 100% 0, 100% 100%, 0% 100%);
   }
   &:hover { transform: translateY(-5px); box-shadow: 0 15px 35px rgba(0,0,0,0.1); }
@@ -121,6 +122,7 @@ const StarContainer = styled.span`
 
 const StatBadges = styled.div`
   display: flex; gap: 0.6rem; margin-top: 0.5rem; flex-wrap: wrap;
+  align-items: center;
   @media (max-width: 768px) { justify-content: center; }
 `;
 
@@ -129,6 +131,10 @@ const Badge = styled.div`
   color: ${props => props.$color || '#495057'};
   padding: 0.4rem 0.8rem; border-radius: 12px;
   font-size: 0.9rem; font-weight: 700; display: flex; align-items: center; gap: 0.3rem;
+  
+  img.pet-icon {
+    width: 20px; height: 20px; object-fit: contain;
+  }
 `;
 
 const QuickMenuGrid = styled.div`
@@ -181,15 +187,22 @@ const WidgetHeader = styled.div`
   h3 { margin: 0; font-size: 1.3rem; font-weight: 800; color: #343a40; display: flex; align-items: center; gap: 0.5rem; }
 `;
 
+// === [연두색 영역] 오늘의 친구 카드 스타일 ===
+const FriendSection = styled(WidgetCard)`
+  background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+  border: none;
+`;
+
 const FriendCardContent = styled.div`
   display: flex; align-items: center; justify-content: center; gap: 1rem;
   height: 100%; padding-bottom: 0.5rem;
+  position: relative; z-index: 1;
 `;
 
 const SpotLight = styled.div`
   position: absolute; top: 50%; left: 30%; transform: translate(-50%, -50%);
   width: 140px; height: 140px;
-  background: radial-gradient(circle, rgba(255, 212, 59, 0.4) 0%, rgba(255,255,255,0) 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.5) 0%, rgba(255,255,255,0) 70%);
   z-index: 0;
 `;
 
@@ -206,33 +219,43 @@ const FullBodyAvatar = styled.div`
 
 const FriendPet = styled.div`
   position: absolute; bottom: 0; right: -5px;
-  width: 40px; height: 40px; z-index: 2;
+  width: 45px; height: 45px; z-index: 2;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
   img { width: 100%; height: 100%; object-fit: contain; }
 `;
 
-const PetLevelBadge = styled.div`
-  position: absolute; bottom: -5px; right: -10px;
-  background: #343a40; color: #fcc419;
-  font-size: 0.65rem; font-weight: bold;
-  padding: 0.1rem 0.4rem; border-radius: 8px;
-  z-index: 3; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+const FriendPetLevelBadge = styled.div`
+  position: absolute; bottom: -8px; right: -5px;
+  background: #fff; color: #2b8a3e;
+  font-size: 0.7rem; font-weight: 800;
+  padding: 0.1rem 0.5rem; border-radius: 10px;
+  z-index: 3; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border: 1px solid #d3f9d8;
+  white-space: nowrap;
 `;
 
 const FriendInfo = styled.div`
   display: flex; flex-direction: column; gap: 0.3rem; z-index: 2; flex-grow: 1;
 `;
 
+// [NEW] 친구 이름 위 회색 칭호 배지
+const FriendRoleBadge = styled.div`
+  font-size: 0.85rem; font-weight: 700; color: #868e96; 
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 2px;
+`;
+
 const FriendName = styled.div`
-  font-size: 1.5rem; font-weight: 800; color: #343a40; line-height: 1.2;
+  font-size: 1.5rem; font-weight: 800; color: #2b8a3e; line-height: 1.2;
   display: flex; align-items: center; gap: 0.4rem;
+  text-shadow: 0 1px 1px rgba(255,255,255,0.5);
 `;
 
 const InfoBadge = styled.div`
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.6);
   padding: 0.25rem 0.6rem; border-radius: 8px;
-  font-size: 0.8rem; font-weight: 700; color: #495057;
-  border: 1px solid rgba(0,0,0,0.05); display: inline-flex; align-items: center; gap: 0.3rem; width: fit-content;
+  font-size: 0.8rem; font-weight: 700; color: #2b8a3e;
+  display: inline-flex; align-items: center; gap: 0.3rem; width: fit-content;
 `;
 
 const PartImage = styled.img`
@@ -316,23 +339,17 @@ const getTodayStar = (playerList, myId) => {
     return candidates[index];
 };
 
-// [NEW] 우승 별(Star) 생성 함수
 const getWinningStars = (count) => {
     if (!count || count <= 0) return null;
-
     const purpleStars = Math.floor(count / 5);
     const yellowStars = count % 5;
-
     const stars = [];
-
     for (let i = 0; i < purpleStars; i++) {
         stars.push(<span key={`p-${i}`} style={{ color: '#7950f2', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>★</span>);
     }
-
     for (let i = 0; i < yellowStars; i++) {
         stars.push(<span key={`y-${i}`} style={{ color: '#fcc419', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>★</span>);
     }
-
     return <StarContainer>{stars}</StarContainer>;
 };
 
@@ -381,7 +398,6 @@ function MissionItem({ mission, mySubmissions, canSubmitMission }) {
 
 function DashboardPage() {
     const { classId } = useClassStore();
-    // [변경] syncPastWinningCounts 제거 (버튼 삭제됨)
     const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, standingsData, titles } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
@@ -392,18 +408,26 @@ function DashboardPage() {
     const todaysFriend = useMemo(() => getTodayStar(players, myPlayerData?.id), [players, myPlayerData]);
     const equippedTitle = useMemo(() => (myPlayerData?.equippedTitle && titles.length) ? titles.find(t => t.id === myPlayerData.equippedTitle) : null, [myPlayerData, titles]);
 
-    const myAvatarUrls = useMemo(() => getAvatarUrls(myPlayerData?.avatarConfig, avatarParts), [myPlayerData, avatarParts]);
-    const friendAvatarUrls = useMemo(() => getAvatarUrls(todaysFriend?.avatarConfig, avatarParts), [todaysFriend, avatarParts]);
+    // [중요] 내 파트너 펫 찾기
+    const myPartnerPet = useMemo(() => {
+        if (!myPlayerData?.pets || !myPlayerData.pets.length) return null;
+        return myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
+    }, [myPlayerData]);
 
-    const friendPetImage = useMemo(() => {
-        if (!todaysFriend?.pet) return null;
-        return petImageMap[todaysFriend.pet.type]?.[todaysFriend.pet.evolutionStage || 1] || null;
+    // [중요] 오늘의 친구 파트너 펫 찾기
+    const friendPartnerPet = useMemo(() => {
+        if (!todaysFriend?.pets || !todaysFriend.pets.length) return null;
+        return todaysFriend.pets.find(p => p.id === todaysFriend.partnerPetId) || todaysFriend.pets[0];
     }, [todaysFriend]);
 
+    // 오늘의 친구 칭호 찾기 (배지 표시용)
     const friendTitle = useMemo(() => {
         if (!todaysFriend?.equippedTitle || !titles.length) return null;
         return titles.find(t => t.id === todaysFriend.equippedTitle);
     }, [todaysFriend, titles]);
+
+    const myAvatarUrls = useMemo(() => getAvatarUrls(myPlayerData?.avatarConfig, avatarParts), [myPlayerData, avatarParts]);
+    const friendAvatarUrls = useMemo(() => getAvatarUrls(todaysFriend?.avatarConfig, avatarParts), [todaysFriend, avatarParts]);
 
     const friendTeamName = useMemo(() => {
         if (!todaysFriend?.teamId) return "무소속";
@@ -414,7 +438,6 @@ function DashboardPage() {
     const topRankedTeams = useMemo(() => standingsData().slice(0, 3), [standingsData]);
     const rankIcons = ["🥇", "🥈", "🥉"];
 
-    // 1. mySubmissions 정의 (가장 먼저 선언)
     const mySubmissions = useMemo(() => {
         if (!myPlayerData) return {};
         const map = {};
@@ -424,7 +447,6 @@ function DashboardPage() {
         return map;
     }, [missionSubmissions, myPlayerData]);
 
-    // 2. activeMissions 정의 (mySubmissions 의존)
     const activeMissions = useMemo(() => {
         if (!missions) return [];
         return missions.filter(m => {
@@ -439,10 +461,8 @@ function DashboardPage() {
         });
     }, [missions, mySubmissions]);
 
-    // 3. recentMissions 정의 (activeMissions 의존)
     const recentMissions = useMemo(() => activeMissions.slice(0, 3), [activeMissions]);
 
-    // 학급 목표
     useEffect(() => {
         if (!classId || !myPlayerData) return;
         getActiveGoals(classId).then(goals => {
@@ -481,7 +501,7 @@ function DashboardPage() {
 
             {myPlayerData && (
                 <>
-                    {/* 1. HERO SECTION */}
+                    {/* 1. HERO SECTION (파란색) - 내 정보 & 펫 레벨 표시 */}
                     <HeroSection>
                         <IDCard to="/profile">
                             <IDPhotoFrame>
@@ -495,11 +515,20 @@ function DashboardPage() {
                                 </RoleBadge>
                                 <NameTitle>
                                     {myPlayerData.name}
-                                    {/* [변경] winningCount -> win_count로 수정하여 데이터 연동 */}
                                     {getWinningStars(myPlayerData.win_count || 0)}
                                 </NameTitle>
                                 <StatBadges>
-                                    <Badge $bg="#e6fcf5" $color="#0ca678">Lv. {myPlayerData.pet?.level || 1}</Badge>
+                                    {/* 내 펫 레벨 표시 */}
+                                    <Badge $bg="#e6fcf5" $color="#0ca678">
+                                        {myPartnerPet ? (
+                                            <>
+                                                <img src={petImageMap[`${myPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" className="pet-icon" />
+                                                <span>Lv.{myPartnerPet.level} {myPartnerPet.name}</span>
+                                            </>
+                                        ) : (
+                                            "펫 없음"
+                                        )}
+                                    </Badge>
                                     <Badge $bg="#fff9db" $color="#f59f00">💰 {myPlayerData.points?.toLocaleString()}</Badge>
                                     <Badge $bg="#fff5f5" $color="#fa5252">❤️ {myPlayerData.totalLikes?.toLocaleString()}</Badge>
                                 </StatBadges>
@@ -568,11 +597,12 @@ function DashboardPage() {
                             <QuizWidget />
                         </WidgetCard>
 
+                        {/* [연두색 영역] 오늘의 친구 */}
                         {todaysFriend ? (
-                            <WidgetCard to={`/my-room/${todaysFriend.id}`} $color="#fcc419" style={{ background: 'linear-gradient(135deg, #fff 0%, #fff9db 100%)' }}>
+                            <FriendSection to={`/my-room/${todaysFriend.id}`}>
                                 <WidgetHeader>
-                                    <h3>🌟 오늘의 친구</h3>
-                                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#f59f00', background: '#fff', padding: '0.2rem 0.6rem', borderRadius: '10px' }}>VISIT</span>
+                                    <h3 style={{ color: '#2b8a3e' }}>🌟 오늘의 친구</h3>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#2b8a3e', background: 'rgba(255,255,255,0.8)', padding: '0.2rem 0.6rem', borderRadius: '10px' }}>VISIT</span>
                                 </WidgetHeader>
                                 <FriendCardContent>
                                     <SpotLight />
@@ -580,26 +610,43 @@ function DashboardPage() {
                                         <FullBodyAvatar>
                                             {friendAvatarUrls.map((src, i) => <PartImage key={i} src={src} style={{ zIndex: i }} />)}
                                         </FullBodyAvatar>
-                                        {friendPetImage && (
+
+                                        {/* 친구 파트너 펫 & 레벨 표시 */}
+                                        {friendPartnerPet && (
                                             <FriendPet>
-                                                <img src={friendPetImage} alt="pet" />
-                                                <PetLevelBadge>Lv.{todaysFriend.pet?.level || 1}</PetLevelBadge>
+                                                <img
+                                                    src={petImageMap[`${friendPartnerPet.appearanceId}_idle`] || baseAvatar}
+                                                    alt="pet"
+                                                />
+                                                <FriendPetLevelBadge>
+                                                    Lv.{friendPartnerPet.level}
+                                                </FriendPetLevelBadge>
                                             </FriendPet>
                                         )}
                                     </FriendAvatarGroup>
                                     <FriendInfo>
+                                        {/* ▼▼▼ 친구 칭호(Title) 표시 - 이름 위에 회색 글씨로 ▼▼▼ */}
+                                        <FriendRoleBadge>
+                                            {friendTitle ? friendTitle.name : (todaysFriend.role === 'admin' ? 'TEACHER' : 'PLAYER')}
+                                        </FriendRoleBadge>
+                                        {/* ▲▲▲ ------------------------------------------ ▲▲▲ */}
+
                                         <FriendName>
                                             {todaysFriend.name}
-                                            {/* [변경] winningCount -> win_count로 수정하여 데이터 연동 */}
                                             {getWinningStars(todaysFriend.win_count || 0)}
                                         </FriendName>
-                                        {friendTitle && (
-                                            <InfoBadge><span style={{ fontSize: '1rem' }}>{friendTitle.icon}</span>{friendTitle.name}</InfoBadge>
+
+                                        {/* 친구 펫 이름 표시 추가 */}
+                                        {friendPartnerPet && (
+                                            <InfoBadge>
+                                                <span style={{ fontSize: '0.9rem' }}>🐾</span>{friendPartnerPet.name}
+                                            </InfoBadge>
                                         )}
+
                                         <InfoBadge><span style={{ fontSize: '0.9rem' }}>🛡️</span>{friendTeamName}</InfoBadge>
                                     </FriendInfo>
                                 </FriendCardContent>
-                            </WidgetCard>
+                            </FriendSection>
                         ) : (
                             <WidgetCard to="#" as="div">
                                 <WidgetHeader><h3>🌟 오늘의 친구</h3></WidgetHeader>

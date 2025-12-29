@@ -359,11 +359,36 @@ function PetPage() {
     );
   }, [players]);
 
+  // ▼▼▼ [교체] 이름 저장 함수 (배열 전체 업데이트 방식) ▼▼▼
   const handleSaveName = async () => {
+    const filteredName = filterProfanity(newName);
+
+    if (filteredName.includes('*')) {
+      alert("부적절한 단어가 포함되어 있어 사용할 수 없습니다.");
+      return;
+    }
+
     try {
-      await updatePetName(newName, selectedPet.id);
-      setIsEditingName(false);
-    } catch (error) { alert(error.message); }
+      // 1. 기존 펫 목록 복사
+      const updatedPets = [...myPlayerData.pets];
+
+      // 2. 현재 선택된 펫 찾아서 이름 변경
+      const petIndex = updatedPets.findIndex(p => p.id === selectedPet.id);
+      if (petIndex !== -1) {
+        updatedPets[petIndex] = { ...updatedPets[petIndex], name: filteredName };
+
+        // 3. 펫 배열 전체를 덮어쓰기 (Firestore 배열 수정 제약 해결)
+        await updatePlayerProfile(classId, myPlayerData.id, { pets: updatedPets });
+
+        // 4. 상태 업데이트
+        setIsEditingName(false);
+        setNewName(filteredName);
+        alert(`이름이 '${filteredName}'(으)로 변경되었습니다!`);
+      }
+    } catch (error) {
+      console.error("이름 변경 실패:", error);
+      alert("이름 저장 중 오류가 발생했습니다.");
+    }
   };
 
   const handleUseItem = async (itemId) => {

@@ -237,42 +237,43 @@ function BattlePage() {
         }
     };
 
-    // [수정] Hooks 에러 방지를 위해 조건부 return 이전에 배치
+    // ▼▼▼ [교체] 타이머 로직 useEffect ▼▼▼
     useEffect(() => {
-        if (!battleState || !myPlayerData) return;
+        let interval;
 
-        const IamChallenger = myPlayerData.id === battleState.challenger.id;
-        const myRole = IamChallenger ? 'challenger' : 'opponent';
-        const opponentRole = IamChallenger ? 'opponent' : 'challenger';
-
-        // 펫 데이터가 로드되지 않았을 경우 방어
-        if (!battleState[myRole]?.pet || !battleState[opponentRole]?.pet) return;
-
-        const currentMyHp = battleState[myRole].pet.hp;
-        const currentOpponentHp = battleState[opponentRole].pet.hp;
-
-        // 첫 로드 시 현재 HP로 초기화
-        if (prevHpRef.current.my === null) {
-            prevHpRef.current = { my: currentMyHp, opponent: currentOpponentHp };
-            return;
+        // 전투 중일 때만 타이머 작동
+        if (battleState === 'fighting') {
+            interval = setInterval(() => {
+                setTimeLeft((prev) => {
+                    // 1초 이하로 떨어지면 종료 처리
+                    if (prev <= 1) {
+                        clearInterval(interval);
+                        handleBattleTimeout(); // 즉시 종료 함수 실행
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
         }
 
-        // 내 펫의 HP가 줄어들었으면 -> 내 펫 흔들기
-        if (currentMyHp < prevHpRef.current.my) {
-            setHitState(prev => ({ ...prev, my: true }));
-            setTimeout(() => setHitState(prev => ({ ...prev, my: false })), 500);
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [battleState]); // 의존성 배열을 최소화하여 재실행 방지
+
+    // ▼▼▼ [교체 또는 추가] 시간 종료 처리 함수 ▼▼▼
+    const handleBattleTimeout = useCallback(async () => {
+        // 이미 종료된 상태면 실행 방지
+        if (battleState === 'finished') return;
+
+        console.log("⏰ 시간 종료! 결과 판정 시도...");
+
+        // 내가 방장(Host)일 때만 서버에 종료 신호를 보냄 (중복 방지)
+        if (battleData && battleData.hostId === currentUser.uid) {
+            // 여기에 승패 판정 함수 호출
+            await determineWinner();
         }
-
-        // 상대 펫의 HP가 줄어들었으면 -> 상대 펫 흔들기
-        if (currentOpponentHp < prevHpRef.current.opponent) {
-            setHitState(prev => ({ ...prev, opponent: true }));
-            setTimeout(() => setHitState(prev => ({ ...prev, opponent: false })), 500);
-        }
-
-        // 현재 HP를 기준으로 Ref 업데이트
-        prevHpRef.current = { my: currentMyHp, opponent: currentOpponentHp };
-
-    }, [battleState, myPlayerData]);
+    }, [battleState, battleData, currentUser]);
 
     useEffect(() => {
         if (!myPlayerData || !classId) return;

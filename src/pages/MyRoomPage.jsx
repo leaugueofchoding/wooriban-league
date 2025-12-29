@@ -2,10 +2,10 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply, storage } from '../api/firebase';
 import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage"; // [추가] Storage 관련 함수
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
@@ -388,20 +388,6 @@ const ExitButton = styled.button`
   &:hover { background-color: #5a6268; }
 `;
 
-const InventoryHeader = styled.h4`
-    cursor: pointer;
-    user-select: none;
-    margin: 0;
-    padding: 0.5rem 0;
-    font-size: 1.2rem;
-    
-    &:not(:first-child) {
-        margin-top: 1.5rem;
-        border-top: 1px solid #dee2e6;
-        padding-top: 1.5rem;
-    }
-`;
-
 const AccordionContent = styled.div`
     max-height: ${props => props.$isOpen ? '1000px' : '0'};
     opacity: ${props => props.$isOpen ? 1 : 0};
@@ -514,7 +500,50 @@ const LoadMoreButton = styled.button`
     }
 `;
 
-// 교체할 MyRoomPage 컴포넌트 전체 코드
+const ResetButton = styled(SaveButton)`
+    background-color: #6c757d;
+    &:hover {
+        background-color: #5a6268;
+    }
+`;
+
+// [추가] 친구 목록 모달 스타일
+const FriendListModal = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 1rem;
+  z-index: 200;
+  width: 300px;
+  max-height: 350px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 10px;
+`;
+
+const FriendItem = styled.div`
+  padding: 0.5rem;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.2s;
+  
+  &:hover { background-color: #f8f9fa; }
+  &:last-child { border-bottom: none; }
+  
+  img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid #ddd; }
+  span { font-weight: bold; font-size: 0.95rem; }
+`;
+
 function MyRoomPage() {
   const { classId } = useClassStore();
   const { playerId } = useParams();
@@ -534,8 +563,8 @@ function MyRoomPage() {
   });
 
   const roomContainerRef = useRef(null);
-  const [snapshotUrl, setSnapshotUrl] = useState(null); // [추가] 스냅샷 URL 상태
-  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false); // [추가] 로딩 상태
+  const [snapshotUrl, setSnapshotUrl] = useState(null);
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [likes, setLikes] = useState([]);
@@ -543,10 +572,16 @@ function MyRoomPage() {
   const [replyContent, setReplyContent] = useState("");
   const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
   const [visibleCommentsCount, setVisibleCommentsCount] = useState(5);
+  const [showFriendList, setShowFriendList] = useState(false); // [추가] 친구 목록 토글 상태
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+
+  // [추가] 친구 목록 데이터 (나 제외, 전체 친구 - 활동 여부 무관)
+  const classmates = useMemo(() => {
+    return players.filter(p => p.id !== myPlayerData?.id);
+  }, [players, myPlayerData]);
 
   const equippedTitle = useMemo(() => {
     if (!roomOwnerData?.equippedTitle || !titles.length) return null;
@@ -624,7 +659,6 @@ function MyRoomPage() {
     setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
-  // [수정 C단계] 데이터 로드 useEffect 교체
   useEffect(() => {
     if (!classId || !roomOwnerData) return;
 
@@ -634,12 +668,10 @@ function MyRoomPage() {
         const data = playerSnap.data();
         const configData = data.myRoomConfig || {};
 
-        // [추가] 스냅샷 URL이 존재하면 상태에 저장
         if (data.myRoomSnapshotUrl) {
           setSnapshotUrl(data.myRoomSnapshotUrl);
         }
 
-        // 기존 설정값 로드 로직 (배열/객체 호환 처리)
         if (!Array.isArray(configData.items)) {
           const convertedItems = Object.entries(configData)
             .filter(([key, value]) => typeof value === 'object' && value.left !== undefined)
@@ -821,19 +853,15 @@ function MyRoomPage() {
     setRoomConfig(prev => ({ ...prev, backgroundId: prev.backgroundId === item.id ? null : item.id }));
   };
 
-  // [수정] 저장 함수 (캡처 시 padding-top 기반 반응형을 고정 픽셀 크기로 변환하여 캡처)
   const handleSaveLayout = async () => {
     if (!classId || !isMyRoom || !isEditing) return;
     if (!roomContainerRef.current) return;
 
     setIsLoadingSnapshot(true);
 
-    // 1. 현재 컨테이너의 실제 픽셀 너비 측정
     const currentWidth = roomContainerRef.current.offsetWidth;
-    // 2. 4:3 비율에 맞는 정확한 높이 계산 (너비 * 0.75)
     const fixedHeight = currentWidth * 0.75;
 
-    // 3. 기존 스타일 백업
     const originalStyle = {
       width: roomContainerRef.current.style.width,
       height: roomContainerRef.current.style.height,
@@ -841,19 +869,15 @@ function MyRoomPage() {
       position: roomContainerRef.current.style.position
     };
 
-    // 4. 캡처를 위해 강제로 스타일 변경 (반응형 해제 -> 고정 픽셀)
-    // padding-top을 제거하고 height를 명시해야 html2canvas가 정확히 인식합니다.
     roomContainerRef.current.style.width = `${currentWidth}px`;
     roomContainerRef.current.style.height = `${fixedHeight}px`;
     roomContainerRef.current.style.paddingTop = '0px';
-    // position이 relative여야 내부 absolute 아이템들이 기준을 잡음 (이미 설정되어 있지만 안전장치)
     roomContainerRef.current.style.position = 'relative';
 
     try {
-      // 5. html2canvas 실행 (옵션 없이 요소 크기 그대로 캡처)
       const canvas = await html2canvas(roomContainerRef.current, {
         useCORS: true,
-        scale: 2, // 선명도 향상
+        scale: 2,
         backgroundColor: null,
         scrollX: 0,
         scrollY: 0,
@@ -865,7 +889,6 @@ function MyRoomPage() {
       await uploadString(storageRef, imageDataUrl, 'data_url');
 
       const originalDownloadUrl = await getDownloadURL(storageRef);
-      // 캐시 버스팅(새로고침 없이 즉시 반영)을 위해 시간 파라미터 추가
       const downloadUrlWithCache = `${originalDownloadUrl}?t=${Date.now()}`;
 
       await updateDoc(doc(db, 'classes', classId, 'players', playerId), {
@@ -882,10 +905,9 @@ function MyRoomPage() {
       console.error("마이룸 저장 중 오류:", error);
       alert('저장 중 오류가 발생했습니다.');
     } finally {
-      // 6. 스타일 원상복구 (필수)
       roomContainerRef.current.style.width = originalStyle.width;
       roomContainerRef.current.style.height = originalStyle.height;
-      roomContainerRef.current.style.paddingTop = ''; // 원래 CSS(Styled-component) 값으로 복귀됨
+      roomContainerRef.current.style.paddingTop = '';
       roomContainerRef.current.style.position = originalStyle.position;
 
       setIsLoadingSnapshot(false);
@@ -895,54 +917,25 @@ function MyRoomPage() {
   const handleResetLayout = () => {
     if (window.confirm('정말로 방의 모든 아이템을 치우고 초기 상태로 되돌리시겠습니까? 이 작업은 저장하기 전까지는 적용되지 않습니다.')) {
       setRoomConfig({
-        items: [], // 모든 아이템 제거
-        houseId: null, // 하우스 제거
-        backgroundId: null, // 배경 제거
-        playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false } // 아바타는 기본 위치로
+        items: [],
+        houseId: null,
+        backgroundId: null,
+        playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false }
       });
       setSelectedItemId(null);
-    }
-  };
-
-  // [추가] 마이룸 스냅샷 저장 함수
-  const handleSaveSnapshot = async () => {
-    if (!roomContainerRef.current) return;
-
-    // 버튼을 잠시 숨기고 싶다면 state를 추가하여 제어할 수 있으나, 
-    // html2canvas는 캡처 시 특정 요소를 ignore할 수 있습니다. 
-    // 여기서는 전체 컨테이너를 찍되, 컨트롤러(화살표 등)는 
-    // isEditing 상태일 때만 보이므로 '저장' 버튼을 누른 시점(isEditing이 아닐 때)에 호출하면 깔끔합니다.
-
-    try {
-      const canvas = await html2canvas(roomContainerRef.current, {
-        useCORS: true, // Firebase Storage 이미지 등 외부 이미지 허용
-        scale: 2,      // 고해상도 캡처
-        backgroundColor: null // 투명 배경 유지 (필요 시 '#fff'로 변경)
-      });
-
-      // 이미지 다운로드 로직
-      const image = canvas.toDataURL("image/png");
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = `${roomOwnerData.name}_마이룸_${new Date().toLocaleDateString()}.png`;
-      link.click();
-    } catch (error) {
-      console.error("스냅샷 저장 실패:", error);
-      alert("마이룸 사진을 저장하는 중 오류가 발생했습니다. (외부 이미지 보안 설정 등을 확인해주세요)");
     }
   };
 
   const handlePostComment = async () => {
     if (!classId || !newComment.trim() || !myPlayerData) return;
 
-    // [수정] 입력한 댓글 내용 필터링
     const filteredComment = filterProfanity(newComment);
 
     try {
       await addMyRoomComment(classId, playerId, {
         commenterId: myPlayerData.id,
         commenterName: myPlayerData.name,
-        text: filteredComment, // [수정] newComment 대신 filteredComment 전송
+        text: filteredComment,
       });
       setNewComment("");
       fetchRoomSocialData();
@@ -954,14 +947,13 @@ function MyRoomPage() {
   const handleAddMyRoomReply = async (commentId) => {
     if (!classId || !replyContent.trim() || !myPlayerData) return;
 
-    // [수정] 입력한 답글 내용 필터링
     const filteredReply = filterProfanity(replyContent);
 
     try {
       await addMyRoomReply(classId, playerId, commentId, {
         replierId: myPlayerData.id,
         replierName: myPlayerData.name,
-        text: filteredReply, // [수정] replyContent 대신 filteredReply 전송
+        text: filteredReply,
       });
       setReplyContent("");
       setReplyingTo(null);
@@ -972,28 +964,26 @@ function MyRoomPage() {
   };
 
   const handleLikeRoom = async () => {
-    // 1. 예외 처리: 내 방이거나, 로그인 안 했거나, 이미 이번 달에 눌렀으면 중단
+    // 1. 예외 처리
     if (!classId || isMyRoom || !myPlayerData) return;
     if (hasLikedThisMonth) return;
 
     try {
-      // 2. [핵심] 화면 숫자 먼저 올리기 (낙관적 업데이트)
-      // 서버 응답을 기다리지 않고, 내 가짜 데이터를 리스트에 쏙 넣어서 숫자를 1 올립니다.
+      // 2. 화면 숫자 먼저 올리기 (낙관적 업데이트)
       setLikes(prev => [
         ...prev,
         { id: myPlayerData.id, name: myPlayerData.name, lastLikedMonth: new Date().toISOString().slice(0, 7) }
       ]);
 
-      // 3. 실제 서버에 저장 요청
+      // 3. 실제 서버 저장
       await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name);
 
-      // 4. 확실한 동기화를 위해 데이터 다시 불러오기 (혹시 실패했을 경우를 대비)
       fetchRoomSocialData();
 
     } catch (error) {
       console.error(error);
       alert("좋아요 반영에 실패했습니다.");
-      fetchRoomSocialData(); // 에러 나면 원래대로 돌리기
+      fetchRoomSocialData(); // 실패 시 롤백
     }
   };
 
@@ -1103,9 +1093,48 @@ function MyRoomPage() {
           </LikeDisplay>
         )}
       </Header>
-      {/* [수정] RoomContainer 렌더링 부분 */}
-      <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
 
+      {/* ▼▼▼ [추가] 친구 목록 버튼 (Header 아래) ▼▼▼ */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem', position: 'relative', zIndex: 100 }}>
+        <button
+          onClick={() => setShowFriendList(!showFriendList)}
+          style={{
+            background: 'white', border: '1px solid #ced4da', borderRadius: '20px',
+            padding: '0.5rem 1.2rem', cursor: 'pointer', fontSize: '0.95rem', color: '#495057',
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+          }}
+        >
+          👥 우리 반 친구 전체 보기 ({classmates.length}명) {showFriendList ? '▲' : '▼'}
+        </button>
+
+        {showFriendList && (
+          <FriendListModal>
+            {classmates.length > 0 ? classmates.map(friend => (
+              <FriendItem key={friend.id} onClick={() => {
+                navigate(`/my-room/${friend.id}`);
+                setShowFriendList(false);
+              }}>
+                <img
+                  src={baseAvatar}
+                  alt={friend.name}
+                  style={{ border: '1px solid #ddd' }}
+                />
+                <span style={{ flex: 1 }}>{friend.name}</span>
+                {/* 펫 정보가 있다면 추가 표시 */}
+                {friend.pets && friend.pets.length > 0 && (
+                  <span style={{ fontSize: '0.75rem', color: '#888', background: '#f1f3f5', padding: '2px 6px', borderRadius: '4px' }}>
+                    Lv.{(friend.pets.find(p => p.id === friend.partnerPetId) || friend.pets[0]).level}
+                  </span>
+                )}
+              </FriendItem>
+            )) : <p style={{ textAlign: 'center', color: '#888', padding: '1rem' }}>아직 반 친구가 없어요.</p>}
+          </FriendListModal>
+        )}
+      </div>
+      {/* ▲▲▲ ------------------------------------------ ▲▲▲ */}
+
+      <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
         {!isEditing && snapshotUrl ? (
           <img
             src={snapshotUrl}
@@ -1113,7 +1142,7 @@ function MyRoomPage() {
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'fill', // [수정] fill: 컨테이너와 이미지 비율이 같으므로 꽉 채움 (왜곡 없음)
+              objectFit: 'fill',
               position: 'absolute',
               top: 0,
               left: 0,
@@ -1121,7 +1150,6 @@ function MyRoomPage() {
             }}
           />
         ) : (
-          /* 편집 모드 렌더링 (기존 코드 유지) */
           <>
             <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
             {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
@@ -1163,7 +1191,6 @@ function MyRoomPage() {
           </>
         )}
 
-        {/* 컨트롤러 (기존 코드 유지) */}
         {isEditing && selectedItemId && (
           <>
             <LeftControllerWrapper>
@@ -1189,8 +1216,23 @@ function MyRoomPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0 }}>내 아이템 목록</h3>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {/* ▼▼▼ [추가] 나가기(취소) 버튼 ▼▼▼ */}
+                <button
+                  onClick={() => {
+                    if (confirm("수정을 취소하고 나가시겠습니까? (저장되지 않습니다)")) {
+                      setIsEditing(false);
+                      setSelectedItemId(null);
+                    }
+                  }}
+                  style={{
+                    padding: '0.8rem 1.5rem',
+                    background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
+                  }}
+                >
+                  나가기
+                </button>
+                {/* ▲▲▲ ------------------------- ▲▲▲ */}
                 <ResetButton onClick={handleResetLayout}>초기화</ResetButton>
-                {/* 저장 중일 때 버튼 비활성화 및 텍스트 변경 */}
                 <SaveButton onClick={handleSaveLayout} disabled={isLoadingSnapshot}>
                   {isLoadingSnapshot ? '저장 중...' : '마이룸 저장'}
                 </SaveButton>
@@ -1307,13 +1349,5 @@ function MyRoomPage() {
     </Wrapper>
   );
 }
-
-// ▼▼▼ [추가] Styled-Component를 파일 하단으로 이동 ▼▼▼
-const ResetButton = styled(SaveButton)`
-    background-color: #6c757d;
-    &:hover {
-        background-color: #5a6268;
-    }
-`;
 
 export default MyRoomPage;
