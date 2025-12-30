@@ -3407,7 +3407,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   }
 
   // 5회 이상이면 차단 (안내 문구 출력)
-  if (dailyCount >= 5) {
+  if (dailyCount >= 10) {
     throw new Error(`'${challengerPet.name}'(은)는 오늘 너무 지쳤어요! 🛌\n파트너펫을 교체하여 배틀을 진행해주세요.`);
   }
 
