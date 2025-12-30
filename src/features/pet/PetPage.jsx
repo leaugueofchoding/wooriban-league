@@ -7,7 +7,6 @@ import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
-
 // --- 스타일 정의 ---
 
 const ExchangeContainer = styled.div`
