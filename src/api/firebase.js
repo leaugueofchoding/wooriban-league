@@ -3372,6 +3372,34 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   const challenger = { id: challengerSnap.id, ...challengerSnap.data() };
   const opponent = { id: opponentSnap.id, ...opponentSnap.data() };
 
+  // -----------------------------------------------------------
+  // ▼▼▼ [추가] 상대방이 현재 '다른 사람'과 대결 중인지 확인 ▼▼▼
+  // -----------------------------------------------------------
+  const battlesRef = collection(db, 'classes', classId, 'battles');
+  // 배틀 진행 중으로 간주할 상태 목록
+  const activeStatuses = ['starting', 'quiz', 'action', 'resolution'];
+
+  // 1. 상대방이 '도전자(challenger)'로서 대결 중인 경우 조회
+  const q1 = query(
+    battlesRef,
+    where('challenger.id', '==', opponent.id),
+    where('status', 'in', activeStatuses)
+  );
+
+  // 2. 상대방이 '상대(opponent)'로서 대결 중인 경우 조회
+  const q2 = query(
+    battlesRef,
+    where('opponent.id', '==', opponent.id),
+    where('status', 'in', activeStatuses)
+  );
+
+  const [busyAsChallenger, busyAsOpponent] = await Promise.all([getDocs(q1), getDocs(q2)]);
+
+  if (!busyAsChallenger.empty || !busyAsOpponent.empty) {
+    throw new Error("상대방이 현재 다른 친구와 대결을 진행 중입니다. 잠시 후에 신청해주세요.");
+  }
+  // ▲▲▲ [추가 끝] ▲▲▲
+
   // 쿨타임 체크 (3분)
   if (challenger.battleCooldowns && challenger.battleCooldowns[opponentId]) {
     const cooldownTime = challenger.battleCooldowns[opponentId];
@@ -3397,7 +3425,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
   if (opponentPet.hp <= 0) throw new Error("상대방의 펫이 기절 상태라 대결을 신청할 수 없습니다.");
 
-  // ▼▼▼ [신규] 하루 배틀 횟수 제한 로직 (펫별 5회) ▼▼▼
+  // ▼▼▼ 하루 배틀 횟수 제한 로직 (펫별 10회) ▼▼▼
   const todayStr = new Date().toLocaleDateString();
   let dailyCount = challengerPet.dailyBattleCount || 0;
 
@@ -3406,7 +3434,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     dailyCount = 0;
   }
 
-  // 5회 이상이면 차단 (안내 문구 출력)
+  // 10회 이상이면 차단 (안내 문구 출력)
   if (dailyCount >= 10) {
     throw new Error(`'${challengerPet.name}'(은)는 오늘 너무 지쳤어요! 🛌\n파트너펫을 교체하여 배틀을 진행해주세요.`);
   }
@@ -3420,8 +3448,6 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
 
   // 플레이어 정보 업데이트 (펫 상태 저장)
   await updateDoc(challengerRef, { pets: challengerPets });
-  // ▲▲▲ [신규] 로직 종료 ▲▲▲
-
 
   const battleId = [challenger.id, opponent.id].sort().join('_');
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);

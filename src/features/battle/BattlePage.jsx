@@ -203,9 +203,6 @@ function BattlePage() {
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
 
-    // [수정] Hooks 에러 방지를 위해 최상단으로 이동
-    const prevHpRef = useRef({ my: null, opponent: null });
-
     // [핵심] 펫 이미지 상태 결정 함수
     const getPetImageSrc = (info, isMine) => {
         if (!info || !info.pet) return null;
@@ -236,44 +233,6 @@ function BattlePage() {
             navigate('/pet');
         }
     };
-
-    // ▼▼▼ [교체] 타이머 로직 useEffect ▼▼▼
-    useEffect(() => {
-        let interval;
-
-        // 전투 중일 때만 타이머 작동
-        if (battleState === 'fighting') {
-            interval = setInterval(() => {
-                setTimeLeft((prev) => {
-                    // 1초 이하로 떨어지면 종료 처리
-                    if (prev <= 1) {
-                        clearInterval(interval);
-                        handleBattleTimeout(); // 즉시 종료 함수 실행
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-        }
-
-        return () => {
-            if (interval) clearInterval(interval);
-        };
-    }, [battleState]); // 의존성 배열을 최소화하여 재실행 방지
-
-    // ▼▼▼ [교체 또는 추가] 시간 종료 처리 함수 ▼▼▼
-    const handleBattleTimeout = useCallback(async () => {
-        // 이미 종료된 상태면 실행 방지
-        if (battleState === 'finished') return;
-
-        console.log("⏰ 시간 종료! 결과 판정 시도...");
-
-        // 내가 방장(Host)일 때만 서버에 종료 신호를 보냄 (중복 방지)
-        if (battleData && battleData.hostId === currentUser.uid) {
-            // 여기에 승패 판정 함수 호출
-            await determineWinner();
-        }
-    }, [battleState, battleData, currentUser]);
 
     useEffect(() => {
         if (!myPlayerData || !classId) return;
@@ -357,65 +316,11 @@ function BattlePage() {
         };
     }, [battleState, myPlayerData, isProcessing, classId, battleId]);
 
-    useEffect(() => {
-        if (!battleState) return;
-        const { status, attackerAction, defenderAction } = battleState;
-
-        if ((status === 'quiz' || status === 'action') && attackerAction && defenderAction) {
-            if (!isProcessing) {
-                const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-                handleResolution(battleRef);
-            }
-        }
-    }, [battleState, isProcessing, classId, battleId]);
-
     const handleCancel = async () => {
         if (!classId || !battleId) return;
         if (window.confirm("대결 신청을 취소하시겠습니까?")) {
             await cancelBattleChallenge(classId, battleId);
             goBack();
-        }
-    };
-
-    const handleSkipTurn = async () => {
-        if (isProcessing) return;
-        setIsProcessing(true);
-
-        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-
-        try {
-            await runTransaction(db, async (transaction) => {
-                const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists()) return;
-
-                const data = battleDoc.data();
-                const myRole = myPlayerData.id === data.challenger.id ? 'challenger' : 'opponent';
-                const myData = data[myRole];
-
-                const newStatus = { ...myData.pet.status };
-                delete newStatus.stunned;
-
-                const nextQuiz = (allQuizzes && allQuizzes.length > 0)
-                    ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
-                    : { question: "퀴즈 데이터 없음", answer: "1" };
-
-                const updates = {
-                    [`${myRole}.pet.status`]: newStatus,
-                    turn: null,
-                    status: 'quiz',
-                    log: `${myData.name}은(는) 정신을 차렸지만 기회를 놓쳤다!`,
-                    question: nextQuiz,
-                    turnStartTime: Date.now(),
-                    attackerAction: null,
-                    defenderAction: null
-                };
-
-                transaction.update(battleRef, updates);
-            });
-        } catch (error) {
-            console.error("Skip turn error:", error);
-        } finally {
-            setIsProcessing(false);
         }
     };
 
@@ -515,13 +420,11 @@ function BattlePage() {
             });
 
             if (result && result.isFinished) {
-                // [중요] 결과 처리는 여기서 하되, 페이지 이동은 모달 버튼에 맡김
                 const winnerPet = result.winnerId === result.finalChallenger.id ? result.finalChallenger.pet : result.finalOpponent.pet;
                 const loserPet = result.winnerId === result.finalChallenger.id ? result.finalOpponent.pet : result.finalChallenger.pet;
                 const loserId = result.winnerId === result.finalChallenger.id ? result.finalOpponent.id : result.finalChallenger.id;
 
                 await processBattleResults(classId, result.winnerId, loserId, false, winnerPet, loserPet);
-                // setTimeout(() => goBack(), 3000); // [삭제] 자동 이동 제거
             }
         } catch (error) {
             console.error("Timeout handling error:", error);
@@ -741,7 +644,6 @@ function BattlePage() {
                 const loserId = result.winnerId === result.finalChallenger.id ? result.finalOpponent.id : result.finalChallenger.id;
 
                 await processBattleResults(classId, result.winnerId, loserId, false, winnerPet, loserPet);
-                // setTimeout(() => goBack(), 3000); // [삭제] 자동 이동 제거
             }
         } catch (error) {
             console.error("Battle resolution error:", error);

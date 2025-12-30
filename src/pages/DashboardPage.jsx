@@ -9,8 +9,6 @@ import baseAvatar from '../assets/base-avatar.png';
 import QuizWidget from '../components/QuizWidget';
 import confetti from 'canvas-confetti';
 import { petImageMap } from '../utils/petImageMap';
-import { writeBatch, collection, getDocs, doc } from "firebase/firestore";
-import { db } from '../api/firebase';
 
 // --- Animations ---
 const float = keyframes`
@@ -408,16 +406,34 @@ function DashboardPage() {
     const todaysFriend = useMemo(() => getTodayStar(players, myPlayerData?.id), [players, myPlayerData]);
     const equippedTitle = useMemo(() => (myPlayerData?.equippedTitle && titles.length) ? titles.find(t => t.id === myPlayerData.equippedTitle) : null, [myPlayerData, titles]);
 
-    // [중요] 내 파트너 펫 찾기
+    // ▼▼▼ [수정됨] 내 파트너 펫 찾기 (호환성 보강) ▼▼▼
     const myPartnerPet = useMemo(() => {
-        if (!myPlayerData?.pets || !myPlayerData.pets.length) return null;
-        return myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
+        if (!myPlayerData) return null;
+        // 1. 신규 데이터 구조 (pets 배열) 우선 확인
+        if (myPlayerData.pets && myPlayerData.pets.length > 0) {
+            return myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
+        }
+        // 2. 구 데이터 구조 (pet 객체) 확인
+        if (myPlayerData.pet) return myPlayerData.pet;
+
+        return null;
     }, [myPlayerData]);
 
-    // [중요] 오늘의 친구 파트너 펫 찾기
+    // ▼▼▼ [수정됨] 오늘의 친구 파트너 펫 찾기 (호환성 보강) ▼▼▼
     const friendPartnerPet = useMemo(() => {
-        if (!todaysFriend?.pets || !todaysFriend.pets.length) return null;
-        return todaysFriend.pets.find(p => p.id === todaysFriend.partnerPetId) || todaysFriend.pets[0];
+        if (!todaysFriend) return null;
+
+        // 1. 신규 데이터 구조 (pets 배열) 확인
+        if (todaysFriend.pets && todaysFriend.pets.length > 0) {
+            return todaysFriend.pets.find(p => p.id === todaysFriend.partnerPetId) || todaysFriend.pets[0];
+        }
+
+        // 2. 구 데이터 구조 (pet 객체) 확인 - 아직 마이그레이션 안 된 친구 대응
+        if (todaysFriend.pet) {
+            return todaysFriend.pet;
+        }
+
+        return null;
     }, [todaysFriend]);
 
     // 오늘의 친구 칭호 찾기 (배지 표시용)
@@ -625,11 +641,9 @@ function DashboardPage() {
                                         )}
                                     </FriendAvatarGroup>
                                     <FriendInfo>
-                                        {/* ▼▼▼ 친구 칭호(Title) 표시 - 이름 위에 회색 글씨로 ▼▼▼ */}
                                         <FriendRoleBadge>
                                             {friendTitle ? friendTitle.name : (todaysFriend.role === 'admin' ? 'TEACHER' : 'PLAYER')}
                                         </FriendRoleBadge>
-                                        {/* ▲▲▲ ------------------------------------------ ▲▲▲ */}
 
                                         <FriendName>
                                             {todaysFriend.name}
