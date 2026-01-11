@@ -3,13 +3,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
-import { auth, createBattleChallenge } from '@/api/firebase';
+import { auth, db, createBattleChallenge } from '@/api/firebase'; // db 추가
+import { doc, onSnapshot } from "firebase/firestore"; // firestore 함수 추가
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
-import { filterProfanity } from '@/utils/profanityFilter'; // [추가] 누락된 import 추가
+import { filterProfanity } from '@/utils/profanityFilter';
 
 // --- 스타일 정의 ---
 
@@ -311,13 +312,12 @@ const StatItem = styled.div`
   p:last-child { font-weight: bold; font-size: 1.2rem; margin: 0; }
 `;
 
-// ▼▼▼ [추가] 툴팁 래퍼 컴포넌트 ▼▼▼
+// 툴팁 래퍼 컴포넌트
 const TooltipWrapper = styled.div`
   position: relative;
-  display: block; /* Grid 셀 내에서 꽉 차게 */
+  display: block; 
   width: 100%;
   
-  /* 호버 시 툴팁 표시 */
   &:hover::after {
     content: attr(data-tooltip);
     position: absolute;
@@ -344,7 +344,6 @@ const TooltipWrapper = styled.div`
 
 function PetPage() {
   const navigate = useNavigate();
-  // [수정] updatePlayerProfile 추가 (handleSaveName에서 사용됨)
   const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updatePetSkills, updatePlayerProfile } = useLeagueStore();
   const { classId } = useClassStore();
 
@@ -362,6 +361,26 @@ function PetPage() {
 
   // --- 대전 관련 State ---
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
+
+  // [신규] 실시간 데이터 동기화 (배틀 후 HP/SP 즉시 반영을 위해)
+  useEffect(() => {
+    if (!myPlayerData?.id || !classId) return;
+
+    // 내 플레이어 문서 구독
+    const unsubscribe = onSnapshot(doc(db, 'classes', classId, 'players', myPlayerData.id), (docSnap) => {
+      if (docSnap.exists()) {
+        const updatedPlayer = { id: docSnap.id, ...docSnap.data() };
+        // Zustand 스토어 상태 강제 업데이트
+        useLeagueStore.setState((state) => ({
+          players: state.players.map((p) =>
+            p.id === updatedPlayer.id ? updatedPlayer : p
+          )
+        }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [myPlayerData?.id, classId]);
 
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
@@ -484,7 +503,6 @@ function PetPage() {
     );
   };
 
-  // ▼▼▼ [추가] 진화 조건 텍스트 생성 함수 ▼▼▼
   const getEvolutionConditionText = (evolutionStoneCount) => {
     if (!selectedPet) return "";
     const currentStage = parseInt(selectedPet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
@@ -640,7 +658,6 @@ function PetPage() {
                           {unequippedSkills.map(skillId => {
                             const skill = SKILLS[skillId.toUpperCase()];
 
-                            // [수정] 스킬 정보가 없으면 렌더링하지 않고 넘어감 (에러 방지)
                             if (!skill) return null;
 
                             return (
@@ -672,7 +689,6 @@ function PetPage() {
               ))}
             </InfoCard>
             <ButtonGroup>
-              {/* ▼▼▼ [수정] 진화 버튼에 툴팁 적용 ▼▼▼ */}
               <TooltipWrapper
                 data-tooltip={!isEvolvable ? evolutionConditionText : ""}
                 onClick={() => {
