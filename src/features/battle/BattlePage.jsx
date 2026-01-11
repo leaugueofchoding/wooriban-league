@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
-import { auth, db, cancelBattleChallenge } from '@/api/firebase'; 
+import { auth, db, cancelBattleChallenge } from '@/api/firebase';
 // ▼▼▼ [수정] updateDoc 추가 ▼▼▼
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import allQuizzesData from '@/assets/missions.json';
@@ -56,6 +56,44 @@ const RechargeEffect = styled.div`
   text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
   z-index: 20;
   pointer-events: none;
+`;
+
+// 1. 내가 공격할 때 (왼쪽 아래 -> 오른쪽 위)
+const flyToOpponent = keyframes`
+  0% { left: 100px; bottom: 100px; opacity: 0; transform: scale(0.5); }
+  20% { opacity: 1; transform: scale(1); }
+  90% { left: 80%; bottom: 80%; opacity: 1; transform: scale(1); }
+  100% { left: 85%; bottom: 85%; opacity: 0; transform: scale(2); } /* 도착 후 사라짐 */
+`;
+
+// 2. 상대가 공격할 때 (오른쪽 위 -> 왼쪽 아래)
+const flyToMe = keyframes`
+  0% { right: 100px; top: 100px; opacity: 0; transform: rotate(180deg) scale(0.5); }
+  20% { opacity: 1; transform: rotate(180deg) scale(1); }
+  90% { right: 80%; top: 80%; opacity: 1; transform: rotate(180deg) scale(1); }
+  100% { right: 85%; top: 85%; opacity: 0; transform: rotate(180deg) scale(2); }
+`;
+
+// 3. 불꽃 이펙트 컴포넌트
+const SkillEffect = styled.div`
+  position: absolute;
+  font-size: 4rem;
+  z-index: 50;
+  pointer-events: none;
+  
+  /* props.$isMine: 내 공격이면 true, 상대 공격이면 false */
+  /* props.$type: 스킬 종류 (여기선 'FIERY_BREATH' 등) */
+  
+  ${props => props.$type === 'FIERY_BREATH' && css`
+    &::after { content: '🔥'; }
+    animation: ${props.$isMine ? flyToOpponent : flyToMe} 1.5s ease-in forwards;
+  `}
+  
+  /* 추후 다른 스킬 이펙트도 여기에 추가 가능 */
+  ${props => props.$type === 'QUICK_DISTURBANCE' && css`
+    &::after { content: '💨'; }
+    animation: ${props.$isMine ? flyToOpponent : flyToMe} 0.8s ease-out forwards;
+  `}
 `;
 
 const Arena = styled.div`
@@ -235,7 +273,7 @@ function BattlePage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [actionSubMenu, setActionSubMenu] = useState(null);
-
+    const [currentEffect, setCurrentEffect] = useState(null);
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
     const prevHpRef = useRef({ my: null, opponent: null });
@@ -335,7 +373,22 @@ function BattlePage() {
 
         if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
             if (!isProcessing) {
-                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 1000);
+                // 1. 이펙트 정보 설정
+                if (!currentEffect) {
+                    const isAttackerMe = battleState.turn === myPlayerData.id;
+                    // [수정 포인트] .toUpperCase()를 추가하여 대문자로 변환!
+                    // 그래야 'fiery_breath'가 'FIERY_BREATH'가 되어 CSS와 매칭됩니다.
+                    setCurrentEffect({
+                        type: battleState.attackerAction.toUpperCase(),
+                        isMine: isAttackerMe
+                    });
+
+                    // 2초 뒤 이펙트 끄기
+                    setTimeout(() => setCurrentEffect(null), 2000);
+                }
+
+                // 2. 결과 처리는 이펙트가 끝난 뒤 실행 (2초 대기)
+                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 2000);
             }
         }
 
@@ -495,7 +548,7 @@ function BattlePage() {
 
         // [주관식] 오답: 로컬 알림만 띄움 (페널티 X)
         if (!isObjective && !isCorrect) {
-            alert("땡! 틀렸습니다. 다시 시도해보세요.");
+            //alert("땡! 틀렸습니다. 다시 시도해보세요.");
             setAnswer('');
             return;
         }
@@ -527,7 +580,7 @@ function BattlePage() {
 
                 // 내 답변 객체 생성
                 const myChatEntry = { text: filteredAnswer, isCorrect, timestamp: Date.now() };
-                
+
                 // 현재 chat 상태 복사 후 내 답변 추가
                 const updatedChat = { ...(data.chat || {}), [myId]: myChatEntry };
 
@@ -567,9 +620,9 @@ function BattlePage() {
                     // [상황 B: 오답 (객관식)]
                     // 상대방도 오답이거나 OR 상대방이 '혼란' 상태라 답변을 못하는 경우 -> 즉시 페널티 적용 & 리셋
                     if ((opponentChat && opponentChat.isCorrect === false) || opponentIsStunned) {
-                        
+
                         let { challenger, opponent } = data;
-                        
+
                         // 5% 데미지 페널티
                         const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
                         const damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
@@ -613,7 +666,7 @@ function BattlePage() {
                             })
                         };
                         transaction.update(battleRef, updateData);
-                        
+
                         if (isFinished) {
                             return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
                         }
@@ -636,8 +689,8 @@ function BattlePage() {
                 await processBattleResults(classId, result.winnerId, loserId, false, winnerPet, loserPet);
             }
 
-        } catch (error) { 
-            console.error("퀴즈 처리 오류:", error); 
+        } catch (error) {
+            console.error("퀴즈 처리 오류:", error);
         } finally {
             setAnswer('');
             setIsProcessing(false);
@@ -851,6 +904,9 @@ function BattlePage() {
                     <>
                         <BattleField>
                             {showTimer && <Timer>{timeLeft}</Timer>}
+                            {currentEffect && (
+                                <SkillEffect $type={currentEffect.type} $isMine={currentEffect.isMine} />
+                            )}
                             <MyInfoBox>
                                 <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
                                 <StatBar>
