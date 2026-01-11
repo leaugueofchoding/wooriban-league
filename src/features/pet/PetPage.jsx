@@ -1,3 +1,5 @@
+// src/features/pet/PetPage.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
@@ -7,6 +9,8 @@ import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA, SKILLS } from '@/features/pet/petData';
 import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
+import { filterProfanity } from '@/utils/profanityFilter'; // [추가] 누락된 import 추가
+
 // --- 스타일 정의 ---
 
 const ExchangeContainer = styled.div`
@@ -138,7 +142,7 @@ const StyledButton = styled.button`
   &:disabled { background-color: #6c757d; cursor: not-allowed; }
 `;
 
-const EvolveButton = styled(StyledButton)` background-color: #ffc107; color: #343a40; &:hover:not(:disabled) { background-color: #e0a800; } `;
+const EvolveButton = styled(StyledButton)` background-color: #ffc107; color: #343a40; width: 100%; &:hover:not(:disabled) { background-color: #e0a800; } `;
 const FeedButton = styled(StyledButton)` background-color: #e83e8c; &:hover:not(:disabled) { background-color: #c2185b; } `;
 const PetCenterButton = styled(StyledButton)` background-color: #17a2b8; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #117a8b; } `;
 
@@ -307,9 +311,41 @@ const StatItem = styled.div`
   p:last-child { font-weight: bold; font-size: 1.2rem; margin: 0; }
 `;
 
+// ▼▼▼ [추가] 툴팁 래퍼 컴포넌트 ▼▼▼
+const TooltipWrapper = styled.div`
+  position: relative;
+  display: block; /* Grid 셀 내에서 꽉 차게 */
+  width: 100%;
+  
+  /* 호버 시 툴팁 표시 */
+  &:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 105%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 100;
+    display: ${props => props['data-tooltip'] ? 'block' : 'none'};
+  }
+
+  &:hover::after {
+    opacity: 1;
+  }
+`;
+
 function PetPage() {
   const navigate = useNavigate();
-  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updatePetSkills } = useLeagueStore();
+  // [수정] updatePlayerProfile 추가 (handleSaveName에서 사용됨)
+  const { players, usePetItem, evolvePet, hatchPetEgg, setPartnerPet, updatePetName, convertLikesToExp, updatePetSkills, updatePlayerProfile } = useLeagueStore();
   const { classId } = useClassStore();
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
@@ -358,7 +394,6 @@ function PetPage() {
     );
   }, [players]);
 
-  // ▼▼▼ [교체] 이름 저장 함수 (배열 전체 업데이트 방식) ▼▼▼
   const handleSaveName = async () => {
     const filteredName = filterProfanity(newName);
 
@@ -368,18 +403,11 @@ function PetPage() {
     }
 
     try {
-      // 1. 기존 펫 목록 복사
       const updatedPets = [...myPlayerData.pets];
-
-      // 2. 현재 선택된 펫 찾아서 이름 변경
       const petIndex = updatedPets.findIndex(p => p.id === selectedPet.id);
       if (petIndex !== -1) {
         updatedPets[petIndex] = { ...updatedPets[petIndex], name: filteredName };
-
-        // 3. 펫 배열 전체를 덮어쓰기 (Firestore 배열 수정 제약 해결)
         await updatePlayerProfile(classId, myPlayerData.id, { pets: updatedPets });
-
-        // 4. 상태 업데이트
         setIsEditingName(false);
         setNewName(filteredName);
         alert(`이름이 '${filteredName}'(으)로 변경되었습니다!`);
@@ -456,6 +484,23 @@ function PetPage() {
     );
   };
 
+  // ▼▼▼ [추가] 진화 조건 텍스트 생성 함수 ▼▼▼
+  const getEvolutionConditionText = (evolutionStoneCount) => {
+    if (!selectedPet) return "";
+    const currentStage = parseInt(selectedPet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
+
+    if (currentStage >= 3) return "최종 진화 상태입니다.";
+
+    const requiredLevel = currentStage === 1 ? 10 : 20;
+    const conditions = [];
+
+    if (selectedPet.level < requiredLevel) conditions.push(`Lv.${requiredLevel} 달성`);
+    if (evolutionStoneCount <= 0) conditions.push("진화석 필요");
+
+    if (conditions.length === 0) return "";
+    return `[조건] ${conditions.join(" 및 ")}`;
+  };
+
   const handleSkillSlotClick = (index) => {
     const signatureSkillId = PET_DATA[selectedPet.species].skill.id;
     if (equippedSkills[index] === signatureSkillId) {
@@ -527,6 +572,7 @@ function PetPage() {
   const isFainted = selectedPet.hp <= 0;
   const evolutionStoneCount = petInventory?.evolution_stone || 0;
   const isEvolvable = canEvolve(evolutionStoneCount);
+  const evolutionConditionText = getEvolutionConditionText(evolutionStoneCount);
   const signatureSkillId = PET_DATA[selectedPet.species].skill.id;
   const secretNotebookCount = petInventory?.secret_notebook || 0;
 
@@ -626,7 +672,18 @@ function PetPage() {
               ))}
             </InfoCard>
             <ButtonGroup>
-              <EvolveButton onClick={handleEvolve} disabled={!isEvolvable}>진화 ({evolutionStoneCount}개)</EvolveButton>
+              {/* ▼▼▼ [수정] 진화 버튼에 툴팁 적용 ▼▼▼ */}
+              <TooltipWrapper
+                data-tooltip={!isEvolvable ? evolutionConditionText : ""}
+                onClick={() => {
+                  if (!isEvolvable && evolutionConditionText) alert(evolutionConditionText);
+                }}
+              >
+                <EvolveButton onClick={handleEvolve} disabled={!isEvolvable}>
+                  {currentStage >= 3 ? "최종 진화 완료" : `진화 (${evolutionStoneCount}개)`}
+                </EvolveButton>
+              </TooltipWrapper>
+
               <FeedButton onClick={() => handleUseItem('brain_snack')} disabled={isFainted}>간식 주기 ({petInventory?.brain_snack || 0}개)</FeedButton>
               <ExchangeContainer>
                 <ExchangeInput
