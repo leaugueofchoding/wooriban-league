@@ -202,6 +202,7 @@ function BattlePage() {
     const [actionSubMenu, setActionSubMenu] = useState(null);
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
+    const prevHpRef = useRef({ my: null, opponent: null });
 
     // [핵심] 펫 이미지 상태 결정 함수
     const getPetImageSrc = (info, isMine) => {
@@ -316,6 +317,38 @@ function BattlePage() {
             clearTimeout(timeoutRef.current);
         };
     }, [battleState, myPlayerData, isProcessing, classId, battleId]);
+
+    // [추가] HP 감소를 감지하여 피격 이펙트(Shake) 실행
+    useEffect(() => {
+        if (!battleState || !myPlayerData) return;
+
+        // 내 역할(도전자/상대) 확인
+        const iAmChallenger = myPlayerData.id === battleState.challenger.id;
+        const myRole = iAmChallenger ? 'challenger' : 'opponent';
+        const opponentRole = iAmChallenger ? 'opponent' : 'challenger';
+
+        const currentMyHp = battleState[myRole].pet.hp;
+        const currentOpponentHp = battleState[opponentRole].pet.hp;
+
+        // 이전 HP 기록이 있고, 현재 HP가 이전보다 줄어들었으면 '맞았다'고 판단
+        if (prevHpRef.current.my !== null && prevHpRef.current.opponent !== null) {
+            // 내 펫 피격
+            if (currentMyHp < prevHpRef.current.my) {
+                setHitState(prev => ({ ...prev, my: true }));
+                // 0.5초 뒤에 흔들림 멈춤 (애니메이션 시간 0.3초 고려)
+                setTimeout(() => setHitState(prev => ({ ...prev, my: false })), 500);
+            }
+            // 상대 펫 피격
+            if (currentOpponentHp < prevHpRef.current.opponent) {
+                setHitState(prev => ({ ...prev, opponent: true }));
+                setTimeout(() => setHitState(prev => ({ ...prev, opponent: false })), 500);
+            }
+        }
+
+        // 현재 상태를 '이전 상태'로 저장 (다음 비교를 위해)
+        prevHpRef.current = { my: currentMyHp, opponent: currentOpponentHp };
+
+    }, [battleState, myPlayerData]);
 
     const handleCancel = async () => {
         if (!classId || !battleId) return;
