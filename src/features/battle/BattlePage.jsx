@@ -5,13 +5,12 @@ import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
 import { auth, db, cancelBattleChallenge } from '@/api/firebase';
-// ▼▼▼ [수정] updateDoc 추가 ▼▼▼
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { SKILLS } from '@/features/pet/petData';
 import { filterProfanity } from '@/utils/profanityFilter';
-import BattleSkillEffect from './BattleSkillEffect';
+import BattleSkillEffect from './BattleSkillEffect'; // [복구] 스킬 이펙트 컴포넌트
 
 // --- Styled Components & Keyframes ---
 
@@ -26,8 +25,29 @@ const float = keyframes`
   100% { transform: translateY(0px); }
 `;
 
-const shake = keyframes`
-  0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); }
+// [추가] 피격 시 흔들림 (기존보다 조금 더 강하게)
+const shakeDamage = keyframes`
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-6px) rotate(-6deg); }
+  50% { transform: translateX(6px) rotate(6deg); }
+  75% { transform: translateX(-6px) rotate(-6deg); }
+  100% { transform: translateX(0); }
+`;
+
+// [추가] 아군 몸통박치기 (오른쪽 돌진)
+const tackleRight = keyframes`
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-20px); }
+  50% { transform: translateX(150px); }
+  100% { transform: translateX(0); }
+`;
+
+// [추가] 적군 몸통박치기 (왼쪽 돌진)
+const tackleLeft = keyframes`
+  0% { transform: translateX(0); }
+  20% { transform: translateX(20px); }
+  50% { transform: translateX(-150px); }
+  100% { transform: translateX(0); }
 `;
 
 const StunEffect = styled.div`
@@ -72,11 +92,17 @@ const PetContainerWrapper = styled.div`
 `;
 const MyPetContainerWrapper = styled(PetContainerWrapper)` bottom: 10px; left: 10px; `;
 const OpponentPetContainerWrapper = styled(PetContainerWrapper)` top: 10px; right: 10px; `;
+
+// [수정] 애니메이션 로직: 박치기(attack) 또는 피격(hit)
 const PetContainer = styled.div`
   position: relative; width: 100%; height: 100%;
-  animation: ${props => props.$isHit ? css`${shake} 0.5s` : 'none'};
+  animation: ${props =>
+        props.$isHit ? css`${shakeDamage} 0.5s` :
+            props.$isTackling ? css`${props.$isMine ? tackleRight : tackleLeft} 0.5s ease-in-out` :
+                'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
+
 const PetImage = styled.img`
   width: 400px; height: 400px; filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'none'}; transition: filter 0.3s;
 `;
@@ -234,12 +260,19 @@ function BattlePage() {
     const [timeLeft, setTimeLeft] = useState(20);
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // [수정] 상태 관리 분리
     const [hitState, setHitState] = useState({ my: false, opponent: false });
+    const [tackleState, setTackleState] = useState({ my: false, opponent: false }); // 몸통박치기 상태
+    const [currentEffect, setCurrentEffect] = useState(null); // 스킬 이펙트 상태
+
     const [actionSubMenu, setActionSubMenu] = useState(null);
-    const [currentEffect, setCurrentEffect] = useState(null);
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
     const prevHpRef = useRef({ my: null, opponent: null });
+
+    // [중요] 중복 애니메이션 방지용 Ref
+    const processedTurnRef = useRef(null);
 
     const getPetImageSrc = (info, isMine) => {
         if (!info || !info.pet) return null;
@@ -334,22 +367,54 @@ function BattlePage() {
             timerRef.current = setInterval(updateTimer, 1000);
         }
 
+        // [핵심 수정] 애니메이션 및 이펙트 처리 (중복 실행 방지 포함)
         if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
-            if (!isProcessing) {
-                // 1. 이펙트 실행 (아직 실행 안 됐다면)
-                if (!currentEffect) {
-                    const isAttackerMe = battleState.turn === myPlayerData.id;
+
+            // 현재 턴의 고유 ID 생성 (턴 시작 시간 + 공격자 ID)
+            const turnUniqueId = `${battleState.turnStartTime}_${battleState.turn}`;
+
+            // 이 턴에 대한 애니메이션이 아직 실행되지 않았고, 처리 중이 아닐 때만 실행
+            if (!isProcessing && processedTurnRef.current !== turnUniqueId) {
+
+                setIsProcessing(true);
+                processedTurnRef.current = turnUniqueId; // 실행 완료 처리
+
+                const isAttackerMe = battleState.turn === myPlayerData.id;
+                const actionType = battleState.attackerAction; // 'TACKLE', 'EMBER' 등
+
+                if (actionType === 'TACKLE') {
+                    // 1. 몸통박치기 로직
+                    if (isAttackerMe) setTackleState(prev => ({ ...prev, my: true }));
+                    else setTackleState(prev => ({ ...prev, opponent: true }));
+
+                    // 타격 타이밍 (0.2초 후)
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 200);
+
+                    // 애니메이션 종료 및 결과 처리 (0.6초 후)
+                    setTimeout(() => {
+                        setTackleState({ my: false, opponent: false });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false); // 해제
+                        handleResolution(battleRef);
+                    }, 600);
+
+                } else {
+                    // 2. 스킬 이펙트 로직 (기존 복구)
                     setCurrentEffect({
-                        type: battleState.attackerAction.toUpperCase(),
+                        type: actionType.toUpperCase(),
                         isMine: isAttackerMe
                     });
 
-                    // 2초 뒤에 이펙트 끄기
-                    setTimeout(() => setCurrentEffect(null), 2000);
+                    // 이펙트 지속 시간 후 결과 처리 (2초 후)
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setIsProcessing(false); // 해제
+                        handleResolution(battleRef);
+                    }, 2000);
                 }
-
-                // 2. 결과 처리는 이펙트가 끝난 뒤 실행 (2초 대기)
-                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 2000);
             }
         }
 
@@ -359,7 +424,7 @@ function BattlePage() {
         };
     }, [battleState, myPlayerData, isProcessing, classId, battleId]);
 
-    // 피격 이펙트
+    // HP 변동에 따른 피격 효과 (백업용)
     useEffect(() => {
         if (!battleState || !myPlayerData) return;
 
@@ -371,11 +436,12 @@ function BattlePage() {
         const currentOpponentHp = battleState[opponentRole].pet.hp;
 
         if (prevHpRef.current.my !== null && prevHpRef.current.opponent !== null) {
-            if (currentMyHp < prevHpRef.current.my) {
+            // 애니메이션에 의해 처리되지 않은 경우에만 작동 (중복 방지)
+            if (currentMyHp < prevHpRef.current.my && !hitState.my) {
                 setHitState(prev => ({ ...prev, my: true }));
                 setTimeout(() => setHitState(prev => ({ ...prev, my: false })), 500);
             }
-            if (currentOpponentHp < prevHpRef.current.opponent) {
+            if (currentOpponentHp < prevHpRef.current.opponent && !hitState.opponent) {
                 setHitState(prev => ({ ...prev, opponent: true }));
                 setTimeout(() => setHitState(prev => ({ ...prev, opponent: false })), 500);
             }
@@ -451,7 +517,6 @@ function BattlePage() {
                 challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
                 opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
 
-                // [수정] 시간 초과 시에도 CC기 해제 (무한 CC 방지)
                 if (challenger.pet.status?.stunned) delete challenger.pet.status.stunned;
                 if (opponent.pet.status?.stunned) delete opponent.pet.status.stunned;
 
@@ -480,7 +545,7 @@ function BattlePage() {
                     ...(!isFinished && {
                         turnStartTime: Date.now(),
                         question: nextQuiz,
-                        chat: {} // 채팅 초기화
+                        chat: {}
                     })
                 };
                 transaction.update(battleRef, updateData);
@@ -507,14 +572,11 @@ function BattlePage() {
         const isObjective = battleState.question.options && battleState.question.options.length > 0;
         const isCorrect = submittedAnswer.toLowerCase() === battleState.question.answer.toLowerCase();
 
-        // [주관식] 오답: 로컬 알림만 띄움 (페널티 X)
         if (!isObjective && !isCorrect) {
-            //alert("땡! 틀렸습니다. 다시 시도해보세요.");
             setAnswer('');
             return;
         }
 
-        // [객관식] 중복 제출 방지 (로컬 체크)
         if (isObjective && battleState.chat?.[myPlayerData.id]) return;
 
         setIsProcessing(true);
@@ -529,7 +591,6 @@ function BattlePage() {
                 const data = battleDoc.data();
                 const myId = myPlayerData.id;
 
-                // 트랜잭션 내부에서 중복 제출 체크 (데이터 무결성)
                 if (data.chat && data.chat[myId]) return null;
 
                 const isChallenger = myId === data.challenger.id;
@@ -539,16 +600,14 @@ function BattlePage() {
                 const opponentChat = data.chat?.[opponentId];
                 const opponentIsStunned = data[opponentRole].pet.status?.stunned;
 
-                // 내 답변 객체 생성
-                const myChatEntry = { text: filteredAnswer, isCorrect, timestamp: Date.now() };
+                // [수정] 펫 정보 가져오기
+                const myPet = data[myRole].pet;
 
-                // 현재 chat 상태 복사 후 내 답변 추가
+                const myChatEntry = { text: filteredAnswer, isCorrect, timestamp: Date.now() };
                 const updatedChat = { ...(data.chat || {}), [myId]: myChatEntry };
 
                 if (isCorrect) {
-                    // [상황 A: 정답] -> 승리 및 턴 획득 (채팅 리셋)
                     const winnerId = myPlayerData.id;
-                    const myPet = data[myRole].pet;
                     let newStatus = { ...myPet.status };
 
                     if (newStatus.recharging) {
@@ -561,37 +620,35 @@ function BattlePage() {
                             status: 'quiz',
                             turn: null,
                             [`${myRole}.pet.status`]: newStatus,
-                            log: `정답! ${myPlayerData.name}은(는) 숨을 고르며 반동을 회복했습니다.`,
+                            // [수정] 교사 이름 -> 펫 이름
+                            log: `정답! ${myPet.name}은(는) 숨을 고르며 반동을 회복했습니다.`,
                             question: nextQuiz,
                             turnStartTime: Date.now(),
-                            chat: {} // 채팅 리셋
+                            chat: {}
                         });
                     } else {
                         transaction.update(battleRef, {
                             status: 'action',
                             turn: winnerId,
-                            log: `정답! ${myPlayerData.name}의 공격! 상대는 방어하세요!`,
+                            // [수정] 교사 이름 -> 펫 이름
+                            log: `정답! ${myPet.name}의 공격! 상대는 방어하세요!`,
                             question: null,
                             turnStartTime: Date.now(),
-                            chat: {} // 채팅 리셋
+                            chat: {}
                         });
                     }
                     return null;
                 } else {
-                    // [상황 B: 오답 (객관식)]
-                    // 상대방도 오답이거나 OR 상대방이 '혼란' 상태라 답변을 못하는 경우 -> 즉시 페널티 적용 & 리셋
                     if ((opponentChat && opponentChat.isCorrect === false) || opponentIsStunned) {
 
                         let { challenger, opponent } = data;
 
-                        // 5% 데미지 페널티
                         const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
                         const damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
 
                         challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
                         opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
 
-                        // [핵심 수정] 쌍방 오답 시 모든 CC 해제 (악용 방지)
                         if (challenger.pet.status?.stunned) delete challenger.pet.status.stunned;
                         if (opponent.pet.status?.stunned) delete opponent.pet.status.stunned;
 
@@ -603,7 +660,6 @@ function BattlePage() {
                             else if (opponent.pet.hp > 0) winnerId = opponent.id;
                         }
 
-                        // 다음 문제 준비
                         const nextQuiz = (allQuizzes && allQuizzes.length > 0)
                             ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
                             : { question: "퀴즈 데이터 없음", answer: "1" };
@@ -623,7 +679,7 @@ function BattlePage() {
                             ...(!isFinished && {
                                 turnStartTime: Date.now(),
                                 question: nextQuiz,
-                                chat: {} // 채팅 리셋 (초기화)
+                                chat: {}
                             })
                         };
                         transaction.update(battleRef, updateData);
@@ -632,9 +688,8 @@ function BattlePage() {
                             return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
                         }
                     } else {
-                        // [상황 B-2: 나만 먼저 틀림] -> 내 오답 채팅 업데이트 후 대기
                         transaction.update(battleRef, {
-                            chat: updatedChat, // 내 오답 기록
+                            chat: updatedChat,
                             log: `${myPlayerData.name} 오답! (상대방의 응답을 기다리는 중...)`
                         });
                     }
@@ -658,13 +713,11 @@ function BattlePage() {
         }
     };
 
-    // 주관식 제출 핸들러
     const handleQuizSubmit = (e) => {
         e.preventDefault();
         processQuizAnswer(answer.trim());
     };
 
-    // 객관식 선택 핸들러
     const handleOptionClick = (option) => {
         processQuizAnswer(option);
     };
@@ -683,9 +736,12 @@ function BattlePage() {
                 const opponentRole = myRole === 'challenger' ? 'opponent' : 'challenger';
                 const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
 
+                // [수정] 펫 이름 사용
+                const myPet = battleState[myRole].pet;
+
                 if (opponentIsStunned) {
                     updates.defenderAction = 'STUNNED';
-                    updates.log = `${myPlayerData.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
+                    updates.log = `${myPet.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
                 }
 
                 await updateDoc(battleRef, updates);
@@ -703,7 +759,7 @@ function BattlePage() {
                             status: 'finished',
                             winner: null,
                             defenderAction: 'FLEE_SUCCESS',
-                            log: `${myPlayerData.name}이(가) 도망쳤습니다!`
+                            log: `${myPet.name}이(가) 도망쳤습니다!` // 펫 이름으로 변경
                         });
 
                         await processBattleDraw(classId, myId, opponentId, myPet, opponentPet);
@@ -741,7 +797,6 @@ function BattlePage() {
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
-                // 방어 턴이 끝나면 기절 상태 해제
                 if (defender.pet.status?.stunned) {
                     delete defender.pet.status.stunned;
                 }
@@ -865,12 +920,14 @@ function BattlePage() {
                     <>
                         <BattleField>
                             {showTimer && <Timer>{timeLeft}</Timer>}
+                            {/* [복구] 스킬 이펙트 렌더링 (Tackle이 아닐 때만 표시됨) */}
                             {currentEffect && (
                                 <BattleSkillEffect
                                     type={currentEffect.type}
                                     isMine={currentEffect.isMine}
                                 />
                             )}
+
                             <MyInfoBox>
                                 <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
                                 <StatBar>
@@ -897,7 +954,12 @@ function BattlePage() {
                             </OpponentInfoBox>
 
                             <OpponentPetContainerWrapper>
-                                <PetContainer $isHit={hitState.opponent}>
+                                {/* [수정] Tackle 상태일 때만 애니메이션 적용 */}
+                                <PetContainer
+                                    $isHit={hitState.opponent}
+                                    $isTackling={tackleState.opponent}
+                                    $isMine={false}
+                                >
                                     {opponentInfo.pet.status?.stunned && <StunEffect />}
                                     {opponentInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[opponentInfo.id] && <ChatBubble $isMine={false} $isCorrect={battleState.chat[opponentInfo.id].isCorrect}>{battleState.chat[opponentInfo.id].text}</ChatBubble>}
@@ -906,7 +968,12 @@ function BattlePage() {
                             </OpponentPetContainerWrapper>
 
                             <MyPetContainerWrapper>
-                                <PetContainer $isHit={hitState.my}>
+                                {/* [수정] Tackle 상태일 때만 애니메이션 적용 */}
+                                <PetContainer
+                                    $isHit={hitState.my}
+                                    $isTackling={tackleState.my}
+                                    $isMine={true}
+                                >
                                     {myInfo.pet.status?.stunned && <StunEffect />}
                                     {myInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[myInfo.id] && <ChatBubble $isMine={true} $isCorrect={battleState.chat[myInfo.id].isCorrect}>{battleState.chat[myInfo.id].text}</ChatBubble>}
@@ -915,6 +982,7 @@ function BattlePage() {
                             </MyPetContainerWrapper>
                         </BattleField>
                         <QuizArea>
+                            {/* 기존 렌더링 유지 */}
                             <div>
                                 <LogText>{battleState.log}</LogText>
                                 {battleState.status === 'quiz' && battleState.question && (
