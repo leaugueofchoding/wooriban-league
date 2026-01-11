@@ -11,6 +11,7 @@ import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { SKILLS } from '@/features/pet/petData';
 import { filterProfanity } from '@/utils/profanityFilter';
+import BattleSkillEffect from './BattleSkillEffect';
 
 // --- Styled Components & Keyframes ---
 
@@ -56,44 +57,6 @@ const RechargeEffect = styled.div`
   text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
   z-index: 20;
   pointer-events: none;
-`;
-
-// 1. 내가 공격할 때 (왼쪽 아래 -> 오른쪽 위)
-const flyToOpponent = keyframes`
-  0% { left: 100px; bottom: 100px; opacity: 0; transform: scale(0.5); }
-  20% { opacity: 1; transform: scale(1); }
-  90% { left: 80%; bottom: 80%; opacity: 1; transform: scale(1); }
-  100% { left: 85%; bottom: 85%; opacity: 0; transform: scale(2); } /* 도착 후 사라짐 */
-`;
-
-// 2. 상대가 공격할 때 (오른쪽 위 -> 왼쪽 아래)
-const flyToMe = keyframes`
-  0% { right: 100px; top: 100px; opacity: 0; transform: rotate(180deg) scale(0.5); }
-  20% { opacity: 1; transform: rotate(180deg) scale(1); }
-  90% { right: 80%; top: 80%; opacity: 1; transform: rotate(180deg) scale(1); }
-  100% { right: 85%; top: 85%; opacity: 0; transform: rotate(180deg) scale(2); }
-`;
-
-// 3. 불꽃 이펙트 컴포넌트
-const SkillEffect = styled.div`
-  position: absolute;
-  font-size: 4rem;
-  z-index: 50;
-  pointer-events: none;
-  
-  /* props.$isMine: 내 공격이면 true, 상대 공격이면 false */
-  /* props.$type: 스킬 종류 (여기선 'FIERY_BREATH' 등) */
-  
-  ${props => props.$type === 'FIERY_BREATH' && css`
-    &::after { content: '🔥'; }
-    animation: ${props.$isMine ? flyToOpponent : flyToMe} 1.5s ease-in forwards;
-  `}
-  
-  /* 추후 다른 스킬 이펙트도 여기에 추가 가능 */
-  ${props => props.$type === 'QUICK_DISTURBANCE' && css`
-    &::after { content: '💨'; }
-    animation: ${props.$isMine ? flyToOpponent : flyToMe} 0.8s ease-out forwards;
-  `}
 `;
 
 const Arena = styled.div`
@@ -373,17 +336,15 @@ function BattlePage() {
 
         if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
             if (!isProcessing) {
-                // 1. 이펙트 정보 설정
+                // 1. 이펙트 실행 (아직 실행 안 됐다면)
                 if (!currentEffect) {
                     const isAttackerMe = battleState.turn === myPlayerData.id;
-                    // [수정 포인트] .toUpperCase()를 추가하여 대문자로 변환!
-                    // 그래야 'fiery_breath'가 'FIERY_BREATH'가 되어 CSS와 매칭됩니다.
                     setCurrentEffect({
                         type: battleState.attackerAction.toUpperCase(),
                         isMine: isAttackerMe
                     });
 
-                    // 2초 뒤 이펙트 끄기
+                    // 2초 뒤에 이펙트 끄기
                     setTimeout(() => setCurrentEffect(null), 2000);
                 }
 
@@ -905,7 +866,10 @@ function BattlePage() {
                         <BattleField>
                             {showTimer && <Timer>{timeLeft}</Timer>}
                             {currentEffect && (
-                                <SkillEffect $type={currentEffect.type} $isMine={currentEffect.isMine} />
+                                <BattleSkillEffect
+                                    type={currentEffect.type}
+                                    isMine={currentEffect.isMine}
+                                />
                             )}
                             <MyInfoBox>
                                 <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
