@@ -14,7 +14,6 @@ const calculateDamage = (basePower, attacker, defender) => {
     // 2. 공격자 상태 확인 (기 모으기)
     let multiplier = 1.0;
     if (attacker.status?.focusCharge) multiplier *= 2.0; // 기 모으기: 2배
-    // (도발 효과 변경으로 attackDown 로직 제거)
 
     // 3. 방어자 상태 확인 (방어력 상승)
     if (defender.status?.defenseUp) multiplier *= 0.7;   // 단단해지기: 30% 감소
@@ -46,6 +45,10 @@ export const SKILLS = {
         description: '기본적인 몸통박치기로 피해를 줍니다.',
         basePower: 20,
         effect: (attacker, defender, defenderAction) => {
+            // [Safety] status 객체가 없으면 초기화
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
             // 1. 도발(실명) 체크
             if (checkBlindMiss(attacker)) {
                 return `'${attacker.name}'의 몸통박치기! ...하지만 도발에 넘어가 허공을 가랐습니다! (공격 빗나감 💨)`;
@@ -62,7 +65,10 @@ export const SKILLS = {
                     if (Math.random() < 0.5) { damage = 0; log += ` (상대방이 날렵하게 회피했다!)`; }
                     else { log += ` (상대방의 회피 실패!)`; }
                     break;
-                case 'FOCUS': defender.status.focusCharge = 1; log += ` (상대방은 맞으면서 기를 모았다!)`; break;
+                case 'FOCUS':
+                    defender.status.focusCharge = 1;
+                    log += ` (상대방은 맞으면서 기를 모았다!)`;
+                    break;
                 case 'FLEE_FAILED': log += ` (도망에 실패해 무방비하다!)`; break;
             }
 
@@ -84,6 +90,9 @@ export const SKILLS = {
         type: 'common',
         description: '전투 동안 방어력을 높여 받는 피해를 줄입니다.',
         effect: (attacker) => {
+            // [Safety] status 객체가 없으면 초기화
+            if (!attacker.status) attacker.status = {};
+
             attacker.status.defenseUp = true;
             return `'${attacker.name}'의 피부가 강철처럼 단단해졌습니다! (받는 피해 감소)`;
         },
@@ -111,6 +120,9 @@ export const SKILLS = {
         type: 'common',
         description: '상대를 흥분시켜 다음 공격이 50% 확률로 빗나가게 합니다.',
         effect: (attacker, defender) => {
+            // [Safety] status 객체가 없으면 초기화
+            if (!defender.status) defender.status = {};
+
             defender.status.blind = true; // 상대에게 실명(blind) 상태 부여
             return `'${attacker.name}'의 도발! ${defender.name}은(는) 흥분해서 앞이 잘 보이지 않습니다! (다음 공격 명중률 하락)`;
         },
@@ -127,10 +139,12 @@ export const SKILLS = {
         basePower: 55,
         description: '강력한 화염 피해를 입히지만, 사용 후 잠시 동안 행동할 수 없습니다.',
         effect: (attacker, defender, defenderAction) => {
+            // [Safety] status 객체가 없으면 초기화
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
             // 1. 도발(실명) 체크
             if (checkBlindMiss(attacker)) {
-                // 반동(재충전)은 적용되지 않게 하거나, 빗나가도 적용되게 할 수 있음.
-                // 여기서는 빗나가면 반동 없이 턴만 날리는 것으로 처리 (유저 친화적)
                 return `'${attacker.name}'의 용의 숨결! ...하지만 엉뚱한 방향으로 불을 뿜었습니다! (공격 빗나감 💨)`;
             }
 
@@ -147,7 +161,10 @@ export const SKILLS = {
                     if (Math.random() < 0.5) { damage = 0; log += ` (상대가 불길을 피했다!)`; }
                     else { log += ` (범위가 너무 넓어 피하지 못했다!)`; }
                     break;
-                case 'FOCUS': defender.status.focusCharge = 1; log += ` (상대는 불길 속에서 기를 모았다!)`; break;
+                case 'FOCUS':
+                    defender.status.focusCharge = 1;
+                    log += ` (상대는 불길 속에서 기를 모았다!)`;
+                    break;
                 case 'FLEE_FAILED': log += ` (도망치지 못하고 직격!)`; break;
             }
 
@@ -175,6 +192,10 @@ export const SKILLS = {
         basePower: 20,
         description: '빠르게 공격하여 50% 확률로 상대를 혼란(스턴)에 빠뜨립니다.',
         effect: (attacker, defender, defenderAction) => {
+            // [Safety] status 객체가 없으면 초기화
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
             // 1. 도발(실명) 체크
             if (checkBlindMiss(attacker)) {
                 return `'${attacker.name}'의 재빠른 교란! ...하지만 도발 때문에 스텝이 꼬였습니다! (공격 빗나감 💨)`;
@@ -191,7 +212,10 @@ export const SKILLS = {
                     if (Math.random() < 0.3) { damage = 0; log += ` (상대도 같이 움직여 피했다!)`; }
                     else { log += ` (너무 빨라 피할 수 없었다!)`; }
                     break;
-                case 'FOCUS': defender.status.focusCharge = 1; log += ` (상대는 공격을 무시하고 집중했다!)`; break;
+                case 'FOCUS':
+                    defender.status.focusCharge = 1;
+                    log += ` (상대는 공격을 무시하고 집중했다!)`;
+                    break;
                 case 'FLEE_FAILED': log += ` (도망갈 틈이 없다!)`; break;
             }
 
@@ -221,6 +245,10 @@ export const SKILLS = {
         basePower: 30,
         description: '상대의 체력을 흡수하여 자신의 체력을 회복합니다.',
         effect: (attacker, defender, defenderAction) => {
+            // [Safety] status 객체가 없으면 초기화
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
             // 1. 도발(실명) 체크
             if (checkBlindMiss(attacker)) {
                 return `'${attacker.name}'의 씨뿌리기! ...하지만 엉뚱한 곳에 씨앗을 뿌렸습니다! (공격 빗나감 💨)`;
@@ -237,7 +265,10 @@ export const SKILLS = {
                     if (Math.random() < 0.5) { damage = 0; log += ` (상대가 씨앗을 피했다!)`; }
                     else { log += ` (회피 실패! 씨앗이 몸에 붙었다!)`; }
                     break;
-                case 'FOCUS': defender.status.focusCharge = 1; log += ` (상대는 고통을 참으며 기를 모았다!)`; break;
+                case 'FOCUS':
+                    defender.status.focusCharge = 1;
+                    log += ` (상대는 고통을 참으며 기를 모았다!)`;
+                    break;
                 case 'FLEE_FAILED': log += ` (도망치지 못했다!)`; break;
             }
 

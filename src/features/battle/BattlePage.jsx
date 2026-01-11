@@ -273,12 +273,22 @@ function BattlePage() {
             return;
         }
 
-        // 2. 이미 종료된 배틀이면 타이머 중단 및 아무것도 하지 않음
+        // 2. 이미 종료된 배틀이면 중단
         if (battleState.status === 'finished') {
             return;
         }
 
-        // 3. 타이머 로직 (퀴즈: 15초, 액션: 10초)
+        // 3. [중요 수정] 액션 결과 처리 (양쪽 모두 액션을 선택했을 때)
+        // 타이머 로직보다 먼저 체크하고, 조건이 맞으면 타이머를 실행하지 않고 리턴합니다.
+        if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
+            if (!isProcessing) {
+                // 1초 뒤 결과 산출 (애니메이션 등 딜레이)
+                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 1000);
+            }
+            return; // ★ 여기서 return하여 아래 타이머 로직이 실행되지 않도록 함 (멈춤 현상 방지)
+        }
+
+        // 4. 타이머 로직 (퀴즈: 15초, 액션: 10초) - 결과 처리 중이 아닐 때만 실행
         if (battleState.status === 'quiz' || battleState.status === 'action') {
             const updateTimer = () => {
                 const now = Date.now();
@@ -299,15 +309,6 @@ function BattlePage() {
 
             updateTimer(); // 즉시 1회 실행
             timerRef.current = setInterval(updateTimer, 1000);
-        }
-
-        // 4. 액션 결과 처리 (양쪽 모두 액션을 선택했을 때)
-        // 주의: 처리 중(isProcessing)이 아니고, 결과가 아직 안 나왔을 때만 실행
-        if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
-            if (!isProcessing) {
-                // 딜레이를 주어 UI에서 선택 효과를 볼 시간을 줌
-                timeoutRef.current = setTimeout(() => handleResolution(battleRef), 1000);
-            }
         }
 
         return () => {
