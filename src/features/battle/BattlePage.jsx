@@ -10,7 +10,7 @@ import allQuizzesData from '@/assets/missions.json';
 import { petImageMap } from '@/utils/petImageMap';
 import { SKILLS } from '@/features/pet/petData';
 import { filterProfanity } from '@/utils/profanityFilter';
-import BattleSkillEffect from './BattleSkillEffect'; // [복구] 스킬 이펙트 컴포넌트
+import BattleSkillEffect from './BattleSkillEffect';
 
 // --- Styled Components & Keyframes ---
 
@@ -25,7 +25,6 @@ const float = keyframes`
   100% { transform: translateY(0px); }
 `;
 
-// [추가] 피격 시 흔들림 (기존보다 조금 더 강하게)
 const shakeDamage = keyframes`
   0% { transform: translateX(0); }
   25% { transform: translateX(-6px) rotate(-6deg); }
@@ -34,7 +33,7 @@ const shakeDamage = keyframes`
   100% { transform: translateX(0); }
 `;
 
-// [추가] 아군 몸통박치기 (오른쪽 돌진)
+// [기본] 몸통박치기 (직선)
 const tackleRight = keyframes`
   0% { transform: translateX(0); }
   20% { transform: translateX(-20px); }
@@ -42,12 +41,31 @@ const tackleRight = keyframes`
   100% { transform: translateX(0); }
 `;
 
-// [추가] 적군 몸통박치기 (왼쪽 돌진)
 const tackleLeft = keyframes`
   0% { transform: translateX(0); }
   20% { transform: translateX(20px); }
   50% { transform: translateX(-150px); }
   100% { transform: translateX(0); }
+`;
+
+// [NEW] 재빠른 교란 (지그재그) - 아군용 (오른쪽으로 공격)
+const zigzagRight = keyframes`
+  0% { transform: translate(0, 0); }
+  15% { transform: translate(30px, -30px); }  /* 위로 휙 */
+  30% { transform: translate(60px, 30px); }   /* 아래로 휙 */
+  45% { transform: translate(90px, -30px); }  /* 위로 휙 */
+  60% { transform: translate(150px, 0) scale(1.1); } /* 타격! */
+  100% { transform: translate(0, 0); }
+`;
+
+// [NEW] 재빠른 교란 (지그재그) - 적군용 (왼쪽으로 공격)
+const zigzagLeft = keyframes`
+  0% { transform: translate(0, 0); }
+  15% { transform: translate(-30px, -30px); }
+  30% { transform: translate(-60px, 30px); }
+  45% { transform: translate(-90px, -30px); }
+  60% { transform: translate(-150px, 0) scale(1.1); }
+  100% { transform: translate(0, 0); }
 `;
 
 const StunEffect = styled.div`
@@ -93,13 +111,14 @@ const PetContainerWrapper = styled.div`
 const MyPetContainerWrapper = styled(PetContainerWrapper)` bottom: 10px; left: 10px; `;
 const OpponentPetContainerWrapper = styled(PetContainerWrapper)` top: 10px; right: 10px; `;
 
-// [수정] 애니메이션 로직: 박치기(attack) 또는 피격(hit)
+// [수정] 애니메이션 선택 로직 (TACKLE vs ZIGZAG)
 const PetContainer = styled.div`
   position: relative; width: 100%; height: 100%;
   animation: ${props =>
         props.$isHit ? css`${shakeDamage} 0.5s` :
-            props.$isTackling ? css`${props.$isMine ? tackleRight : tackleLeft} 0.5s ease-in-out` :
-                'none'};
+            props.$animType === 'TACKLE' ? css`${props.$isMine ? tackleRight : tackleLeft} 0.5s ease-in-out` :
+                props.$animType === 'ZIGZAG' ? css`${props.$isMine ? zigzagRight : zigzagLeft} 0.6s ease-in-out` :
+                    'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -261,17 +280,14 @@ function BattlePage() {
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // [수정] 상태 관리 분리
     const [hitState, setHitState] = useState({ my: false, opponent: false });
-    const [tackleState, setTackleState] = useState({ my: false, opponent: false }); // 몸통박치기 상태
-    const [currentEffect, setCurrentEffect] = useState(null); // 스킬 이펙트 상태
+    const [animState, setAnimState] = useState({ my: null, opponent: null });
+    const [currentEffect, setCurrentEffect] = useState(null);
 
     const [actionSubMenu, setActionSubMenu] = useState(null);
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
     const prevHpRef = useRef({ my: null, opponent: null });
-
-    // [중요] 중복 애니메이션 방지용 Ref
     const processedTurnRef = useRef(null);
 
     const getPetImageSrc = (info, isMine) => {
@@ -367,51 +383,55 @@ function BattlePage() {
             timerRef.current = setInterval(updateTimer, 1000);
         }
 
-        // [핵심 수정] 애니메이션 및 이펙트 처리 (중복 실행 방지 포함)
+        // [핵심] 공격 애니메이션 로직 개선
         if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
 
-            // 현재 턴의 고유 ID 생성 (턴 시작 시간 + 공격자 ID)
             const turnUniqueId = `${battleState.turnStartTime}_${battleState.turn}`;
 
-            // 이 턴에 대한 애니메이션이 아직 실행되지 않았고, 처리 중이 아닐 때만 실행
             if (!isProcessing && processedTurnRef.current !== turnUniqueId) {
 
                 setIsProcessing(true);
-                processedTurnRef.current = turnUniqueId; // 실행 완료 처리
+                processedTurnRef.current = turnUniqueId;
 
                 const isAttackerMe = battleState.turn === myPlayerData.id;
-                const actionType = battleState.attackerAction; // 'TACKLE', 'EMBER' 등
 
-                if (actionType === 'TACKLE') {
-                    // 1. 몸통박치기 로직
-                    if (isAttackerMe) setTackleState(prev => ({ ...prev, my: true }));
-                    else setTackleState(prev => ({ ...prev, opponent: true }));
+                // [수정] 대소문자 무시 (안전장치)
+                const actionType = battleState.attackerAction ? battleState.attackerAction.toUpperCase() : '';
 
-                    // 타격 타이밍 (0.2초 후)
+                // 몸통박치기(TACKLE) 또는 재빠른교란(QUICK_DISTURBANCE)은 펫이 직접 움직임
+                if (actionType === 'TACKLE' || actionType === 'QUICK_DISTURBANCE') {
+
+                    const animType = actionType === 'TACKLE' ? 'TACKLE' : 'ZIGZAG';
+
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: animType }));
+                    else setAnimState(prev => ({ ...prev, opponent: animType }));
+
+                    // 타격 타이밍 (몸통박치기는 0.2초, 지그재그는 0.35초 쯤)
+                    const hitTiming = animType === 'TACKLE' ? 200 : 350;
+
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
-                    }, 200);
+                    }, hitTiming);
 
-                    // 애니메이션 종료 및 결과 처리 (0.6초 후)
+                    // 애니메이션 종료 (0.6초 후)
                     setTimeout(() => {
-                        setTackleState({ my: false, opponent: false });
+                        setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
-                        setIsProcessing(false); // 해제
+                        setIsProcessing(false);
                         handleResolution(battleRef);
                     }, 600);
 
                 } else {
-                    // 2. 스킬 이펙트 로직 (기존 복구)
+                    // 그 외 스킬 (용의 숨결, 씨뿌리기 등)은 이펙트 컴포넌트 사용
                     setCurrentEffect({
-                        type: actionType.toUpperCase(),
+                        type: actionType, // 이미 upperCase 처리됨
                         isMine: isAttackerMe
                     });
 
-                    // 이펙트 지속 시간 후 결과 처리 (2초 후)
                     setTimeout(() => {
                         setCurrentEffect(null);
-                        setIsProcessing(false); // 해제
+                        setIsProcessing(false);
                         handleResolution(battleRef);
                     }, 2000);
                 }
@@ -424,7 +444,6 @@ function BattlePage() {
         };
     }, [battleState, myPlayerData, isProcessing, classId, battleId]);
 
-    // HP 변동에 따른 피격 효과 (백업용)
     useEffect(() => {
         if (!battleState || !myPlayerData) return;
 
@@ -436,7 +455,6 @@ function BattlePage() {
         const currentOpponentHp = battleState[opponentRole].pet.hp;
 
         if (prevHpRef.current.my !== null && prevHpRef.current.opponent !== null) {
-            // 애니메이션에 의해 처리되지 않은 경우에만 작동 (중복 방지)
             if (currentMyHp < prevHpRef.current.my && !hitState.my) {
                 setHitState(prev => ({ ...prev, my: true }));
                 setTimeout(() => setHitState(prev => ({ ...prev, my: false })), 500);
@@ -600,7 +618,6 @@ function BattlePage() {
                 const opponentChat = data.chat?.[opponentId];
                 const opponentIsStunned = data[opponentRole].pet.status?.stunned;
 
-                // [수정] 펫 정보 가져오기
                 const myPet = data[myRole].pet;
 
                 const myChatEntry = { text: filteredAnswer, isCorrect, timestamp: Date.now() };
@@ -620,7 +637,6 @@ function BattlePage() {
                             status: 'quiz',
                             turn: null,
                             [`${myRole}.pet.status`]: newStatus,
-                            // [수정] 교사 이름 -> 펫 이름
                             log: `정답! ${myPet.name}은(는) 숨을 고르며 반동을 회복했습니다.`,
                             question: nextQuiz,
                             turnStartTime: Date.now(),
@@ -630,7 +646,6 @@ function BattlePage() {
                         transaction.update(battleRef, {
                             status: 'action',
                             turn: winnerId,
-                            // [수정] 교사 이름 -> 펫 이름
                             log: `정답! ${myPet.name}의 공격! 상대는 방어하세요!`,
                             question: null,
                             turnStartTime: Date.now(),
@@ -736,7 +751,6 @@ function BattlePage() {
                 const opponentRole = myRole === 'challenger' ? 'opponent' : 'challenger';
                 const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
 
-                // [수정] 펫 이름 사용
                 const myPet = battleState[myRole].pet;
 
                 if (opponentIsStunned) {
@@ -759,7 +773,7 @@ function BattlePage() {
                             status: 'finished',
                             winner: null,
                             defenderAction: 'FLEE_SUCCESS',
-                            log: `${myPet.name}이(가) 도망쳤습니다!` // 펫 이름으로 변경
+                            log: `${myPet.name}이(가) 도망쳤습니다!`
                         });
 
                         await processBattleDraw(classId, myId, opponentId, myPet, opponentPet);
@@ -902,9 +916,13 @@ function BattlePage() {
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
 
+    // [수정] 스킬 ID 주입 (중요: id가 없으면 undefined가 전달됨)
     const myEquippedSkills = myInfo.pet.equippedSkills
         .filter(id => id.toLowerCase() !== 'tackle')
-        .map(id => SKILLS[id.toUpperCase()])
+        .map(id => {
+            const skill = SKILLS[id.toUpperCase()];
+            return skill ? { ...skill, id: id.toUpperCase() } : null;
+        })
         .filter(Boolean);
 
     const showTimer = (battleState.status === 'quiz' || battleState.status === 'action');
@@ -920,7 +938,7 @@ function BattlePage() {
                     <>
                         <BattleField>
                             {showTimer && <Timer>{timeLeft}</Timer>}
-                            {/* [복구] 스킬 이펙트 렌더링 (Tackle이 아닐 때만 표시됨) */}
+                            {/* 스킬 이펙트 (TACKLE과 QUICK_DISTURBANCE가 아닐 때만) */}
                             {currentEffect && (
                                 <BattleSkillEffect
                                     type={currentEffect.type}
@@ -954,10 +972,10 @@ function BattlePage() {
                             </OpponentInfoBox>
 
                             <OpponentPetContainerWrapper>
-                                {/* [수정] Tackle 상태일 때만 애니메이션 적용 */}
+                                {/* [수정] animType prop 사용 */}
                                 <PetContainer
                                     $isHit={hitState.opponent}
-                                    $isTackling={tackleState.opponent}
+                                    $animType={animState.opponent}
                                     $isMine={false}
                                 >
                                     {opponentInfo.pet.status?.stunned && <StunEffect />}
@@ -968,10 +986,10 @@ function BattlePage() {
                             </OpponentPetContainerWrapper>
 
                             <MyPetContainerWrapper>
-                                {/* [수정] Tackle 상태일 때만 애니메이션 적용 */}
+                                {/* [수정] animType prop 사용 */}
                                 <PetContainer
                                     $isHit={hitState.my}
-                                    $isTackling={tackleState.my}
+                                    $animType={animState.my}
                                     $isMine={true}
                                 >
                                     {myInfo.pet.status?.stunned && <StunEffect />}
