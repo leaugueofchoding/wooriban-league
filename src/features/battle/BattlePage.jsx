@@ -111,7 +111,6 @@ const PetContainerWrapper = styled.div`
 const MyPetContainerWrapper = styled(PetContainerWrapper)` bottom: 10px; left: 10px; `;
 const OpponentPetContainerWrapper = styled(PetContainerWrapper)` top: 10px; right: 10px; `;
 
-// [수정] 애니메이션 선택 로직 (TACKLE vs ZIGZAG)
 const PetContainer = styled.div`
   position: relative; width: 100%; height: 100%;
   animation: ${props =>
@@ -186,6 +185,8 @@ const CancelButton = styled.button`
     border: none; border-radius: 8px; cursor: pointer;
     &:hover { background-color: #c82333; }
 `;
+
+// [수정] 정답/오답 말풍선 색상 (red: 오답, blue: 정답)
 const ChatBubble = styled.div`
     position: absolute;
     background: white;
@@ -383,7 +384,7 @@ function BattlePage() {
             timerRef.current = setInterval(updateTimer, 1000);
         }
 
-        // [핵심] 공격 애니메이션 로직 개선
+        // [핵심] 공격 애니메이션 로직
         if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
 
             const turnUniqueId = `${battleState.turnStartTime}_${battleState.turn}`;
@@ -395,10 +396,8 @@ function BattlePage() {
 
                 const isAttackerMe = battleState.turn === myPlayerData.id;
 
-                // [수정] 대소문자 무시 (안전장치)
                 const actionType = battleState.attackerAction ? battleState.attackerAction.toUpperCase() : '';
 
-                // 몸통박치기(TACKLE) 또는 재빠른교란(QUICK_DISTURBANCE)은 펫이 직접 움직임
                 if (actionType === 'TACKLE' || actionType === 'QUICK_DISTURBANCE') {
 
                     const animType = actionType === 'TACKLE' ? 'TACKLE' : 'ZIGZAG';
@@ -406,7 +405,6 @@ function BattlePage() {
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: animType }));
                     else setAnimState(prev => ({ ...prev, opponent: animType }));
 
-                    // 타격 타이밍 (몸통박치기는 0.2초, 지그재그는 0.35초 쯤)
                     const hitTiming = animType === 'TACKLE' ? 200 : 350;
 
                     setTimeout(() => {
@@ -414,7 +412,6 @@ function BattlePage() {
                         else setHitState(prev => ({ ...prev, my: true }));
                     }, hitTiming);
 
-                    // 애니메이션 종료 (0.6초 후)
                     setTimeout(() => {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
@@ -423,9 +420,8 @@ function BattlePage() {
                     }, 600);
 
                 } else {
-                    // 그 외 스킬 (용의 숨결, 씨뿌리기 등)은 이펙트 컴포넌트 사용
                     setCurrentEffect({
-                        type: actionType, // 이미 upperCase 처리됨
+                        type: actionType,
                         isMine: isAttackerMe
                     });
 
@@ -590,11 +586,7 @@ function BattlePage() {
         const isObjective = battleState.question.options && battleState.question.options.length > 0;
         const isCorrect = submittedAnswer.toLowerCase() === battleState.question.answer.toLowerCase();
 
-        if (!isObjective && !isCorrect) {
-            setAnswer('');
-            return;
-        }
-
+        // [수정] 객관식이고 이미 답했으면 리턴 (주관식은 계속 진행)
         if (isObjective && battleState.chat?.[myPlayerData.id]) return;
 
         setIsProcessing(true);
@@ -609,7 +601,11 @@ function BattlePage() {
                 const data = battleDoc.data();
                 const myId = myPlayerData.id;
 
-                if (data.chat && data.chat[myId]) return null;
+                // [수정] 주관식인지 확인하여 중복 제출 허용 여부 결정
+                const isQuestionObjective = data.question.options && data.question.options.length > 0;
+
+                // 객관식일 때만 "이미 제출했으면 거부"
+                if (isQuestionObjective && data.chat && data.chat[myId]) return null;
 
                 const isChallenger = myId === data.challenger.id;
                 const myRole = isChallenger ? 'challenger' : 'opponent';
@@ -654,8 +650,19 @@ function BattlePage() {
                     }
                     return null;
                 } else {
-                    if ((opponentChat && opponentChat.isCorrect === false) || opponentIsStunned) {
+                    // [수정] 오답 처리 로직 분기
 
+                    // 객관식(Objective)일 때만 "둘 다 틀리면 데미지" 로직 실행
+                    let shouldEndTurn = false;
+
+                    if (isQuestionObjective) {
+                        if ((opponentChat && opponentChat.isCorrect === false) || opponentIsStunned) {
+                            shouldEndTurn = true;
+                        }
+                    }
+                    // 주관식은 오답이어도 턴이 끝나지 않음 (무한 시도)
+
+                    if (shouldEndTurn) {
                         let { challenger, opponent } = data;
 
                         const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
@@ -703,9 +710,11 @@ function BattlePage() {
                             return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
                         }
                     } else {
+                        // 주관식 오답이거나, 객관식인데 상대가 아직 안 낸 경우
+                        // 그냥 채팅(말풍선)만 업데이트하고 계속 진행
                         transaction.update(battleRef, {
                             chat: updatedChat,
-                            log: `${myPlayerData.name} 오답! (상대방의 응답을 기다리는 중...)`
+                            log: `${myPlayerData.name} 오답! (다시 시도하세요)`
                         });
                     }
                     return null;
@@ -723,6 +732,7 @@ function BattlePage() {
         } catch (error) {
             console.error("퀴즈 처리 오류:", error);
         } finally {
+            // 입력창 비우기
             setAnswer('');
             setIsProcessing(false);
         }
@@ -916,7 +926,6 @@ function BattlePage() {
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
 
-    // [수정] 스킬 ID 주입 (중요: id가 없으면 undefined가 전달됨)
     const myEquippedSkills = myInfo.pet.equippedSkills
         .filter(id => id.toLowerCase() !== 'tackle')
         .map(id => {
@@ -938,7 +947,6 @@ function BattlePage() {
                     <>
                         <BattleField>
                             {showTimer && <Timer>{timeLeft}</Timer>}
-                            {/* 스킬 이펙트 (TACKLE과 QUICK_DISTURBANCE가 아닐 때만) */}
                             {currentEffect && (
                                 <BattleSkillEffect
                                     type={currentEffect.type}
@@ -972,7 +980,6 @@ function BattlePage() {
                             </OpponentInfoBox>
 
                             <OpponentPetContainerWrapper>
-                                {/* [수정] animType prop 사용 */}
                                 <PetContainer
                                     $isHit={hitState.opponent}
                                     $animType={animState.opponent}
@@ -986,7 +993,6 @@ function BattlePage() {
                             </OpponentPetContainerWrapper>
 
                             <MyPetContainerWrapper>
-                                {/* [수정] animType prop 사용 */}
                                 <PetContainer
                                     $isHit={hitState.my}
                                     $animType={animState.my}
@@ -1037,6 +1043,7 @@ function BattlePage() {
                                                             onChange={(e) => setAnswer(e.target.value)}
                                                             placeholder={"정답을 입력하세요"}
                                                             autoFocus
+                                                            // [수정] 주관식이면 정답 맞췄을 때만 비활성화 (오답이면 계속 입력 가능)
                                                             disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
                                                         />
                                                     </form>
