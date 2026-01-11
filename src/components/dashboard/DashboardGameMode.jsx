@@ -39,17 +39,14 @@ const LobbyWrapper = styled.div`
   }
 `;
 
-// [수정] 드래그 가능한 Div (cursor 스타일 등)
 const DraggableDiv = styled.div`
   position: absolute;
   cursor: grab;
   z-index: 10;
-  /* 드래그 중 부드러운 이동보다는 즉각적인 반응이 좋음 */
-  /* transition: transform 0.1s linear;  <- 제거 */
   
   &:active {
     cursor: grabbing;
-    z-index: 100; /* 드래그 중엔 최상위 */
+    z-index: 100;
     transform: scale(1.02);
     transition: transform 0.2s;
   }
@@ -98,9 +95,8 @@ const ProgressBar = styled.div`
 
 const CharacterGroup = styled.div`
   width: 300px; height: 400px; display: flex; justifyContent: center;
-  /* 드래그 중이 아닐 때만 둥둥 떠다님 */
   animation: ${float} 4s ease-in-out infinite;
-  pointer-events: none; /* 내부 요소 클릭 통과 */
+  pointer-events: none;
   
   @media (max-width: 768px) { transform: scale(0.8); }
 `;
@@ -115,7 +111,7 @@ const MyPet = styled(Link)`
   filter: drop-shadow(0 5px 10px rgba(0,0,0,0.3)); 
   animation: ${float} 3s ease-in-out infinite reverse;
   cursor: pointer; transition: transform 0.2s; display: block;
-  pointer-events: auto; /* 링크 클릭 가능 */
+  pointer-events: auto;
   
   &:hover { transform: scale(1.1); }
   img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
@@ -132,17 +128,14 @@ const PetBubble = styled.div`
   }
 `;
 
-// [수정] PanelCard에 pointer-events: none 제거 (드래그 핸들이 되어야 함)
 const PanelCard = styled.div`
   background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px);
   padding: 1.2rem; border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); transition: transform 0.2s;
   border: 1px solid rgba(255,255,255,0.6);
   width: 280px;
-  /* Link 기능은 내부 버튼이나 제목으로 이동 */
   
   &:hover { background: rgba(255,255,255,0.95); }
   
-  /* 헤더 부분만 클릭 시 링크 이동하도록 */
   .panel-header {
     text-decoration: none; color: #495057; display: flex; alignItems: center; gap: 0.5rem; 
     margin-bottom: 0.8rem; cursor: pointer;
@@ -202,59 +195,68 @@ const CloseButton = styled.button`
   &:hover { background: #dee2e6; }
 `;
 
-// --- [Utility] Draggable Component (수정됨) ---
+// [추가] 별(Star) 컨테이너 스타일
+const StarContainer = styled.span`
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 0.6em; margin-left: 6px;
+  vertical-align: middle;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+`;
+
+// [추가] 우승 횟수에 따른 별 생성 함수 (5승=보라별, 1승=노란별)
+const getWinningStars = (count) => {
+  if (!count || count <= 0) return null;
+  const purpleStars = Math.floor(count / 5);
+  const yellowStars = count % 5;
+  const stars = [];
+
+  // 보라색 별 (5승 단위)
+  for (let i = 0; i < purpleStars; i++) {
+    stars.push(<span key={`p-${i}`} style={{ color: '#7950f2', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>★</span>);
+  }
+  // 노란색 별 (나머지 1승 단위)
+  for (let i = 0; i < yellowStars; i++) {
+    stars.push(<span key={`y-${i}`} style={{ color: '#fcc419', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>★</span>);
+  }
+  return <StarContainer>{stars}</StarContainer>;
+};
+
+// --- [Utility] Draggable Component ---
 const DraggableWidget = ({ id, initialX, initialY, children, onSavePos }) => {
   const [position, setPosition] = useState({ x: initialX, y: initialY });
-  const isDragging = useRef(false); // ref로 변경하여 리렌더링 방지 및 즉시 반영
+  const isDragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
 
-  // 초기 위치 prop 변경 시 업데이트 (필요한 경우)
   useEffect(() => {
     setPosition({ x: initialX, y: initialY });
   }, [initialX, initialY]);
 
   const handleMouseDown = (e) => {
-    // 내부의 a 태그나 button 태그 클릭 시에는 드래그 시작 안 함
     if (e.target.closest('a') || e.target.closest('button')) return;
 
     isDragging.current = true;
     const rect = e.currentTarget.getBoundingClientRect();
 
-    // 마우스가 요소 내에서 클릭된 상대 위치 계산
     offset.current = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     };
 
-    // 텍스트 선택 방지 등
     e.preventDefault();
   };
 
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isDragging.current) return;
-
-      // 새 위치 계산 (마우스 위치 - 오프셋)
-      // LobbyWrapper가 relative이므로, event.clientX/Y는 뷰포트 기준.
-      // 하지만 position: absolute인 요소의 left/top은 부모 기준.
-      // 여기서는 전체 화면(LobbyWrapper)이 뷰포트와 같다고 가정하거나
-      // 간단히 e.clientX를 사용.
-
       const newX = e.clientX - offset.current.x;
       const newY = e.clientY - offset.current.y;
-
       setPosition({ x: newX, y: newY });
     };
 
     const handleMouseUp = () => {
       if (isDragging.current) {
         isDragging.current = false;
-        // 드래그 종료 시 저장
-        // 현재 position 상태는 비동기일 수 있으므로, mousemove에서 업데이트된 값을 사용해야 하나
-        // 여기서는 간단히 상태값 사용 (약간의 오차는 허용) 또는 ref 사용 가능
-        // 리액트 state인 position을 그대로 사용
-        onSavePos(id, position.x, position.y); // 주의: 클로저 문제로 이전 값일 수 있음.
-        // 하지만 mousemove가 매우 빈번히 일어나므로 마지막 상태와 거의 일치함.
+        onSavePos(id, position.x, position.y);
       }
     };
 
@@ -265,7 +267,7 @@ const DraggableWidget = ({ id, initialX, initialY, children, onSavePos }) => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [id, onSavePos, position]); // position 의존성 추가하여 최신 값 참조
+  }, [id, onSavePos, position]);
 
   return (
     <DraggableDiv
@@ -288,7 +290,6 @@ function DashboardGameMode({
   // [상태] 각 위젯의 위치 정보 (localStorage에서 불러옴)
   const [widgetPositions, setWidgetPositions] = useState(() => {
     const saved = localStorage.getItem('gameDashboardLayout');
-    // 기본값 설정
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
     const rightSide = window.innerWidth - 350;
@@ -302,7 +303,6 @@ function DashboardGameMode({
 
   const [showQuiz, setShowQuiz] = useState(false);
 
-  // 위치 저장 핸들러 (드래그 종료 시 호출됨)
   const savePosition = (id, x, y) => {
     setWidgetPositions(prev => {
       const newPositions = {
@@ -386,7 +386,7 @@ function DashboardGameMode({
         initialY={widgetPositions.missions.y}
         onSavePos={savePosition}
       >
-        <PanelCard as="div"> {/* 드래그를 위해 div로 렌더링하되 내부 클릭 시 이동 */}
+        <PanelCard as="div">
           <Link to="/missions" className="panel-header">
             <h3>📝 오늘의 미션 ({activeMissions.length})</h3>
           </Link>
@@ -403,7 +403,7 @@ function DashboardGameMode({
         </PanelCard>
       </DraggableWidget>
 
-      {/* (C) 오늘의 친구 카드 */}
+      {/* (C) 오늘의 친구 카드 (별 추가됨) */}
       {todaysFriend && (
         <DraggableWidget
           id="friend"
@@ -424,7 +424,10 @@ function DashboardGameMode({
                 </div>
               </div>
               <div style={{ overflow: 'hidden' }}>
-                <div style={{ fontWeight: '800', color: '#2b8a3e', fontSize: '1.1rem' }}>{todaysFriend.name}</div>
+                {/* [수정] 이름 옆에 별 추가 */}
+                <div style={{ fontWeight: '800', color: '#2b8a3e', fontSize: '1.1rem' }}>
+                  {todaysFriend.name} {getWinningStars(todaysFriend.win_count || 0)}
+                </div>
                 <Link to={`/my-room/${todaysFriend.id}`} style={{ fontSize: '0.8rem', color: '#868e96', textDecoration: 'none' }}>놀러가기 &rarr;</Link>
               </div>
             </div>

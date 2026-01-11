@@ -1,7 +1,9 @@
+// src/pages/DashboardPage.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal } from '../api/firebase';
+import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats } from '../api/firebase'; // [수정] getPlayerSeasonStats 추가
 import DashboardGameMode from '../components/dashboard/DashboardGameMode';
 import DashboardSimpleMode from '../components/dashboard/DashboardSimpleMode';
 import confetti from 'canvas-confetti';
@@ -79,9 +81,15 @@ function DashboardPage() {
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
 
-    // 모드 상태 관리 (로컬 스토리지)
+    // 모드 상태 관리
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('dashboardViewMode') || 'simple');
     const [bgMode, setBgMode] = useState(() => localStorage.getItem('dashboardBgMode') || 'default');
+
+    // 심플 모드 배경색 상태 관리
+    const [simpleBgColor, setSimpleBgColor] = useState(() => localStorage.getItem('simpleBgColor') || '#f8f9fa');
+
+    // [추가] 우승 횟수 상태 관리
+    const [winCounts, setWinCounts] = useState({});
 
     const myPlayerData = useMemo(() => currentUser ? players.find(p => p.authUid === currentUser.uid) : null, [players, currentUser]);
 
@@ -102,6 +110,49 @@ function DashboardPage() {
     };
 
     const todaysFriend = useMemo(() => getTodayStar(players, myPlayerData?.id), [players, myPlayerData]);
+
+    // [추가] 우승 횟수 조회 로직 (내 정보 & 오늘의 친구)
+    useEffect(() => {
+        const fetchWinCounts = async () => {
+            if (!classId) return;
+            const targets = [];
+            if (myPlayerData) targets.push(myPlayerData.id);
+            if (todaysFriend) targets.push(todaysFriend.id);
+
+            const uniqueTargets = [...new Set(targets)];
+            const newCounts = {};
+
+            // 비동기로 우승 횟수 가져오기
+            await Promise.all(uniqueTargets.map(async (playerId) => {
+                try {
+                    const stats = await getPlayerSeasonStats(classId, playerId);
+                    // 완료된 시즌 중 1위한 횟수 계산
+                    const wins = stats.filter(s => s.rank === 1 && s.season?.status === 'completed').length;
+                    newCounts[playerId] = wins;
+                } catch (err) {
+                    console.error("우승 기록 조회 실패:", err);
+                    newCounts[playerId] = 0;
+                }
+            }));
+
+            setWinCounts(newCounts);
+        };
+
+        fetchWinCounts();
+    }, [classId, myPlayerData?.id, todaysFriend?.id]);
+
+    // [수정] 우승 횟수가 포함된 객체 생성
+    const myPlayerDataWithWins = useMemo(() => {
+        if (!myPlayerData) return null;
+        return { ...myPlayerData, win_count: winCounts[myPlayerData.id] || 0 };
+    }, [myPlayerData, winCounts]);
+
+    const todaysFriendWithWins = useMemo(() => {
+        if (!todaysFriend) return null;
+        return { ...todaysFriend, win_count: winCounts[todaysFriend.id] || 0 };
+    }, [todaysFriend, winCounts]);
+
+
     const equippedTitle = useMemo(() => (myPlayerData?.equippedTitle && titles.length) ? titles.find(t => t.id === myPlayerData.equippedTitle) : null, [myPlayerData, titles]);
 
     const friendPartnerPet = useMemo(() => {
@@ -172,7 +223,6 @@ function DashboardPage() {
             try {
                 await donatePointsToGoal(classId, myPlayerData.id, activeGoal.id, amount);
                 alert('기부 성공! 👍');
-                // 목표 업데이트
                 const goals = await getActiveGoals(classId);
                 if (goals.length > 0) setActiveGoal(goals[0]);
             } catch (error) {
@@ -197,7 +247,11 @@ function DashboardPage() {
         localStorage.setItem('dashboardBgMode', newBgMode);
     };
 
-    // 렌더링
+    const handleSimpleBgChange = (color) => {
+        setSimpleBgColor(color);
+        localStorage.setItem('simpleBgColor', color);
+    };
+
     if (!currentUser || !myPlayerData) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8f9fa' }}>
@@ -208,7 +262,6 @@ function DashboardPage() {
         );
     }
 
-    // 배경 URL
     const currentBgUrl = (bgMode === 'myroom' && myPlayerData.myRoomSnapshotUrl)
         ? myPlayerData.myRoomSnapshotUrl
         : defaultForestBg;
@@ -217,7 +270,6 @@ function DashboardPage() {
         <PageWrapper>
             <ViewModeToggle>
                 <ToggleBtn onClick={toggleViewMode}>
-                    {/* [수정] 토글 이름 변경: 마이룸 모드 */}
                     {viewMode === 'game' ? '🏠 마이룸 모드' : '📋 심플 모드'}
                 </ToggleBtn>
                 {viewMode === 'game' && (
@@ -229,10 +281,10 @@ function DashboardPage() {
 
             {viewMode === 'game' ? (
                 <DashboardGameMode
-                    myPlayerData={myPlayerData}
+                    myPlayerData={myPlayerDataWithWins} // win_count 포함된 데이터 전달
                     myAvatarUrls={myAvatarUrls}
                     myPartnerPet={myPartnerPet}
-                    todaysFriend={todaysFriend}
+                    todaysFriend={todaysFriendWithWins} // win_count 포함된 데이터 전달
                     friendAvatarUrls={friendAvatarUrls}
                     friendPartnerPet={friendPartnerPet}
                     activeGoal={activeGoal}
@@ -243,11 +295,11 @@ function DashboardPage() {
                 />
             ) : (
                 <DashboardSimpleMode
-                    myPlayerData={myPlayerData}
+                    myPlayerData={myPlayerDataWithWins} // win_count 포함된 데이터 전달
                     myAvatarUrls={myAvatarUrls}
                     myPartnerPet={myPartnerPet}
                     equippedTitle={equippedTitle}
-                    todaysFriend={todaysFriend}
+                    todaysFriend={todaysFriendWithWins} // win_count 포함된 데이터 전달
                     friendAvatarUrls={friendAvatarUrls}
                     friendPartnerPet={friendPartnerPet}
                     friendTitle={friendTitle}
@@ -259,6 +311,8 @@ function DashboardPage() {
                     rankIcons={rankIcons}
                     onDonate={handleDonate}
                     mySubmissions={mySubmissions}
+                    simpleBgColor={simpleBgColor}
+                    onBgColorChange={handleSimpleBgChange}
                 />
             )}
         </PageWrapper>

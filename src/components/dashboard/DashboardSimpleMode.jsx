@@ -1,13 +1,12 @@
 // src/components/dashboard/DashboardSimpleMode.jsx
 
-import React, { useState, useRef } from 'react'; // useRef 추가
+import React, { useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../../assets/base-avatar.png';
 import { petImageMap } from '../../utils/petImageMap';
 import QuizWidget from '../QuizWidget';
 
-// ... (애니메이션 keyframes 코드는 그대로 유지)
 const float = keyframes`
   0% { transform: translateY(0px); }
   50% { transform: translateY(-8px); }
@@ -19,7 +18,6 @@ const shine = keyframes`
   100% { left: 200%; }
 `;
 
-// ... (DashboardWrapper 스타일 유지)
 const DashboardWrapper = styled.div`
   min-height: 100vh;
   background-color: ${props => props.$bgColor || '#f8f9fa'}; 
@@ -32,18 +30,22 @@ const DashboardWrapper = styled.div`
   align-items: center;
 `;
 
-// [수정] 팔레트 컨테이너 스타일 유지
+// [수정] 팔레트 하단 중앙 고정
 const PaletteContainer = styled.div`
-  margin-top: 3rem;
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  
   display: flex;
   gap: 0.8rem;
-  background: rgba(255, 255, 255, 0.6);
-  padding: 0.8rem 1.5rem;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.6rem 1.2rem;
   border-radius: 30px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   border: 1px solid rgba(255,255,255,0.5);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-  align-items: center; /* 세로 중앙 정렬 추가 */
 `;
 
 const ColorDot = styled.button`
@@ -53,7 +55,7 @@ const ColorDot = styled.button`
   border: 2px solid white;
   background-color: ${props => props.$color};
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   transition: transform 0.2s;
   
   &:hover { transform: scale(1.2); }
@@ -63,7 +65,6 @@ const ColorDot = styled.button`
   `}
 `;
 
-// [추가] 커스텀 색상 선택 버튼 스타일 (무지개 그라데이션)
 const CustomColorBtn = styled.button`
   width: 28px;
   height: 28px;
@@ -76,11 +77,10 @@ const CustomColorBtn = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative; /* input 숨김용 */
+  position: relative;
 
   &:hover { transform: scale(1.2); }
   
-  /* 숨겨진 input[type="color"] */
   input[type="color"] {
     position: absolute;
     top: 0; left: 0;
@@ -89,13 +89,11 @@ const CustomColorBtn = styled.button`
     cursor: pointer;
   }
 
-  /* 커스텀 색상이 선택되었을 때 강조 */
   ${props => props.$active && `
     box-shadow: 0 0 0 2px #339af0;
     transform: scale(1.1);
   `}
   
-  /* 플러스 아이콘 (선택 전) */
   &::after {
     content: '+';
     color: white;
@@ -105,11 +103,6 @@ const CustomColorBtn = styled.button`
     display: ${props => props.$hasCustomColor ? 'none' : 'block'};
   }
 `;
-
-
-// ... (나머지 스타일 컴포넌트들: ContentContainer, CommonCardStyle, HeroSection 등등 그대로 유지)
-// 코드가 너무 길어지므로 생략된 부분은 기존 코드와 동일합니다. 
-// (IDCard, QuickBtn, WidgetCard, FriendSection 등등...)
 
 const ContentContainer = styled.div`
   width: 100%;
@@ -153,33 +146,49 @@ const IDCard = styled(CommonCardStyle)`
   align-items: center;
   gap: 2rem;
   color: #343a40;
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08); 
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
 
   &::before {
     content: '';
     position: absolute;
     top: -50%; right: -20%;
     width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(77, 171, 247, 0.2) 0%, rgba(255,255,255,0) 70%);
+    background: radial-gradient(circle, rgba(77, 171, 247, 0.15) 0%, rgba(255,255,255,0) 70%);
     z-index: 0;
+  }
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(51, 154, 240, 0.15);
+    border-color: rgba(51, 154, 240, 0.3);
   }
 
   @media (max-width: 768px) { flex-direction: column; text-align: center; gap: 1rem; }
 `;
 
+// [수정] 둥근 네모 스타일 프레임
 const IDPhotoFrame = styled.div`
-  width: 120px; height: 120px;
-  border-radius: 50%;
-  background: white;
+  width: 130px; height: 130px;
+  border-radius: 24px; /* 둥근 네모 */
+  border: 3px solid rgba(255, 255, 255, 0.5); 
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  background: linear-gradient(135deg, #f1f3f5 0%, #e9ecef 100%);
   overflow: hidden; flex-shrink: 0;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  border: 4px solid white;
   position: relative;
   z-index: 1;
+  transition: all 0.3s ease;
+
+  ${IDCard}:hover & {
+    box-shadow: 0 12px 25px rgba(51, 154, 240, 0.2);
+    border-color: white;
+  }
 `;
 
 const IDPhotoContainer = styled.div`
   width: 100%; height: 100%; position: relative;
-  transform: scale(2.0) translateY(15%);
+  transform: scale(1.5) translateY(10%); /* 비율 조정 */
 `;
 
 const IDInfo = styled.div`
@@ -200,9 +209,11 @@ const NameTitle = styled.h2`
   @media (max-width: 768px) { justify-content: center; }
 `;
 
+// [수정] 별 컨테이너 스타일
 const StarContainer = styled.span`
   display: inline-flex; align-items: center; gap: 2px;
   font-size: 0.6em; margin-left: 6px;
+  vertical-align: middle;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
 `;
 
@@ -342,22 +353,21 @@ const PartImage = styled.img`
   position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
 `;
 
-// Helper for stars
+// [수정] 별 생성 함수 (5승 단위 보라별, 1승 단위 노란별)
 const getWinningStars = (count) => {
     if (!count || count <= 0) return null;
     const purpleStars = Math.floor(count / 5);
     const yellowStars = count % 5;
     const stars = [];
     for (let i = 0; i < purpleStars; i++) {
-        stars.push(<span key={`p-${i}`} style={{ color: '#7950f2', textShadow: '0 2px 0 rgba(0,0,0,0.2)' }}>★</span>);
+        stars.push(<span key={`p-${i}`} style={{ color: '#7950f2', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>★</span>);
     }
     for (let i = 0; i < yellowStars; i++) {
-        stars.push(<span key={`y-${i}`} style={{ color: '#fcc419', textShadow: '0 2px 0 rgba(0,0,0,0.2)' }}>★</span>);
+        stars.push(<span key={`y-${i}`} style={{ color: '#fcc419', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>★</span>);
     }
     return <StarContainer>{stars}</StarContainer>;
 };
 
-// 미션 아이템 컴포넌트
 function MissionItem({ mission, mySubmissions, canSubmitMission }) {
     const navigate = useNavigate();
     const submission = mySubmissions[mission.id];
@@ -399,7 +409,6 @@ function MissionItem({ mission, mySubmissions, canSubmitMission }) {
     );
 }
 
-// 팔레트 색상 정의 (파스텔 톤) + 커스텀
 const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 
 function DashboardSimpleMode({
@@ -408,12 +417,10 @@ function DashboardSimpleMode({
     simpleBgColor, onBgColorChange
 }) {
     const [donationAmount, setDonationAmount] = useState('');
-    // [추가] 커스텀 색상 상태
     const [customColor, setCustomColor] = useState(null);
 
     const handleDonateClick = () => { onDonate(donationAmount); setDonationAmount(''); };
 
-    // 커스텀 색상 선택 핸들러
     const handleCustomColorChange = (e) => {
         const newColor = e.target.value;
         setCustomColor(newColor);
@@ -423,7 +430,6 @@ function DashboardSimpleMode({
     return (
         <DashboardWrapper $bgColor={simpleBgColor}>
             <ContentContainer>
-                {/* ... (HeroSection, MainGrid, GoalSection 동일) ... */}
                 <HeroSection>
                     <IDCard to="/profile">
                         <IDPhotoFrame>
@@ -433,7 +439,13 @@ function DashboardSimpleMode({
                         </IDPhotoFrame>
                         <IDInfo>
                             <RoleBadge>{equippedTitle ? equippedTitle.name : (myPlayerData.role === 'admin' ? 'TEACHER' : 'PLAYER')}</RoleBadge>
-                            <NameTitle>{myPlayerData.name} {getWinningStars(myPlayerData.win_count || 0)}</NameTitle>
+
+                            {/* [수정] 내 이름 옆에도 우승 별 표시 */}
+                            <NameTitle>
+                                {myPlayerData.name}
+                                {getWinningStars(myPlayerData.win_count || 0)}
+                            </NameTitle>
+
                             <StatBadges>
                                 <Badge $bg="#e6fcf5" $color="#0ca678">
                                     {myPartnerPet ? <><img src={petImageMap[`${myPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" className="pet-icon" /><span>Lv.{myPartnerPet.level} {myPartnerPet.name}</span></> : "펫 없음"}
@@ -499,7 +511,13 @@ function DashboardSimpleMode({
                                 </FriendAvatarGroup>
                                 <FriendInfo>
                                     <FriendRoleBadge>{friendTitle ? friendTitle.name : (todaysFriend.role === 'admin' ? 'TEACHER' : 'PLAYER')}</FriendRoleBadge>
-                                    <FriendName>{todaysFriend.name} {getWinningStars(todaysFriend.win_count || 0)}</FriendName>
+
+                                    {/* [수정] 오늘의 친구 이름 옆에 우승 별 표시 */}
+                                    <FriendName>
+                                        {todaysFriend.name}
+                                        {getWinningStars(todaysFriend.win_count || 0)}
+                                    </FriendName>
+
                                     {friendPartnerPet && <InfoBadge><span style={{ fontSize: '0.9rem' }}>🐾</span>{friendPartnerPet.name}</InfoBadge>}
                                     <InfoBadge><span style={{ fontSize: '0.9rem' }}>🛡️</span>{friendTeamName}</InfoBadge>
                                 </FriendInfo>
@@ -536,14 +554,12 @@ function DashboardSimpleMode({
                         $color={color}
                         $active={simpleBgColor === color}
                         onClick={() => {
-                            setCustomColor(null); // 프리셋 선택 시 커스텀 해제
+                            setCustomColor(null);
                             onBgColorChange(color);
                         }}
                     />
                 ))}
-                {/* 커스텀 색상 버튼 */}
                 <CustomColorBtn $active={!!customColor && simpleBgColor === customColor} $hasCustomColor={!!customColor}>
-                    {/* 투명한 색상 선택 input */}
                     <input type="color" onChange={handleCustomColorChange} value={customColor || '#ffffff'} />
                 </CustomColorBtn>
             </PaletteContainer>
