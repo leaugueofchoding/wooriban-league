@@ -9,6 +9,7 @@ import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
+import { petImageMap } from '../utils/petImageMap'; // [추가] 펫 이미지 맵 import
 import { filterProfanity } from '../utils/profanityFilter';
 import html2canvas from 'html2canvas';
 
@@ -507,7 +508,6 @@ const ResetButton = styled(SaveButton)`
     }
 `;
 
-// [추가] 친구 목록 모달 스타일
 const FriendListModal = styled.div`
   position: absolute;
   top: 100%;
@@ -555,11 +555,13 @@ function MyRoomPage() {
   const [selectedItemId, setSelectedItemId] = useState(null);
   const moveInterval = useRef(null);
 
+  // [수정] roomConfig에 playerPet 추가 (초기값 설정)
   const [roomConfig, setRoomConfig] = useState({
     items: [],
     houseId: null,
     backgroundId: null,
-    playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false }
+    playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false },
+    playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false } // 펫 기본 위치
   });
 
   const roomContainerRef = useRef(null);
@@ -572,13 +574,12 @@ function MyRoomPage() {
   const [replyContent, setReplyContent] = useState("");
   const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
   const [visibleCommentsCount, setVisibleCommentsCount] = useState(5);
-  const [showFriendList, setShowFriendList] = useState(false); // [추가] 친구 목록 토글 상태
+  const [showFriendList, setShowFriendList] = useState(false);
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
   const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
-  // [추가] 친구 목록 데이터 (나 제외, 전체 친구 - 활동 여부 무관)
   const classmates = useMemo(() => {
     return players.filter(p => p.id !== myPlayerData?.id);
   }, [players, myPlayerData]);
@@ -588,6 +589,15 @@ function MyRoomPage() {
     return titles.find(t => t.id === roomOwnerData.equippedTitle);
   }, [roomOwnerData, titles]);
 
+  // [추가] 룸 주인의 파트너 펫 정보 가져오기
+  const ownerPartnerPet = useMemo(() => {
+    if (!roomOwnerData) return null;
+    if (roomOwnerData.pets && roomOwnerData.pets.length > 0) {
+      return roomOwnerData.pets.find(p => p.id === roomOwnerData.partnerPetId) || roomOwnerData.pets[0];
+    }
+    if (roomOwnerData.pet) return roomOwnerData.pet;
+    return null;
+  }, [roomOwnerData]);
 
   const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin'
@@ -684,14 +694,16 @@ function MyRoomPage() {
             items: convertedItems,
             houseId: configData.houseId || null,
             backgroundId: configData.backgroundId || null,
-            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false }
+            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false },
+            playerPet: configData.playerPet || { left: 60, top: 65, zIndex: 101, isFlipped: false }
           });
         } else {
           setRoomConfig({
             items: configData.items || [],
             houseId: configData.houseId || null,
             backgroundId: configData.backgroundId || null,
-            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false }
+            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false },
+            playerPet: configData.playerPet || { left: 60, top: 65, zIndex: 101, isFlipped: false }
           });
         }
       }
@@ -710,8 +722,8 @@ function MyRoomPage() {
   const handleDeleteSelectedItem = () => {
     if (!isMyRoom || !isEditing || !selectedItemId) return;
 
-    if (selectedItemId === 'playerAvatar') {
-      alert("아바타는 삭제할 수 없습니다.");
+    if (selectedItemId === 'playerAvatar' || selectedItemId === 'playerPet') {
+      alert("캐릭터와 펫은 삭제할 수 없습니다.");
       return;
     }
 
@@ -728,9 +740,8 @@ function MyRoomPage() {
     setRoomConfig(prev => {
       const newConfig = JSON.parse(JSON.stringify(prev));
       const allZIndexes = newConfig.items.map(i => i.zIndex);
-      if (newConfig.playerAvatar) {
-        allZIndexes.push(newConfig.playerAvatar.zIndex);
-      }
+      if (newConfig.playerAvatar) allZIndexes.push(newConfig.playerAvatar.zIndex);
+      if (newConfig.playerPet) allZIndexes.push(newConfig.playerPet.zIndex);
 
       const maxZ = allZIndexes.length > 0 ? Math.max(...allZIndexes) : 100;
       const minZ = allZIndexes.length > 0 ? Math.min(...allZIndexes) : 100;
@@ -738,6 +749,8 @@ function MyRoomPage() {
       let target;
       if (selectedItemId === 'playerAvatar') {
         target = newConfig.playerAvatar;
+      } else if (selectedItemId === 'playerPet') {
+        target = newConfig.playerPet;
       } else {
         target = newConfig.items.find(i => i.instanceId === selectedItemId);
       }
@@ -763,6 +776,8 @@ function MyRoomPage() {
       let target;
       if (selectedItemId === 'playerAvatar') {
         target = newConfig.playerAvatar;
+      } else if (selectedItemId === 'playerPet') {
+        target = newConfig.playerPet;
       } else {
         target = newConfig.items.find(i => i.instanceId === selectedItemId);
       }
@@ -793,6 +808,9 @@ function MyRoomPage() {
     setRoomConfig(prev => {
       if (selectedItemId === 'playerAvatar') {
         return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
+      }
+      if (selectedItemId === 'playerPet') {
+        return { ...prev, playerPet: { ...prev.playerPet, isFlipped: !prev.playerPet.isFlipped } };
       }
       return {
         ...prev,
@@ -859,6 +877,21 @@ function MyRoomPage() {
 
     setIsLoadingSnapshot(true);
 
+    // [수정] 캡처 전 아바타와 펫 숨기기 (클래스명 사용)
+    const avatarElement = roomContainerRef.current.querySelector('.player-avatar');
+    const petElement = roomContainerRef.current.querySelector('.player-pet');
+    let avatarOriginalDisplay = '';
+    let petOriginalDisplay = '';
+
+    if (avatarElement) {
+      avatarOriginalDisplay = avatarElement.style.display;
+      avatarElement.style.display = 'none';
+    }
+    if (petElement) {
+      petOriginalDisplay = petElement.style.display;
+      petElement.style.display = 'none';
+    }
+
     const currentWidth = roomContainerRef.current.offsetWidth;
     const fixedHeight = currentWidth * 0.75;
 
@@ -910,6 +943,10 @@ function MyRoomPage() {
       roomContainerRef.current.style.paddingTop = '';
       roomContainerRef.current.style.position = originalStyle.position;
 
+      // [수정] 캡처 후 아바타와 펫 다시 보이기
+      if (avatarElement) avatarElement.style.display = avatarOriginalDisplay;
+      if (petElement) petElement.style.display = petOriginalDisplay;
+
       setIsLoadingSnapshot(false);
     }
   };
@@ -920,7 +957,8 @@ function MyRoomPage() {
         items: [],
         houseId: null,
         backgroundId: null,
-        playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false }
+        playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false },
+        playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false }
       });
       setSelectedItemId(null);
     }
@@ -964,26 +1002,20 @@ function MyRoomPage() {
   };
 
   const handleLikeRoom = async () => {
-    // 1. 예외 처리
     if (!classId || isMyRoom || !myPlayerData) return;
     if (hasLikedThisMonth) return;
 
     try {
-      // 2. 화면 숫자 먼저 올리기 (낙관적 업데이트)
       setLikes(prev => [
         ...prev,
         { id: myPlayerData.id, name: myPlayerData.name, lastLikedMonth: new Date().toISOString().slice(0, 7) }
       ]);
-
-      // 3. 실제 서버 저장
       await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name);
-
       fetchRoomSocialData();
-
     } catch (error) {
       console.error(error);
       alert("좋아요 반영에 실패했습니다.");
-      fetchRoomSocialData(); // 실패 시 롤백
+      fetchRoomSocialData();
     }
   };
 
@@ -1094,7 +1126,6 @@ function MyRoomPage() {
         )}
       </Header>
 
-      {/* ▼▼▼ [추가] 친구 목록 버튼 (Header 아래) ▼▼▼ */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem', position: 'relative', zIndex: 100 }}>
         <button
           onClick={() => setShowFriendList(!showFriendList)}
@@ -1121,7 +1152,6 @@ function MyRoomPage() {
                   style={{ border: '1px solid #ddd' }}
                 />
                 <span style={{ flex: 1 }}>{friend.name}</span>
-                {/* 펫 정보가 있다면 추가 표시 */}
                 {friend.pets && friend.pets.length > 0 && (
                   <span style={{ fontSize: '0.75rem', color: '#888', background: '#f1f3f5', padding: '2px 6px', borderRadius: '4px' }}>
                     Lv.{(friend.pets.find(p => p.id === friend.partnerPetId) || friend.pets[0]).level}
@@ -1132,9 +1162,9 @@ function MyRoomPage() {
           </FriendListModal>
         )}
       </div>
-      {/* ▲▲▲ ------------------------------------------ ▲▲▲ */}
 
       <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
+        {/* 1. 배경 레이어 (스냅샷 모드 vs 편집 모드) */}
         {!isEditing && snapshotUrl ? (
           <img
             src={snapshotUrl}
@@ -1155,21 +1185,7 @@ function MyRoomPage() {
             {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
             {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
 
-            {/* 아바타 */}
-            {roomConfig.playerAvatar && (
-              <InteractiveItem
-                $width={15} $height={25}
-                $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
-                $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
-                $isEditing={isEditing}
-                $isSelected={selectedItemId === 'playerAvatar'}
-                onClick={(e) => handleSelect(e, 'playerAvatar')}
-              >
-                {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
-              </InteractiveItem>
-            )}
-
-            {/* 아이템들 */}
+            {/* 아이템들 (가구는 스냅샷에 포함되므로, 편집 모드일 때만 따로 렌더링) */}
             {roomConfig.items.map((itemInstance) => {
               const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
               if (!itemInfo) return null;
@@ -1189,6 +1205,42 @@ function MyRoomPage() {
               );
             })}
           </>
+        )}
+
+        {/* 2. 전경 레이어 (아바타 & 펫) - 조건문 밖으로 꺼내서 항상 보이게 함! ✨ */}
+
+        {/* 아바타 */}
+        {roomConfig.playerAvatar && (
+          <InteractiveItem
+            className="player-avatar"
+            $width={15} $height={25}
+            $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
+            $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
+            $isEditing={isEditing}
+            $isSelected={selectedItemId === 'playerAvatar'}
+            onClick={(e) => handleSelect(e, 'playerAvatar')}
+          >
+            {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
+          </InteractiveItem>
+        )}
+
+        {/* 펫 */}
+        {roomConfig.playerPet && ownerPartnerPet && (
+          <InteractiveItem
+            className="player-pet"
+            $width={12} $height={12}
+            $left={roomConfig.playerPet.left} $top={roomConfig.playerPet.top}
+            $zIndex={roomConfig.playerPet.zIndex} $isFlipped={roomConfig.playerPet.isFlipped}
+            $isEditing={isEditing}
+            $isSelected={selectedItemId === 'playerPet'}
+            onClick={(e) => handleSelect(e, 'playerPet')}
+          >
+            <img
+              src={petImageMap[`${ownerPartnerPet.appearanceId}_idle`] || baseAvatar}
+              alt="pet"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          </InteractiveItem>
         )}
 
         {isEditing && selectedItemId && (
@@ -1216,7 +1268,6 @@ function MyRoomPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0 }}>내 아이템 목록</h3>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {/* ▼▼▼ [추가] 나가기(취소) 버튼 ▼▼▼ */}
                 <button
                   onClick={() => {
                     if (confirm("수정을 취소하고 나가시겠습니까? (저장되지 않습니다)")) {
@@ -1231,7 +1282,6 @@ function MyRoomPage() {
                 >
                   나가기
                 </button>
-                {/* ▲▲▲ ------------------------- ▲▲▲ */}
                 <ResetButton onClick={handleResetLayout}>초기화</ResetButton>
                 <SaveButton onClick={handleSaveLayout} disabled={isLoadingSnapshot}>
                   {isLoadingSnapshot ? '저장 중...' : '마이룸 저장'}

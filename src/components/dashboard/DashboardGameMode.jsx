@@ -20,10 +20,29 @@ const pulse = keyframes`
   100% { box-shadow: 0 0 0 0 rgba(32, 201, 151, 0); }
 `;
 
+// [추가] 펫 랜덤 대사 목록
+const PET_MESSAGES = [
+  "대결할까?",
+  "오늘도 파이팅!",
+  "배고파요~",
+  "심심해 놀아줘!",
+  "산책 가고 싶다",
+  "내가 최고야!",
+  "우승하러 가자!",
+  "킁킁...",
+  "Zzz...",
+  "숙제는 다 했어?",
+  "너만 믿을게!",
+  "달리고 싶어!",
+  "간식 줘!",
+  "오늘 기분 최고!"
+];
+
 // --- Styled Components ---
 const LobbyWrapper = styled.div`
   min-height: 100vh;
-  background: url(${props => props.$bgUrl}) no-repeat center bottom fixed;
+  /* [수정] 배경 위치를 중앙(center)으로 변경하여 상단 잘림 방지 */
+  background: url(${props => props.$bgUrl}) no-repeat center center fixed;
   background-size: cover;
   position: relative;
   overflow: hidden; 
@@ -195,7 +214,6 @@ const CloseButton = styled.button`
   &:hover { background: #dee2e6; }
 `;
 
-// [추가] 별(Star) 컨테이너 스타일
 const StarContainer = styled.span`
   display: inline-flex; align-items: center; gap: 2px;
   font-size: 0.6em; margin-left: 6px;
@@ -203,18 +221,14 @@ const StarContainer = styled.span`
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
 `;
 
-// [추가] 우승 횟수에 따른 별 생성 함수 (5승=보라별, 1승=노란별)
 const getWinningStars = (count) => {
   if (!count || count <= 0) return null;
   const purpleStars = Math.floor(count / 5);
   const yellowStars = count % 5;
   const stars = [];
-
-  // 보라색 별 (5승 단위)
   for (let i = 0; i < purpleStars; i++) {
     stars.push(<span key={`p-${i}`} style={{ color: '#7950f2', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>★</span>);
   }
-  // 노란색 별 (나머지 1승 단위)
   for (let i = 0; i < yellowStars; i++) {
     stars.push(<span key={`y-${i}`} style={{ color: '#fcc419', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>★</span>);
   }
@@ -236,12 +250,7 @@ const DraggableWidget = ({ id, initialX, initialY, children, onSavePos }) => {
 
     isDragging.current = true;
     const rect = e.currentTarget.getBoundingClientRect();
-
-    offset.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
-
+    offset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     e.preventDefault();
   };
 
@@ -270,15 +279,11 @@ const DraggableWidget = ({ id, initialX, initialY, children, onSavePos }) => {
   }, [id, onSavePos, position]);
 
   return (
-    <DraggableDiv
-      onMouseDown={handleMouseDown}
-      style={{ left: position.x, top: position.y }}
-    >
+    <DraggableDiv onMouseDown={handleMouseDown} style={{ left: position.x, top: position.y }}>
       {children}
     </DraggableDiv>
   );
 };
-
 
 // --- Main Component ---
 function DashboardGameMode({
@@ -287,7 +292,15 @@ function DashboardGameMode({
 }) {
   const navigate = useNavigate();
 
-  // [상태] 각 위젯의 위치 정보 (localStorage에서 불러옴)
+  // [추가] 펫 대사 상태
+  const [petMessage, setPetMessage] = useState("대결할까?");
+
+  // [추가] 랜덤 대사 설정 (마운트 시 1회)
+  useEffect(() => {
+    const randomMsg = PET_MESSAGES[Math.floor(Math.random() * PET_MESSAGES.length)];
+    setPetMessage(randomMsg);
+  }, []);
+
   const [widgetPositions, setWidgetPositions] = useState(() => {
     const saved = localStorage.getItem('gameDashboardLayout');
     const centerX = window.innerWidth / 2;
@@ -305,10 +318,7 @@ function DashboardGameMode({
 
   const savePosition = (id, x, y) => {
     setWidgetPositions(prev => {
-      const newPositions = {
-        ...prev,
-        [id]: { x, y }
-      };
+      const newPositions = { ...prev, [id]: { x, y } };
       localStorage.setItem('gameDashboardLayout', JSON.stringify(newPositions));
       return newPositions;
     });
@@ -316,7 +326,7 @@ function DashboardGameMode({
 
   return (
     <LobbyWrapper $bgUrl={bgUrl}>
-      {/* 1. 상단 HUD (고정) */}
+      {/* 1. 상단 HUD */}
       <TopHUD>
         <PlayerStatus to="/profile">
           <AvatarCircle>
@@ -327,7 +337,13 @@ function DashboardGameMode({
             </div>
           </AvatarCircle>
           <StatusInfo>
-            <PlayerName>{myPlayerData.name} <span style={{ fontSize: '0.8rem', opacity: 0.9, marginLeft: '4px' }}>Lv.{Math.floor(myPlayerData.points / 100) + 1}</span></PlayerName>
+            <PlayerName>
+              {myPlayerData.name}
+              {getWinningStars(myPlayerData.win_count || 0)}
+              <span style={{ fontSize: '0.8rem', opacity: 0.9, marginLeft: '4px' }}>
+                Lv.{Math.floor(myPlayerData.points / 100) + 1}
+              </span>
+            </PlayerName>
             <CurrencyBar>
               <span>💰 {myPlayerData.points?.toLocaleString()}</span>
               <span>❤️ {myPlayerData.totalLikes?.toLocaleString()}</span>
@@ -348,84 +364,50 @@ function DashboardGameMode({
         )}
       </TopHUD>
 
-      {/* 2. 드래그 가능한 위젯들 */}
+      {/* 2. 위젯 (드래그 가능) */}
 
-      {/* (A) 내 캐릭터 & 펫 */}
-      <DraggableWidget
-        id="character"
-        initialX={widgetPositions.character.x}
-        initialY={widgetPositions.character.y}
-        onSavePos={savePosition}
-      >
+      {/* (A) 캐릭터 */}
+      <DraggableWidget id="character" initialX={widgetPositions.character.x} initialY={widgetPositions.character.y} onSavePos={savePosition}>
         <CharacterGroup>
-          <MyAvatar>
-            {myAvatarUrls.map((src, i) => (
-              <img key={i} src={src} style={{ zIndex: i }} />
-            ))}
-          </MyAvatar>
+          <MyAvatar>{myAvatarUrls.map((src, i) => <img key={i} src={src} style={{ zIndex: i }} />)}</MyAvatar>
           <MyPet to="/pet">
-            {myPartnerPet ? (
+            {myPartnerPet ?
               <>
-                <PetBubble>대결할까?</PetBubble>
+                {/* [수정] 랜덤 대사 적용 */}
+                <PetBubble>{petMessage}</PetBubble>
                 <img src={petImageMap[`${myPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" />
               </>
-            ) : (
+              :
               <>
                 <PetBubble>펫 분양받기</PetBubble>
                 <div style={{ fontSize: '3rem', textAlign: 'center', marginTop: '30px' }}>🥚</div>
               </>
-            )}
+            }
           </MyPet>
         </CharacterGroup>
       </DraggableWidget>
 
-      {/* (B) 미션 카드 */}
-      <DraggableWidget
-        id="missions"
-        initialX={widgetPositions.missions.x}
-        initialY={widgetPositions.missions.y}
-        onSavePos={savePosition}
-      >
+      {/* (B) 미션 */}
+      <DraggableWidget id="missions" initialX={widgetPositions.missions.x} initialY={widgetPositions.missions.y} onSavePos={savePosition}>
         <PanelCard as="div">
-          <Link to="/missions" className="panel-header">
-            <h3>📝 오늘의 미션 ({activeMissions.length})</h3>
-          </Link>
-          {recentMissions.length > 0 ? (
-            recentMissions.map(m => (
-              <MissionRow key={m.id}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{m.title}</span>
-                <span className="reward">+{m.reward}</span>
-              </MissionRow>
-            ))
-          ) : (
-            <div style={{ textAlign: 'center', padding: '1rem', color: '#adb5bd', fontSize: '0.9rem' }}>미션 클리어! 🎉</div>
-          )}
+          <Link to="/missions" className="panel-header"><h3>📝 오늘의 미션 ({activeMissions.length})</h3></Link>
+          {recentMissions.length > 0 ? recentMissions.map(m => <MissionRow key={m.id}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{m.title}</span><span className="reward">+{m.reward}</span></MissionRow>) : <div style={{ textAlign: 'center', padding: '1rem', color: '#adb5bd', fontSize: '0.9rem' }}>미션 클리어! 🎉</div>}
         </PanelCard>
       </DraggableWidget>
 
-      {/* (C) 오늘의 친구 카드 (별 추가됨) */}
+      {/* (C) 오늘의 친구 */}
       {todaysFriend && (
-        <DraggableWidget
-          id="friend"
-          initialX={widgetPositions.friend.x}
-          initialY={widgetPositions.friend.y}
-          onSavePos={savePosition}
-        >
+        <DraggableWidget id="friend" initialX={widgetPositions.friend.x} initialY={widgetPositions.friend.y} onSavePos={savePosition}>
           <PanelCard as="div">
-            <Link to={`/my-room/${todaysFriend.id}`} className="panel-header">
-              <h3>🌟 오늘의 친구</h3>
-            </Link>
+            <Link to={`/my-room/${todaysFriend.id}`} className="panel-header"><h3>🌟 오늘의 친구</h3></Link>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <div style={{ width: '45px', height: '45px', borderRadius: '50%', background: '#e9ecef', overflow: 'hidden', border: '2px solid #51cf66', flexShrink: 0 }}>
                 <div style={{ position: 'relative', width: '100%', height: '100%', transform: 'scale(1.8) translateY(5px)' }}>
-                  {friendAvatarUrls.map((src, i) => (
-                    <img key={i} src={src} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', zIndex: i }} />
-                  ))}
+                  {friendAvatarUrls.map((src, i) => <img key={i} src={src} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', zIndex: i }} />)}
                 </div>
               </div>
               <div style={{ overflow: 'hidden' }}>
-                {/* [수정] 이름 옆에 별 추가 */}
-                <div style={{ fontWeight: '800', color: '#2b8a3e', fontSize: '1.1rem' }}>
+                <div style={{ fontWeight: '800', color: '#2b8a3e', fontSize: '1.1rem', display: 'flex', alignItems: 'center' }}>
                   {todaysFriend.name} {getWinningStars(todaysFriend.win_count || 0)}
                 </div>
                 <Link to={`/my-room/${todaysFriend.id}`} style={{ fontSize: '0.8rem', color: '#868e96', textDecoration: 'none' }}>놀러가기 &rarr;</Link>
@@ -435,38 +417,17 @@ function DashboardGameMode({
         </DraggableWidget>
       )}
 
-      {/* 3. 하단 독 (메뉴 + 퀴즈) */}
+      {/* 3. 하단 독 */}
       <BottomDock>
-        <DockItem onClick={() => navigate('/missions')}>
-          <IconBox className="icon-box" $active={activeMissions.length > 0}>📝</IconBox>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>미션</span>
-        </DockItem>
-        <DockItem onClick={() => navigate('/shop')}>
-          <IconBox className="icon-box">🛒</IconBox>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>상점</span>
-        </DockItem>
-
-        {/* 퀴즈 위젯 버튼 */}
-        <DockItem onClick={() => setShowQuiz(true)}>
-          <IconBox className="icon-box" style={{ background: '#e6fcf5', color: '#0ca678' }}>🧠</IconBox>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>퀴즈</span>
-        </DockItem>
-
-        <DockItem onClick={() => navigate('/league')}>
-          <IconBox className="icon-box">🏆</IconBox>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>리그</span>
-        </DockItem>
-        <DockItem onClick={() => navigate('/pet')}>
-          <IconBox className="icon-box">🐾</IconBox>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>펫센터</span>
-        </DockItem>
-        <DockItem onClick={() => navigate('/mission-gallery')}>
-          <IconBox className="icon-box">🖼️</IconBox>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>갤러리</span>
-        </DockItem>
+        <DockItem onClick={() => navigate('/missions')}><IconBox className="icon-box" $active={activeMissions.length > 0}>📝</IconBox><span style={{ fontSize: '0.8rem', fontWeight: '800' }}>미션</span></DockItem>
+        <DockItem onClick={() => navigate('/shop')}><IconBox className="icon-box">🛒</IconBox><span style={{ fontSize: '0.8rem', fontWeight: '800' }}>상점</span></DockItem>
+        <DockItem onClick={() => setShowQuiz(true)}><IconBox className="icon-box" style={{ background: '#e6fcf5', color: '#0ca678' }}>🧠</IconBox><span style={{ fontSize: '0.8rem', fontWeight: '800' }}>퀴즈</span></DockItem>
+        <DockItem onClick={() => navigate('/league')}><IconBox className="icon-box">🏆</IconBox><span style={{ fontSize: '0.8rem', fontWeight: '800' }}>리그</span></DockItem>
+        <DockItem onClick={() => navigate('/pet')}><IconBox className="icon-box">🐾</IconBox><span style={{ fontSize: '0.8rem', fontWeight: '800' }}>펫센터</span></DockItem>
+        <DockItem onClick={() => navigate('/mission-gallery')}><IconBox className="icon-box">🖼️</IconBox><span style={{ fontSize: '0.8rem', fontWeight: '800' }}>갤러리</span></DockItem>
       </BottomDock>
 
-      {/* 4. 퀴즈 팝업 모달 */}
+      {/* 4. 퀴즈 모달 */}
       {showQuiz && (
         <QuizOverlay onClick={() => setShowQuiz(false)}>
           <QuizModalContent onClick={e => e.stopPropagation()}>
@@ -476,7 +437,6 @@ function DashboardGameMode({
           </QuizModalContent>
         </QuizOverlay>
       )}
-
     </LobbyWrapper>
   );
 }

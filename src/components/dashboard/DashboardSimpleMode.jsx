@@ -7,6 +7,7 @@ import baseAvatar from '../../assets/base-avatar.png';
 import { petImageMap } from '../../utils/petImageMap';
 import QuizWidget from '../QuizWidget';
 
+// ... (애니메이션, 스타일 컴포넌트 생략 - 기존과 동일) ...
 const float = keyframes`
   0% { transform: translateY(0px); }
   50% { transform: translateY(-8px); }
@@ -30,14 +31,12 @@ const DashboardWrapper = styled.div`
   align-items: center;
 `;
 
-// [수정] 팔레트 하단 중앙 고정
 const PaletteContainer = styled.div`
   position: fixed;
   bottom: 2rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
-  
   display: flex;
   gap: 0.8rem;
   background: rgba(255, 255, 255, 0.8);
@@ -49,151 +48,63 @@ const PaletteContainer = styled.div`
 `;
 
 const ColorDot = styled.button`
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid white;
-  background-color: ${props => props.$color};
-  cursor: pointer;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  transition: transform 0.2s;
-  
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid white;
+  background-color: ${props => props.$color}; cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s;
   &:hover { transform: scale(1.2); }
-  ${props => props.$active && `
-    box-shadow: 0 0 0 2px #339af0;
-    transform: scale(1.1);
-  `}
+  ${props => props.$active && `box-shadow: 0 0 0 2px #339af0; transform: scale(1.1);`}
 `;
 
 const CustomColorBtn = styled.button`
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid white;
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid white;
   background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  transition: transform 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-
+  cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s;
+  display: flex; align-items: center; justify-content: center; position: relative;
   &:hover { transform: scale(1.2); }
-  
-  input[type="color"] {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    opacity: 0;
-    cursor: pointer;
-  }
-
-  ${props => props.$active && `
-    box-shadow: 0 0 0 2px #339af0;
-    transform: scale(1.1);
-  `}
-  
-  &::after {
-    content: '+';
-    color: white;
-    font-weight: bold;
-    font-size: 1.2rem;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    display: ${props => props.$hasCustomColor ? 'none' : 'block'};
-  }
+  input[type="color"] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  ${props => props.$active && `box-shadow: 0 0 0 2px #339af0; transform: scale(1.1);`}
+  &::after { content: '+'; color: white; font-weight: bold; font-size: 1.2rem; text-shadow: 0 1px 2px rgba(0,0,0,0.5); display: ${props => props.$hasCustomColor ? 'none' : 'block'}; }
 `;
 
 const ContentContainer = styled.div`
-  width: 100%;
-  max-width: 1000px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  flex-grow: 1;
+  width: 100%; max-width: 1000px; display: flex; flex-direction: column; gap: 1.5rem; flex-grow: 1;
 `;
 
 const CommonCardStyle = styled(Link)`
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  border-radius: 24px;
-  padding: 1.5rem;
-  text-decoration: none;
-  color: inherit;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  position: relative;
-  overflow: hidden;
-
-  &:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
-    border-color: rgba(255, 255, 255, 0.9);
-    z-index: 10;
-  }
+  background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px);
+  border-radius: 24px; padding: 1.5rem; text-decoration: none; color: inherit;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid rgba(255, 255, 255, 0.6);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden;
+  &:hover { transform: translateY(-5px); box-shadow: 0 12px 30px rgba(0,0,0,0.12); border-color: rgba(255, 255, 255, 0.9); z-index: 10; }
 `;
 
 const HeroSection = styled.section`
-  display: flex;
-  gap: 1.2rem;
+  display: flex; gap: 1.2rem;
   @media (max-width: 768px) { flex-direction: column; }
 `;
 
 const IDCard = styled(CommonCardStyle)`
-  flex: 3;
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-  color: #343a40;
-  background: #ffffff;
-  border: 1px solid rgba(0,0,0,0.08); 
-  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: -50%; right: -20%;
-    width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(77, 171, 247, 0.15) 0%, rgba(255,255,255,0) 70%);
-    z-index: 0;
-  }
-
-  &:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 40px rgba(51, 154, 240, 0.15);
-    border-color: rgba(51, 154, 240, 0.3);
-  }
-
+  flex: 3; display: flex; align-items: center; gap: 2rem; color: #343a40;
+  background: #ffffff; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+  &::before { content: ''; position: absolute; top: -50%; right: -20%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(77, 171, 247, 0.15) 0%, rgba(255,255,255,0) 70%); z-index: 0; }
+  &:hover { transform: translateY(-5px); box-shadow: 0 15px 40px rgba(51, 154, 240, 0.15); border-color: rgba(51, 154, 240, 0.3); }
   @media (max-width: 768px) { flex-direction: column; text-align: center; gap: 1rem; }
 `;
 
-// [수정] 둥근 네모 스타일 프레임
 const IDPhotoFrame = styled.div`
-  width: 130px; height: 130px;
-  border-radius: 24px; /* 둥근 네모 */
-  border: 3px solid rgba(255, 255, 255, 0.5); 
-  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  width: 130px; height: 130px; border-radius: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.5); box-shadow: 0 8px 20px rgba(0,0,0,0.1);
   background: linear-gradient(135deg, #f1f3f5 0%, #e9ecef 100%);
-  overflow: hidden; flex-shrink: 0;
-  position: relative;
-  z-index: 1;
-  transition: all 0.3s ease;
-
-  ${IDCard}:hover & {
-    box-shadow: 0 12px 25px rgba(51, 154, 240, 0.2);
-    border-color: white;
-  }
+  overflow: hidden; flex-shrink: 0; position: relative; z-index: 1; transition: all 0.3s ease;
+  ${IDCard}:hover & { box-shadow: 0 12px 25px rgba(51, 154, 240, 0.2); border-color: white; }
 `;
 
 const IDPhotoContainer = styled.div`
-  width: 100%; height: 100%; position: relative;
-  transform: scale(1.5) translateY(10%); /* 비율 조정 */
+  width: 100%; height: 100%; position: relative; transform: scale(1.5) translateY(10%);
 `;
 
 const IDInfo = styled.div`
-  display: flex; flex-direction: column; gap: 0.4rem; z-index: 1;
-  justify-content: center;
+  display: flex; flex-direction: column; gap: 0.4rem; z-index: 1; justify-content: center;
 `;
 
 const RoleBadge = styled.span`
@@ -218,23 +129,16 @@ const StarContainer = styled.span`
 `;
 
 const StatBadges = styled.div`
-  display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;
-  align-items: center;
+  display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; align-items: center;
   @media (max-width: 768px) { justify-content: center; }
 `;
 
 const Badge = styled.div`
-  background: ${props => props.$bg || 'white'};
-  color: ${props => props.$color || '#495057'};
-  padding: 0.4rem 0.8rem; border-radius: 12px;
-  font-size: 0.9rem; font-weight: 800; display: flex; align-items: center; gap: 0.4rem;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.05);
-  
-  img.pet-icon {
-    width: 22px; height: 22px; object-fit: contain;
-    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
-  }
+  background: ${props => props.$bg || 'white'}; color: ${props => props.$color || '#495057'};
+  padding: 0.4rem 0.8rem; border-radius: 12px; font-size: 0.9rem; font-weight: 800;
+  display: flex; align-items: center; gap: 0.4rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05);
+  img.pet-icon { width: 22px; height: 22px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2)); }
 `;
 
 const QuickMenuGrid = styled.div`
@@ -242,39 +146,19 @@ const QuickMenuGrid = styled.div`
 `;
 
 const QuickBtn = styled(Link)`
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 20px;
-  display: flex; flex-direction: row;
-  align-items: center; justify-content: flex-start; padding-left: 1.2rem;
-  text-decoration: none; 
-  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  position: relative; overflow: hidden;
-  border: 2px solid transparent;
-
-  &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-    background: white;
-    border-color: ${props => props.$themeColor};
-  }
-  
+  background: rgba(255, 255, 255, 0.9); border-radius: 20px;
+  display: flex; flex-direction: row; align-items: center; justify-content: flex-start; padding-left: 1.2rem;
+  text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; border: 2px solid transparent;
+  &:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); background: white; border-color: ${props => props.$themeColor}; }
   .icon-emoji { font-size: 1.5rem; margin-right: 0.5rem; z-index: 2; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1)); }
   .label { font-size: 1rem; font-weight: 800; color: #495057; z-index: 2; }
-  .icon-bg { 
-    position: absolute; right: -5px; bottom: -10px; 
-    font-size: 3.5rem; opacity: 0.15; 
-    transform: rotate(-15deg);
-    transition: all 0.3s ease; 
-  }
-  
+  .icon-bg { position: absolute; right: -5px; bottom: -10px; font-size: 3.5rem; opacity: 0.15; transform: rotate(-15deg); transition: all 0.3s ease; }
   &:hover .icon-bg { transform: rotate(0deg) scale(1.1); opacity: 0.25; }
 `;
 
 const MainGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1.2rem;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem;
   @media (max-width: 768px) { grid-template-columns: 1fr; }
 `;
 
