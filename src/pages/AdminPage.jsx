@@ -30,6 +30,7 @@ import { collection, query, where, orderBy, onSnapshot, getDocs, doc, writeBatch
 import ImageModal from '../components/ImageModal';
 import RecorderPage from './RecorderPage';
 import ApprovalModal from '../components/ApprovalModal';
+import QuizManager from '../components/QuizManager'; // [추가]
 
 // --- Styled Components (기존과 동일) ---
 const AdminWrapper = styled.div`
@@ -3989,6 +3990,13 @@ function AdminPage() {
         if (activeMenu === 'title') {
             return <TitleManager />;
         }
+
+        // [수정] 퀴즈 관리 렌더링 (Hook 호출 제거, 상위 players 사용)
+        if (activeMenu === 'quiz') {
+            const myPlayer = players.find(p => p.authUid === auth.currentUser?.uid);
+            return <QuizManager userRole={myPlayer?.role} />;
+        }
+
         if (activeMenu === 'class') {
             return <ClassManager />;
         }
@@ -4003,10 +4011,11 @@ function AdminPage() {
             if (activeMenu !== 'student') setStudentSubMenu('point');
         } else if (menu === 'league') {
             if (activeMenu !== 'league') setActiveSubMenu('league_manage');
+        } else if (menu === 'quiz') { // [추가] 퀴즈 메뉴 클릭 시 서브메뉴 초기화
+            setActiveSubMenu('');
         } else if (menu === 'class') {
             setActiveSubMenu('');
-        }
-        else {
+        } else {
             setActiveSubMenu('');
         }
     };
@@ -4026,6 +4035,9 @@ function AdminPage() {
                                     <SubNavItem><SubNavButton $active={missionSubMenu === 'history'} onClick={() => setMissionSubMenu('history')}>기록 확인</SubNavButton></SubNavItem>
                                 </SubNavList>
                             )}
+                        </NavItem>
+                        <NavItem>
+                            <NavButton $active={activeMenu === 'quiz'} onClick={() => handleMenuClick('quiz')}>퀴즈 관리</NavButton>
                         </NavItem>
                         <NavItem>
                             <NavButton $active={activeMenu === 'social'} onClick={() => handleMenuClick('social')}>소셜 관리</NavButton>

@@ -4,9 +4,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '@/store/leagueStore';
-import { auth, db, cancelBattleChallenge } from '@/api/firebase';
+// [수정] getActiveQuizSets 추가
+import { auth, db, cancelBattleChallenge, getActiveQuizSets } from '@/api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
-import allQuizzesData from '@/assets/missions.json';
+// [삭제] 기존 하드코딩 데이터 import 제거
+// import allQuizzesData from '@/assets/missions.json'; 
 import { petImageMap } from '@/utils/petImageMap';
 import { SKILLS } from '@/features/pet/petData';
 import { filterProfanity } from '@/utils/profanityFilter';
@@ -186,7 +188,6 @@ const CancelButton = styled.button`
     &:hover { background-color: #c82333; }
 `;
 
-// [수정] 정답/오답 말풍선 색상 (red: 오답, blue: 정답)
 const ChatBubble = styled.div`
     position: absolute;
     background: white;
@@ -258,7 +259,7 @@ const OptionButton = styled.button`
     }
 `;
 
-const allQuizzes = Object.values(allQuizzesData || {}).flat();
+// [삭제] 기존 하드코딩 퀴즈 데이터 변수 제거
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 
 const getHpColor = (current, max) => {
@@ -286,10 +287,36 @@ function BattlePage() {
     const [currentEffect, setCurrentEffect] = useState(null);
 
     const [actionSubMenu, setActionSubMenu] = useState(null);
+
+    // [추가] DB에서 불러온 퀴즈 풀 state
+    const [quizPool, setQuizPool] = useState([]);
+
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
     const prevHpRef = useRef({ my: null, opponent: null });
     const processedTurnRef = useRef(null);
+
+    // [추가] 퀴즈 데이터 로딩 Effect
+    useEffect(() => {
+        const loadQuizzes = async () => {
+            if (!classId) return;
+            const activeSets = await getActiveQuizSets(classId);
+            let allQuestions = [];
+
+            if (activeSets.length > 0) {
+                activeSets.forEach(set => {
+                    if (Array.isArray(set.questions)) {
+                        allQuestions = [...allQuestions, ...set.questions];
+                    }
+                });
+            } else {
+                // DB에 설정된게 없으면 기본 퀴즈 1개라도 넣어둠 (에러 방지)
+                allQuestions = [{ question: "선생님이 출제한 퀴즈가 없습니다.", answer: "0", type: "subjective" }];
+            }
+            setQuizPool(allQuestions);
+        };
+        loadQuizzes();
+    }, [classId]);
 
     const getPetImageSrc = (info, isMine) => {
         if (!info || !info.pet) return null;
@@ -384,7 +411,6 @@ function BattlePage() {
             timerRef.current = setInterval(updateTimer, 1000);
         }
 
-        // [핵심] 공격 애니메이션 로직
         if (battleState.status === 'action' && battleState.attackerAction && battleState.defenderAction) {
 
             const turnUniqueId = `${battleState.turnStartTime}_${battleState.turn}`;
@@ -473,9 +499,10 @@ function BattlePage() {
     };
 
     const startNewTurn = async (battleRef, log) => {
-        const randomQuiz = (allQuizzes && allQuizzes.length > 0)
-            ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
-            : { question: "퀴즈 데이터 없음", answer: "1" };
+        // [수정] quizPool 사용
+        const randomQuiz = (quizPool && quizPool.length > 0)
+            ? quizPool[Math.floor(Math.random() * quizPool.length)]
+            : { question: "퀴즈 로딩 중...", answer: "1" };
 
         await updateDoc(battleRef, {
             status: 'quiz',
@@ -543,9 +570,10 @@ function BattlePage() {
                     else winnerId = null;
                 }
 
-                const nextQuiz = (allQuizzes && allQuizzes.length > 0)
-                    ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
-                    : { question: "퀴즈 데이터 없음", answer: "1" };
+                // [수정] quizPool 사용
+                const nextQuiz = (quizPool && quizPool.length > 0)
+                    ? quizPool[Math.floor(Math.random() * quizPool.length)]
+                    : { question: "퀴즈 로딩 중...", answer: "1" };
 
                 const updateData = {
                     challenger,
@@ -586,7 +614,6 @@ function BattlePage() {
         const isObjective = battleState.question.options && battleState.question.options.length > 0;
         const isCorrect = submittedAnswer.toLowerCase() === battleState.question.answer.toLowerCase();
 
-        // [수정] 객관식이고 이미 답했으면 리턴 (주관식은 계속 진행)
         if (isObjective && battleState.chat?.[myPlayerData.id]) return;
 
         setIsProcessing(true);
@@ -601,10 +628,8 @@ function BattlePage() {
                 const data = battleDoc.data();
                 const myId = myPlayerData.id;
 
-                // [수정] 주관식인지 확인하여 중복 제출 허용 여부 결정
                 const isQuestionObjective = data.question.options && data.question.options.length > 0;
 
-                // 객관식일 때만 "이미 제출했으면 거부"
                 if (isQuestionObjective && data.chat && data.chat[myId]) return null;
 
                 const isChallenger = myId === data.challenger.id;
@@ -625,9 +650,10 @@ function BattlePage() {
 
                     if (newStatus.recharging) {
                         delete newStatus.recharging;
-                        const nextQuiz = (allQuizzes && allQuizzes.length > 0)
-                            ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
-                            : { question: "퀴즈 데이터 없음", answer: "1" };
+                        // [수정] quizPool 사용
+                        const nextQuiz = (quizPool && quizPool.length > 0)
+                            ? quizPool[Math.floor(Math.random() * quizPool.length)]
+                            : { question: "퀴즈 로딩 중...", answer: "1" };
 
                         transaction.update(battleRef, {
                             status: 'quiz',
@@ -650,9 +676,6 @@ function BattlePage() {
                     }
                     return null;
                 } else {
-                    // [수정] 오답 처리 로직 분기
-
-                    // 객관식(Objective)일 때만 "둘 다 틀리면 데미지" 로직 실행
                     let shouldEndTurn = false;
 
                     if (isQuestionObjective) {
@@ -660,7 +683,6 @@ function BattlePage() {
                             shouldEndTurn = true;
                         }
                     }
-                    // 주관식은 오답이어도 턴이 끝나지 않음 (무한 시도)
 
                     if (shouldEndTurn) {
                         let { challenger, opponent } = data;
@@ -682,9 +704,10 @@ function BattlePage() {
                             else if (opponent.pet.hp > 0) winnerId = opponent.id;
                         }
 
-                        const nextQuiz = (allQuizzes && allQuizzes.length > 0)
-                            ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
-                            : { question: "퀴즈 데이터 없음", answer: "1" };
+                        // [수정] quizPool 사용
+                        const nextQuiz = (quizPool && quizPool.length > 0)
+                            ? quizPool[Math.floor(Math.random() * quizPool.length)]
+                            : { question: "퀴즈 로딩 중...", answer: "1" };
 
                         let logMessage = `둘 다 오답! 서로 틀려서 데미지를 입었습니다 (-5%). 다음 문제!`;
                         if (opponentIsStunned) {
@@ -710,8 +733,6 @@ function BattlePage() {
                             return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
                         }
                     } else {
-                        // 주관식 오답이거나, 객관식인데 상대가 아직 안 낸 경우
-                        // 그냥 채팅(말풍선)만 업데이트하고 계속 진행
                         transaction.update(battleRef, {
                             chat: updatedChat,
                             log: `${myPlayerData.name} 오답! (다시 시도하세요)`
@@ -732,7 +753,6 @@ function BattlePage() {
         } catch (error) {
             console.error("퀴즈 처리 오류:", error);
         } finally {
-            // 입력창 비우기
             setAnswer('');
             setIsProcessing(false);
         }
@@ -865,8 +885,9 @@ function BattlePage() {
                     log += ` ${defender.pet.name}은(는) 쓰러졌다! ${attacker.name}의 승리!`;
                 }
 
-                const nextQuiz = (allQuizzes && allQuizzes.length > 0)
-                    ? allQuizzes[Math.floor(Math.random() * allQuizzes.length)]
+                // [수정] quizPool 사용
+                const nextQuiz = (quizPool && quizPool.length > 0)
+                    ? quizPool[Math.floor(Math.random() * quizPool.length)]
                     : { question: "퀴즈 데이터 없음", answer: "1" };
 
                 const updateData = {
@@ -1006,7 +1027,6 @@ function BattlePage() {
                             </MyPetContainerWrapper>
                         </BattleField>
                         <QuizArea>
-                            {/* 기존 렌더링 유지 */}
                             <div>
                                 <LogText>{battleState.log}</LogText>
                                 {battleState.status === 'quiz' && battleState.question && (
@@ -1043,7 +1063,6 @@ function BattlePage() {
                                                             onChange={(e) => setAnswer(e.target.value)}
                                                             placeholder={"정답을 입력하세요"}
                                                             autoFocus
-                                                            // [수정] 주관식이면 정답 맞췄을 때만 비활성화 (오답이면 계속 입력 가능)
                                                             disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
                                                         />
                                                     </form>

@@ -3583,3 +3583,105 @@ function calculateLevelUp(pet) {
   }
   return { leveledUpPet, levelUps };
 }
+
+// 1. 문제집(Quiz Set) 생성
+export const createQuizSet = async (quizSetData) => {
+  try {
+    await addDoc(collection(db, "quiz_sets"), {
+      ...quizSetData,
+      createdAt: serverTimestamp(),
+      playCount: 0, // 푼 횟수
+    });
+  } catch (error) {
+    console.error("Error creating quiz set: ", error);
+    throw error;
+  }
+};
+
+// 2. 문제집 목록 불러오기
+export const getQuizSets = async (userId, isAdmin = false) => {
+  try {
+    const q = query(collection(db, "quiz_sets"), orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    const allSets = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    if (isAdmin) return allSets;
+
+    // 내 문제집 + 공용 문제집
+    return allSets.filter(set => set.creatorId === userId || set.isPublic);
+  } catch (error) {
+    console.error("Error fetching quiz sets: ", error);
+    throw error;
+  }
+};
+
+// 3. 문제집 삭제
+export const deleteQuizSet = async (setId) => {
+  try {
+    await deleteDoc(doc(db, "quiz_sets", setId));
+  } catch (error) {
+    console.error("Error deleting quiz set: ", error);
+    throw error;
+  }
+};
+
+// 4. 문제집 공개/비공개 토글
+export const toggleQuizSetPublic = async (setId, currentStatus) => {
+  try {
+    await updateDoc(doc(db, "quiz_sets", setId), {
+      isPublic: !currentStatus
+    });
+  } catch (error) {
+    console.error("Error updating quiz set status: ", error);
+    throw error;
+  }
+};
+
+// 5. [학생용] 우리 반에 할당된(활성) 퀴즈 세트 가져오기
+export const getActiveQuizSets = async (classId) => {
+  try {
+    const classDoc = await getDoc(doc(db, "classes", classId));
+    if (!classDoc.exists()) return [];
+
+    const data = classDoc.data();
+    let setIds = [];
+
+    // 하위 호환성: 옛날 방식(activeQuizSetId)이 있으면 배열로 변환
+    if (data.activeQuizSetIds && Array.isArray(data.activeQuizSetIds)) {
+      setIds = data.activeQuizSetIds;
+    } else if (data.activeQuizSetId) {
+      setIds = [data.activeQuizSetId];
+    }
+
+    if (setIds.length === 0) return [];
+
+    // 병렬로 모든 퀴즈셋 문서 가져오기
+    const promises = setIds.map(id => getDoc(doc(db, "quiz_sets", id)));
+    const docs = await Promise.all(promises);
+
+    // 존재하는 것만 필터링해서 반환
+    return docs
+      .filter(d => d.exists())
+      .map(d => ({ id: d.id, ...d.data() }));
+
+  } catch (error) {
+    console.error("Error getting active quiz sets:", error);
+    return [];
+  }
+}
+
+// 6. [선생님용] 우리 반 퀴즈 목록 설정하기 (배열 저장)
+export const setClassActiveQuizSets = async (classId, quizSetIds) => {
+  try {
+    await updateDoc(doc(db, "classes", classId), {
+      activeQuizSetIds: quizSetIds, // 배열로 저장
+      activeQuizSetId: deleteField() // 구버전 필드는 삭제 (청소)
+    });
+  } catch (error) {
+    console.error("Error setting class quiz sets:", error);
+    throw error;
+  }
+}
