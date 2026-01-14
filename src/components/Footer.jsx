@@ -23,10 +23,9 @@ const VersionInfo = styled.p`
   margin: 0;
 `;
 
-// [수정] onClick 핸들러를 props로 받도록 변경
 function Footer({ onVersionClick }) {
-  const version = "v4.3"; // 현재 앱 버전
-  const lastUpdate = "2025-08-07"; // 마지막 업데이트 날짜
+  const version = "v4.5"; // [업데이트] 퀴즈 & 마이룸 대규모 업데이트
+  const lastUpdate = "2026-01-14"; // [업데이트] 오늘 날짜
 
   return (
     <FooterWrapper onClick={onVersionClick}>

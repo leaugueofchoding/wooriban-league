@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { createQuizSet, getQuizSets, deleteQuizSet, toggleQuizSetPublic, setClassActiveQuizSets, getActiveQuizSets, auth } from '../api/firebase';
+import { createQuizSet, getQuizSets, deleteQuizSet, setClassActiveQuizSets, getActiveQuizSets, auth } from '../api/firebase';
 import { useClassStore } from '../store/leagueStore';
 
 // --- 스타일 컴포넌트 ---
@@ -527,6 +527,35 @@ function QuizManager({ userRole }) {
         } catch (e) { alert(e.message); }
     };
 
+    // [신규] 일괄 삭제 처리
+    const handleBatchDelete = async () => {
+        if (checkedIds.size === 0) return alert("삭제할 문제집을 선택해주세요.");
+
+        // 삭제 권한 확인: 내 퀴즈(creatorId 일치)이거나 관리자(system 퀴즈 포함)
+        const targets = quizSets.filter(s => checkedIds.has(s.id));
+        const deletableTargets = targets.filter(s =>
+            s.creatorId === currentUser?.uid || (userRole === 'admin' && s.creatorId === 'system')
+        );
+        const undeletableCount = targets.length - deletableTargets.length;
+
+        if (deletableTargets.length === 0) return alert("삭제 권한이 있는 문제집이 없습니다.");
+
+        let confirmMsg = `선택한 ${deletableTargets.length}개의 문제집을 영구 삭제하시겠습니까?`;
+        if (undeletableCount > 0) confirmMsg += `\n(권한이 없는 ${undeletableCount}개는 제외됩니다.)`;
+
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            await Promise.all(deletableTargets.map(s => deleteQuizSet(s.id)));
+            alert(`${deletableTargets.length}개의 문제집이 삭제되었습니다.`);
+            fetchQuizSets();
+            fetchCurrentClassQuizzes(); // 혹시 출제중인게 삭제되었을 수 있으니 갱신
+            setCheckedIds(new Set());
+        } catch (e) {
+            alert("삭제 중 오류 발생: " + e.message);
+        }
+    };
+
     // [핵심] 개별 출제/취소 토글 (즉시 반영)
     const handleToggleSingle = async (id, title) => {
         if (!classId) return;
@@ -709,6 +738,8 @@ function QuizManager({ userRole }) {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <Button color="#fd7e14" onClick={() => handleBatchPublish(true)}>+ 문제집 추가</Button>
                     <Button color="#20c997" onClick={() => handleBatchPublish(false)}>🔄 문제집 교체</Button>
+                    {/* [신규] 일괄 삭제 버튼 */}
+                    <Button color="#fa5252" onClick={handleBatchDelete}>🗑️ 선택 삭제</Button>
                 </div>
             </div>
 
@@ -716,6 +747,8 @@ function QuizManager({ userRole }) {
                 {filteredQuizSets.length > 0 ? filteredQuizSets.map(set => {
                     const isActive = activeSetIds.includes(set.id);
                     const isChecked = checkedIds.has(set.id);
+                    // [핵심] 삭제 권한: 내가 만들었거나(creatorId 일치) OR 관리자이면서 시스템 퀴즈인 경우
+                    const canDelete = set.creatorId === currentUser?.uid || (userRole === 'admin' && set.creatorId === 'system');
 
                     return (
                         <div key={set.id} style={{
@@ -755,7 +788,8 @@ function QuizManager({ userRole }) {
                                     {isActive ? '출제 취소' : '추가하기'}
                                 </Button>
 
-                                {(set.creatorId === currentUser?.uid || userRole === 'admin') && (
+                                {/* [수정] 권한이 있을 때만 삭제 버튼 표시 */}
+                                {canDelete && (
                                     <Button color="#fa5252" onClick={async () => {
                                         if (confirm("정말 삭제하시겠습니까?")) {
                                             await deleteQuizSet(set.id);

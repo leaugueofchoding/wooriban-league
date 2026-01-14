@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../../assets/base-avatar.png';
 import { petImageMap } from '../../utils/petImageMap';
 import QuizWidget from '../QuizWidget';
+// [추가] store import (경로가 정확한지 확인해주세요)
+import { useLeagueStore } from '../../store/leagueStore';
 
 const float = keyframes`
   0% { transform: translateY(0px); }
@@ -20,7 +22,7 @@ const shine = keyframes`
 
 const DashboardWrapper = styled.div`
   min-height: 100vh;
-  background-color: ${props => props.$bgColor || '#f8f9fa'}; 
+  /* background-color: ... (삭제: 전역 스타일에서 처리) */
   padding: 4rem 1rem 4rem 1rem;
   font-family: 'Pretendard', sans-serif;
   overflow-x: hidden;
@@ -408,9 +410,13 @@ const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 function DashboardSimpleMode({
   myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName,
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
-  simpleBgColor, onBgColorChange
+  // simpleBgColor, onBgColorChange // 삭제됨
 }) {
   const [donationAmount, setDonationAmount] = useState('');
+
+  // ▼▼▼ [수정] 전역 스토어에서 themeColor, setThemeColor 가져오기 ▼▼▼
+  const { themeColor, setThemeColor } = useLeagueStore();
+
   const [customColor, setCustomColor] = useState(null);
 
   const handleDonateClick = () => { onDonate(donationAmount); setDonationAmount(''); };
@@ -418,11 +424,12 @@ function DashboardSimpleMode({
   const handleCustomColorChange = (e) => {
     const newColor = e.target.value;
     setCustomColor(newColor);
-    onBgColorChange(newColor);
+    setThemeColor(newColor); // [수정] 전역 상태 업데이트
   };
 
   return (
-    <DashboardWrapper $bgColor={simpleBgColor}>
+    // $bgColor prop 제거
+    <DashboardWrapper>
       <ContentContainer>
         <HeroSection>
           <IDCard to="/profile">
@@ -541,14 +548,14 @@ function DashboardSimpleMode({
           <ColorDot
             key={color}
             $color={color}
-            $active={simpleBgColor === color}
+            $active={themeColor === color}
             onClick={() => {
               setCustomColor(null);
-              onBgColorChange(color);
+              setThemeColor(color);
             }}
           />
         ))}
-        <CustomColorBtn $active={!!customColor && simpleBgColor === customColor} $hasCustomColor={!!customColor}>
+        <CustomColorBtn $active={!!customColor && themeColor === customColor} $hasCustomColor={!!customColor}>
           <input type="color" onChange={handleCustomColorChange} value={customColor || '#ffffff'} />
         </CustomColorBtn>
       </PaletteContainer>

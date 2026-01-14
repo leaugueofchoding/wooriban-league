@@ -5,7 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react
 import { useLeagueStore, useClassStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from './api/firebase';
-import styled from 'styled-components';
+import styled, { createGlobalStyle } from 'styled-components'; // createGlobalStyle 추가
 
 // Page Components
 import DashboardPage from './pages/DashboardPage';
@@ -26,11 +26,9 @@ import BroadcastPage from './pages/BroadcastPage';
 import MissionGalleryPage from './pages/MissionGalleryPage';
 import LandingPage from './pages/LandingPage.jsx';
 import JoinPage from './pages/JoinPage.jsx';
-// ▼▼▼ [추가] 새로운 펫 관련 페이지 import ▼▼▼
 import PetPage from './features/pet/PetPage.jsx';
 import PetSelectionPage from './features/pet/PetSelectionPage.jsx';
 import PetCenterPage from './features/pet/PetCenterPage.jsx';
-
 
 // Common Components
 import Auth from './components/Auth';
@@ -40,6 +38,16 @@ import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
 import BattlePage from './features/battle/BattlePage.jsx';
 
+// [추가] 전역 배경색 스타일 컴포넌트
+const GlobalBackground = createGlobalStyle`
+  body {
+    background-color: ${props => props.$themeColor};
+    transition: background-color 0.3s ease;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+  }
+`;
 
 const AppWrapper = styled.div`
   display: flex;
@@ -136,7 +144,7 @@ const AdminRoute = ({ children }) => {
 function App() {
   const {
     isLoading, setLoading, initializeClass, cleanupListeners,
-    checkAttendance, pointAdjustmentNotification
+    checkAttendance, pointAdjustmentNotification, themeColor // [추가] themeColor 가져오기
   } = useLeagueStore();
   const { classId, setClassId } = useClassStore();
 
@@ -181,6 +189,9 @@ function App() {
 
   return (
     <BrowserRouter>
+      {/* [추가] 전역 배경색 적용 */}
+      <GlobalBackground $themeColor={themeColor} />
+
       <AppWrapper>
         {currentUser && <Auth user={currentUser} />}
         <AttendanceModal />
@@ -209,7 +220,6 @@ function App() {
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
             <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
 
-            {/* ▼▼▼ [수정] 펫 관련 라우트 추가 ▼▼▼ */}
             <Route path="/pet" element={<ProtectedRoute><PetPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
             <Route path="/pet-center" element={<ProtectedRoute><PetCenterPage /></ProtectedRoute>} />

@@ -53,14 +53,27 @@ const VersionHeader = styled.h3`
   margin-bottom: 0.5rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  span.date {
+    font-size: 0.85rem;
+    color: #888;
+    font-weight: normal;
+  }
 `;
 
 const ChangeList = styled.ul`
   list-style: none;
   padding-left: 0;
   li {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.6rem;
     line-height: 1.6;
+    word-break: keep-all;
+  }
+  li strong {
+    color: #2c3e50;
   }
 `;
 
@@ -75,6 +88,7 @@ const CloseButton = styled.button`
     font-size: 1rem;
     font-weight: bold;
     cursor: pointer;
+    transition: background-color 0.2s;
     &:hover {
         background-color: #5a6268;
     }
@@ -87,52 +101,51 @@ const PatchNoteModal = ({ isOpen, onClose }) => {
   return (
     <ModalBackground onClick={onClose}>
       <ModalContainer onClick={e => e.stopPropagation()}>
-        <ModalTitle>🚀 우리반 리그 패치 노트</ModalTitle>
+        <ModalTitle>🚀 우리반 리그 업데이트 노트</ModalTitle>
         <ContentArea>
-          {/* ▼▼▼ [추가] 최신 업데이트 내역 ▼▼▼ */}
-          <VersionHeader>v4.3 (2025-08-07)</VersionHeader>
+          {/* ▼▼▼ [v4.5] 대규모 업데이트 내역 ▼▼▼ */}
+          <VersionHeader>
+            v4.5 ✨ 퀴즈 시스템 대혁신
+            <span className="date">2026-01-14</span>
+          </VersionHeader>
           <ChangeList>
-            <li>✨ **[신규]** TV 송출 화면에 **실시간 경기 타이머** 기능이 추가되었습니다.</li>
-            <li>✨ **[신규]** 경기 종료 시, 승리팀 화면에 **축하 콘페티(폭죽) 효과**가 재생됩니다.</li>
-            <li>✨ **[신규]** 관리자 대시보드에 날짜별 **출석 확인** 기능이 추가되었습니다.</li>
-            <li>✨ **[신규]** 관리자 대시보드에서 **미션 순서를 드래그**하여 변경할 수 있습니다.</li>
-            <li>🚀 **[UX 개선]** 기록원 대시보드에 **TV 송출 화면 미리보기**가 추가되었습니다.</li>
-            <li>🚀 **[UX 개선]** 상점에서 아이템 구매 시, 페이지 새로고침 없이 바로 구매가 완료됩니다.</li>
-            <li>🚀 **[UX 개선]** 마이룸 수정 시, 아이템 목록이 **가로 탭**으로 변경되어 더 편리해졌습니다.</li>
-            <li>✅ **[버그수정]** 반복 미션과 일반 미션의 '기간 만료' 관련 로직 오류를 수정했습니다.</li>
-            <li>✅ **[버그수정]** 관리자 페이지의 차등 보상 승인 기능이 정상적으로 작동하도록 수정했습니다.</li>
+            <li>📚 <strong>[문제은행 개편]</strong> 기존의 단순 퀴즈 방식에서 벗어나, 선생님이 직접 <strong>'문제집(Quiz Set)'</strong> 단위로 퀴즈를 만들고 관리할 수 있는 시스템이 구축되었습니다.</li>
+            <li>💾 <strong>[DB 전면 연동]</strong> 파일로 관리되던 하드코딩 퀴즈를 모두 데이터베이스(DB)로 이관하여, <strong>실시간 수정 및 삭제</strong>가 가능해졌습니다.</li>
+            <li>🔄 <strong>[다중 출제 시스템]</strong> 수학, 상식, 넌센스 등 <strong>여러 문제집을 동시에 선택</strong>하여 우리 반 퀴즈로 출제할 수 있습니다. (학생들은 선택된 문제집들의 퀴즈를 랜덤으로 풀게 됩니다!)</li>
+            <li>⚔️ <strong>[펫 배틀 연동]</strong> 펫 배틀 대전에서도 선생님이 설정한 <strong>실시간 문제집의 퀴즈</strong>가 출제되도록 연동 작업을 완료했습니다.</li>
+            <li>🎨 <strong>[UI/UX 개선]</strong> 심플 모드 대시보드의 테마 팔레트 디자인을 개선하고, 화면 하단에 깔끔하게 배치하여 사용성을 높였습니다.</li>
+            <li>🗑️ <strong>[최적화]</strong> 레거시 데이터 파일(missions.json)을 제거하고 시스템 구조를 경량화했습니다.</li>
           </ChangeList>
 
-          <VersionHeader>v4.2 (2025-08-06)</VersionHeader>
+          <VersionHeader>
+            v4.3
+            <span className="date">2025-08-07</span>
+          </VersionHeader>
           <ChangeList>
-            <li>✨ **[신규기능]** 마이룸 편집에 '수정 모드'가 추가되었습니다. 이제 수정 버튼을 눌러야만 아이템 목록이 보이고 편집할 수 있습니다.</li>
-            <li>🚀 **[기능개선]** 한번 구매한 마이룸 아이템은 개수 제한 없이 여러 번 배치할 수 있도록 변경되었습니다. (+/- 버튼으로 조작)</li>
-            <li>🚀 **[기능개선]** 미션 관리 기능이 대폭 개선되었습니다. (차등 보상, 고정 미션, 관리자 전용 미션, 제출 유형 아이콘)</li>
-            <li>✅ **[버그수정]** 마이룸에 배치한 아이템의 순서(위/아래)가 저장 후에도 그대로 유지되도록 수정되었습니다.</li>
-            <li>✅ **[버그수정]** 관리자가 포인트를 조정했을 때, 해당 학생에게 상세 내역이 담긴 모달 팝업이 다시 나타나도록 복구했습니다.</li>
+            <li>✨ <strong>[신규]</strong> TV 송출 화면에 <strong>실시간 경기 타이머</strong> 기능이 추가되었습니다.</li>
+            <li>✨ <strong>[신규]</strong> 경기 종료 시, 승리팀 화면에 <strong>축하 콘페티(폭죽) 효과</strong>가 재생됩니다.</li>
+            <li>✨ <strong>[신규]</strong> 관리자 대시보드에서 <strong>미션 순서를 드래그</strong>하여 변경할 수 있습니다.</li>
+            <li>🚀 <strong>[개선]</strong> 기록원 대시보드에 <strong>TV 송출 화면 미리보기</strong>가 추가되었습니다.</li>
+            <li>🚀 <strong>[개선]</strong> 상점 아이템 구매 경험(UX)이 개선되었습니다.</li>
           </ChangeList>
 
-          <VersionHeader>v4.1 (2025-07-30)</VersionHeader>
+          <VersionHeader>
+            v4.2
+            <span className="date">2025-08-06</span>
+          </VersionHeader>
           <ChangeList>
-            <li>🚀 **[기능개선]** 미션 제출방법에 [글]과 [사진]이 추가되었습니다.</li>
-            <li>🚀 **[기능개선]** 리그 홈 실시간 업데이트: 경기 결과 저장 시, 순위표와 경기 일정이 애니메이션과 함께 즉시 갱신됩니다.</li>
-            <li>🚀 **[기능개선]** 알림창 UX 개선: 알림창 외부를 클릭해도 창이 닫히도록 수정되었습니다.</li>
-            <li>✅ **[버그수정]** 아바타 렌더링 오류 수정: 선수 기록 페이지 등에서 여러 개의 액세서리를 착용한 아바타가 정상적으로 표시되도록 수정했습니다.</li>
+            <li>✨ <strong>[신규]</strong> 마이룸 편집에 '수정 모드'가 도입되어 오작동을 방지합니다.</li>
+            <li>🚀 <strong>[개선]</strong> 마이룸 아이템 중복 배치 및 수량 조절 기능이 강화되었습니다.</li>
+            <li>🚀 <strong>[개선]</strong> 미션 관리 기능 강화 (차등 보상, 고정 미션 등)</li>
           </ChangeList>
 
-          <VersionHeader>v4.final (2024-07-26)</VersionHeader>
+          <VersionHeader>
+            v4.1
+            <span className="date">2025-07-30</span>
+          </VersionHeader>
           <ChangeList>
-            <li>✅ **[버그수정]** 선수 비활성화 기능 추가 (데이터 보존)</li>
-            <li>✅ **[버그수정]** 퀴즈 문제 고정 (localStorage 활용)</li>
-            <li>✅ **[버그수정]** 경기 결과 저장 오류 해결</li>
-            <li>🚀 **[기능개선]** 기록원 UX 대폭 개선 (+, - 버튼, 자책골, 자동 점수 차감)</li>
-            <li>🚀 **[기능개선]** 모바일 화면 최적화 (대시보드, 리그홈, 상점)</li>
-            <li>🚀 **[기능개선]** 프로필 편집 UX 개선 (이름/성별 동시 수정)</li>
-            <li>✨ **[신규기능]** 건의사항 시스템 (1:1 소통, 관리자 답변 및 알림)</li>
-            <li>✨ **[신규기능]** 포인트 변동 실시간 알림 모달 기능</li>
-            <li>✨ **[신규기능]** 득점왕 보상 시스템 추가</li>
-            <li>✨ **[신규기능]** 선수 기록 페이지 강화 (시즌/랭킹 탭 분리, 정렬 기능)</li>
-            <li>✨ **[신규기능]** 프로필 성별 등록 및 팀 자동 배정 로직 개선</li>
+            <li>🚀 <strong>[개선]</strong> 미션 제출 방식에 [글쓰기]와 [사진 인증] 옵션이 추가되었습니다.</li>
+            <li>🚀 <strong>[개선]</strong> 리그 홈 화면의 순위표와 경기 일정이 실시간으로 자동 갱신됩니다.</li>
           </ChangeList>
         </ContentArea>
         <CloseButton onClick={onClose}>닫기</CloseButton>

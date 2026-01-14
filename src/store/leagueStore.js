@@ -127,6 +127,8 @@ export const useLeagueStore = create((set, get) => ({
     dailyQuiz: null,
     dailyQuizSet: { date: null, quizzes: [] },
     quizHistory: [],
+    themeColor: '#f8f9fa', // 전역 테마 색상 (기본값)
+    setThemeColor: (color) => set({ themeColor: color }),
     currentUser: null,
     pointAdjustmentNotification: null,
     battleState: null, // [추가] 실시간 배틀 상태
