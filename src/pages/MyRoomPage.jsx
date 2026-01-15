@@ -1,7 +1,7 @@
 // src/pages/MyRoomPage.jsx
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, db, addMyRoomComment, likeMyRoom, likeMyRoomComment, deleteMyRoomComment, addMyRoomReply, likeMyRoomReply, deleteMyRoomReply, storage } from '../api/firebase';
 import { doc, updateDoc, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
@@ -9,544 +9,373 @@ import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
-import { petImageMap } from '../utils/petImageMap'; // [추가] 펫 이미지 맵 import
+import { petImageMap } from '../utils/petImageMap';
 import { filterProfanity } from '../utils/profanityFilter';
 import html2canvas from 'html2canvas';
 
+// --- Animations ---
+
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const float = keyframes`
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+`;
+
 // --- Styled Components ---
 
-const Wrapper = styled.div`
-  max-width: 960px;
-  margin: 2rem auto;
-  padding: 2rem;
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-`;
-
-const EquippedTitle = styled.div`
-  padding: 0.6rem 1.2rem;
-  border-radius: 8px;
-  font-weight: bold;
-  font-size: 1.3rem;
-  margin: 0;
-  display: inline-block;
-  color: ${props => props.color || '#343a40'};
-  background-color: #f8f9fa;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-`;
-
-const TabContainer = styled.div`
-  display: flex;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-`;
-
-const TabButton = styled.button`
-  padding: 0.75rem 1rem;
-  font-size: 1rem;
-  font-weight: bold;
-  border: 1px solid #ccc;
-  background-color: ${props => props.$active ? '#007bff' : 'white'};
-  color: ${props => props.$active ? 'white' : 'black'};
-  cursor: pointer;
-`;
-
-const Header = styled.div`
-  text-align: center;
-  margin-bottom: 2rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-`;
-
-const TitleContainer = styled.div`
+const PageWrapper = styled.div`
+  min-height: 100vh;
+  padding: 2rem 1rem 4rem 1rem;
+  font-family: 'Pretendard', sans-serif;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+`;
 
-  h1 {
-    margin: 0;
+const HeaderSection = styled.div`
+  width: 100%;
+  max-width: 1200px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
+  animation: ${fadeIn} 0.5s ease-out;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
+`;
+
+const TitleGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const OwnerName = styled.h1`
+  font-size: 2rem;
+  font-weight: 900;
+  color: #343a40;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  text-shadow: 2px 2px 0px rgba(255,255,255,0.5);
+  
+  @media (max-width: 768px) {
+    justify-content: center;
+    font-size: 1.8rem;
+  }
+`;
+
+const EquippedTitleBadge = styled.span`
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: ${props => props.color || '#495057'};
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.05);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: fit-content;
+  
+  @media (max-width: 768px) {
+    margin: 0 auto;
+  }
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+`;
+
+const ActionButton = styled.button`
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 16px;
+  padding: 0.6rem 1.2rem;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #495057;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    background: white;
+    color: #339af0;
+    z-index: 10;
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const LikeButton = styled(ActionButton)`
+  color: ${props => props.$active ? '#fa5252' : '#495057'};
+  ${props => props.$active && `
+    background: #fff5f5;
+    box-shadow: 0 4px 15px rgba(250, 82, 82, 0.15);
+  `}
+`;
+
+// [레이아웃] 좌우 배치 그리드
+const LayoutGrid = styled.div`
+  display: flex;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1200px;
+  align-items: flex-start;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
+`;
+
+const LeftSection = styled.div`
+  flex: 6.5; /* 65% */
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`;
+
+const RightSection = styled.div`
+  flex: 3.5; /* 35% */
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`;
+
+// [디자인] 공통 글래스 카드
+const GlassCard = styled.div`
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-radius: 24px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  position: relative;
+`;
+
+const RoomCanvasWrapper = styled(GlassCard)`
+  padding: 1rem;
+  background: #f8f9fa;
+  border: 4px solid white;
 `;
 
 const RoomContainer = styled.div`
   width: 100%;
-  padding-top: 75%;
+  padding-top: 75%; /* 4:3 비율 */
   position: relative;
-  border: 2px solid #ddd;
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
   user-select: none;
+  background-color: #e9ecef;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.05);
+  touch-action: none; /* 드래그 시 스크롤 방지 */
 `;
 
-const AppliedHouse = styled.img`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  z-index: 1; 
-  pointer-events: none; 
-`;
-
-const AppliedBackground = styled.img`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: 0; 
-  pointer-events: none;
-`;
-
-const RoomBackground = styled.img`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  z-index: 1; 
-  pointer-events: none;
-`;
+/* 룸 내부 요소 */
+const AppliedHouse = styled.img` position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; pointer-events: none; `;
+const AppliedBackground = styled.img` position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; pointer-events: none; `;
+const RoomBackgroundImg = styled.img` position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; pointer-events: none; `;
+const AvatarPartImage = styled.img` position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; `;
 
 const InteractiveItem = styled.div`
   position: absolute;
-  cursor: ${props => props.$isEditing ? 'pointer' : 'default'};
+  cursor: ${props => props.$isEditing ? 'grab' : 'default'};
   width: ${props => props.$width}%;
   height: ${props => props.$height ? `${props.$height}%` : 'auto'};
   z-index: ${props => props.$zIndex};
   left: ${props => props.$left}%;
   top: ${props => props.$top}%;
   transform: translate(-50%, -50%);
-  border: ${props => props.$isSelected ? '2px dashed #007bff' : 'none'};
+  border: ${props => props.$isSelected ? '2px dashed #339af0' : 'none'};
+  transition: transform 0.1s;
   
+  &:active { cursor: ${props => props.$isEditing ? 'grabbing' : 'default'}; }
+
   & > img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+    width: 100%; height: 100%; object-fit: contain;
     transform: ${props => props.$isFlipped ? 'scaleX(-1)' : 'scaleX(1)'};
+    filter: ${props => props.$isSelected ? 'drop-shadow(0 0 5px rgba(51, 154, 240, 0.5))' : 'none'};
   }
 `;
 
-const AvatarPartImage = styled.img`
+// [방문자 모드] 내 아바타 드래그 & 둥실둥실
+const VisitorWrapper = styled.div`
+  position: absolute;
+  /* 드래그 상태에 따라 커서 변경 */
+  cursor: grab;
+  &:active { cursor: grabbing; }
+  
+  width: 15%;
+  height: 25%;
+  z-index: 200;
+  pointer-events: auto; /* 드래그 가능하게 */
+
+  /* 드래그 위치 적용 */
+  left: ${props => props.$x}%;
+  top: ${props => props.$y}%;
+  transform: translate(-50%, -50%); /* 중심 기준 배치 */
+
+  .label {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    pointer-events: none;
-`;
-
-const SocialFeaturesContainer = styled.div`
-    margin-top: 2rem;
-    padding-top: 2rem;
-    border-top: 2px solid #f0f0f0;
-`;
-
-const CommentInputSection = styled.div`
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 2rem;
-`;
-
-const CommentTextarea = styled.textarea`
-    flex-grow: 1;
-    min-height: 60px;
-    padding: 0.75rem;
-    border: 1px solid #ced4da;
-    border-radius: 8px;
-    font-size: 1rem;
-    resize: vertical;
-`;
-
-const CommentSubmitButton = styled.button`
-    padding: 0 2rem;
-    font-size: 1rem;
-    font-weight: bold;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
     color: white;
-    background-color: #007bff;
-    border: none;
+    padding: 4px 8px;
     border-radius: 8px;
-    cursor: pointer;
-    &:hover { background-color: #0056b3; }
-`;
-
-const CommentList = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-`;
-
-const CommentWrapper = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-`;
-
-const CommentCard = styled.div`
-    background-color: #f8f9fa;
-    padding: 1rem;
-    border-radius: 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-`;
-
-const ReplyCard = styled(CommentCard)`
-    background-color: #e9ecef;
-    margin-left: 2rem;
-`;
-
-const CommentContent = styled.div`
-    flex-grow: 1;
-    p { margin: 0; }
-    small { color: #6c757d; }
-`;
-
-const Timestamp = styled.small`
-  margin-left: 0.5rem;
-  font-size: 0.8em;
-`;
-
-const CommentActions = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-shrink: 0;
-`;
-
-const DeleteButton = styled.button`
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    color: #dc3545;
-    &:hover {
-        color: #a71d2a;
-    }
-`;
-
-const LikeButton = styled.button`
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.5rem;
-    transition: transform 0.2s;
-    &:hover { transform: scale(1.2); }
-    &:disabled {
-        cursor: not-allowed;
-        filter: grayscale(100%);
-    }
-`;
-
-const ReplyInputContainer = styled.div`
-    display: flex;
-    gap: 0.5rem;
-    margin-left: 2rem;
-    align-items: center;
-`;
-
-const InventoryContainer = styled.div`
-  margin-top: 2rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-`;
-
-const InventoryGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 1rem;
-  padding-top: 1rem;
-`;
-
-const InventoryItem = styled.div`
-  background-color: #fff;
-  border: 2px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
-  border-radius: 8px;
-  padding: 0.5rem;
-  text-align: center;
-  transition: all 0.2s;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-
-  img {
-    width: 80px;
-    height: 80px;
-    object-fit: contain;
-  }
-
-  p {
     font-size: 0.8rem;
-    margin: 0.5rem 0 0;
-    font-weight: 500;
+    font-weight: bold;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    pointer-events: none;
   }
 `;
 
-const ItemControls = styled.div`
+// 둥실둥실 애니메이션만 담당하는 내부 래퍼
+const FloatingContent = styled.div`
+  width: 100%;
+  height: 100%;
+  position: relative;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  background: rgba(255, 255, 255, 0.8);
-  border-radius: 8px;
+  align-items: flex-end;
+  animation: ${float} 3s ease-in-out infinite;
 `;
 
-const ControlButton = styled.button`
-  background: #e9ecef;
-  border: 1px solid #ced4da;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  font-size: 1.2rem;
-  font-weight: bold;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  
-  &:hover {
-    background: #ced4da;
-  }
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+const VisitorAvatar = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
 `;
 
-const ItemCount = styled.span`
-  font-weight: bold;
-  font-size: 1rem;
-  min-width: 20px;
+const VisitorPet = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: -40%;
+  width: 60%;
+  height: 60%;
+  animation: ${float} 4s ease-in-out infinite reverse;
 `;
 
-const ButtonContainer = styled.div`
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    margin-top: 2rem;
-`;
-
-const SaveButton = styled.button`
-    padding: 0.8rem 2rem;
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: white;
-    background-color: #28a745;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    &:hover {
-        background-color: #218838;
-    }
-`;
-
-const EditRoomButton = styled(SaveButton)`
-    background-color: #007bff;
-    &:hover {
-        background-color: #0056b3;
-    }
-`;
-
-const VisitButton = styled.button`
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
-    font-weight: bold;
-    color: white;
-    background-color: #17a2b8;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    &:hover {
-        background-color: #117a8b;
-    }
-`;
-
-const ExitButton = styled.button`
-  padding: 0.8rem 2rem;
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: #fff;
-  background-color: #6c757d;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  &:hover { background-color: #5a6268; }
-`;
-
-const AccordionContent = styled.div`
-    max-height: ${props => props.$isOpen ? '1000px' : '0'};
-    opacity: ${props => props.$isOpen ? 1 : 0};
-    overflow: hidden;
-    transition: all 0.5s ease-in-out;
-`;
-
+/* 컨트롤러 스타일 */
 const ControllerButton = styled.button`
-  background-color: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  color: white;
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0,0,0,0.1);
+  color: #495057;
   font-weight: bold;
   cursor: pointer;
-  border-radius: 50%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  user-select: none;
-  transition: background-color 0.2s;
-  
-  &:active {
-    background-color: rgba(0, 0, 0, 0.9);
-  }
+  border-radius: 12px;
+  display: flex; justify-content: center; align-items: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+  font-size: 1.2rem;
+  &:hover { transform: scale(1.05); background: white; color: #339af0; }
+  &:active { transform: scale(0.95); }
 `;
 
 const LeftControllerWrapper = styled.div`
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  z-index: 1000;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-  &:hover { opacity: 1; }
+  position: absolute; bottom: 20px; left: 20px;
+  display: flex; flex-direction: column; gap: 8px; z-index: 1000;
 `;
-
-const LayerButton = styled(ControllerButton)`
-    width: 60px;
-    height: 40px;
-    font-size: 1rem;
-    border-radius: 8px;
-    background-color: rgba(40, 167, 69, 0.7);
-    &:hover {
-        background-color: rgba(40, 167, 69, 1);
-    }
-`;
-
-const DeleteItemButton = styled(ControllerButton)`
-    width: 50px;
-    height: 50px;
-    font-size: 1.8rem;
-    background-color: rgba(220, 53, 69, 0.7);
-    &:hover {
-        background-color: rgba(220, 53, 69, 1);
-    }
-`;
-
 const RightControllerWrapper = styled.div`
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  width: 120px;
-  height: 120px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
-  gap: 5px;
-  z-index: 1000;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-  &:hover { opacity: 1; }
+  position: absolute; bottom: 20px; right: 20px;
+  width: 120px; height: 120px;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; z-index: 1000;
 `;
+const DeleteItemButton = styled(ControllerButton)` width: 50px; height: 50px; color: #fa5252; font-size: 1.5rem; &:hover { background: #fff5f5; color: #c92a2a; } `;
+const LayerButton = styled(ControllerButton)` width: 60px; height: 36px; font-size: 0.85rem; `;
+const DPadButton = styled(ControllerButton)` width: 100%; height: 100%; `;
 
-const UpButton = styled(ControllerButton)` grid-area: 1 / 2 / 2 / 3; `;
-const LeftButton = styled(ControllerButton)` grid-area: 2 / 1 / 3 / 2; `;
-const CenterButton = styled(ControllerButton)`
-    grid-area: 2 / 2 / 3 / 3;
-    border-radius: 8px;
-    font-size: 1rem;
+/* 인벤토리 스타일 */
+const InventoryContainer = styled(GlassCard)`
+  padding: 1.5rem; margin-top: 0;
 `;
-const RightButton = styled(ControllerButton)` grid-area: 2 / 3 / 3 / 4; `;
-const DownButton = styled(ControllerButton)` grid-area: 3 / 2 / 4 / 3; `;
+const InventoryHeader = styled.div` display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; h3 { margin: 0; font-size: 1.2rem; font-weight: 800; color: #343a40; } `;
+const TabContainer = styled.div` display: flex; gap: 0.5rem; margin-bottom: 1rem; overflow-x: auto; padding-bottom: 0.5rem; &::-webkit-scrollbar { height: 4px; } &::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 2px; } `;
+const TabButton = styled.button` padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 700; border: none; border-radius: 20px; background-color: ${props => props.$active ? '#339af0' : '#f1f3f5'}; color: ${props => props.$active ? 'white' : '#868e96'}; cursor: pointer; transition: all 0.2s; white-space: nowrap; &:hover { background-color: ${props => props.$active ? '#228be6' : '#e9ecef'}; } `;
+const InventoryGrid = styled.div` display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 0.8rem; max-height: 250px; overflow-y: auto; padding: 0.5rem; background: white; border-radius: 12px; border: 1px solid #f1f3f5; &::-webkit-scrollbar { width: 6px; } &::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 3px; } `;
+const InventoryItem = styled.div` background-color: #fff; border: 2px solid ${props => props.$isSelected ? '#339af0' : '#f8f9fa'}; border-radius: 12px; padding: 0.5rem; text-align: center; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.03); &:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.08); border-color: ${props => props.$isSelected ? '#339af0' : '#dee2e6'}; } img { width: 60px; height: 60px; object-fit: contain; margin-bottom: 0.5rem; } p { font-size: 0.8rem; margin: 0; font-weight: 600; color: #495057; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; } `;
+const ItemControls = styled.div` display: flex; justify-content: center; align-items: center; gap: 0.3rem; margin-top: 0.4rem; width: 100%; `;
+const ControlBtn = styled.button` width: 24px; height: 24px; border-radius: 50%; border: 1px solid #dee2e6; background: white; display: flex; justify-content: center; align-items: center; cursor: pointer; color: #495057; font-weight: bold; &:hover { background: #f1f3f5; } &:disabled { opacity: 0.3; cursor: default; } `;
 
-const LikeDisplay = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #dc3545;
-`;
+/* 소셜(방명록) 스타일 */
+const SocialContainer = styled(GlassCard)` height: 100%; display: flex; flex-direction: column; background: white; `;
+const SocialHeader = styled.div` margin-bottom: 1.5rem; h2 { font-size: 1.4rem; font-weight: 800; color: #343a40; margin: 0; display: flex; align-items: center; gap: 0.5rem; } span { font-size: 0.9rem; color: #868e96; font-weight: 600; } `;
+const CommentInputSection = styled.div` display: flex; flex-direction: column; gap: 0.8rem; margin-bottom: 1.5rem; `;
+const CommentTextarea = styled.textarea` width: 100%; min-height: 80px; padding: 1rem; border: 2px solid #f1f3f5; border-radius: 16px; font-size: 0.95rem; font-family: 'Pretendard', sans-serif; resize: none; transition: all 0.2s; &:focus { outline: none; border-color: #339af0; box-shadow: 0 0 0 3px rgba(51, 154, 240, 0.1); } `;
+const SubmitButton = styled.button` align-self: flex-end; padding: 0.5rem 1.2rem; background: #339af0; color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; &:hover { background: #228be6; transform: translateY(-2px); } `;
+const CommentList = styled.div` display: flex; flex-direction: column; gap: 1rem; flex-grow: 1; overflow-y: auto; padding-right: 0.5rem; &::-webkit-scrollbar { width: 4px; } &::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 2px; } `;
+const CommentCard = styled.div` background: #f8f9fa; padding: 1rem; border-radius: 16px; position: relative; border: 1px solid transparent; transition: all 0.2s; &:hover { background: #fff; border-color: #dee2e6; box-shadow: 0 2px 8px rgba(0,0,0,0.03); } `;
+const ReplyCard = styled(CommentCard)` background: #e9ecef; margin-left: 1.5rem; margin-top: 0.5rem; &::before { content: '↳'; position: absolute; left: -15px; top: 10px; color: #adb5bd; font-weight: bold; } `;
+const CommentHeader = styled.div` display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.4rem; .author { font-weight: 700; font-size: 0.9rem; color: #343a40; text-decoration: none; } .date { font-size: 0.75rem; color: #adb5bd; } `;
+const CommentBody = styled.p` margin: 0; font-size: 0.95rem; color: #495057; line-height: 1.4; white-space: pre-wrap; `;
+const CommentActions = styled.div` display: flex; gap: 0.8rem; margin-top: 0.5rem; justify-content: flex-end; button { background: none; border: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #868e96; display: flex; align-items: center; gap: 0.2rem; padding: 0; &:hover { color: #339af0; } &.delete { &:hover { color: #fa5252; } } } `;
 
-const LoadMoreButton = styled.button`
-    margin-top: 1.5rem;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-    font-weight: bold;
-    color: #007bff;
-    background-color: #fff;
-    border: 1px solid #007bff;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-        background-color: #f0f8ff;
-    }
-`;
-
-const ResetButton = styled(SaveButton)`
-    background-color: #6c757d;
-    &:hover {
-        background-color: #5a6268;
-    }
-`;
-
-const FriendListModal = styled.div`
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  padding: 1rem;
-  z-index: 200;
-  width: 300px;
-  max-height: 350px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 10px;
+/* 친구 목록 드롭다운 (수정됨: 펫+이름) */
+const FriendListDropdown = styled.div`
+  position: absolute; top: 110%; right: 0; 
+  background: white; border-radius: 16px; 
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12); border: 1px solid rgba(0,0,0,0.05);
+  padding: 0.8rem; width: 260px; max-height: 400px; overflow-y: auto; z-index: 300;
+  display: flex; flex-direction: column; gap: 0.4rem;
+  
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 2px; }
 `;
 
 const FriendItem = styled.div`
-  padding: 0.5rem;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transition: background 0.2s;
+  display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem; 
+  border-radius: 12px; cursor: pointer; transition: all 0.2s;
   
-  &:hover { background-color: #f8f9fa; }
-  &:last-child { border-bottom: none; }
+  &:hover { background: #f1f3f5; transform: translateX(2px); }
   
-  img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid #ddd; }
-  span { font-weight: bold; font-size: 0.95rem; }
+  .pet-icon { 
+    width: 36px; height: 36px; object-fit: contain; 
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
+  }
+  .no-pet { font-size: 1.5rem; width: 36px; text-align: center; }
+  
+  .info { flex: 1; display: flex; flex-direction: column; }
+  .name { font-weight: 700; font-size: 0.95rem; color: #343a40; }
+  .level { font-size: 0.75rem; color: #20c997; font-weight: 800; }
 `;
+
+/* 버튼 그룹 */
+const ButtonGroup = styled.div` display: flex; gap: 0.8rem; justify-content: center; margin-top: 2rem; `;
+const PrimaryBtn = styled(ActionButton)` background: #20c997; color: white; &:hover { background: #12b886; color: white; } `;
+const SecondaryBtn = styled(ActionButton)` background: #868e96; color: white; &:hover { background: #495057; color: white; } `;
+
 
 function MyRoomPage() {
   const { classId } = useClassStore();
-  const { playerId } = useParams();
+  const { playerId } = useParams(); // URL의 playerId
   const navigate = useNavigate();
   const { players, myRoomItems, avatarParts, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -555,41 +384,46 @@ function MyRoomPage() {
   const [selectedItemId, setSelectedItemId] = useState(null);
   const moveInterval = useRef(null);
 
-  // [수정] roomConfig에 playerPet 추가 (초기값 설정)
-  const [roomConfig, setRoomConfig] = useState({
+  // 룸 설정 초기값
+  const initialRoomConfig = {
     items: [],
     houseId: null,
     backgroundId: null,
     playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false },
-    playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false } // 펫 기본 위치
-  });
+    playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false }
+  };
+  const [roomConfig, setRoomConfig] = useState(initialRoomConfig);
 
   const roomContainerRef = useRef(null);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
+
+  // 방문자(나)의 위치 상태 (초기값: 우측 하단)
+  const [visitorPos, setVisitorPos] = useState({ x: 85, y: 80 });
+  const [isDraggingVisitor, setIsDraggingVisitor] = useState(false);
+
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [likes, setLikes] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
-  const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
   const [visibleCommentsCount, setVisibleCommentsCount] = useState(5);
+
+  const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
   const [showFriendList, setShowFriendList] = useState(false);
 
-  const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
-  const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
-  const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+  // --- Data Calculations ---
 
-  const classmates = useMemo(() => {
-    return players.filter(p => p.id !== myPlayerData?.id);
-  }, [players, myPlayerData]);
+  const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
+  const roomOwnerData = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+  const isMyRoom = useMemo(() => myPlayerData?.id === playerId, [myPlayerData, playerId]);
+  const classmates = useMemo(() => players.filter(p => p.id !== myPlayerData?.id), [players, myPlayerData]);
 
   const equippedTitle = useMemo(() => {
     if (!roomOwnerData?.equippedTitle || !titles.length) return null;
     return titles.find(t => t.id === roomOwnerData.equippedTitle);
   }, [roomOwnerData, titles]);
 
-  // [추가] 룸 주인의 파트너 펫 정보 가져오기
   const ownerPartnerPet = useMemo(() => {
     if (!roomOwnerData) return null;
     if (roomOwnerData.pets && roomOwnerData.pets.length > 0) {
@@ -599,20 +433,27 @@ function MyRoomPage() {
     return null;
   }, [roomOwnerData]);
 
-  const categorizedInventory = useMemo(() => {
-    const itemsToDisplay = myPlayerData?.role === 'admin'
-      ? myRoomItems
-      : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
-
-    const categories = { '하우스': [], '배경': [], '가구': [], '가전': [], '소품': [] };
-
-    itemsToDisplay.forEach(item => {
-      if (item && categories[item.category]) {
-        categories[item.category].push(item);
-      }
+  const myAvatarUrls = useMemo(() => {
+    if (!myPlayerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
+    const urls = [baseAvatar];
+    const config = myPlayerData.avatarConfig;
+    RENDER_ORDER.forEach(category => {
+      const partId = config[category];
+      if (partId) { const part = avatarParts.find(p => p.id === partId); if (part) urls.push(part.src); }
     });
-    return categories;
-  }, [myPlayerData, myRoomItems]);
+    if (config.accessories) { Object.values(config.accessories).forEach(partId => { const part = avatarParts.find(p => p.id === partId); if (part) urls.push(part.src); }); }
+    return Array.from(new Set(urls));
+  }, [myPlayerData, avatarParts]);
+
+  const myPartnerPet = useMemo(() => {
+    if (!myPlayerData) return null;
+    if (myPlayerData.pets && myPlayerData.pets.length > 0) {
+      return myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
+    }
+    if (myPlayerData.pet) return myPlayerData.pet;
+    return null;
+  }, [myPlayerData]);
 
   const ownerAvatarUrls = useMemo(() => {
     if (!roomOwnerData?.avatarConfig || !avatarParts.length) return [baseAvatar];
@@ -621,167 +462,101 @@ function MyRoomPage() {
     const config = roomOwnerData.avatarConfig;
     RENDER_ORDER.forEach(category => {
       const partId = config[category];
-      if (partId) {
-        const part = avatarParts.find(p => p.id === partId);
-        if (part) urls.push(part.src);
-      }
+      if (partId) { const part = avatarParts.find(p => p.id === partId); if (part) urls.push(part.src); }
     });
-    if (config.accessories) {
-      Object.values(config.accessories).forEach(partId => {
-        const part = avatarParts.find(p => p.id === partId);
-        if (part) urls.push(part.src);
-      });
-    }
+    if (config.accessories) { Object.values(config.accessories).forEach(partId => { const part = avatarParts.find(p => p.id === partId); if (part) urls.push(part.src); }); }
     return Array.from(new Set(urls));
   }, [roomOwnerData, avatarParts]);
 
-  const appliedHouse = useMemo(() => {
-    if (!roomConfig.houseId) return null;
-    return myRoomItems.find(item => item.id === roomConfig.houseId);
-  }, [roomConfig.houseId, myRoomItems]);
-
-  const appliedBackground = useMemo(() => {
-    if (!roomConfig.backgroundId) return null;
-    return myRoomItems.find(item => item.id === roomConfig.backgroundId);
-  }, [roomConfig.backgroundId, myRoomItems]);
+  const appliedHouse = useMemo(() => roomConfig.houseId ? myRoomItems.find(item => item.id === roomConfig.houseId) : null, [roomConfig.houseId, myRoomItems]);
+  const appliedBackground = useMemo(() => roomConfig.backgroundId ? myRoomItems.find(item => item.id === roomConfig.backgroundId) : null, [roomConfig.backgroundId, myRoomItems]);
 
   const hasLikedThisMonth = useMemo(() => {
     const currentMonth = new Date().toISOString().slice(0, 7);
     return likes.some(like => like.id === myPlayerData?.id && like.lastLikedMonth === currentMonth);
   }, [likes, myPlayerData]);
 
-  const itemCounts = useMemo(() => {
-    return roomConfig.items.reduce((acc, item) => {
-      acc[item.itemId] = (acc[item.itemId] || 0) + 1;
-      return acc;
-    }, {});
-  }, [roomConfig.items]);
+  const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[item.itemId] = (acc[item.itemId] || 0) + 1; return acc; }, {}), [roomConfig.items]);
 
-  const fetchRoomSocialData = async () => {
-    if (!classId || !roomOwnerData) return;
+  const categorizedInventory = useMemo(() => {
+    const itemsToDisplay = myPlayerData?.role === 'admin' ? myRoomItems : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
+    const categories = { '하우스': [], '배경': [], '가구': [], '가전': [], '소품': [] };
+    itemsToDisplay.forEach(item => { if (item && categories[item.category]) categories[item.category].push(item); });
+    return categories;
+  }, [myPlayerData, myRoomItems]);
 
-    const commentsQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomComments"), orderBy("createdAt", "desc"));
-    const commentsSnapshot = await getDocs(commentsQuery);
-    setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    const likesQuery = query(collection(db, "classes", classId, "players", roomOwnerData.id, "myRoomLikes"));
-    const likesSnapshot = await getDocs(likesQuery);
-    setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  };
+  // --- Effects ---
 
   useEffect(() => {
-    if (!classId || !roomOwnerData) return;
+    if (!classId || !playerId) return;
 
-    const playerRef = doc(db, 'classes', classId, 'players', roomOwnerData.id);
-    getDoc(playerRef).then(playerSnap => {
+    // 방 변경 시 초기화
+    setRoomConfig(initialRoomConfig);
+    setSnapshotUrl(null);
+    setComments([]);
+    setLikes([]);
+    setIsEditing(false);
+    setVisitorPos({ x: 85, y: 80 }); // 방문자 위치 초기화
+
+    const loadRoomData = async () => {
+      const playerRef = doc(db, 'classes', classId, 'players', playerId);
+      const playerSnap = await getDoc(playerRef);
+
       if (playerSnap.exists()) {
         const data = playerSnap.data();
         const configData = data.myRoomConfig || {};
 
-        if (data.myRoomSnapshotUrl) {
-          setSnapshotUrl(data.myRoomSnapshotUrl);
-        }
+        if (data.myRoomSnapshotUrl) setSnapshotUrl(data.myRoomSnapshotUrl);
 
-        if (!Array.isArray(configData.items)) {
-          const convertedItems = Object.entries(configData)
-            .filter(([key, value]) => typeof value === 'object' && value.left !== undefined)
-            .map(([itemId, itemConfig], index) => ({
-              instanceId: Date.now() + index,
-              itemId,
-              ...itemConfig
-            }));
-          setRoomConfig({
-            items: convertedItems,
-            houseId: configData.houseId || null,
-            backgroundId: configData.backgroundId || null,
-            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false },
-            playerPet: configData.playerPet || { left: 60, top: 65, zIndex: 101, isFlipped: false }
-          });
+        let newItems = [];
+        if (Array.isArray(configData.items)) {
+          newItems = configData.items;
         } else {
-          setRoomConfig({
-            items: configData.items || [],
-            houseId: configData.houseId || null,
-            backgroundId: configData.backgroundId || null,
-            playerAvatar: configData.playerAvatar || { left: 50, top: 60, zIndex: 100, isFlipped: false },
-            playerPet: configData.playerPet || { left: 60, top: 65, zIndex: 101, isFlipped: false }
-          });
+          newItems = Object.entries(configData)
+            .filter(([key, value]) => typeof value === 'object' && value.left !== undefined)
+            .map(([itemId, itemConfig], index) => ({ instanceId: Date.now() + index, itemId, ...itemConfig }));
         }
+
+        setRoomConfig({
+          items: newItems,
+          houseId: configData.houseId || null,
+          backgroundId: configData.backgroundId || null,
+          playerAvatar: configData.playerAvatar || initialRoomConfig.playerAvatar,
+          playerPet: configData.playerPet || initialRoomConfig.playerPet
+        });
+
+        fetchRoomSocialData(playerId);
       }
-    });
+    };
 
-    fetchRoomSocialData();
+    loadRoomData();
+  }, [classId, playerId]);
 
-  }, [roomOwnerData, classId]);
+  const fetchRoomSocialData = async (targetPlayerId) => {
+    const commentsQuery = query(collection(db, "classes", classId, "players", targetPlayerId, "myRoomComments"), orderBy("createdAt", "desc"));
+    const commentsSnapshot = await getDocs(commentsQuery);
+    setComments(commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-  const handleSelect = (e, instanceId) => {
-    e.stopPropagation();
-    if (!isMyRoom || !isEditing) return;
-    setSelectedItemId(instanceId);
+    const likesQuery = query(collection(db, "classes", classId, "players", targetPlayerId, "myRoomLikes"));
+    const likesSnapshot = await getDocs(likesQuery);
+    setLikes(likesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
-  const handleDeleteSelectedItem = () => {
-    if (!isMyRoom || !isEditing || !selectedItemId) return;
 
-    if (selectedItemId === 'playerAvatar' || selectedItemId === 'playerPet') {
-      alert("캐릭터와 펫은 삭제할 수 없습니다.");
-      return;
-    }
+  // --- Handlers (Edit) ---
 
-    setRoomConfig(prev => ({
-      ...prev,
-      items: prev.items.filter(item => item.instanceId !== selectedItemId)
-    }));
-    setSelectedItemId(null);
-  };
-
-  const handleLayerChange = (direction) => {
-    if (!selectedItemId) return;
-
-    setRoomConfig(prev => {
-      const newConfig = JSON.parse(JSON.stringify(prev));
-      const allZIndexes = newConfig.items.map(i => i.zIndex);
-      if (newConfig.playerAvatar) allZIndexes.push(newConfig.playerAvatar.zIndex);
-      if (newConfig.playerPet) allZIndexes.push(newConfig.playerPet.zIndex);
-
-      const maxZ = allZIndexes.length > 0 ? Math.max(...allZIndexes) : 100;
-      const minZ = allZIndexes.length > 0 ? Math.min(...allZIndexes) : 100;
-
-      let target;
-      if (selectedItemId === 'playerAvatar') {
-        target = newConfig.playerAvatar;
-      } else if (selectedItemId === 'playerPet') {
-        target = newConfig.playerPet;
-      } else {
-        target = newConfig.items.find(i => i.instanceId === selectedItemId);
-      }
-
-      if (target) {
-        if (direction === 'forward') {
-          target.zIndex = maxZ + 1;
-        } else if (direction === 'backward') {
-          target.zIndex = minZ - 1;
-        }
-      }
-      return newConfig;
-    });
-  };
+  const handleSelect = (e, instanceId) => { e.stopPropagation(); if (isMyRoom && isEditing) setSelectedItemId(instanceId); };
 
   const moveItem = (direction) => {
     if (!selectedItemId) return;
-
     setRoomConfig(prev => {
       const moveAmount = 0.5;
-      const newConfig = JSON.parse(JSON.stringify(prev)); // Deep copy
-
+      const newConfig = JSON.parse(JSON.stringify(prev));
       let target;
-      if (selectedItemId === 'playerAvatar') {
-        target = newConfig.playerAvatar;
-      } else if (selectedItemId === 'playerPet') {
-        target = newConfig.playerPet;
-      } else {
-        target = newConfig.items.find(i => i.instanceId === selectedItemId);
-      }
-
+      if (selectedItemId === 'playerAvatar') target = newConfig.playerAvatar;
+      else if (selectedItemId === 'playerPet') target = newConfig.playerPet;
+      else target = newConfig.items.find(i => i.instanceId === selectedItemId);
       if (target) {
         if (direction === 'up') target.top -= moveAmount;
         if (direction === 'down') target.top += moveAmount;
@@ -792,611 +567,415 @@ function MyRoomPage() {
     });
   };
 
-
-  const startMoving = (direction) => {
-    stopMoving();
-    moveItem(direction);
-    moveInterval.current = setInterval(() => moveItem(direction), 50);
-  };
-
-  const stopMoving = () => {
-    clearInterval(moveInterval.current);
-  };
-
+  const startMoving = (direction) => { stopMoving(); moveItem(direction); moveInterval.current = setInterval(() => moveItem(direction), 50); };
+  const stopMoving = () => clearInterval(moveInterval.current);
   const handleFlip = () => {
     if (!selectedItemId) return;
     setRoomConfig(prev => {
-      if (selectedItemId === 'playerAvatar') {
-        return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
-      }
-      if (selectedItemId === 'playerPet') {
-        return { ...prev, playerPet: { ...prev.playerPet, isFlipped: !prev.playerPet.isFlipped } };
-      }
-      return {
-        ...prev,
-        items: prev.items.map(item =>
-          item.instanceId === selectedItemId ? { ...item, isFlipped: !item.isFlipped } : item
-        )
-      };
+      if (selectedItemId === 'playerAvatar') return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
+      if (selectedItemId === 'playerPet') return { ...prev, playerPet: { ...prev.playerPet, isFlipped: !prev.playerPet.isFlipped } };
+      return { ...prev, items: prev.items.map(item => item.instanceId === selectedItemId ? { ...item, isFlipped: !item.isFlipped } : item) };
     });
   };
-
-  const handleAddItem = (itemToAdd) => {
-    if (!isMyRoom || !isEditing) return;
+  const handleLayerChange = (direction) => {
+    if (!selectedItemId) return;
     setRoomConfig(prev => {
-      const currentZIndexes = prev.items.map(i => i.zIndex);
-      const maxZIndex = currentZIndexes.length > 0 ? Math.max(...currentZIndexes) : 99;
-
-      const newItemInstance = {
-        instanceId: Date.now(),
-        itemId: itemToAdd.id,
-        left: 50,
-        top: 50,
-        zIndex: maxZIndex + 1,
-        isFlipped: false
-      };
-
-      return { ...prev, items: [...prev.items, newItemInstance] };
+      const newConfig = JSON.parse(JSON.stringify(prev));
+      const allZIndexes = [...newConfig.items.map(i => i.zIndex), newConfig.playerAvatar?.zIndex || 100, newConfig.playerPet?.zIndex || 101];
+      const maxZ = Math.max(...allZIndexes); const minZ = Math.min(...allZIndexes);
+      let target;
+      if (selectedItemId === 'playerAvatar') target = newConfig.playerAvatar;
+      else if (selectedItemId === 'playerPet') target = newConfig.playerPet;
+      else target = newConfig.items.find(i => i.instanceId === selectedItemId);
+      if (target) target.zIndex = direction === 'forward' ? maxZ + 1 : minZ - 1;
+      return newConfig;
     });
   };
-
-  const handleRemoveItem = (itemToRemove) => {
-    if (!isMyRoom || !isEditing) return;
+  const handleDeleteSelectedItem = () => {
+    if (!isMyRoom || !isEditing || !selectedItemId) return;
+    if (selectedItemId === 'playerAvatar' || selectedItemId === 'playerPet') return alert("캐릭터와 펫은 삭제할 수 없습니다.");
+    setRoomConfig(prev => ({ ...prev, items: prev.items.filter(item => item.instanceId !== selectedItemId) }));
+    setSelectedItemId(null);
+  };
+  const handleAddItem = (item) => {
+    const currentZIndexes = roomConfig.items.map(i => i.zIndex);
+    const maxZ = currentZIndexes.length > 0 ? Math.max(...currentZIndexes) : 99;
+    setRoomConfig(prev => ({ ...prev, items: [...prev.items, { instanceId: Date.now(), itemId: item.id, left: 50, top: 50, zIndex: maxZ + 1, isFlipped: false }] }));
+  };
+  const handleRemoveItem = (item) => {
     setRoomConfig(prev => {
-      const itemsOfType = prev.items.filter(i => i.itemId === itemToRemove.id);
+      const itemsOfType = prev.items.filter(i => i.itemId === item.id);
       if (itemsOfType.length === 0) return prev;
-
-      const lastItem = itemsOfType.reduce((latest, current) =>
-        current.instanceId > latest.instanceId ? current : latest
-      );
-
-      if (selectedItemId === lastItem.instanceId) {
-        setSelectedItemId(null);
-      }
-
-      return {
-        ...prev,
-        items: prev.items.filter(item => item.instanceId !== lastItem.instanceId)
-      };
+      const lastItem = itemsOfType[itemsOfType.length - 1];
+      if (selectedItemId === lastItem.instanceId) setSelectedItemId(null);
+      return { ...prev, items: prev.items.filter(i => i.instanceId !== lastItem.instanceId) };
     });
-  };
-
-  const handleHouseSelect = (item) => {
-    if (!isMyRoom || !isEditing) return;
-    setRoomConfig(prev => ({ ...prev, houseId: prev.houseId === item.id ? null : item.id }));
-  };
-
-  const handleBackgroundSelect = (item) => {
-    if (!isMyRoom || !isEditing) return;
-    setRoomConfig(prev => ({ ...prev, backgroundId: prev.backgroundId === item.id ? null : item.id }));
   };
 
   const handleSaveLayout = async () => {
-    if (!classId || !isMyRoom || !isEditing) return;
-    if (!roomContainerRef.current) return;
-
+    if (!classId || !isMyRoom || !isEditing || !roomContainerRef.current) return;
     setIsLoadingSnapshot(true);
-
-    // [수정] 캡처 전 아바타와 펫 숨기기 (클래스명 사용)
-    const avatarElement = roomContainerRef.current.querySelector('.player-avatar');
-    const petElement = roomContainerRef.current.querySelector('.player-pet');
-    let avatarOriginalDisplay = '';
-    let petOriginalDisplay = '';
-
-    if (avatarElement) {
-      avatarOriginalDisplay = avatarElement.style.display;
-      avatarElement.style.display = 'none';
-    }
-    if (petElement) {
-      petOriginalDisplay = petElement.style.display;
-      petElement.style.display = 'none';
-    }
-
-    const currentWidth = roomContainerRef.current.offsetWidth;
-    const fixedHeight = currentWidth * 0.75;
-
-    const originalStyle = {
-      width: roomContainerRef.current.style.width,
-      height: roomContainerRef.current.style.height,
-      paddingTop: roomContainerRef.current.style.paddingTop,
-      position: roomContainerRef.current.style.position
-    };
-
-    roomContainerRef.current.style.width = `${currentWidth}px`;
-    roomContainerRef.current.style.height = `${fixedHeight}px`;
-    roomContainerRef.current.style.paddingTop = '0px';
-    roomContainerRef.current.style.position = 'relative';
-
+    const avatarEl = roomContainerRef.current.querySelector('.player-avatar');
+    const petEl = roomContainerRef.current.querySelector('.player-pet');
+    if (avatarEl) avatarEl.style.display = 'none';
+    if (petEl) petEl.style.display = 'none';
     try {
-      const canvas = await html2canvas(roomContainerRef.current, {
-        useCORS: true,
-        scale: 2,
-        backgroundColor: null,
-        scrollX: 0,
-        scrollY: 0,
-      });
-
+      const canvas = await html2canvas(roomContainerRef.current, { useCORS: true, scale: 2, backgroundColor: null });
       const imageDataUrl = canvas.toDataURL("image/jpeg", 0.8);
-
       const storageRef = ref(storage, `classes/${classId}/players/${playerId}/myRoomSnapshot.jpg`);
       await uploadString(storageRef, imageDataUrl, 'data_url');
-
-      const originalDownloadUrl = await getDownloadURL(storageRef);
-      const downloadUrlWithCache = `${originalDownloadUrl}?t=${Date.now()}`;
-
-      await updateDoc(doc(db, 'classes', classId, 'players', playerId), {
-        myRoomConfig: roomConfig,
-        myRoomSnapshotUrl: downloadUrlWithCache
-      });
-
+      const downloadUrl = await getDownloadURL(storageRef);
+      const downloadUrlWithCache = `${downloadUrl}?t=${Date.now()}`;
+      await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig, myRoomSnapshotUrl: downloadUrlWithCache });
       setSnapshotUrl(downloadUrlWithCache);
-      setIsEditing(false);
-      setSelectedItemId(null);
-
-      alert('마이룸이 저장되었습니다!');
-    } catch (error) {
-      console.error("마이룸 저장 중 오류:", error);
-      alert('저장 중 오류가 발생했습니다.');
-    } finally {
-      roomContainerRef.current.style.width = originalStyle.width;
-      roomContainerRef.current.style.height = originalStyle.height;
-      roomContainerRef.current.style.paddingTop = '';
-      roomContainerRef.current.style.position = originalStyle.position;
-
-      // [수정] 캡처 후 아바타와 펫 다시 보이기
-      if (avatarElement) avatarElement.style.display = avatarOriginalDisplay;
-      if (petElement) petElement.style.display = petOriginalDisplay;
-
-      setIsLoadingSnapshot(false);
-    }
+      setIsEditing(false); setSelectedItemId(null);
+      alert('저장되었습니다! 📸');
+    } catch (e) { console.error(e); alert('저장 중 오류 발생'); }
+    finally { if (avatarEl) avatarEl.style.display = ''; if (petEl) petEl.style.display = ''; setIsLoadingSnapshot(false); }
   };
 
-  const handleResetLayout = () => {
-    if (window.confirm('정말로 방의 모든 아이템을 치우고 초기 상태로 되돌리시겠습니까? 이 작업은 저장하기 전까지는 적용되지 않습니다.')) {
-      setRoomConfig({
-        items: [],
-        houseId: null,
-        backgroundId: null,
-        playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false },
-        playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false }
-      });
-      setSelectedItemId(null);
-    }
+  // --- Handlers (Visitor Drag) ---
+  const handleVisitorDragStart = (e) => {
+    e.stopPropagation();
+    setIsDraggingVisitor(true);
   };
+
+  // 글로벌 드래그 이벤트 (화면 밖으로 나가는 것 등 방지)
+  useEffect(() => {
+    if (!isDraggingVisitor) return;
+
+    const handleMove = (e) => {
+      if (!roomContainerRef.current) return;
+
+      const containerRect = roomContainerRef.current.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      // 컨테이너 내 상대 좌표 계산 (0~100%)
+      let newX = ((clientX - containerRect.left) / containerRect.width) * 100;
+      let newY = ((clientY - containerRect.top) / containerRect.height) * 100;
+
+      // 범위 제한 (화면 밖 이탈 방지)
+      newX = Math.max(0, Math.min(100, newX));
+      newY = Math.max(0, Math.min(100, newY));
+
+      setVisitorPos({ x: newX, y: newY });
+    };
+
+    const handleEnd = () => setIsDraggingVisitor(false);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove);
+    window.addEventListener('touchend', handleEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+  }, [isDraggingVisitor]);
+
+
+  // --- Handlers (Social) ---
 
   const handlePostComment = async () => {
-    if (!classId || !newComment.trim() || !myPlayerData) return;
-
-    const filteredComment = filterProfanity(newComment);
-
-    try {
-      await addMyRoomComment(classId, playerId, {
-        commenterId: myPlayerData.id,
-        commenterName: myPlayerData.name,
-        text: filteredComment,
-      });
-      setNewComment("");
-      fetchRoomSocialData();
-    } catch (error) {
-      alert(`댓글 작성 실패: ${error.message}`);
-    }
+    if (!newComment.trim()) return;
+    try { await addMyRoomComment(classId, playerId, { commenterId: myPlayerData.id, commenterName: myPlayerData.name, text: filterProfanity(newComment) }); setNewComment(""); fetchRoomSocialData(playerId); } catch (e) { alert(e.message); }
   };
-
-  const handleAddMyRoomReply = async (commentId) => {
-    if (!classId || !replyContent.trim() || !myPlayerData) return;
-
-    const filteredReply = filterProfanity(replyContent);
-
-    try {
-      await addMyRoomReply(classId, playerId, commentId, {
-        replierId: myPlayerData.id,
-        replierName: myPlayerData.name,
-        text: filteredReply,
-      });
-      setReplyContent("");
-      setReplyingTo(null);
-      fetchRoomSocialData();
-    } catch (error) {
-      alert(`답글 작성 실패: ${error.message}`);
-    }
-  };
-
   const handleLikeRoom = async () => {
-    if (!classId || isMyRoom || !myPlayerData) return;
     if (hasLikedThisMonth) return;
-
-    try {
-      setLikes(prev => [
-        ...prev,
-        { id: myPlayerData.id, name: myPlayerData.name, lastLikedMonth: new Date().toISOString().slice(0, 7) }
-      ]);
-      await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name);
-      fetchRoomSocialData();
-    } catch (error) {
-      console.error(error);
-      alert("좋아요 반영에 실패했습니다.");
-      fetchRoomSocialData();
-    }
-  };
-
-  const handleLikeComment = async (commentId) => {
-    if (!classId || !myPlayerData) return alert("로그인 후 이용해주세요.");
-    try {
-      await likeMyRoomComment(classId, playerId, commentId, myPlayerData.id);
-      fetchRoomSocialData();
-    } catch (error) {
-      alert(error.message);
-    }
-  };
-
-  const handleLikeMyRoomReply = async (comment, reply) => {
-    if (!classId || !myPlayerData) return;
-    if (myPlayerData.id !== comment.commenterId) {
-      alert("댓글을 작성한 사람만 답글에 '좋아요'를 누를 수 있습니다.");
-      return;
-    }
-    try {
-      await likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id);
-      fetchRoomSocialData();
-    } catch (error) {
-      alert(error.message);
-    }
-  }
-
-  const handleDeleteComment = async (commentId) => {
-    if (!classId) return;
-    if (window.confirm("정말로 이 댓글을 삭제하시겠습니까?")) {
-      try {
-        await deleteMyRoomComment(classId, playerId, commentId);
-        fetchRoomSocialData();
-      } catch (error) {
-        alert(`댓글 삭제 실패: ${error.message}`);
-      }
-    }
-  };
-
-  const handleDeleteReply = async (commentId, reply) => {
-    if (!classId) return;
-    if (window.confirm("정말로 이 답글을 삭제하시겠습니까?")) {
-      try {
-        await deleteMyRoomReply(classId, playerId, commentId, reply);
-        fetchRoomSocialData();
-      } catch (error) {
-        alert(`답글 삭제 실패: ${error.message}`);
-      }
-    }
+    try { await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name); setLikes(prev => [...prev, { id: myPlayerData.id, lastLikedMonth: new Date().toISOString().slice(0, 7) }]); } catch (e) { alert("좋아요 실패"); }
   };
 
   const handleRandomVisit = () => {
-    if (!myPlayerData) return;
-    const visitedKey = 'visitedMyRooms';
-    let visited = JSON.parse(sessionStorage.getItem(visitedKey)) || [];
-    const allPlayerIds = players.filter(p => p.status !== 'inactive' && p.id !== myPlayerData.id).map(p => p.id);
-    let unvisited = allPlayerIds.filter(id => !visited.includes(id) && id !== playerId);
-    if (unvisited.length === 0) {
-      unvisited = allPlayerIds.filter(id => id !== playerId);
-      visited = [];
-      if (unvisited.length > 0) {
-        alert("모든 친구들의 방을 둘러보았습니다! 처음부터 다시 시작합니다.");
-      }
+    const visited = JSON.parse(sessionStorage.getItem('visitedMyRooms') || '[]');
+    const candidates = players.filter(p => p.id !== myPlayerData?.id && p.id !== playerId && !visited.includes(p.id));
+    if (candidates.length === 0) {
+      if (players.length <= 1) return alert("방문할 친구가 없어요.");
+      sessionStorage.removeItem('visitedMyRooms'); alert("모든 방을 다 둘러봤어요! 다시 시작합니다."); return;
     }
-    if (unvisited.length === 0) {
-      alert("방문할 다른 친구가 없습니다.");
-      return;
-    }
-    const randomPlayerId = unvisited[Math.floor(Math.random() * unvisited.length)];
-    visited.push(randomPlayerId);
-    sessionStorage.setItem(visitedKey, JSON.stringify(visited));
-    navigate(`/my-room/${randomPlayerId}`);
+    const target = candidates[Math.floor(Math.random() * candidates.length)];
+    sessionStorage.setItem('visitedMyRooms', JSON.stringify([...visited, target.id]));
+    navigate(`/my-room/${target.id}`);
   };
 
-  const handleBackgroundClick = (e) => {
-    if (e.target === e.currentTarget && isEditing) {
-      setSelectedItemId(null);
-    }
-  };
-
-  if (!roomOwnerData) {
-    return <Wrapper><p>존재하지 않는 학생입니다.</p></Wrapper>
-  }
+  if (!roomOwnerData) return <PageWrapper>존재하지 않는 학생입니다.</PageWrapper>;
 
   return (
-    <Wrapper>
-      <Header>
-        <TitleContainer>
-          {equippedTitle && (
-            <EquippedTitle color={equippedTitle.color}>
-              {equippedTitle.icon} {equippedTitle.name}
-            </EquippedTitle>
+    <PageWrapper>
+      <HeaderSection>
+        <TitleGroup>
+          {equippedTitle && <EquippedTitleBadge color={equippedTitle.color}>{equippedTitle.icon} {equippedTitle.name}</EquippedTitleBadge>}
+          <OwnerName>{roomOwnerData.name}의 마이룸</OwnerName>
+        </TitleGroup>
+
+        <HeaderActions>
+          {!isMyRoom && (
+            <>
+              <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} $active={hasLikedThisMonth}>
+                {hasLikedThisMonth ? '❤️' : '🤍'} 좋아요 {likes.length}
+              </LikeButton>
+              <ActionButton onClick={handleRandomVisit}>🚀 랜덤 방문</ActionButton>
+            </>
           )}
-          <h1>{roomOwnerData?.name || '...'}의 마이룸</h1>
-        </TitleContainer>
-        {!isMyRoom && myPlayerData && (
-          <>
-            <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} title={hasLikedThisMonth ? "이번 달에 이미 좋아했습니다." : "이 방 좋아요!"}>
-              {hasLikedThisMonth ? '❤️' : '🤍'} {likes.length}
-            </LikeButton>
-            <VisitButton onClick={handleRandomVisit}>계속 놀러가기</VisitButton>
-          </>
-        )}
-        {isMyRoom && (
-          <LikeDisplay>
-            ❤️ {likes.length}
-          </LikeDisplay>
-        )}
-      </Header>
+          {isMyRoom && <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fa5252' }}>❤️ {likes.length}</span>}
 
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem', position: 'relative', zIndex: 100 }}>
-        <button
-          onClick={() => setShowFriendList(!showFriendList)}
-          style={{
-            background: 'white', border: '1px solid #ced4da', borderRadius: '20px',
-            padding: '0.5rem 1.2rem', cursor: 'pointer', fontSize: '0.95rem', color: '#495057',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
-          }}
-        >
-          👥 우리 반 친구 전체 보기 ({classmates.length}명) {showFriendList ? '▲' : '▼'}
-        </button>
-
-        {showFriendList && (
-          <FriendListModal>
-            {classmates.length > 0 ? classmates.map(friend => (
-              <FriendItem key={friend.id} onClick={() => {
-                navigate(`/my-room/${friend.id}`);
-                setShowFriendList(false);
-              }}>
-                <img
-                  src={baseAvatar}
-                  alt={friend.name}
-                  style={{ border: '1px solid #ddd' }}
-                />
-                <span style={{ flex: 1 }}>{friend.name}</span>
-                {friend.pets && friend.pets.length > 0 && (
-                  <span style={{ fontSize: '0.75rem', color: '#888', background: '#f1f3f5', padding: '2px 6px', borderRadius: '4px' }}>
-                    Lv.{(friend.pets.find(p => p.id === friend.partnerPetId) || friend.pets[0]).level}
-                  </span>
-                )}
-              </FriendItem>
-            )) : <p style={{ textAlign: 'center', color: '#888', padding: '1rem' }}>아직 반 친구가 없어요.</p>}
-          </FriendListModal>
-        )}
-      </div>
-
-      <RoomContainer ref={roomContainerRef} onClick={handleBackgroundClick}>
-        {/* 1. 배경 레이어 (스냅샷 모드 vs 편집 모드) */}
-        {!isEditing && snapshotUrl ? (
-          <img
-            src={snapshotUrl}
-            alt="마이룸 스냅샷"
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'fill',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              pointerEvents: 'none'
-            }}
-          />
-        ) : (
-          <>
-            <RoomBackground src={myRoomBg} alt="마이룸 기본 배경" />
-            {appliedHouse && <AppliedHouse src={appliedHouse.src} alt="적용된 하우스" />}
-            {appliedBackground && <AppliedBackground src={appliedBackground.src} alt="적용된 배경" />}
-
-            {/* 아이템들 (가구는 스냅샷에 포함되므로, 편집 모드일 때만 따로 렌더링) */}
-            {roomConfig.items.map((itemInstance) => {
-              const itemInfo = myRoomItems.find(item => item.id === itemInstance.itemId);
-              if (!itemInfo) return null;
-
-              return (
-                <InteractiveItem
-                  key={itemInstance.instanceId}
-                  $width={itemInfo.width || 15}
-                  $left={itemInstance.left} $top={itemInstance.top}
-                  $zIndex={itemInstance.zIndex} $isFlipped={itemInstance.isFlipped}
-                  $isEditing={isEditing}
-                  $isSelected={selectedItemId === itemInstance.instanceId}
-                  onClick={(e) => handleSelect(e, itemInstance.instanceId)}
-                >
-                  <img src={itemInfo.src} alt={itemInfo.displayName || itemInfo.id} />
-                </InteractiveItem>
-              );
-            })}
-          </>
-        )}
-
-        {/* 2. 전경 레이어 (아바타 & 펫) - 조건문 밖으로 꺼내서 항상 보이게 함! ✨ */}
-
-        {/* 아바타 */}
-        {roomConfig.playerAvatar && (
-          <InteractiveItem
-            className="player-avatar"
-            $width={15} $height={25}
-            $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
-            $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
-            $isEditing={isEditing}
-            $isSelected={selectedItemId === 'playerAvatar'}
-            onClick={(e) => handleSelect(e, 'playerAvatar')}
-          >
-            {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} alt="" />)}
-          </InteractiveItem>
-        )}
-
-        {/* 펫 */}
-        {roomConfig.playerPet && ownerPartnerPet && (
-          <InteractiveItem
-            className="player-pet"
-            $width={12} $height={12}
-            $left={roomConfig.playerPet.left} $top={roomConfig.playerPet.top}
-            $zIndex={roomConfig.playerPet.zIndex} $isFlipped={roomConfig.playerPet.isFlipped}
-            $isEditing={isEditing}
-            $isSelected={selectedItemId === 'playerPet'}
-            onClick={(e) => handleSelect(e, 'playerPet')}
-          >
-            <img
-              src={petImageMap[`${ownerPartnerPet.appearanceId}_idle`] || baseAvatar}
-              alt="pet"
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            />
-          </InteractiveItem>
-        )}
-
-        {isEditing && selectedItemId && (
-          <>
-            <LeftControllerWrapper>
-              <DeleteItemButton onClick={handleDeleteSelectedItem}>🗑️</DeleteItemButton>
-              <LayerButton onClick={() => handleLayerChange('forward')} title="맨 앞으로 가져오기">위로</LayerButton>
-              <LayerButton onClick={() => handleLayerChange('backward')} title="맨 뒤로 보내기">아래로</LayerButton>
-            </LeftControllerWrapper>
-
-            <RightControllerWrapper>
-              <UpButton onMouseDown={() => startMoving('up')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('up')} onTouchEnd={stopMoving}>▲</UpButton>
-              <LeftButton onMouseDown={() => startMoving('left')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('left')} onTouchEnd={stopMoving}>◀</LeftButton>
-              <CenterButton onClick={handleFlip}>반전</CenterButton>
-              <RightButton onMouseDown={() => startMoving('right')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('right')} onTouchEnd={stopMoving}>▶</RightButton>
-              <DownButton onMouseDown={() => startMoving('down')} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={() => startMoving('down')} onTouchEnd={stopMoving}>▼</DownButton>
-            </RightControllerWrapper>
-          </>
-        )}
-      </RoomContainer>
-
-      {isMyRoom && (
-        isEditing ? (
-          <InventoryContainer>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>내 아이템 목록</h3>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  onClick={() => {
-                    if (confirm("수정을 취소하고 나가시겠습니까? (저장되지 않습니다)")) {
-                      setIsEditing(false);
-                      setSelectedItemId(null);
-                    }
-                  }}
-                  style={{
-                    padding: '0.8rem 1.5rem',
-                    background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
-                  }}
-                >
-                  나가기
-                </button>
-                <ResetButton onClick={handleResetLayout}>초기화</ResetButton>
-                <SaveButton onClick={handleSaveLayout} disabled={isLoadingSnapshot}>
-                  {isLoadingSnapshot ? '저장 중...' : '마이룸 저장'}
-                </SaveButton>
-              </div>
-            </div>
-
-            <TabContainer style={{ justifyContent: 'flex-start', borderBottom: '1px solid #dee2e6' }}>
-              {['하우스', '배경', '가구', '가전', '소품'].map(category => (
-                <TabButton
-                  key={category}
-                  $active={activeInventoryTab === category}
-                  onClick={() => setActiveInventoryTab(category)}
-                >
-                  {category} ({categorizedInventory[category]?.length || 0})
-                </TabButton>
-              ))}
-            </TabContainer>
-
-            <AccordionContent $isOpen={true} style={{ maxHeight: '300px', overflowY: 'auto' }}>
-              <InventoryGrid>
-                {categorizedInventory[activeInventoryTab]?.length > 0 ? categorizedInventory[activeInventoryTab].map(item => {
-                  if (['하우스', '배경'].includes(activeInventoryTab)) {
-                    const isHouse = item.category === '하우스';
-                    return (
-                      <InventoryItem key={item.id} $isSelected={isHouse ? roomConfig.houseId === item.id : roomConfig.backgroundId === item.id}>
-                        <img src={item.src} alt={item.displayName || item.id} onClick={() => isHouse ? handleHouseSelect(item) : handleBackgroundSelect(item)} />
-                        <p>{item.displayName || item.id}</p>
-                      </InventoryItem>
-                    )
-                  }
+          <div style={{ position: 'relative' }}>
+            <ActionButton onClick={() => setShowFriendList(!showFriendList)}>
+              👥 친구 목록 {showFriendList ? '▲' : '▼'}
+            </ActionButton>
+            {showFriendList && (
+              <FriendListDropdown>
+                {classmates.map(friend => {
+                  const friendPet = friend.pets && friend.pets.length > 0
+                    ? (friend.pets.find(p => p.id === friend.partnerPetId) || friend.pets[0])
+                    : (friend.pet || null);
                   return (
-                    <InventoryItem key={item.id}>
-                      <img src={item.src} alt={item.displayName || item.id} />
-                      <p>{item.displayName || item.id}</p>
-                      <ItemControls>
-                        <ControlButton onClick={() => handleRemoveItem(item)} disabled={(itemCounts[item.id] || 0) === 0}>-</ControlButton>
-                        <ItemCount>{itemCounts[item.id] || 0}</ItemCount>
-                        <ControlButton onClick={() => handleAddItem(item)}>+</ControlButton>
-                      </ItemControls>
-                    </InventoryItem>
+                    <FriendItem key={friend.id} onClick={() => { navigate(`/my-room/${friend.id}`); setShowFriendList(false); }}>
+                      {friendPet ? (
+                        <img className="pet-icon" src={petImageMap[`${friendPet.appearanceId}_idle`] || baseAvatar} alt="pet" />
+                      ) : (
+                        <span className="no-pet">😊</span>
+                      )}
+                      <div className="info">
+                        <span className="name">{friend.name}</span>
+                        {friendPet && <span className="level">Lv.{friendPet.level}</span>}
+                      </div>
+                    </FriendItem>
                   );
-                }) : <p>해당 카테고리의 아이템이 없습니다.</p>}
-              </InventoryGrid>
-            </AccordionContent>
-          </InventoryContainer>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-            <EditRoomButton onClick={() => { setIsEditing(true); setSelectedItemId(null); }}>마이룸 수정</EditRoomButton>
+                })}
+                {classmates.length === 0 && <div style={{ padding: '0.5rem', color: '#adb5bd', textAlign: 'center' }}>친구가 없어요</div>}
+              </FriendListDropdown>
+            )}
           </div>
-        )
-      )}
+        </HeaderActions>
+      </HeaderSection>
 
-      <SocialFeaturesContainer>
-        <h2>방명록</h2>
-        {myPlayerData && (
-          <CommentInputSection>
-            <CommentTextarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="따뜻한 칭찬과 격려의 말을 남겨주세요." maxLength={100} />
-            <CommentSubmitButton onClick={handlePostComment}>등록</CommentSubmitButton>
-          </CommentInputSection>
-        )}
-        <CommentList>
-          {comments.slice(0, visibleCommentsCount).map(comment => (
-            <CommentWrapper key={comment.id}>
-              <CommentCard>
-                <CommentContent>
-                  <p>{comment.text}</p>
-                  <div>
-                    <Link to={`/my-room/${comment.commenterId}`} style={{ textDecoration: 'none', color: '#6c757d', fontWeight: 'bold' }}>{comment.commenterName}</Link>
-                    <Timestamp>{comment.createdAt?.toDate().toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })}</Timestamp>
-                  </div>
-                </CommentContent>
-                <CommentActions>
-                  {isMyRoom && (<DeleteButton onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}>답글</DeleteButton>)}
-                  {myPlayerData?.role === 'admin' && (<DeleteButton onClick={() => handleDeleteComment(comment.id)}>삭제</DeleteButton>)}
-                  {myPlayerData && (<LikeButton onClick={() => handleLikeComment(comment.id)} disabled={comment.likes.includes(myPlayerData.id)}>{comment.likes.includes(myPlayerData.id) ? '❤️' : '🤍'} {comment.likes.length}</LikeButton>)}
-                </CommentActions>
-              </CommentCard>
+      <LayoutGrid>
+        <LeftSection>
+          <RoomCanvasWrapper>
+            <RoomContainer ref={roomContainerRef} onClick={(e) => { if (e.target === e.currentTarget && isEditing) setSelectedItemId(null); }}>
+              {!isEditing && snapshotUrl ? (
+                <img src={snapshotUrl} alt="snapshot" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, objectFit: 'fill', pointerEvents: 'none' }} />
+              ) : (
+                <>
+                  <RoomBackgroundImg src={myRoomBg} alt="bg" />
+                  {appliedHouse && <AppliedHouse src={appliedHouse.src} />}
+                  {appliedBackground && <AppliedBackground src={appliedBackground.src} />}
 
-              {replyingTo === comment.id && (
-                <ReplyInputContainer>
-                  <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} placeholder="답글을 입력하세요..." rows={2} />
-                  <CommentSubmitButton onClick={() => handleAddMyRoomReply(comment.id)}>등록</CommentSubmitButton>
-                </ReplyInputContainer>
+                  {roomConfig.items.map(item => {
+                    const info = myRoomItems.find(i => i.id === item.itemId);
+                    if (!info) return null;
+                    return (
+                      <InteractiveItem
+                        key={item.instanceId}
+                        $width={info.width || 15}
+                        $left={item.left} $top={item.top} $zIndex={item.zIndex} $isFlipped={item.isFlipped}
+                        $isEditing={isEditing} $isSelected={selectedItemId === item.instanceId}
+                        onClick={(e) => handleSelect(e, item.instanceId)}
+                      >
+                        <img src={info.src} alt="item" />
+                      </InteractiveItem>
+                    );
+                  })}
+                </>
               )}
 
-              {comment.replies?.map((reply, index) => (
-                <ReplyCard key={index}>
-                  <CommentContent>
-                    <p>{reply.text}</p>
-                    <div>
-                      <Link to={`/my-room/${reply.replierId}`} style={{ textDecoration: 'none', color: '#6c757d', fontWeight: 'bold' }}>{reply.replierName}</Link>
-                      <Timestamp>{reply.createdAt?.toDate().toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })}</Timestamp>
-                    </div>
-                  </CommentContent>
-                  <CommentActions>
-                    {myPlayerData?.role === 'admin' && (<DeleteButton onClick={() => handleDeleteReply(comment.id, reply)}>삭제</DeleteButton>)}
-                    {myPlayerData?.id === comment.commenterId && (<LikeButton onClick={() => handleLikeMyRoomReply(comment, reply)} disabled={reply.likes.includes(myPlayerData.id)}>{reply.likes.includes(myPlayerData.id) ? '❤️' : '🤍'} {reply.likes.length}</LikeButton>)}
-                  </CommentActions>
-                </ReplyCard>
-              ))}
-            </CommentWrapper>
-          ))}
-        </CommentList>
-        {comments.length > visibleCommentsCount && (
-          <LoadMoreButton onClick={() => setVisibleCommentsCount(prev => prev + 5)}>
-            댓글 더보기
-          </LoadMoreButton>
-        )}
-      </SocialFeaturesContainer>
+              {/* 방 주인 아바타 & 펫 (항상 표시) */}
+              {roomConfig.playerAvatar && (
+                <InteractiveItem
+                  className="player-avatar"
+                  $width={15} $height={25}
+                  $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
+                  $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
+                  $isEditing={isEditing} $isSelected={selectedItemId === 'playerAvatar'}
+                  onClick={(e) => handleSelect(e, 'playerAvatar')}
+                >
+                  {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} />)}
+                </InteractiveItem>
+              )}
+              {roomConfig.playerPet && ownerPartnerPet && (
+                <InteractiveItem
+                  className="player-pet"
+                  $width={12} $height={12}
+                  $left={roomConfig.playerPet.left} $top={roomConfig.playerPet.top}
+                  $zIndex={roomConfig.playerPet.zIndex} $isFlipped={roomConfig.playerPet.isFlipped}
+                  $isEditing={isEditing} $isSelected={selectedItemId === 'playerPet'}
+                  onClick={(e) => handleSelect(e, 'playerPet')}
+                >
+                  <img src={petImageMap[`${ownerPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </InteractiveItem>
+              )}
 
-      <ButtonContainer>
-        <ExitButton onClick={() => navigate('/')}>홈 화면으로</ExitButton>
-      </ButtonContainer>
-    </Wrapper>
+              {/* [방문자 모드] 내 아바타 (드래그 가능) */}
+              {!isMyRoom && myPlayerData && (
+                <VisitorWrapper
+                  $x={visitorPos.x}
+                  $y={visitorPos.y}
+                  onMouseDown={handleVisitorDragStart}
+                  onTouchStart={handleVisitorDragStart}
+                >
+                  <div className="label">Visiting...</div>
+                  <FloatingContent>
+                    <VisitorAvatar>
+                      {myAvatarUrls.map(url => <AvatarPartImage key={url} src={url} />)}
+                    </VisitorAvatar>
+                    {myPartnerPet && (
+                      <VisitorPet>
+                        <img src={petImageMap[`${myPartnerPet.appearanceId}_idle`] || baseAvatar} alt="myPet" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      </VisitorPet>
+                    )}
+                  </FloatingContent>
+                </VisitorWrapper>
+              )}
+
+              {/* 편집 컨트롤러 */}
+              {isEditing && selectedItemId && (
+                <>
+                  <LeftControllerWrapper>
+                    <DeleteItemButton onClick={handleDeleteSelectedItem}>🗑️</DeleteItemButton>
+                    <LayerButton onClick={() => handleLayerChange('forward')}>▲ Up</LayerButton>
+                    <LayerButton onClick={() => handleLayerChange('backward')}>▼ Down</LayerButton>
+                  </LeftControllerWrapper>
+                  <RightControllerWrapper>
+                    <div style={{ gridArea: '1/2/2/3' }}><DPadButton onMouseDown={() => startMoving('up')} onMouseUp={stopMoving} onTouchStart={() => startMoving('up')} onTouchEnd={stopMoving}>▲</DPadButton></div>
+                    <div style={{ gridArea: '2/1/3/2' }}><DPadButton onMouseDown={() => startMoving('left')} onMouseUp={stopMoving} onTouchStart={() => startMoving('left')} onTouchEnd={stopMoving}>◀</DPadButton></div>
+                    <div style={{ gridArea: '2/2/3/3' }}><DPadButton onClick={handleFlip}>반전</DPadButton></div>
+                    <div style={{ gridArea: '2/3/3/4' }}><DPadButton onMouseDown={() => startMoving('right')} onMouseUp={stopMoving} onTouchStart={() => startMoving('right')} onTouchEnd={stopMoving}>▶</DPadButton></div>
+                    <div style={{ gridArea: '3/2/4/3' }}><DPadButton onMouseDown={() => startMoving('down')} onMouseUp={stopMoving} onTouchStart={() => startMoving('down')} onTouchEnd={stopMoving}>▼</DPadButton></div>
+                  </RightControllerWrapper>
+                </>
+              )}
+            </RoomContainer>
+          </RoomCanvasWrapper>
+
+          <ButtonGroup>
+            {isMyRoom && (
+              isEditing ? (
+                <>
+                  <SecondaryBtn onClick={() => { if (confirm("저장하지 않고 나가시겠습니까?")) { setIsEditing(false); setSelectedItemId(null); } }}>취소</SecondaryBtn>
+                  <SecondaryBtn onClick={() => { if (confirm("초기화 하시겠습니까?")) setRoomConfig(initialRoomConfig); }}>초기화</SecondaryBtn>
+                  <PrimaryBtn onClick={handleSaveLayout} disabled={isLoadingSnapshot}>{isLoadingSnapshot ? '저장 중...' : '저장하기'}</PrimaryBtn>
+                </>
+              ) : (
+                <ActionButton onClick={() => { setIsEditing(true); setSelectedItemId(null); }} style={{ background: '#339af0', color: 'white' }}>
+                  🎨 마이룸 꾸미기
+                </ActionButton>
+              )
+            )}
+            <SecondaryBtn onClick={() => navigate('/')}>🏠 홈으로</SecondaryBtn>
+          </ButtonGroup>
+
+          {isEditing && (
+            <InventoryContainer>
+              <InventoryHeader><h3>📦 내 아이템</h3></InventoryHeader>
+              <TabContainer>
+                {['하우스', '배경', '가구', '가전', '소품'].map(cat => (
+                  <TabButton key={cat} $active={activeInventoryTab === cat} onClick={() => setActiveInventoryTab(cat)}>
+                    {cat} ({categorizedInventory[cat]?.length || 0})
+                  </TabButton>
+                ))}
+              </TabContainer>
+              <InventoryGrid>
+                {categorizedInventory[activeInventoryTab]?.length > 0 ? categorizedInventory[activeInventoryTab].map(item => (
+                  <InventoryItem key={item.id} $isSelected={item.id === roomConfig.houseId || item.id === roomConfig.backgroundId}>
+                    <img src={item.src} alt={item.displayName}
+                      onClick={() => {
+                        if (activeInventoryTab === '하우스') setRoomConfig(prev => ({ ...prev, houseId: prev.houseId === item.id ? null : item.id }));
+                        else if (activeInventoryTab === '배경') setRoomConfig(prev => ({ ...prev, backgroundId: prev.backgroundId === item.id ? null : item.id }));
+                      }}
+                    />
+                    <p>{item.displayName || '아이템'}</p>
+                    {['가구', '가전', '소품'].includes(activeInventoryTab) && (
+                      <ItemControls>
+                        <ControlBtn onClick={() => handleRemoveItem(item)} disabled={!itemCounts[item.id]}>-</ControlBtn>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{itemCounts[item.id] || 0}</span>
+                        <ControlBtn onClick={() => handleAddItem(item)}>+</ControlBtn>
+                      </ItemControls>
+                    )}
+                  </InventoryItem>
+                )) : <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#adb5bd', padding: '1rem' }}>아이템이 없습니다.</div>}
+              </InventoryGrid>
+            </InventoryContainer>
+          )}
+        </LeftSection>
+
+        <RightSection>
+          <SocialContainer>
+            <SocialHeader>
+              <h2>📝 방명록 <span>({comments.length})</span></h2>
+            </SocialHeader>
+
+            {myPlayerData && (
+              <CommentInputSection>
+                <CommentTextarea
+                  placeholder="친구에게 따뜻한 한마디를 남겨주세요!"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  maxLength={100}
+                />
+                <SubmitButton onClick={handlePostComment}>등록</SubmitButton>
+              </CommentInputSection>
+            )}
+
+            <CommentList>
+              {comments.slice(0, visibleCommentsCount).map(comment => (
+                <div key={comment.id}>
+                  <CommentCard>
+                    <CommentHeader>
+                      <Link to={`/my-room/${comment.commenterId}`} className="author">{comment.commenterName}</Link>
+                      <span className="date">{comment.createdAt?.toDate().toLocaleDateString()}</span>
+                    </CommentHeader>
+                    <CommentBody>{comment.text}</CommentBody>
+                    <CommentActions>
+                      {isMyRoom && <button onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}>답글</button>}
+                      <button onClick={() => likeMyRoomComment(classId, playerId, comment.id, myPlayerData.id)} style={{ color: comment.likes.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
+                        {comment.likes.includes(myPlayerData?.id) ? '❤️' : '🤍'} {comment.likes.length}
+                      </button>
+                      {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId) && (
+                        <button className="delete" onClick={() => { if (confirm("삭제하시겠습니까?")) deleteMyRoomComment(classId, playerId, comment.id).then(() => fetchRoomSocialData(playerId)); }}>삭제</button>
+                      )}
+                    </CommentActions>
+                  </CommentCard>
+
+                  {replyingTo === comment.id && (
+                    <div style={{ margin: '0.5rem 0 0 1.5rem', display: 'flex', gap: '0.5rem' }}>
+                      <CommentTextarea value={replyContent} onChange={e => setReplyContent(e.target.value)} placeholder="답글 입력..." style={{ minHeight: '40px' }} />
+                      <SubmitButton onClick={() => addMyRoomReply(classId, playerId, comment.id, { replierId: myPlayerData.id, replierName: myPlayerData.name, text: filterProfanity(replyContent) }).then(() => { setReplyContent(""); setReplyingTo(null); fetchRoomSocialData(playerId); })}>등록</SubmitButton>
+                    </div>
+                  )}
+
+                  {comment.replies?.map((reply, idx) => (
+                    <ReplyCard key={idx}>
+                      <CommentHeader>
+                        <Link to={`/my-room/${reply.replierId}`} className="author">{reply.replierName}</Link>
+                        <span className="date">{reply.createdAt?.toDate().toLocaleDateString()}</span>
+                      </CommentHeader>
+                      <CommentBody>{reply.text}</CommentBody>
+                      <CommentActions>
+                        <button onClick={() => likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id)} style={{ color: reply.likes?.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
+                          {reply.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'} {reply.likes?.length || 0}
+                        </button>
+                        {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === reply.replierId) && (
+                          <button className="delete" onClick={() => { if (confirm("삭제하시겠습니까?")) deleteMyRoomReply(classId, playerId, comment.id, reply).then(() => fetchRoomSocialData(playerId)); }}>삭제</button>
+                        )}
+                      </CommentActions>
+                    </ReplyCard>
+                  ))}
+                </div>
+              ))}
+              {comments.length > visibleCommentsCount && (
+                <ActionButton onClick={() => setVisibleCommentsCount(prev => prev + 5)} style={{ justifyContent: 'center' }}>
+                  더 보기
+                </ActionButton>
+              )}
+            </CommentList>
+          </SocialContainer>
+        </RightSection>
+      </LayoutGrid>
+    </PageWrapper>
   );
 }
 

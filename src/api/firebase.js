@@ -3685,3 +3685,28 @@ export const setClassActiveQuizSets = async (classId, quizSetIds) => {
     throw error;
   }
 }
+
+export async function getClassInfoByInviteCode(inviteCode) {
+  try {
+    const classesRef = collection(db, "classes");
+    const q = query(classesRef, where("inviteCode", "==", inviteCode));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const docData = querySnapshot.docs[0].data();
+
+    // 1. 상세 정보(학교, 학년, 반)가 모두 있는 경우 (신규 생성 로직 대응)
+    if (docData.schoolName && docData.grade && docData.classNumber) {
+      return `${docData.schoolName} ${docData.grade}학년 ${docData.classNumber}반`;
+    }
+
+    // 2. 상세 정보가 없는 경우 (기존 학급) -> 기존 name 필드 반환
+    return docData.name || "알 수 없는 학급";
+  } catch (error) {
+    console.error("학급 정보 조회 실패:", error);
+    return null;
+  }
+}
