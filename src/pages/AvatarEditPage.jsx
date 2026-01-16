@@ -1,11 +1,13 @@
 // src/pages/AvatarEditPage.jsx
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, updatePlayerAvatar } from '../api/firebase';
+import { auth, updatePlayerAvatar, updatePlayerProfile, storage } from '../api/firebase'; // updatePlayerProfile 추가
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import baseAvatar from '../assets/base-avatar.png';
+import html2canvas from 'html2canvas';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -57,11 +59,20 @@ const AvatarFrame = styled.div`
   width: 200px;
   height: 200px;
   border-radius: 40px; 
+  /* 배경색은 여기에만 적용 (캡처 시 제외됨) */
   background: radial-gradient(circle at 50% 30%, #e7f5ff, #fff);
   position: relative;
   border: 4px solid #fff;
   box-shadow: 0 8px 20px rgba(0,0,0,0.15);
   overflow: hidden;
+`;
+
+/* [추가] 캡처 전용 투명 래퍼 */
+const AvatarCaptureArea = styled.div`
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: transparent; /* 투명 배경 */
 `;
 
 const PartImage = styled.img`
@@ -84,31 +95,21 @@ const InventorySection = styled.div`
   background-color: #f8f9fa;
 `;
 
-// [수정] 스크롤바 보이게 스타일링 + 가로 스크롤
 const TabContainer = styled.div`
   display: flex;
   background-color: #fff;
   border-bottom: 1px solid #eee;
-  overflow-x: auto; /* 가로 스크롤 */
+  overflow-x: auto;
   padding: 0.5rem;
   gap: 0.5rem;
   
-  /* 얇고 예쁜 스크롤바 커스텀 */
-  &::-webkit-scrollbar {
-    height: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background-color: #ced4da;
-    border-radius: 3px;
-  }
-  &::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
+  &::-webkit-scrollbar { height: 6px; }
+  &::-webkit-scrollbar-thumb { background-color: #ced4da; border-radius: 3px; }
+  &::-webkit-scrollbar-track { background-color: transparent; }
 `;
 
-// [수정] 탭 버튼이 찌그러지지 않도록 flex-shrink: 0 추가
 const TabButton = styled.button`
-  flex-shrink: 0; /* 공간 부족해도 줄어들지 않음 -> 스크롤 발생 유도 */
+  flex-shrink: 0;
   padding: 0.6rem 1rem;
   border: none;
   background: ${props => props.$active ? '#e7f5ff' : 'transparent'};
@@ -121,10 +122,7 @@ const TabButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.3rem;
-
-  &:hover {
-    background-color: #f1f3f5;
-  }
+  &:hover { background-color: #f1f3f5; }
 `;
 
 const PartGrid = styled.div`
@@ -149,17 +147,8 @@ const ItemCard = styled.div`
   padding: 5px;
   transition: all 0.2s;
   position: relative;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  }
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
+  &:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+  img { width: 100%; height: 100%; object-fit: contain; }
 `;
 
 const ButtonGroup = styled.div`
@@ -171,39 +160,21 @@ const ButtonGroup = styled.div`
 `;
 
 const ActionButton = styled.button`
-  flex: 1;
-  padding: 1rem;
-  border: none;
-  border-radius: 12px;
-  font-size: 1rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 0.1s;
-  
+  flex: 1; padding: 1rem; border: none; border-radius: 12px; font-size: 1rem; font-weight: 800;
+  cursor: pointer; transition: transform 0.1s;
   background-color: ${props => props.$primary ? '#20c997' : '#f1f3f5'};
   color: ${props => props.$primary ? 'white' : '#495057'};
   box-shadow: ${props => props.$primary ? '0 4px 0 #12b886' : '0 4px 0 #dee2e6'};
-
   &:hover { transform: translateY(-2px); }
-  &:active { 
-    transform: translateY(2px); 
-    box-shadow: none; 
-  }
+  &:active { transform: translateY(2px); box-shadow: none; }
+  &:disabled { background-color: #adb5bd; box-shadow: none; cursor: not-allowed; transform: none; }
 `;
 
 const CATEGORY_ICONS = {
-    face: '👶 얼굴',
-    eyes: '👀 눈',
-    nose: '👃 코',
-    mouth: '👄 입',
-    hair: '💇 헤어',
-    top: '👕 상의',
-    bottom: '👖 하의',
-    shoes: '👟 신발',
-    accessory: '👓 악세'
+    face: '👶 얼굴', eyes: '👀 눈', nose: '👃 코', mouth: '👄 입',
+    hair: '💇 헤어', top: '👕 상의', bottom: '👖 하의', shoes: '👟 신발', accessory: '👓 악세'
 };
 
-// [고정] 탭 순서 (모든 카테고리 표시 보장)
 const FIXED_CATEGORIES = ['face', 'eyes', 'nose', 'mouth', 'hair', 'top', 'bottom', 'shoes', 'accessory'];
 
 function AvatarEditPage() {
@@ -212,15 +183,13 @@ function AvatarEditPage() {
     const { players, avatarParts, fetchInitialData } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [avatarConfig, setAvatarConfig] = useState({});
+    const [isSaving, setIsSaving] = useState(false);
+    const avatarRef = useRef(null); // 캡처용 ref
 
-    const myPlayerData = useMemo(() => {
-        return players.find(p => p.authUid === currentUser?.uid);
-    }, [players, currentUser]);
+    const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
 
     useEffect(() => {
-        if (myPlayerData?.avatarConfig) {
-            setAvatarConfig(myPlayerData.avatarConfig);
-        }
+        if (myPlayerData?.avatarConfig) setAvatarConfig(myPlayerData.avatarConfig);
     }, [myPlayerData]);
 
     const myInventory = useMemo(() => {
@@ -245,22 +214,14 @@ function AvatarEditPage() {
         setAvatarConfig(prev => {
             const { category, id, slot } = part;
             const newConfig = JSON.parse(JSON.stringify(prev));
-
             if (category !== 'accessory') {
-                if (prev[category] === id) {
-                    delete newConfig[category];
-                } else {
-                    newConfig[category] = id;
-                }
+                if (prev[category] === id) delete newConfig[category];
+                else newConfig[category] = id;
             } else {
                 if (!newConfig.accessories) newConfig.accessories = {};
                 const currentPartInSlot = newConfig.accessories[slot];
-
-                if (currentPartInSlot === id) {
-                    delete newConfig.accessories[slot];
-                } else {
-                    newConfig.accessories[slot] = id;
-                }
+                if (currentPartInSlot === id) delete newConfig.accessories[slot];
+                else newConfig.accessories[slot] = id;
             }
             return newConfig;
         });
@@ -268,14 +229,42 @@ function AvatarEditPage() {
 
     const handleSave = async () => {
         if (!classId || !myPlayerData) return alert("오류: 선수 정보를 찾을 수 없습니다.");
+
+        setIsSaving(true);
+        let avatarSnapshotUrl = "";
+
         try {
+            // 1. 아바타 캡처 (투명 배경)
+            if (avatarRef.current) {
+                const canvas = await html2canvas(avatarRef.current, {
+                    backgroundColor: null, // [중요] 투명 배경 설정
+                    scale: 1.5, // 용량 절감을 위해 스케일 조정 (2 -> 1.5)
+                    useCORS: true,
+                    logging: false
+                });
+
+                const imageDataUrl = canvas.toDataURL("image/png");
+                const storageRef = ref(storage, `classes/${classId}/players/${myPlayerData.id}/avatarSnapshot_${Date.now()}.png`);
+                await uploadString(storageRef, imageDataUrl, 'data_url');
+                avatarSnapshotUrl = await getDownloadURL(storageRef);
+            }
+
+            // 2. avatarConfig 저장
             await updatePlayerAvatar(classId, myPlayerData.id, avatarConfig);
+
+            // 3. avatarSnapshotUrl 저장 (확실하게 하기 위해 updatePlayerProfile 사용)
+            if (avatarSnapshotUrl) {
+                await updatePlayerProfile(classId, myPlayerData.id, { avatarSnapshotUrl });
+            }
+
             alert("✨ 아바타가 저장되었습니다!");
             await fetchInitialData();
             navigate(`/profile/${myPlayerData.id}`);
         } catch (error) {
             console.error("아바타 저장 오류:", error);
             alert("저장 중 문제가 발생했습니다.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -283,7 +272,6 @@ function AvatarEditPage() {
         const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
         const config = avatarConfig || {};
         const urls = [];
-
         RENDER_ORDER.forEach(category => {
             const partId = config[category];
             if (partId) {
@@ -291,7 +279,6 @@ function AvatarEditPage() {
                 if (part) urls.push(part.src);
             }
         });
-
         if (config.accessories) {
             Object.values(config.accessories).forEach(partId => {
                 const part = avatarParts.find(p => p.id === partId);
@@ -304,30 +291,27 @@ function AvatarEditPage() {
     return (
         <PageContainer>
             <EditCard>
-                <Header>
-                    <Title>👗 아바타 꾸미기</Title>
-                </Header>
-
+                <Header><Title>👗 아바타 꾸미기</Title></Header>
                 <AvatarSection>
                     <AvatarFrame>
-                        <BaseAvatar src={baseAvatar} alt="기본 바디" />
-                        {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
+                        {/* 캡처 대상은 배경색이 없는 이 내부 div */}
+                        <AvatarCaptureArea ref={avatarRef}>
+                            <BaseAvatar src={baseAvatar} alt="기본 바디" crossOrigin="anonymous" />
+                            {selectedPartUrls.map(src => (
+                                <PartImage key={src} src={src} crossOrigin="anonymous" />
+                            ))}
+                        </AvatarCaptureArea>
                     </AvatarFrame>
                 </AvatarSection>
 
                 <InventorySection>
                     <TabContainer>
                         {FIXED_CATEGORIES.map(category => (
-                            <TabButton
-                                key={category}
-                                $active={activeTab === category}
-                                onClick={() => setActiveTab(category)}
-                            >
+                            <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
                                 {CATEGORY_ICONS[category] || category}
                             </TabButton>
                         ))}
                     </TabContainer>
-
                     <PartGrid>
                         {partCategories[activeTab]?.length > 0 ? (
                             partCategories[activeTab].map(part => {
@@ -337,28 +321,21 @@ function AvatarEditPage() {
                                 } else {
                                     isSelected = avatarConfig[activeTab] === part.id;
                                 }
-
                                 return (
-                                    <ItemCard
-                                        key={part.id}
-                                        $selected={isSelected}
-                                        onClick={() => handlePartSelect(part)}
-                                    >
+                                    <ItemCard key={part.id} $selected={isSelected} onClick={() => handlePartSelect(part)}>
                                         <img src={part.src} alt="아이템" />
                                     </ItemCard>
                                 );
                             })
                         ) : (
-                            <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#adb5bd', padding: '2rem' }}>
-                                아이템이 없습니다.
-                            </div>
+                            <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#adb5bd', padding: '2rem' }}>아이템이 없습니다.</div>
                         )}
                     </PartGrid>
                 </InventorySection>
 
                 <ButtonGroup>
-                    <ActionButton onClick={() => navigate(-1)}>취소</ActionButton>
-                    <ActionButton $primary onClick={handleSave}>저장하기</ActionButton>
+                    <ActionButton onClick={() => navigate(-1)} disabled={isSaving}>취소</ActionButton>
+                    <ActionButton $primary onClick={handleSave} disabled={isSaving}>{isSaving ? '저장 중...' : '저장하기'}</ActionButton>
                 </ButtonGroup>
             </EditCard>
         </PageContainer>

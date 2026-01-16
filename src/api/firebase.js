@@ -69,10 +69,18 @@ const addPointHistory = async (classId, playerId, playerName, changeAmount, reas
 };
 
 // --- 상점 및 아바타 (classId 추가) ---
-export async function updatePlayerAvatar(classId, playerId, avatarConfig) {
+export async function updatePlayerAvatar(classId, playerId, avatarConfig, snapshotUrl = null) {
   if (!classId) return;
-  const playerRef = doc(db, 'classes', classId, 'players', playerId);
-  await updateDoc(playerRef, { avatarConfig });
+
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const updateData = { avatarConfig };
+
+  // 스냅샷 URL이 넘어왔을 경우에만 DB에 저장
+  if (snapshotUrl) {
+    updateData.avatarSnapshotUrl = snapshotUrl;
+  }
+
+  await updateDoc(playerRef, updateData);
 }
 
 export async function buyAvatarPart(classId, playerId, part) {

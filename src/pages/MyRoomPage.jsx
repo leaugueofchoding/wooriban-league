@@ -809,7 +809,6 @@ function MyRoomPage() {
                 </InteractiveItem>
               )}
 
-              {/* [방문자 모드] 내 아바타 (드래그 가능) */}
               {!isMyRoom && myPlayerData && (
                 <VisitorWrapper
                   $x={visitorPos.x}
@@ -820,7 +819,16 @@ function MyRoomPage() {
                   <div className="label">Visiting...</div>
                   <FloatingContent>
                     <VisitorAvatar>
-                      {myAvatarUrls.map(url => <AvatarPartImage key={url} src={url} />)}
+                      {/* [수정] 스냅샷 이미지가 있으면 우선 로드, 없으면 기존 파츠 렌더링 */}
+                      {myPlayerData.avatarSnapshotUrl ? (
+                        <img
+                          src={myPlayerData.avatarSnapshotUrl}
+                          alt="My Avatar"
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        myAvatarUrls.map(url => <AvatarPartImage key={url} src={url} />)
+                      )}
                     </VisitorAvatar>
                     {myPartnerPet && (
                       <VisitorPet>
@@ -830,7 +838,6 @@ function MyRoomPage() {
                   </FloatingContent>
                 </VisitorWrapper>
               )}
-
               {/* 편집 컨트롤러 */}
               {isEditing && selectedItemId && (
                 <>
