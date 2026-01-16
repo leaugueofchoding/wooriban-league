@@ -6,8 +6,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../../assets/base-avatar.png';
 import { petImageMap } from '../../utils/petImageMap';
 import QuizWidget from '../QuizWidget';
-// [추가] store import (경로가 정확한지 확인해주세요)
 import { useLeagueStore } from '../../store/leagueStore';
+import { emblemMap } from '../../utils/emblemMap'; // 엠블럼 매핑 가져오기
+import defaultEmblem from '../../assets/default-emblem.png'; // 기본 엠블럼 가져오기
 
 const float = keyframes`
   0% { transform: translateY(0px); }
@@ -22,7 +23,6 @@ const shine = keyframes`
 
 const DashboardWrapper = styled.div`
   min-height: 100vh;
-  /* background-color: ... (삭제: 전역 스타일에서 처리) */
   padding: 4rem 1rem 4rem 1rem;
   font-family: 'Pretendard', sans-serif;
   overflow-x: hidden;
@@ -32,17 +32,15 @@ const DashboardWrapper = styled.div`
   align-items: center;
 `;
 
-// [수정] 팔레트 스타일 변경 (고정 위치 제거 -> 페이지 하단 배치)
 const PaletteContainer = styled.div`
-  margin-top: 3rem; /* 위쪽 콘텐츠와 넉넉한 간격 */
+  margin-top: 3rem;
   padding: 0.5rem 1rem;
   
   display: flex;
   gap: 0.8rem;
-  background: rgba(255, 255, 255, 0.4); /* 배경 더 투명하게 */
+  background: rgba(255, 255, 255, 0.4);
   border-radius: 30px;
   backdrop-filter: blur(5px);
-  /* 그림자와 테두리 제거하여 플랫하게 */
   box-shadow: none; 
   border: none;
 `;
@@ -109,7 +107,6 @@ const ContentContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  /* flex-grow: 1; 삭제 또는 유지 (DashboardWrapper가 flex column이므로 내용물이 적으면 Palette가 올라올 수 있음. margin-top: auto로 해결) */
 `;
 
 const CommonCardStyle = styled(Link)`
@@ -186,7 +183,8 @@ const IDPhotoFrame = styled.div`
 
 const IDPhotoContainer = styled.div`
   width: 100%; height: 100%; position: relative;
-  transform: scale(1.5) translateY(10%);
+  /* 스냅샷(한 장의 이미지)이 아닌 경우(파츠 렌더링)에만 확대/위치 조정 적용 */
+  ${props => props.$isSnapshot ? '' : 'transform: scale(1.5) translateY(10%);'}
 `;
 
 const IDInfo = styled.div`
@@ -304,7 +302,8 @@ const FriendAvatarGroup = styled.div`
 `;
 const FullBodyAvatar = styled.div`
   width: 100%; height: 100%; position: relative; filter: drop-shadow(0px 8px 8px rgba(0,0,0,0.2));
-  img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; transform: scale(1.1); }
+  /* 스냅샷 이미지가 아닐 때만 확대 적용 */
+  img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; ${props => props.$isSnapshot ? '' : 'transform: scale(1.1);'} }
 `;
 const FriendPet = styled.div`
   position: absolute; bottom: 5px; right: -10px; width: 50px; height: 50px; z-index: 2; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.2)); animation: ${float} 2s ease-in-out infinite alternate-reverse;
@@ -410,13 +409,9 @@ const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 function DashboardSimpleMode({
   myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName,
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
-  // simpleBgColor, onBgColorChange // 삭제됨
 }) {
   const [donationAmount, setDonationAmount] = useState('');
-
-  // ▼▼▼ [수정] 전역 스토어에서 themeColor, setThemeColor 가져오기 ▼▼▼
   const { themeColor, setThemeColor } = useLeagueStore();
-
   const [customColor, setCustomColor] = useState(null);
 
   const handleDonateClick = () => { onDonate(donationAmount); setDonationAmount(''); };
@@ -424,18 +419,26 @@ function DashboardSimpleMode({
   const handleCustomColorChange = (e) => {
     const newColor = e.target.value;
     setCustomColor(newColor);
-    setThemeColor(newColor); // [수정] 전역 상태 업데이트
+    setThemeColor(newColor);
   };
 
   return (
-    // $bgColor prop 제거
     <DashboardWrapper>
       <ContentContainer>
         <HeroSection>
           <IDCard to="/profile">
             <IDPhotoFrame>
-              <IDPhotoContainer>
-                {myAvatarUrls.map((src, i) => <PartImage key={i} src={src} style={{ zIndex: i }} />)}
+              <IDPhotoContainer $isSnapshot={!!myPlayerData?.avatarSnapshotUrl}>
+                {/* 1. 아바타 렌더링 최적화: 스냅샷이 있으면 스냅샷 이미지 사용 */}
+                {myPlayerData?.avatarSnapshotUrl ? (
+                  <img
+                    src={myPlayerData.avatarSnapshotUrl}
+                    alt="avatar snapshot"
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                ) : (
+                  myAvatarUrls.map((src, i) => <PartImage key={i} src={src} style={{ zIndex: i }} />)
+                )}
               </IDPhotoContainer>
             </IDPhotoFrame>
             <IDInfo>
@@ -474,9 +477,15 @@ function DashboardSimpleMode({
           <WidgetCard to="/league" $color="#845ef7">
             <WidgetHeader $icon="🏆"><h3>리그 순위</h3></WidgetHeader>
             <div style={{ flexGrow: 1 }}>
-              {topRankedTeams.length > 0 ? topRankedTeams.map((team, index) => (
+              {/* 2. 리그 테이블 최적화: 상위 6팀만 표시 & 엠블럼 추가 */}
+              {topRankedTeams.length > 0 ? topRankedTeams.slice(0, 6).map((team, index) => (
                 <div key={team.id} style={{ display: 'flex', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                   <span style={{ width: '30px', fontSize: '1.2rem' }}>{rankIcons[index]}</span>
+                  <img
+                    src={emblemMap[team.emblemId] || team.emblemUrl || defaultEmblem}
+                    alt="emblem"
+                    style={{ width: '24px', height: '24px', marginRight: '8px', objectFit: 'contain' }}
+                  />
                   <span style={{ fontWeight: '700', flex: 1, color: '#495057' }}>{team.teamName}</span>
                   <span style={{ fontWeight: '800', color: '#845ef7' }}>{team.points}</span>
                 </div>
@@ -498,8 +507,17 @@ function DashboardSimpleMode({
               <FriendCardContent>
                 <SpotLight />
                 <FriendAvatarGroup>
-                  <FullBodyAvatar>
-                    {friendAvatarUrls.map((src, i) => <PartImage key={i} src={src} style={{ zIndex: i }} />)}
+                  <FullBodyAvatar $isSnapshot={!!todaysFriend.avatarSnapshotUrl}>
+                    {/* 친구 아바타 최적화: 스냅샷이 있으면 사용 */}
+                    {todaysFriend.avatarSnapshotUrl ? (
+                      <img
+                        src={todaysFriend.avatarSnapshotUrl}
+                        alt="friend avatar snapshot"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      />
+                    ) : (
+                      friendAvatarUrls.map((src, i) => <PartImage key={i} src={src} style={{ zIndex: i }} />)
+                    )}
                   </FullBodyAvatar>
                   {friendPartnerPet && (
                     <FriendPet>

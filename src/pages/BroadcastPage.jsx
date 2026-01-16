@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { css, keyframes } from 'styled-components';
-import { useLeagueStore, useClassStore } from '../store/leagueStore'; // [수정]
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { db } from '../api/firebase';
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
-import whistleSound from '../assets/whistle.mp3';
+import whistleSound from '../assets/whistle.mp3'; // 소리 파일 유지 (TV용)
 import { emblemMap } from '../utils/emblemMap';
 import WinnerPage from './WinnerPage';
 
@@ -194,7 +194,7 @@ function PlayerNameplate({ player, isCaptain, goals, isHighlight }) {
 }
 
 function BroadcastPage({ isMiniMode = false }) {
-  const { classId } = useClassStore(); // [추가]
+  const { classId } = useClassStore();
   const { players, teams, currentSeason } = useLeagueStore();
   const [matchForDisplay, setMatchForDisplay] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
@@ -207,7 +207,9 @@ function BroadcastPage({ isMiniMode = false }) {
   const prevMatchesRef = useRef([]);
   const [showWinnerPage, setShowWinnerPage] = useState(false);
 
+  // 휘슬 소리 재생 함수
   const playWhistle = () => {
+    audioRef.current.volume = 1.0; // 볼륨 확보
     audioRef.current.play().catch(error => console.error("오디오 재생 오류:", error));
   };
 
@@ -220,15 +222,16 @@ function BroadcastPage({ isMiniMode = false }) {
   }, [currentSeason]);
 
   useEffect(() => {
-    if (!classId || !currentSeason) return; // [수정] classId 가드 추가
+    if (!classId || !currentSeason) return;
 
-    const matchesRef = collection(db, 'classes', classId, 'matches'); // [수정]
+    const matchesRef = collection(db, 'classes', classId, 'matches');
     const q = query(matchesRef, where("seasonId", "==", currentSeason.id));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const matchesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const prevMatches = prevMatchesRef.current;
 
+      // 1. 방금 종료된 경기 감지
       const justCompletedMatch = matchesData.find(match => {
         const prevMatch = prevMatches.find(p => p.id === match.id);
         return prevMatch && prevMatch.status !== '완료' && match.status === '완료';
@@ -236,7 +239,10 @@ function BroadcastPage({ isMiniMode = false }) {
 
       if (justCompletedMatch) {
         setMatchForDisplay(justCompletedMatch);
-        playWhistle();
+
+        // [수정] 경기 종료 시에는 소리 재생 안 함 (폭죽만)
+        // playWhistle(); <--- 제거됨
+
         const { teamA_score, teamB_score } = justCompletedMatch;
         if (teamA_score !== teamB_score) {
           if (!confettiCanvasRef.current) {
@@ -261,16 +267,27 @@ function BroadcastPage({ isMiniMode = false }) {
           }, 4000);
         }
 
+        // 5초 후 다음 경기로 화면 전환 시 삑 소리 재생
         setTimeout(() => {
           const inProgress = matchesData.find(m => m.status === '진행중');
           const upcoming = matchesData.find(m => m.status === '예정');
           setMatchForDisplay(inProgress || upcoming || { id: 'end', status: '종료' });
+
+          // [추가] 다음 경기로 화면이 넘어갈 때(준비 알림) 삑 소리 재생
+          if (inProgress || upcoming) {
+            playWhistle();
+          }
         }, 5000);
 
       } else {
+        // 평소 상태 업데이트 (새로고침 등)
         const inProgress = matchesData.find(m => m.status === '진행중');
         const upcoming = matchesData.find(m => m.status === '예정');
         setMatchForDisplay(inProgress || upcoming || { id: 'end', status: '종료' });
+
+        // 주의: 여기서 매번 소리를 재생하면 데이터가 바뀔 때마다 시끄러우므로,
+        // 상태가 '예정' -> '진행중'으로 바뀔 때(경기 시작)만 소리를 내도록 추가 로직을 넣을 수도 있습니다.
+        // 현재는 경기 종료 후 다음 경기 전환 시에만 확실히 소리가 납니다.
       }
 
       matchesData.sort((a, b) => {
@@ -281,7 +298,7 @@ function BroadcastPage({ isMiniMode = false }) {
       prevMatchesRef.current = matchesData;
     });
     return () => unsubscribe();
-  }, [currentSeason, classId]); // [수정]
+  }, [currentSeason, classId]);
 
   useEffect(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -298,7 +315,7 @@ function BroadcastPage({ isMiniMode = false }) {
 
         if (remaining === 0) {
           clearInterval(timerIntervalRef.current);
-          playWhistle();
+          playWhistle(); // 타임아웃 시 소리 재생 (경기 종료 알림)
         }
       }, 1000);
     } else if (matchForDisplay?.status === '예정') {

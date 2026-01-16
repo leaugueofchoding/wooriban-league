@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats } from '../api/firebase'; // [수정] getPlayerSeasonStats 추가
+import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats } from '../api/firebase';
 import DashboardGameMode from '../components/dashboard/DashboardGameMode';
 import DashboardSimpleMode from '../components/dashboard/DashboardSimpleMode';
 import confetti from 'canvas-confetti';
@@ -88,7 +88,7 @@ function DashboardPage() {
     // 심플 모드 배경색 상태 관리
     const [simpleBgColor, setSimpleBgColor] = useState(() => localStorage.getItem('simpleBgColor') || '#f8f9fa');
 
-    // [추가] 우승 횟수 상태 관리
+    // 우승 횟수 상태 관리
     const [winCounts, setWinCounts] = useState({});
 
     const myPlayerData = useMemo(() => currentUser ? players.find(p => p.authUid === currentUser.uid) : null, [players, currentUser]);
@@ -111,7 +111,7 @@ function DashboardPage() {
 
     const todaysFriend = useMemo(() => getTodayStar(players, myPlayerData?.id), [players, myPlayerData]);
 
-    // [추가] 우승 횟수 조회 로직 (내 정보 & 오늘의 친구)
+    // 우승 횟수 조회 로직
     useEffect(() => {
         const fetchWinCounts = async () => {
             if (!classId) return;
@@ -122,11 +122,9 @@ function DashboardPage() {
             const uniqueTargets = [...new Set(targets)];
             const newCounts = {};
 
-            // 비동기로 우승 횟수 가져오기
             await Promise.all(uniqueTargets.map(async (playerId) => {
                 try {
                     const stats = await getPlayerSeasonStats(classId, playerId);
-                    // 완료된 시즌 중 1위한 횟수 계산
                     const wins = stats.filter(s => s.rank === 1 && s.season?.status === 'completed').length;
                     newCounts[playerId] = wins;
                 } catch (err) {
@@ -141,7 +139,6 @@ function DashboardPage() {
         fetchWinCounts();
     }, [classId, myPlayerData?.id, todaysFriend?.id]);
 
-    // [수정] 우승 횟수가 포함된 객체 생성
     const myPlayerDataWithWins = useMemo(() => {
         if (!myPlayerData) return null;
         return { ...myPlayerData, win_count: winCounts[myPlayerData.id] || 0 };
@@ -201,8 +198,9 @@ function DashboardPage() {
     }, [missions, mySubmissions]);
 
     const recentMissions = activeMissions.slice(0, 3);
-    const topRankedTeams = useMemo(() => standingsData().slice(0, 3), [standingsData]);
-    const rankIcons = ["🥇", "🥈", "🥉"];
+    // [수정] 리그 순위 최대 6개 팀 표시 (기존 3개 -> 5개)
+    const topRankedTeams = useMemo(() => standingsData().slice(0, 5), [standingsData]);
+    const rankIcons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"];
 
     useEffect(() => {
         if (!classId) return;
@@ -281,10 +279,10 @@ function DashboardPage() {
 
             {viewMode === 'game' ? (
                 <DashboardGameMode
-                    myPlayerData={myPlayerDataWithWins} // win_count 포함된 데이터 전달
+                    myPlayerData={myPlayerDataWithWins}
                     myAvatarUrls={myAvatarUrls}
                     myPartnerPet={myPartnerPet}
-                    todaysFriend={todaysFriendWithWins} // win_count 포함된 데이터 전달
+                    todaysFriend={todaysFriendWithWins}
                     friendAvatarUrls={friendAvatarUrls}
                     friendPartnerPet={friendPartnerPet}
                     activeGoal={activeGoal}
@@ -295,11 +293,11 @@ function DashboardPage() {
                 />
             ) : (
                 <DashboardSimpleMode
-                    myPlayerData={myPlayerDataWithWins} // win_count 포함된 데이터 전달
+                    myPlayerData={myPlayerDataWithWins}
                     myAvatarUrls={myAvatarUrls}
                     myPartnerPet={myPartnerPet}
                     equippedTitle={equippedTitle}
-                    todaysFriend={todaysFriendWithWins} // win_count 포함된 데이터 전달
+                    todaysFriend={todaysFriendWithWins}
                     friendAvatarUrls={friendAvatarUrls}
                     friendPartnerPet={friendPartnerPet}
                     friendTitle={friendTitle}

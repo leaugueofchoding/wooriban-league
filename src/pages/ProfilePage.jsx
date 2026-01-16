@@ -1,385 +1,298 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import styled, { keyframes } from 'styled-components';
+// src/pages/ProfilePage.jsx
+
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import styled, { keyframes, css } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import {
   auth, db, updatePlayerProfile, equipTitle,
-  createBattleChallenge, rejectBattleChallenge
+  createBattleChallenge, rejectBattleChallenge, storage
 } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
 import {
-  collection, query, where, orderBy, getDocs, onSnapshot, updateDoc, doc, deleteDoc
+  collection, query, where, orderBy, getDocs, onSnapshot, updateDoc, doc
 } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import PointHistoryModal from '../components/PointHistoryModal';
-import { petImageMap } from '@/utils/petImageMap';
+import { petImageMap } from '../utils/petImageMap';
+import html2canvas from 'html2canvas';
+
+// --- Animations ---
+
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const pulse = keyframes`
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.7); }
+  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 107, 107, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
+`;
 
 // --- Styled Components ---
 
-const AvatarWrapper = styled.div`
-  position: relative;
-  width: 150px;
-  height: 150px;
-  margin: 2rem auto 1rem;
+const PageContainer = styled.div`
+  min-height: 100vh;
+  padding: 4rem 1rem;
+  font-family: 'Pretendard', sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 `;
 
-const AvatarDisplay = styled.div`
-  width: 150px;
-  height: 150px;
+const GlassCard = styled.div`
+  width: 100%;
+  max-width: 800px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-radius: 24px;
+  padding: 3rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  animation: ${fadeIn} 0.5s ease-out;
+  position: relative;
+
+  @media (max-width: 768px) {
+    padding: 1.5rem;
+  }
+`;
+
+const ProfileHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 3rem;
+  margin-bottom: 2.5rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    text-align: center;
+    gap: 1.5rem;
+  }
+`;
+
+const AvatarSection = styled.div`
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.2s;
+  position: relative;
+
+  &:hover {
+    transform: scale(1.02);
+  }
+`;
+
+const AvatarCircle = styled.div`
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
-  background-color: #e9ecef;
-  border: 4px solid #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: #f8f9fa;
+  border: 5px solid white;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
   position: relative;
   overflow: hidden;
-  cursor: pointer;
-  margin-top: 5px;
 `;
 
 const PartImage = styled.img`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
 `;
-const ProfileWrapper = styled.div`
-  max-width: 800px;
-  margin: 2rem auto;
-  padding: 2rem;
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  text-align: center;
-`;
-const UserNameContainer = styled.div`
+
+const InfoSection = styled.div`
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  min-height: 38px;
-`;
-const NameEditor = styled.div`
-    display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+
+  @media (max-width: 768px) {
     align-items: center;
-    gap: 0.5rem;
-`;
-const UserName = styled.h2`
-  margin: 0;
-`;
-const UserRole = styled.span`
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  background-color: #007bff;
-  color: white;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  margin-top: 0.5rem;
-`;
-const PointDisplay = styled.div`
-  font-size: 1.5rem;
-  font-weight: bold;
-  margin-top: 1.5rem;
-  color: #28a745;
+    width: 100%;
+  }
 `;
 
-const LikeDisplay = styled.div`
-  font-size: 1.5rem;
-  font-weight: bold;
-  margin-top: 0.5rem;
-  color: #dc3545;
+const NameRow = styled.div`
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 0.5rem;
-`;
-
-const ButtonGroup = styled.div`
-  margin-top: 2rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-`;
-
-const ButtonRow = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
+  gap: 0.8rem;
   flex-wrap: wrap;
+
+  h2 {
+    font-size: 2rem;
+    font-weight: 900;
+    color: #343a40;
+    margin: 0;
+  }
 `;
 
-const StyledLink = styled(Link)`
-  padding: 0.6em 1.2em;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  text-decoration: none;
-  color: #333;
-  background-color: white;
-  &:hover { background-color: #f0f0f0; }
-`;
-const Button = styled.button`
-  padding: 0.6em 1.2em;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  text-decoration: none;
-  color: #333;
-  background-color: white;
-  font-family: inherit;
-  font-size: inherit;
-  &:hover { background-color: #f0f0f0; }
-`;
-
-const ExitButton = styled.button`
-  display: block;
-  margin: 3rem auto 0;
-  padding: 0.8rem 2.5rem;
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: #fff;
-  background-color: #6c757d;
+const EditButton = styled.button`
+  background: #f1f3f5;
   border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  &:hover { background-color: #5a6268; }
-`;
-
-const GenderSelector = styled.div`
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-`;
-
-const GenderLabel = styled.label`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 1.1rem;
-  
-  input[type="radio"] {
-    display: none;
-  }
-
-  input[type="radio"] + span {
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    border: 2px solid #dee2e6;
-    transition: all 0.2s ease-in-out;
-  }
-
-  input[type="radio"]:checked + span {
-    color: white;
-    border-color: transparent;
-  }
-  input[type="radio"][value="남"]:checked + span {
-    background-color: #007bff;
-  }
-  input[type="radio"][value="여"]:checked + span {
-    background-color: #dc3545;
-  }
-`;
-
-const shake = keyframes` 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } `;
-
-const ModalBackground = styled.div`
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-`;
-
-const ModalContent = styled.div`
-  display: flex;
-  gap: 2rem;
-  align-items: center;
-  padding: 2rem;
-  background-color: #fff;
-  border-radius: 12px;
-  
-  &.white-modal {
-    flex-direction: column;
-    gap: 1rem;
-    max-width: 400px;
-    width: 90%;
-  }
-
-  &.battle-request-modal {
-    padding: 1.5rem;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  }
-`;
-
-const ModalAvatar = styled.div`
-  width: 300px;
-  height: 300px;
   border-radius: 50%;
-  background-color: #e9ecef;
-  position: relative;
-  overflow: hidden;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #868e96; transition: all 0.2s;
+  &:hover { background: #e9ecef; color: #339af0; }
+`;
+
+const BadgeRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
   
   @media (max-width: 768px) {
-    width: 200px;
-    height: 200px;
+    justify-content: center;
   }
 `;
 
-const ItemList = styled.div`
-  text-align: left;
-  h3 {
-    margin-top: 0;
-  }
-  ul {
-    list-style: none;
-    padding: 0;
-  }
-  li {
-    margin-bottom: 0.5rem;
-  }
+const BaseBadge = styled.div`
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: flex; align-items: center; gap: 0.4rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 `;
 
-const AccordionSection = styled.div`
+const TitleBadge = styled(BaseBadge)`
+  background: white; border: 1px solid #dee2e6; color: ${props => props.color || '#495057'};
+`;
+
+const RoleBadge = styled(BaseBadge)`
+  background: #e7f5ff; color: #1c7ed6;
+`;
+
+const PetBadge = styled(BaseBadge)`
+  background: #f3f0ff; color: #7950f2;
+  img { width: 20px; height: 20px; object-fit: contain; }
+`;
+
+const StatsRow = styled.div`
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 2px solid #f1f3f5;
   width: 100%;
-  margin-top: 1rem;
-  transition: all 0.3s ease-in-out;
-`;
 
-const AccordionContent = styled.div`
-    max-height: ${props => props.$isOpen ? '1000px' : '0'};
-    opacity: ${props => props.$isOpen ? 1 : 0};
-    overflow: hidden;
-    transition: all 0.4s ease-in-out;
-    padding-top: ${props => props.$isOpen ? '1rem' : '0'};
-    border-top: ${props => props.$isOpen ? '1px solid #eee' : 'none'};
-`;
-
-const EquippedTitle = styled.div`
-  position: absolute;
-  top: -30px;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 10;
-  padding: 0.6rem 1.2rem;
-  border-radius: 8px;
-  font-weight: bold;
-  font-size: 1.3rem;
-  white-space: nowrap;
-  color: ${props => props.color || '#343a40'};
-  background-color: #f8f9fa;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-`;
-
-const TitleGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
-`;
-
-const TitleCard = styled.div`
-  padding: 1rem;
-  border: 2px solid ${props => props.$isSelected ? '#007bff' : '#ddd'};
-  border-radius: 8px;
-  text-align: center;
-  cursor: ${props => props.$isOwned ? 'pointer' : 'default'};
-  transition: all 0.2s;
-  opacity: ${props => props.$isOwned ? 1 : 0.5};
-
-  &:hover {
-    box-shadow: ${props => props.$isOwned ? '0 4px 8px rgba(0,0,0,0.1)' : 'none'};
-    transform: ${props => props.$isOwned ? 'translateY(-3px)' : 'none'};
-  }
-
-  strong {
-    font-size: 1.3rem;
-  }
-  p {
-    font-size: 0.85rem;
-    color: #6c757d;
-    margin: 0.5rem 0 0;
+  @media (max-width: 768px) {
+    justify-content: center;
   }
 `;
 
-const Subtitle = styled.h4`
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
-  text-align: left;
-  &:first-child {
-    margin-top: 0;
-  }
-`;
-
-const SaveTitlesButton = styled(Button)`
-    background-color: #28a745;
-    color: white;
-    font-weight: bold;
-    margin-top: 1.5rem;
-`;
-
-// --- [추가] 펫 페이지의 카드 디자인 스타일 (수락창용) ---
-const OpponentItem = styled.div`
+const StatItem = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  background-color: #fff;
-  padding: 1rem;
-  border-radius: 12px;
-  border: 1px solid #eee;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-  transition: transform 0.2s, box-shadow 0.2s;
-  width: 100%;
+  gap: 0.2rem;
   
-  .user-info {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    text-align: center;
-    margin-bottom: 0.8rem;
-    width: 100%;
-    
-    img {
-      width: 80px; height: 80px;
-      border-radius: 50%;
-      border: 3px solid #f8f9fa;
-      object-fit: cover;
-      background-color: #fff;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    strong { font-size: 1.1rem; color: #333; margin-top: 5px; display: block; word-break: keep-all;}
-    span { font-size: 0.9rem; color: #888; background-color: #f1f3f5; padding: 2px 8px; border-radius: 10px; margin-top: 4px;}
+  .label { font-size: 0.85rem; color: #868e96; font-weight: 600; }
+  .value { font-size: 1.2rem; font-weight: 800; color: #343a40; }
+`;
+
+const EditForm = styled.div`
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1rem;
+  background: #f8f9fa; padding: 1.5rem; border-radius: 16px; width: 100%;
+  @media (max-width: 768px) { align-items: center; }
+`;
+
+const Input = styled.input`
+  padding: 0.8rem; border: 2px solid #dee2e6; border-radius: 12px;
+  font-size: 1.1rem; font-weight: bold; width: 100%; max-width: 250px;
+  &:focus { outline: none; border-color: #339af0; }
+`;
+
+const GenderOptions = styled.div` display: flex; gap: 1rem; `;
+const GenderRadio = styled.label`
+  cursor: pointer; input { display: none; }
+  span {
+    display: block; padding: 0.6rem 1.2rem; border-radius: 20px; background: white;
+    border: 2px solid #dee2e6; font-weight: 700; color: #868e96; transition: all 0.2s;
+  }
+  input:checked + span {
+    background: ${props => props.color}; border-color: ${props => props.color};
+    color: white; box-shadow: 0 4px 10px ${props => props.shadow};
   }
 `;
 
-const ChallengeButton = styled.button`
+const ActionGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
   width: 100%;
-  background-color: #ff6b6b;
-  color: white;
-  border: none;
-  padding: 10px 0;
-  border-radius: 8px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 0 #fa5252;
-  
-  &:hover { background-color: #fa5252; }
-  &:active { transform: translateY(2px); box-shadow: none; }
-  &:disabled { background-color: #ccc; cursor: not-allowed; box-shadow: none; }
+  margin-top: 1rem;
 `;
+
+const ActionCard = styled(Link)`
+  background: ${props => props.$bg || 'white'};
+  padding: 1.2rem 0.5rem;
+  border-radius: 16px;
+  text-decoration: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.05);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  color: ${props => props.$color || '#495057'};
+  cursor: pointer;
+
+  &:hover { transform: translateY(-4px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); filter: brightness(0.98); }
+  .icon { font-size: 1.8rem; }
+  .text { font-size: 0.95rem; font-weight: 700; }
+`;
+
+const ActionButton = styled.button`
+  background: ${props => props.$bg || 'white'};
+  padding: 1.2rem 0.5rem;
+  border-radius: 16px; border: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.05);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  color: ${props => props.$color || '#495057'};
+  cursor: pointer; font-family: inherit;
+
+  &:hover { transform: translateY(-4px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); filter: brightness(0.98); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .icon { font-size: 1.8rem; }
+  .text { font-size: 0.95rem; font-weight: 700; }
+`;
+
+const AccordionWrapper = styled.div` margin-top: 2rem; width: 100%; `;
+const AccordionContent = styled.div`
+  background: #f8f9fa; border-radius: 16px;
+  padding: ${props => props.$isOpen ? '1.5rem' : '0'};
+  max-height: ${props => props.$isOpen ? '1000px' : '0'};
+  opacity: ${props => props.$isOpen ? 1 : 0};
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border: ${props => props.$isOpen ? '1px solid #dee2e6' : 'none'};
+`;
+const TitleGrid = styled.div` display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem; `;
+const TitleCard = styled.div`
+  background: white; padding: 1rem; border-radius: 12px;
+  border: 2px solid ${props => props.$isSelected ? '#339af0' : 'transparent'};
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  text-align: center; cursor: ${props => props.$isOwned ? 'pointer' : 'default'};
+  opacity: ${props => props.$isOwned ? 1 : 0.6}; transition: all 0.2s;
+  &:hover { transform: ${props => props.$isOwned ? 'translateY(-2px)' : 'none'}; box-shadow: ${props => props.$isOwned ? '0 4px 8px rgba(0,0,0,0.1)' : 'none'}; }
+  .icon { font-size: 1.5rem; margin-bottom: 0.3rem; }
+  .name { font-weight: 700; font-size: 0.95rem; color: ${props => props.color || '#343a40'}; }
+  .desc { font-size: 0.8rem; color: #868e96; margin-top: 0.3rem; }
+`;
+const SectionTitle = styled.h4` margin: 1.5rem 0 0.8rem; font-size: 1rem; color: #495057; font-weight: 700; &:first-child { margin-top: 0; } `;
+const PrimaryBtn = styled.button`
+  width: 100%; padding: 0.8rem; margin-top: 1.5rem; background: #20c997; color: white;
+  font-weight: 700; border: none; border-radius: 12px; cursor: pointer; font-size: 1rem; transition: all 0.2s;
+  &:hover { background: #12b886; transform: translateY(-2px); }
+  &:disabled { background: #adb5bd; cursor: not-allowed; transform: none; }
+`;
+
+const ModalOverlay = styled.div` position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 2000; `;
+const ModalContent = styled.div` background: white; padding: 2rem; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); max-width: 400px; width: 90%; position: relative; text-align: center; animation: ${fadeIn} 0.3s ease-out; `;
+const BattleRequestCard = styled.div` background: #fff5f5; border: 1px solid #ffc9c9; border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; animation: ${pulse} 2s infinite; img { width: 80px; height: 80px; object-fit: contain; margin-bottom: 0.5rem; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.1)); } h3 { margin: 0; color: #fa5252; font-size: 1.2rem; } p { margin: 0.5rem 0 0; color: #495057; font-weight: 600; } `;
+const ButtonRow = styled.div` display: flex; gap: 0.8rem; button { flex: 1; padding: 0.8rem; border-radius: 12px; border: none; font-weight: 700; cursor: pointer; transition: transform 0.2s; } .accept { background: #339af0; color: white; &:hover { background: #228be6; } } .reject { background: #f1f3f5; color: #868e96; &:hover { background: #e9ecef; } } `;
+const ItemList = styled.div` text-align: left; h3 { margin: 0 0 1rem; font-size: 1.1rem; color: #343a40; } ul { list-style: none; padding: 0; } li { padding: 0.5rem; border-bottom: 1px solid #f1f3f5; font-size: 0.95rem; color: #495057; &:last-child { border: none; } } `;
 
 function ProfilePage() {
   const { classId } = useClassStore();
@@ -396,9 +309,10 @@ function ProfilePage() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isTitleAccordionOpen, setIsTitleAccordionOpen] = useState(false);
   const [selectedTitleId, setSelectedTitleId] = useState(null);
-
-  // --- ★ [추가] 대전 수신용 State ---
   const [incomingChallenge, setIncomingChallenge] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const avatarRef = useRef(null);
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
@@ -407,6 +321,7 @@ function ProfilePage() {
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
   const isMyProfile = myPlayerData?.id === playerData?.id;
+  const isAdmin = myPlayerData?.role === 'admin';
 
   useEffect(() => {
     if (playerData) {
@@ -416,16 +331,10 @@ function ProfilePage() {
     }
   }, [playerData]);
 
-  // --- ★ [추가] 실시간 대전 신청 감지 리스너 ---
+  // 실시간 대전 신청 감지
   useEffect(() => {
     if (!currentUser || !db || !classId || !myPlayerData) return;
-
-    const q = query(
-      collection(db, "classes", classId, "battles"),
-      where("opponent.id", "==", myPlayerData.id),
-      where("status", "==", "pending")
-    );
-
+    const q = query(collection(db, "classes", classId, "battles"), where("opponent.id", "==", myPlayerData.id), where("status", "==", "pending"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         const docData = snapshot.docs[0];
@@ -434,23 +343,16 @@ function ProfilePage() {
         setIncomingChallenge(null);
       }
     });
-
     return () => unsubscribe();
   }, [currentUser, classId, myPlayerData]);
 
-  // --- ★ [추가] 수락/거절 핸들러 ---
   const handleAcceptChallenge = async () => {
     if (!incomingChallenge) return;
     try {
-      await updateDoc(doc(db, "classes", classId, "battles", incomingChallenge.id), {
-        status: "accepted"
-      });
+      await updateDoc(doc(db, "classes", classId, "battles", incomingChallenge.id), { status: "accepted" });
       alert("도전을 수락했습니다! 경기장으로 이동합니다.");
       navigate(`/battle/${incomingChallenge.challenger.id}`);
-    } catch (error) {
-      console.error(error);
-      alert("수락 중 오류 발생");
-    }
+    } catch (error) { console.error(error); alert("수락 중 오류 발생"); }
   };
 
   const handleRejectChallenge = async () => {
@@ -460,26 +362,26 @@ function ProfilePage() {
         await rejectBattleChallenge(classId, incomingChallenge.id);
         setIncomingChallenge(null);
       }
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleBattleRequest = async () => {
     if (!classId || !myPlayerData || !playerData) return;
-
     try {
       await createBattleChallenge(classId, myPlayerData, playerData);
       navigate(`/battle/${playerData.id}`);
-    } catch (error) {
-      alert(`대결 신청 실패: ${error.message}`);
-    }
+    } catch (error) { alert(`대결 신청 실패: ${error.message}`); }
   };
 
   const equippedTitle = useMemo(() => {
     if (!playerData?.equippedTitle || !titles.length) return null;
     return titles.find(t => t.id === playerData.equippedTitle);
   }, [playerData, titles]);
+
+  const partnerPet = useMemo(() => {
+    if (!playerData || !playerData.pets) return null;
+    return playerData.pets.find(p => p.id === playerData.partnerPetId) || playerData.pets[0];
+  }, [playerData]);
 
   const ownedTitles = useMemo(() => {
     if (!playerData?.ownedTitles || !titles.length) return [];
@@ -499,9 +401,7 @@ function ProfilePage() {
       await fetchInitialData();
       alert('칭호가 저장되었습니다!');
       setIsTitleAccordionOpen(false);
-    } catch (error) {
-      alert('칭호 저장에 실패했습니다.');
-    }
+    } catch (error) { alert('칭호 저장 실패'); }
   };
 
   const myTeam = useMemo(() => {
@@ -511,9 +411,7 @@ function ProfilePage() {
 
   const { selectedPartUrls, equippedItems } = useMemo(() => {
     const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
-    if (!playerData?.avatarConfig || !avatarParts.length) {
-      return { selectedPartUrls: [baseAvatar], equippedItems: [] };
-    }
+    if (!playerData?.avatarConfig || !avatarParts.length) return { selectedPartUrls: [baseAvatar], equippedItems: [] };
     const urls = [baseAvatar];
     const items = [];
     const config = playerData.avatarConfig;
@@ -521,19 +419,13 @@ function ProfilePage() {
       const partId = config[category];
       if (partId) {
         const part = avatarParts.find(p => p.id === partId);
-        if (part) {
-          urls.push(part.src);
-          items.push(part);
-        }
+        if (part) { urls.push(part.src); items.push(part); }
       }
     });
     if (config.accessories) {
       Object.values(config.accessories).forEach(partId => {
         const part = avatarParts.find(p => p.id === partId);
-        if (part) {
-          urls.push(part.src);
-          items.push(part);
-        }
+        if (part) { urls.push(part.src); items.push(part); }
       });
     }
     return { selectedPartUrls: Array.from(new Set(urls)), equippedItems: items };
@@ -546,232 +438,281 @@ function ProfilePage() {
     setPointHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
-  const handleOpenModal = () => {
-    fetchPointHistory();
-    setIsHistoryModalOpen(true);
-  };
+  const handleOpenModal = () => { fetchPointHistory(); setIsHistoryModalOpen(true); };
 
   const handleSaveProfile = async () => {
     if (!classId || !playerData) return;
     if (!newName.trim()) return alert('이름을 입력해주세요.');
     if (!selectedGender) return alert('성별을 선택해주세요.');
 
+    setIsSavingProfile(true);
+    let avatarSnapshotUrl = playerData.avatarSnapshotUrl;
+
     try {
+      if (avatarRef.current) {
+        const canvas = await html2canvas(avatarRef.current, {
+          backgroundColor: null,
+          scale: 2,
+          useCORS: true, // [중요] CORS 문제 해결
+        });
+        const imageDataUrl = canvas.toDataURL("image/png");
+        const storageRef = ref(storage, `classes/${classId}/players/${playerData.id}/avatarSnapshot_${Date.now()}.png`);
+        await uploadString(storageRef, imageDataUrl, 'data_url');
+        avatarSnapshotUrl = await getDownloadURL(storageRef);
+      }
+
       await updatePlayerProfile(classId, playerData.id, {
         name: newName.trim(),
         gender: selectedGender,
+        avatarSnapshotUrl: avatarSnapshotUrl
       });
+
       alert('프로필이 저장되었습니다.');
       setIsEditing(false);
       await fetchInitialData();
     } catch (error) {
-      alert(`프로필 저장 실패: ${error.message}`);
+      console.error(error);
+      alert(`저장 실패: ${error.message}`);
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
-  if (!playerData) {
-    return (
-      <ProfileWrapper>
-        <h2>선수 정보를 찾을 수 없습니다.</h2>
-        <ButtonGroup>
-          <StyledLink to="/">홈으로 돌아가기</StyledLink>
-        </ButtonGroup>
-      </ProfileWrapper>
-    );
-  }
-
-  const loggedInPlayer = useLeagueStore(state => state.players.find(p => p.authUid === currentUser?.uid));
-  const isAdmin = loggedInPlayer?.role === 'admin';
+  if (!playerData) return <PageContainer><GlassCard><h2>선수 정보를 찾을 수 없습니다.</h2><ActionCard to="/">홈으로</ActionCard></GlassCard></PageContainer>;
 
   return (
-    <>
-      <ProfileWrapper>
-        <AvatarWrapper>
-          {equippedTitle && (
-            <EquippedTitle color={equippedTitle.color}>
-              {equippedTitle.icon} {equippedTitle.name}
-            </EquippedTitle>
-          )}
-          <AvatarDisplay onClick={() => setIsAvatarModalOpen(true)}>
-            {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
-          </AvatarDisplay>
-        </AvatarWrapper>
-        <UserNameContainer>
-          {isEditing ? (
-            <>
-              <NameEditor>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  style={{ fontSize: '1.5rem', fontWeight: 'bold', textAlign: 'center', width: '200px', padding: '0.25rem' }}
-                />
-              </NameEditor>
-              <GenderSelector>
-                <GenderLabel>
-                  <input type="radio" name="gender" value="남" checked={selectedGender === '남'} onChange={(e) => setSelectedGender(e.target.value)} />
-                  <span>남자</span>
-                </GenderLabel>
-                <GenderLabel>
-                  <input type="radio" name="gender" value="여" checked={selectedGender === '여'} onChange={(e) => setSelectedGender(e.target.value)} />
-                  <span>여자</span>
-                </GenderLabel>
-              </GenderSelector>
-              <div>
-                <Button onClick={handleSaveProfile} style={{ backgroundColor: '#28a745', color: 'white' }}>저장</Button>
-                <Button onClick={() => setIsEditing(false)} style={{ backgroundColor: '#6c757d', color: 'white', marginLeft: '0.5rem' }}>취소</Button>
-              </div>
-            </>
-          ) : (
-            <NameEditor>
-              <UserName>{playerData.name}</UserName>
-              {(isMyProfile || isAdmin) && (
-                <Button onClick={() => setIsEditing(true)} style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}>✏️</Button>
+    <PageContainer>
+      <GlassCard>
+
+        <ProfileHeader>
+          <AvatarSection onClick={() => setIsAvatarModalOpen(true)}>
+            <AvatarCircle ref={avatarRef}>
+              {/* 스냅샷이 있고 편집 중이 아닐 때만 스냅샷 표시, 편집 중이거나 스냅샷 없으면 파츠 렌더링 */}
+              {playerData.avatarSnapshotUrl && !isEditing ? (
+                <img src={playerData.avatarSnapshotUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              ) : (
+                selectedPartUrls.map(src => <PartImage key={src} src={src} />)
               )}
-            </NameEditor>
+            </AvatarCircle>
+          </AvatarSection>
+
+          <InfoSection>
+            {isEditing ? (
+              <EditForm>
+                <Input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름 입력" />
+                <GenderOptions>
+                  <GenderRadio color="#339af0" shadow="rgba(51, 154, 240, 0.3)">
+                    <input type="radio" name="gender" value="남" checked={selectedGender === '남'} onChange={(e) => setSelectedGender(e.target.value)} />
+                    <span>남자</span>
+                  </GenderRadio>
+                  <GenderRadio color="#ff6b6b" shadow="rgba(255, 107, 107, 0.3)">
+                    <input type="radio" name="gender" value="여" checked={selectedGender === '여'} onChange={(e) => setSelectedGender(e.target.value)} />
+                    <span>여자</span>
+                  </GenderRadio>
+                </GenderOptions>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <PrimaryBtn
+                    style={{ marginTop: 0, padding: '0.6rem 1.2rem', width: 'auto' }}
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
+                  >
+                    {isSavingProfile ? '저장 중...' : '저장'}
+                  </PrimaryBtn>
+                  <PrimaryBtn
+                    style={{ marginTop: 0, padding: '0.6rem 1.2rem', width: 'auto', background: '#adb5bd' }}
+                    onClick={() => setIsEditing(false)}
+                    disabled={isSavingProfile}
+                  >
+                    취소
+                  </PrimaryBtn>
+                </div>
+              </EditForm>
+            ) : (
+              <>
+                <NameRow>
+                  <h2>{playerData.name}</h2>
+                  {(isMyProfile || isAdmin) && <EditButton onClick={() => setIsEditing(true)}>✎</EditButton>}
+                </NameRow>
+
+                <BadgeRow>
+                  {equippedTitle && (
+                    <TitleBadge color={equippedTitle.color}>
+                      {equippedTitle.icon} {equippedTitle.name}
+                    </TitleBadge>
+                  )}
+                  {partnerPet && (
+                    <PetBadge>
+                      <img src={petImageMap[`${partnerPet.appearanceId}_idle`] || petImageMap['slime_lv1_idle']} alt="pet" />
+                      Lv.{partnerPet.level} {partnerPet.name}
+                    </PetBadge>
+                  )}
+                  {playerData.role && <RoleBadge>{playerData.role}</RoleBadge>}
+                </BadgeRow>
+
+                <StatsRow>
+                  <StatItem>
+                    <span className="label">보유 포인트</span>
+                    <span className="value" style={{ color: '#20c997' }}>💰 {playerData.points?.toLocaleString() || 0}</span>
+                  </StatItem>
+                  <StatItem>
+                    <span className="label">받은 좋아요</span>
+                    <span className="value" style={{ color: '#fa5252' }}>❤️ {playerData.totalLikes?.toLocaleString() || 0}</span>
+                  </StatItem>
+                </StatsRow>
+              </>
+            )}
+          </InfoSection>
+        </ProfileHeader>
+
+        <ActionGrid>
+          {(isMyProfile || isAdmin) && (
+            <ActionButton onClick={handleOpenModal} $bg="#f8f9fa">
+              <span className="icon">📜</span>
+              <span className="text">포인트 내역</span>
+            </ActionButton>
           )}
-        </UserNameContainer>
 
-        {playerData.role && <UserRole>{playerData.role}</UserRole>}
-        <PointDisplay>💰 {playerData.points?.toLocaleString() || 0} P</PointDisplay>
-        <LikeDisplay>❤️ {playerData.totalLikes?.toLocaleString() || 0}</LikeDisplay>
+          {isMyProfile && (
+            <>
+              <ActionCard to="/profile/edit" $bg="#e7f5ff" $color="#1c7ed6">
+                <span className="icon">👕</span>
+                <span className="text">아바타 꾸미기</span>
+              </ActionCard>
+              <ActionButton onClick={() => setIsTitleAccordionOpen(prev => !prev)} $bg="#fff9db" $color="#f08c00">
+                <span className="icon">👑</span>
+                <span className="text">칭호 관리</span>
+              </ActionButton>
+              <ActionCard to="/shop" $bg="#ebfbee" $color="#2b8a3e">
+                <span className="icon">🛍️</span>
+                <span className="text">상점 가기</span>
+              </ActionCard>
+              <ActionCard to={(playerData.pets && playerData.pets.length > 0) || playerData.pet ? "/pet" : "/pet/select"} $bg="#f3f0ff" $color="#7950f2">
+                <span className="icon">🐾</span>
+                <span className="text">펫 관리</span>
+              </ActionCard>
+            </>
+          )}
 
-        <ButtonGroup>
-          <ButtonRow>
-            {(isMyProfile || isAdmin) && (<Button onClick={handleOpenModal}>포인트 내역</Button>)}
-            {isMyProfile && <StyledLink to="/profile/edit">아바타 편집</StyledLink>}
-            {isMyProfile && <StyledLink to="/shop" style={{ backgroundColor: '#20c997', color: 'white' }}>상점 가기</StyledLink>}
+          {myTeam && (
+            <ActionCard to={`/league/teams/${myTeam.id}`} $bg="#fff0f6" $color="#c2255c">
+              <span className="icon">🛡️</span>
+              <span className="text">소속팀</span>
+            </ActionCard>
+          )}
 
-            {!isMyProfile && loggedInPlayer && loggedInPlayer.pets?.length > 0 && playerData.pets?.length > 0 && (
-              <Button
-                onClick={handleBattleRequest}
-                style={{ backgroundColor: '#dc3545', color: 'white' }}
-                disabled={!myPlayerData?.partnerPetId || !playerData?.partnerPetId}
-                title={!myPlayerData?.partnerPetId || !playerData?.partnerPetId ? "양쪽 모두 파트너 펫을 선택해야 합니다." : ""}
-              >
-                퀴즈 대결 신청
-              </Button>
-            )}
-          </ButtonRow>
-          <ButtonRow>
-            {myTeam && <StyledLink to={`/league/teams/${myTeam.id}`}>소속팀 정보</StyledLink>}
-            <StyledLink to={`/profile/${playerData.id}/stats`}>리그 기록</StyledLink>
-            {isMyProfile && <Button onClick={() => setIsTitleAccordionOpen(prev => !prev)}>칭호 관리</Button>}
-            {isMyProfile && (
-              <StyledLink
-                to={(playerData.pets && playerData.pets.length > 0) || playerData.pet ? "/pet" : "/pet/select"}
-                style={{ backgroundColor: '#6f42c1', color: 'white' }}
-              >
-                펫 관리
-              </StyledLink>
-            )}
-            <StyledLink to={`/my-room/${playerData.id}`} style={{ backgroundColor: '#fd7e14', color: 'white' }}>마이룸 가기</StyledLink>
-          </ButtonRow>
-        </ButtonGroup>
+          <ActionCard to={`/profile/${playerData.id}/stats`} $bg="#e3fafc" $color="#0c8599">
+            <span className="icon">📊</span>
+            <span className="text">리그 기록</span>
+          </ActionCard>
+
+          <ActionCard to={`/my-room/${playerData.id}`} $bg="#fff4e6" $color="#e8590c">
+            <span className="icon">🏠</span>
+            <span className="text">마이룸 방문</span>
+          </ActionCard>
+
+          {!isMyProfile && myPlayerData && myPlayerData.pets?.length > 0 && playerData.pets?.length > 0 && (
+            <ActionButton
+              onClick={handleBattleRequest}
+              $bg="#ffc9c9" $color="#e03131"
+              disabled={!myPlayerData?.partnerPetId || !playerData?.partnerPetId}
+            >
+              <span className="icon">⚔️</span>
+              <span className="text">대결 신청</span>
+            </ActionButton>
+          )}
+        </ActionGrid>
 
         {isMyProfile && (
-          <AccordionSection>
+          <AccordionWrapper>
             <AccordionContent $isOpen={isTitleAccordionOpen}>
-              <Subtitle>획득한 칭호 ✨</Subtitle>
+              <SectionTitle>✨ 획득한 칭호</SectionTitle>
               <TitleGrid>
                 {ownedTitles.length > 0 ? ownedTitles.map(title => (
                   <TitleCard
                     key={title.id}
                     $isSelected={selectedTitleId === title.id}
-                    onClick={() => setSelectedTitleId(prev => prev === title.id ? null : title.id)}
                     $isOwned={true}
-                    title="클릭하여 장착/해제"
+                    onClick={() => setSelectedTitleId(prev => prev === title.id ? null : title.id)}
                   >
-                    <strong style={{ color: title.color }}>{title.icon} {title.name}</strong>
-                    <p>{title.description}</p>
+                    <div className="icon">{title.icon}</div>
+                    <div className="name" color={title.color}>{title.name}</div>
+                    <div className="desc">{title.description}</div>
                   </TitleCard>
-                )) : <p>아직 획득한 칭호가 없습니다.</p>}
+                )) : <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#adb5bd' }}>아직 획득한 칭호가 없습니다.</p>}
               </TitleGrid>
-              <SaveTitlesButton onClick={handleSaveEquippedTitle}>
-                선택한 칭호로 저장하기
-              </SaveTitlesButton>
-              <Subtitle>미획득 칭호 🔒</Subtitle>
+
+              <PrimaryBtn onClick={handleSaveEquippedTitle}>선택한 칭호 장착하기</PrimaryBtn>
+
+              <SectionTitle>🔒 미획득 칭호</SectionTitle>
               <TitleGrid>
                 {unownedTitles.map(title => (
-                  <TitleCard
-                    key={title.id}
-                    $isOwned={false}
-                    title={title.description}
-                  >
-                    <strong style={{ color: title.color }}>{title.icon} {title.name}</strong>
-                    <p>{title.description}</p>
+                  <TitleCard key={title.id} $isOwned={false}>
+                    <div className="icon">{title.icon}</div>
+                    <div className="name" color={title.color}>{title.name}</div>
+                    <div className="desc">{title.description}</div>
                   </TitleCard>
                 ))}
               </TitleGrid>
             </AccordionContent>
-          </AccordionSection>
+          </AccordionWrapper>
         )}
 
-        <PointHistoryModal
-          isOpen={isHistoryModalOpen}
-          onClose={() => setIsHistoryModalOpen(false)}
-          history={pointHistory}
-        />
+        <div style={{ marginTop: '3rem', textAlign: 'center' }}>
+          <ActionButton onClick={() => navigate(-1)} style={{ padding: '0.8rem 2rem', background: '#f1f3f5', fontWeight: 'bold', display: 'inline-flex' }}>
+            뒤로 가기
+          </ActionButton>
+        </div>
 
-        <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
-      </ProfileWrapper>
+      </GlassCard>
 
       {isAvatarModalOpen && (
-        <ModalBackground onClick={() => setIsAvatarModalOpen(false)}>
+        <ModalOverlay onClick={() => setIsAvatarModalOpen(false)}>
           <ModalContent onClick={e => e.stopPropagation()}>
-            <ModalAvatar>
+            <AvatarCircle style={{ width: '200px', height: '200px', margin: '0 auto 1.5rem' }}>
               {selectedPartUrls.map(src => <PartImage key={src} src={src} />)}
-            </ModalAvatar>
+            </AvatarCircle>
             <ItemList>
-              <h3>착용 중인 아이템</h3>
+              <h3>착용 아이템 정보</h3>
               <ul>
                 {equippedItems.map(item => (
                   <li key={item.id}>{item.displayName || item.id}</li>
                 ))}
               </ul>
             </ItemList>
+            <PrimaryBtn onClick={() => setIsAvatarModalOpen(false)} style={{ background: '#adb5bd', marginTop: '1rem' }}>닫기</PrimaryBtn>
           </ModalContent>
-        </ModalBackground>
+        </ModalOverlay>
       )}
 
-      {/* ★ [수정됨] 대결 수락 팝업 (PetPage와 동일한 카드 디자인 적용) ★ */}
       {incomingChallenge && (
-        <ModalBackground>
-          <ModalContent className="white-modal battle-request-modal">
-            <h3 style={{ marginBottom: '1rem', color: '#333' }}>⚔️ 대결 신청이 왔습니다!</h3>
-
-            {/* 펫 페이지와 동일한 카드 디자인 (OpponentItem) 사용 */}
-            <OpponentItem style={{ marginBottom: '1rem', boxShadow: 'none', border: '1px solid #ddd' }}>
-              <div className="user-info">
-                <img
-                  src={petImageMap[`${incomingChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
-                  alt="도전자 펫"
-                />
-                <div>
-                  <strong>{incomingChallenge.challenger?.name}</strong>
-                  <span>{incomingChallenge.challenger?.pet?.name} (Lv.{incomingChallenge.challenger?.pet?.level})</span>
-                </div>
+        <ModalOverlay>
+          <ModalContent>
+            <BattleRequestCard>
+              <img
+                src={petImageMap[`${incomingChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                alt="challenger_pet"
+              />
+              <h3>⚔️ 대결 신청!</h3>
+              <p>{incomingChallenge.challenger?.name}님이 도전장을 보냈습니다.</p>
+              <div style={{ fontSize: '0.9rem', color: '#868e96', marginTop: '5px' }}>
+                VS {incomingChallenge.challenger?.pet?.name} (Lv.{incomingChallenge.challenger?.pet?.level})
               </div>
-            </OpponentItem>
-
-            <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-              <ChallengeButton
-                onClick={handleAcceptChallenge}
-                style={{ backgroundColor: '#20c997', flex: 1 }}
-              >
-                수락
-              </ChallengeButton>
-              <ChallengeButton
-                onClick={handleRejectChallenge}
-                style={{ backgroundColor: '#adb5bd', flex: 1 }}
-              >
-                거절
-              </ChallengeButton>
-            </div>
+            </BattleRequestCard>
+            <ButtonRow>
+              <button className="accept" onClick={handleAcceptChallenge}>수락하기</button>
+              <button className="reject" onClick={handleRejectChallenge}>거절하기</button>
+            </ButtonRow>
           </ModalContent>
-        </ModalBackground>
+        </ModalOverlay>
       )}
-    </>
+
+      <PointHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        history={pointHistory}
+      />
+
+    </PageContainer>
   );
 }
 
