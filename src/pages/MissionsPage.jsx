@@ -1,7 +1,7 @@
 // src/pages/MissionsPage.jsx
 
 import React, { useMemo, useState, useEffect } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled, { keyframes, css } from 'styled-components'; // css 추가
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, getMissionHistory, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -58,7 +58,6 @@ const MissionCard = styled.div`
   border: 1px solid #f1f3f5;
   transition: transform 0.2s;
 
-  /* 상태별 왼쪽 컬러바 */
   &::before {
     content: '';
     position: absolute;
@@ -289,27 +288,6 @@ const RequestButton = styled.button`
   }
 `;
 
-const ExitButton = styled.button`
-  display: block;
-  margin: 2rem auto 0;
-  padding: 0.8rem 2.5rem;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #495057;
-  background-color: #fff;
-  border: 1px solid #dee2e6;
-  border-radius: 30px;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-
-  &:hover { 
-    background-color: #f8f9fa; 
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  }
-`;
-
 const SubmissionDetails = styled.div`
   padding: ${props => props.$isOpen ? '1rem' : '0 1rem'};
   max-height: ${props => props.$isOpen ? '1000px' : '0'};
@@ -360,6 +338,33 @@ const ToggleButton = styled.button`
 
   &:hover {
     background-color: ${props => props.$active ? '#d0ebff' : '#f8f9fa'};
+  }
+`;
+
+// [추가] 통일된 스타일의 버튼 컨테이너 및 버튼
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 3rem;
+`;
+
+const ActionButton = styled.button`
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: ${props => props.$primary ? 'white' : '#495057'};
+  background: ${props => props.$primary ? '#339af0' : '#f1f3f5'};
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+    filter: brightness(0.95);
   }
 `;
 
@@ -738,11 +743,11 @@ function MissionsPage() {
           )}
         </MissionList>
 
-        <div style={{ textAlign: 'center' }}>
-          <ExitButton onClick={() => navigate(-1)}>
-            🏠 나가기
-          </ExitButton>
-        </div>
+        {/* [수정] 통일된 스타일의 하단 버튼 */}
+        <ButtonGroup>
+          <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>
+          <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>
+        </ButtonGroup>
       </MissionsWrapper>
       <MissionHistoryModal
         isOpen={historyModalState.isOpen}
