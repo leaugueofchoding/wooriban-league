@@ -242,7 +242,6 @@ const PriceTag = styled.div`
   }
 `;
 
-// 피팅룸 (우측 패널)
 const FittingRoom = styled.div`
   flex: 1.2;
   min-width: 300px;
@@ -269,6 +268,15 @@ const FittingTitle = styled.h3`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  
+  &::before {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 18px;
+    background: #339af0;
+    border-radius: 2px;
+  }
 `;
 
 const AvatarPreview = styled.div`
@@ -331,7 +339,7 @@ const TotalPrice = styled.div`
   span.cost { color: #fa5252; font-size: 1.3rem; }
 `;
 
-const ActionButton = styled.button`
+const FittingButton = styled.button`
   width: 100%;
   padding: 1rem;
   border-radius: 12px;
@@ -381,8 +389,36 @@ const Pagination = styled.div`
   }
 `;
 
+// [추가] 통일된 스타일의 버튼 컨테이너 및 버튼 (PlayerStatsPage 스타일)
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 3rem;
+`;
+
+const ActionButton = styled.button`
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: ${props => props.$primary ? 'white' : '#495057'};
+  background: ${props => props.$primary ? '#339af0' : '#f1f3f5'};
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+    filter: brightness(0.95);
+  }
+`;
+
+// ... (기타 상수 및 헬퍼 함수 유지) ...
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
-const ITEMS_PER_PAGE = 8; // 그리드에 맞춰 조정
+const ITEMS_PER_PAGE = 8;
 
 const translateCategory = (category) => {
   const categoryMap = {
@@ -417,6 +453,7 @@ function ShopPage() {
 
   const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
 
+  // ... (카테고리, 아이템 필터링, 페이지네이션 로직 기존 유지) ...
   const partCategories = useMemo(() => {
     if (mainTab === 'myroom') return ['하우스', '배경', '가구', '가전', '소품'];
     const today = new Date().getDay();
@@ -438,14 +475,12 @@ function ShopPage() {
   const itemsForSale = useMemo(() => {
     const today = new Date().getDay();
     let items = [];
-
     if (mainTab === 'avatar') {
       items = avatarParts.filter(part => {
         if (part.status === 'hidden') return false;
         if (part.saleDays && part.saleDays.length > 0) return part.saleDays.includes(today);
         return true;
       }).filter(part => part.price > 0);
-
       if (activeTab !== 'all') items = items.filter(part => part.category === activeTab);
     } else {
       items = myRoomItems.filter(item => item.price > 0 && item.status !== 'hidden');
@@ -530,11 +565,9 @@ function ShopPage() {
   const handleMyRoomItemClick = async (item) => {
     const isOwned = myPlayerData?.ownedMyRoomItems?.includes(item.id);
     if (isOwned) return alert("이미 소유하고 있는 아이템입니다.");
-
     const now = new Date();
     const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
     const price = isSale ? item.salePrice : item.price;
-
     if (myPlayerData.points < price) return alert("포인트가 부족합니다.");
     if (window.confirm(`'${item.displayName || item.id}'을(를) ${price}P에 구매하시겠습니까?`)) {
       try {
@@ -660,19 +693,24 @@ function ShopPage() {
               </CartSummary>
             )}
 
-            <ActionButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
+            <FittingButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
               {newItemsToBuy.length > 0 ? '구매하기' : '선택된 새 아이템 없음'}
-            </ActionButton>
+            </FittingButton>
 
             {justPurchased ? (
-              <ActionButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</ActionButton>
+              <FittingButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</FittingButton>
             ) : (
-              <ActionButton onClick={handleReset}>초기화</ActionButton>
+              <FittingButton onClick={handleReset}>초기화</FittingButton>
             )}
-            <ActionButton onClick={() => navigate(-1)}>나가기</ActionButton>
           </FittingRoom>
         )}
       </ContentLayout>
+
+      {/* [수정] 통일된 스타일의 하단 버튼 */}
+      <ButtonGroup>
+        <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>
+        <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>
+      </ButtonGroup>
     </ShopWrapper>
   );
 }

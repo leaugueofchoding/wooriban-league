@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import LeagueTable from '../components/LeagueTable.jsx';
 import defaultEmblem from '../assets/default-emblem.png';
 import { auth } from '../api/firebase';
@@ -297,24 +297,30 @@ const TeamRecord = styled.p`
   font-weight: 600;
 `;
 
-const ExitButton = styled.button`
-  display: block;
-  margin: 3rem auto 0;
-  padding: 0.8rem 2.5rem;
+// [추가] 통일된 스타일의 버튼 컨테이너 및 버튼 (PlayerStatsPage 스타일)
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 3rem;
+`;
+
+const ActionButton = styled.button`
+  padding: 0.8rem 2rem;
   font-size: 1rem;
-  font-weight: 700;
-  color: #495057;
-  background-color: #fff;
-  border: 1px solid #dee2e6;
-  border-radius: 30px;
+  font-weight: 800;
+  color: ${props => props.$primary ? 'white' : '#495057'};
+  background: ${props => props.$primary ? '#339af0' : '#f1f3f5'};
+  border: none;
+  border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 
-  &:hover { 
-    background-color: #f8f9fa; 
+  &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+    filter: brightness(0.95);
   }
 `;
 
@@ -452,7 +458,10 @@ function HomePage() {
   const { matches, teams, currentSeason, players, standingsData } = useLeagueStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState('leagueInfo');
+  // [수정] useState 대신 useSearchParams 사용하여 탭 상태를 URL과 동기화
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'leagueInfo'; // URL 파라미터가 없으면 기본값 'leagueInfo'
+
   const currentUser = auth.currentUser;
 
   const myPlayerData = useMemo(() => {
@@ -465,13 +474,18 @@ function HomePage() {
     return teams.find(team => team.seasonId === currentSeason.id && team.members.includes(myPlayerData.id));
   }, [teams, myPlayerData, currentSeason]);
 
-
   useEffect(() => {
     if (location.state?.defaultTab) {
-      setActiveTab(location.state.defaultTab);
-      navigate(location.pathname, { replace: true, state: {} });
+      // location state로 탭 변경 요청이 들어오면 URL 파라미터 업데이트
+      setSearchParams({ tab: location.state.defaultTab });
+      // state 초기화 (불필요한 반복 방지)
+      navigate({ pathname: location.pathname, search: `?tab=${location.state.defaultTab}` }, { replace: true, state: {} });
     }
-  }, [location, navigate]);
+  }, [location, navigate, setSearchParams]);
+
+  const handleTabChange = (tabId) => {
+    setSearchParams({ tab: tabId });
+  };
 
   const finalStandingsData = standingsData();
 
@@ -494,10 +508,11 @@ function HomePage() {
       </HeaderSection>
 
       <TabContainer>
-        <TabButton $active={activeTab === 'leagueInfo'} onClick={() => setActiveTab('leagueInfo')}>
+        {/* [수정] onClick 핸들러를 handleTabChange로 변경 */}
+        <TabButton $active={activeTab === 'leagueInfo'} onClick={() => handleTabChange('leagueInfo')}>
           📊 리그 현황
         </TabButton>
-        <TabButton $active={activeTab === 'teamInfo'} onClick={() => setActiveTab('teamInfo')}>
+        <TabButton $active={activeTab === 'teamInfo'} onClick={() => handleTabChange('teamInfo')}>
           🛡️ 팀 정보
         </TabButton>
         {myPlayerData && (
@@ -509,7 +524,11 @@ function HomePage() {
 
       {renderContent()}
 
-      <ExitButton onClick={() => navigate('/')}>🏠 홈으로 돌아가기</ExitButton>
+      {/* [수정] 통일된 스타일의 하단 버튼 */}
+      <ButtonGroup>
+        <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>
+        <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>
+      </ButtonGroup>
     </Wrapper>
   );
 }

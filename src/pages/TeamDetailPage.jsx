@@ -34,6 +34,7 @@ const ContentWrapper = styled.div`
   box-shadow: 0 10px 30px rgba(0,0,0,0.05);
   overflow: hidden;
   animation: ${fadeIn} 0.5s ease-out;
+  padding-bottom: 2rem; /* 하단 여백 추가 (버튼 공간) */
 `;
 
 const HeaderSection = styled.div`
@@ -209,7 +210,6 @@ const AvatarContainer = styled.div`
     object-fit: contain;
   }
   
-  /* 파츠 렌더링용 스타일 */
   .part-img {
     position: absolute;
     top: 0; left: 0;
@@ -379,34 +379,30 @@ const ModalEmblem = styled.img`
   animation: ${fadeIn} 0.3s ease-out;
 `;
 
-// [추가] 통일된 스타일의 버튼 컨테이너 및 버튼
-const ButtonContainer = styled.div`
+// [수정] 버튼 스타일 (PlayerStatsPage와 동일)
+const ButtonGroup = styled.div`
   display: flex;
   justify-content: center;
   gap: 1rem;
-  margin-top: 3rem;
-  flex-wrap: wrap;
+  margin-top: 1rem; /* 내부로 들어왔으므로 여백 줄임 */
 `;
 
-const NavButton = styled.button`
-  background: #f1f3f5;
-  color: #495057;
-  border: none;
+const ActionButton = styled.button`
   padding: 0.8rem 2rem;
-  border-radius: 12px;
-  font-weight: 700;
   font-size: 1rem;
+  font-weight: 800;
+  color: ${props => props.$primary ? 'white' : '#495057'};
+  background: ${props => props.$primary ? '#339af0' : '#f1f3f5'};
+  border: none;
+  border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 
   &:hover {
-    background: #e9ecef;
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+    filter: brightness(0.95);
   }
 `;
 
@@ -436,7 +432,6 @@ function TeamDetailPage() {
 
             const equippedTitle = player.equippedTitle ? titles.find(t => t.id === player.equippedTitle) : null;
 
-            // [수정] 아바타 스냅샷 우선 로드 로직을 위해 전체 데이터 전달
             const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const urls = [baseAvatar];
             const config = player.avatarConfig || {};
@@ -460,7 +455,7 @@ function TeamDetailPage() {
                 ...player,
                 avatarUrls: urls,
                 equippedTitle,
-                avatarSnapshotUrl: player.avatarSnapshotUrl // 스냅샷 URL 포함
+                avatarSnapshotUrl: player.avatarSnapshotUrl
             };
         }).filter(Boolean);
     }, [teamData, players, avatarParts, titles]);
@@ -591,7 +586,6 @@ function TeamDetailPage() {
                                     <MemberCard key={player.id} to={`/profile/${player.id}`}>
                                         {teamData.captainId === player.id && <CaptainMark>👑</CaptainMark>}
                                         <AvatarContainer>
-                                            {/* [수정] 스냅샷 우선 로드 */}
                                             {player.avatarSnapshotUrl ? (
                                                 <img
                                                     src={player.avatarSnapshotUrl}
@@ -645,13 +639,13 @@ function TeamDetailPage() {
                             </MatchList>
                         </div>
                     </ContentBody>
-                </ContentWrapper>
 
-                {/* [추가] 통일된 스타일의 하단 버튼 */}
-                <ButtonContainer>
-                    <NavButton onClick={() => navigate('/league')}>📋 팀 목록으로</NavButton>
-                    <NavButton onClick={() => navigate('/')}>🏠 홈으로</NavButton>
-                </ButtonContainer>
+                    {/* [수정] 버튼 그룹을 ContentWrapper 내부로 이동 */}
+                    <ButtonGroup>
+                        <ActionButton onClick={() => navigate('/league')}>뒤로 가기</ActionButton>
+                        <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>
+                    </ButtonGroup>
+                </ContentWrapper>
             </div>
 
             {isEmblemModalOpen && (
