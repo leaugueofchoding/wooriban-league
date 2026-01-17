@@ -1,137 +1,190 @@
 // src/pages/ShopPage.jsx
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, updatePlayerAvatar } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 import { useNavigate } from 'react-router-dom';
 
+// --- Animations ---
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
 // --- Styled Components ---
 const ShopWrapper = styled.div`
   max-width: 1200px;
-  margin: 2rem auto;
-  padding: 1rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 6rem 1rem;
+  font-family: 'Pretendard', sans-serif;
+  min-height: 100vh;
+  background-color: #f8f9fa;
 `;
-const Title = styled.h1`
-  text-align: center;
+
+const HeaderSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 2rem;
-  font-size: 2.5rem;
-  @media (max-width: 768px) {
-    font-size: 2rem;
-  }
+  animation: ${fadeIn} 0.5s ease-out;
 `;
-const ContentWrapper = styled.div`
+
+const Title = styled.h1`
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #343a40;
+  margin-bottom: 0.5rem;
+  
+  span { color: #339af0; }
+`;
+
+const PointsBadge = styled.div`
+  background: white;
+  padding: 0.8rem 1.5rem;
+  border-radius: 30px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #495057;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 2px solid #e9ecef;
+
+  strong { color: #fcc419; font-size: 1.4rem; }
+`;
+
+const MainTabContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+`;
+
+const MainTabButton = styled.button`
+  padding: 0.8rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  ${props => props.$active ? css`
+    background-color: #339af0;
+    color: white;
+    box-shadow: 0 4px 12px rgba(51, 154, 240, 0.3);
+    transform: translateY(-2px);
+  ` : css`
+    background-color: white;
+    color: #868e96;
+    border: 1px solid #dee2e6;
+    &:hover { background-color: #f1f3f5; }
+  `}
+`;
+
+const ContentLayout = styled.div`
   display: flex;
   gap: 2rem;
   align-items: flex-start;
+  
   @media (max-width: 992px) {
-    flex-direction: column;
+    flex-direction: column-reverse;
   }
 `;
-const ItemContainer = styled.div`
+
+const ItemSection = styled.div`
   flex: 3;
   width: 100%;
 `;
+
+const CategoryScroll = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.2rem 1rem 0.2rem;
+  margin-bottom: 1rem;
+  
+  &::-webkit-scrollbar { height: 6px; }
+  &::-webkit-scrollbar-thumb { background-color: #dee2e6; border-radius: 3px; }
+`;
+
+const CategoryButton = styled.button`
+  flex-shrink: 0;
+  padding: 0.6rem 1.2rem;
+  border-radius: 20px;
+  border: 1px solid ${props => props.$active ? '#339af0' : '#dee2e6'};
+  background: ${props => props.$active ? '#e7f5ff' : 'white'};
+  color: ${props => props.$active ? '#1864ab' : '#495057'};
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: ${props => props.$active ? '#d0ebff' : '#f8f9fa'};
+  }
+`;
+
 const ItemGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-  min-height: 450px;
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-  }
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  min-height: 400px;
 `;
-const PreviewPanel = styled.div`
-  flex: 2;
-  position: sticky;
-  top: 2rem;
-  padding: 1.5rem;
-  border-radius: 8px;
-  background-color: #f8f9fa;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  width: 100%;
-  @media (max-width: 992px) {
-    position: static;
-  }
-`;
-const AvatarCanvas = styled.div`
-  width: 250px;
-  height: 250px;
-  border-radius: 50%;
-  background-color: #e9ecef;
-  margin: 0 auto 1.5rem;
+
+const ItemCard = styled.div`
+  background: white;
+  border-radius: 16px;
+  padding: 1rem;
   position: relative;
-  border: 4px solid #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border: 2px solid ${props => props.$isPreviewing ? '#339af0' : 'transparent'};
+  box-shadow: ${props => props.$isPreviewing ? '0 0 0 4px rgba(51, 154, 240, 0.1)' : '0 2px 8px rgba(0,0,0,0.05)'};
+  cursor: pointer;
+  transition: all 0.2s;
   overflow: hidden;
-  @media (max-width: 768px) {
-    width: 200px;
-    height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
   }
+
+  ${props => props.$isOwned && css`
+    opacity: 0.7;
+    background: #f8f9fa;
+  `}
 `;
-const PartImage = styled.img`
+
+const SaleBadge = styled.div`
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-`;
-const ItemCard = styled.div`
-  cursor: pointer;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 8px;
-  background-color: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  text-align: center;
-  overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
-  border: 2px solid transparent;
-  &.previewing {
-    border-color: #007bff;
-    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
-  }
-  &:hover {
-    transform: translateY(-5px);
-  }
-`;
-const SaleBadge = styled.div`
-  position: absolute;
-  top: 10px;
-  right: -25px;
-  background-color: #dc3545;
+  background: #fa5252;
   color: white;
-  padding: 2px 25px;
-  font-size: 0.9rem;
-  font-weight: bold;
-  transform: rotate(45deg);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-bottom-right-radius: 12px;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
 `;
-const PriceContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 40px;
-  justify-content: center;
-  gap: 2px;
+
+const OwnedBadge = styled.div`
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: #868e96;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-bottom-left-radius: 12px;
 `;
-const OriginalPrice = styled.span`
-  font-size: 0.9rem;
-  color: #6c757d;
-  text-decoration: line-through;
-`;
-const FinalPrice = styled.span`
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: ${props => (props.$onSale ? '#dc3545' : '#007bff')};
-`;
+
 const getBackgroundPosition = (category) => {
   switch (category) {
     case 'bottom': return 'center 75%';
@@ -142,170 +195,210 @@ const getBackgroundPosition = (category) => {
     default: return 'center 55%';
   }
 };
+
 const ItemImage = styled.div`
-  width: 160px;
-  height: 160px;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  background-color: #f1f3f5;
   background-image: url(${props => props.src});
   background-size: ${props => ['하우스', '배경', '바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '200%'};
   background-repeat: no-repeat;
-  background-color: #e9ecef;
   background-position: ${props => getBackgroundPosition(props.$category)};
-  transition: background-size 0.2s ease-in-out;
+  margin-bottom: 0.8rem;
+  transition: background-size 0.2s;
 
-  &:hover {
+  ${ItemCard}:hover & {
     background-size: ${props => ['하우스', '배경', '바닥', '벽지', '가구', '소품', 'accessory'].includes(props.$category) ? 'contain' : '220%'};
   }
-
-  @media (max-width: 768px) {
-    width: 100px;
-    height: 100px;
-  }
 `;
 
-const BuyButton = styled.button`
-  width: 100%;
-  padding: 0.75rem;
-  border: none;
-  border-radius: 8px;
-  background-color: #28a745;
-  color: white;
-  font-weight: bold;
-  cursor: pointer;
-  margin-top: auto;
-  transition: background-color 0.2s;
-  &:hover { background-color: #218838; }
-  &:disabled { background-color: #6c757d; cursor: not-allowed; }
-`;
-const TabContainer = styled.div`
-  display: flex;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  justify-content: center;
-`;
-const TabButton = styled.button`
-  padding: 0.75rem 1rem;
-  font-size: 1rem;
-  font-weight: bold;
-  border: 1px solid #ccc;
-  background-color: ${props => props.$active ? '#007bff' : 'white'};
-  color: ${props => props.$active ? 'white' : 'black'};
-  cursor: pointer;
-  @media (max-width: 768px) {
-    font-size: 0.9rem;
-    padding: 0.6rem 0.8rem;
-  }
-`;
-const LoginPrompt = styled.div`
+const ItemName = styled.div`
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #343a40;
+  margin-bottom: 0.3rem;
   text-align: center;
-  padding: 2rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  margin-top: 2rem;
-  font-size: 1.1rem;
-`;
-const ItemName = styled.h4`
-  margin: 0;
-  font-size: 1rem;
-  font-weight: bold;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   width: 100%;
-  height: 24px;
 `;
-const SaleDayInfo = styled.div`
-  font-size: 0.8rem;
-  font-weight: bold;
-  color: #17a2b8;
-  background-color: #e8f7fa;
-  padding: 2px 8px;
-  border-radius: 10px;
-`;
-const PaginationContainer = styled.div`
+
+const PriceTag = styled.div`
+  font-size: 1rem;
+  font-weight: 800;
   display: flex;
-  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  
+  ${props => props.$sale ? css`color: #fa5252;` : css`color: #339af0;`}
+  
+  .original {
+    text-decoration: line-through;
+    color: #adb5bd;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+`;
+
+// 피팅룸 (우측 패널)
+const FittingRoom = styled.div`
+  flex: 1.2;
+  min-width: 300px;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  position: sticky;
+  top: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  
+  @media (max-width: 992px) {
+    position: static;
+    width: 100%;
+  }
+`;
+
+const FittingTitle = styled.h3`
+  margin: 0 0 1.5rem 0;
+  font-size: 1.2rem;
+  color: #343a40;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 2.5rem;
 `;
-const PageButton = styled.button`
-  padding: 0.5rem 1rem;
-  border: 1px solid #dee2e6;
-  border-radius: 4px;
-  background-color: ${props => props.$isActive ? '#007bff' : 'white'};
-  color: ${props => props.$isActive ? 'white' : 'black'};
-  font-weight: bold;
-  cursor: pointer;
-  &:hover { background-color: #f1f3f5; }
-  &:disabled { cursor: not-allowed; opacity: 0.5; }
+
+const AvatarPreview = styled.div`
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: #f8f9fa;
+  border: 4px solid #fff;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
 `;
-const ActionButtonGroup = styled.div`
+
+const PartLayer = styled.img`
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+`;
+
+const CartSummary = styled.div`
+  width: 100%;
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+`;
+
+const CartList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+  max-height: 150px;
+  overflow-y: auto;
+  
+  li {
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    color: #495057;
+    padding: 4px 0;
+    border-bottom: 1px dashed #dee2e6;
+    
+    &:last-child { border-bottom: none; }
+    span.price { font-weight: 700; color: #339af0; }
+  }
+`;
+
+const TotalPrice = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #343a40;
+  border-top: 2px solid #dee2e6;
+  padding-top: 0.8rem;
+  
+  span.cost { color: #fa5252; font-size: 1.3rem; }
 `;
 
 const ActionButton = styled.button`
-    width: 100%;
-    padding: 0.75rem;
-    border-radius: 8px;
-    font-weight: bold;
-    color: white;
-    background-color: #6c757d;
-    cursor: pointer;
-    border: none;
-    font-size: 1rem;
-    transition: background-color 0.2s;
-    &:hover { background-color: #5a6268; }
-`;
-
-const WearButton = styled(ActionButton)`
-    background-color: #ffc107;
-    color: black;
-    &:hover {
-        background-color: #e0a800;
-    }
-`;
-
-const ExitButton = styled.button`
-  display: block;
-  margin: 4rem auto 0;
-  padding: 0.8rem 2.5rem;
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: #fff;
-  background-color: #6c757d;
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
   border: none;
-  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 800;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: transform 0.1s;
+  margin-bottom: 0.5rem;
+  
+  ${props => props.$primary ? css`
+    background: #20c997;
+    color: white;
+    box-shadow: 0 4px 0 #12b886;
+    &:hover { transform: translateY(-2px); }
+    &:active { transform: translateY(2px); box-shadow: none; }
+  ` : css`
+    background: #f1f3f5;
+    color: #495057;
+    &:hover { background: #e9ecef; }
+  `}
 
-  &:hover {
-    background-color: #5a6268;
+  &:disabled {
+    background: #adb5bd;
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const Pagination = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 2rem;
+  
+  button {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    background: white;
+    font-weight: 700;
+    cursor: pointer;
+    
+    &.active { background: #339af0; color: white; border-color: #339af0; }
+    &:disabled { opacity: 0.5; cursor: not-allowed; }
   }
 `;
 
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
-const ITEMS_PER_PAGE = 6;
+const ITEMS_PER_PAGE = 8; // 그리드에 맞춰 조정
 
 const translateCategory = (category) => {
   const categoryMap = {
     'all': '전체', 'hair': '헤어', 'top': '상의', 'bottom': '하의', 'shoes': '신발',
     'face': '얼굴', 'eyes': '눈', 'nose': '코', 'mouth': '입', 'accessory': '액세서리',
-    '하우스': '하우스', '가구': '가구', '가전': '가전',
-    '소품': '소품'
+    '하우스': '하우스', '가구': '가구', '가전': '가전', '소품': '소품', '배경': '배경'
   };
   return categoryMap[category] || category;
 };
 
 function ShopPage() {
-  const { classId } = useClassStore(); // [추가]
-  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts } = useLeagueStore();
+  const { classId } = useClassStore();
+  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts, fetchInitialData } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
+
   const [mainTab, setMainTab] = useState('avatar');
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -325,9 +418,7 @@ function ShopPage() {
   const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
 
   const partCategories = useMemo(() => {
-    if (mainTab === 'myroom') {
-      return ['하우스', '배경', '가구', '가전', '소품'];
-    }
+    if (mainTab === 'myroom') return ['하우스', '배경', '가구', '가전', '소품'];
     const today = new Date().getDay();
     const categories = avatarParts.reduce((acc, part) => {
       if (part.price > 0 && part.status !== 'hidden') {
@@ -351,23 +442,17 @@ function ShopPage() {
     if (mainTab === 'avatar') {
       items = avatarParts.filter(part => {
         if (part.status === 'hidden') return false;
-        if (part.saleDays && part.saleDays.length > 0) {
-          return part.saleDays.includes(today);
-        }
+        if (part.saleDays && part.saleDays.length > 0) return part.saleDays.includes(today);
         return true;
-      });
-      items = items.filter(part => part.price > 0);
-      if (activeTab !== 'all') {
-        items = items.filter(part => part.category === activeTab);
-      }
+      }).filter(part => part.price > 0);
+
+      if (activeTab !== 'all') items = items.filter(part => part.category === activeTab);
     } else {
       items = myRoomItems.filter(item => item.price > 0 && item.status !== 'hidden');
-      if (activeTab && partCategories.includes(activeTab)) {
-        items = items.filter(item => item.category === activeTab);
-      }
+      if (activeTab) items = items.filter(item => item.category === activeTab);
     }
     return items;
-  }, [avatarParts, myRoomItems, mainTab, activeTab, partCategories]);
+  }, [avatarParts, myRoomItems, mainTab, activeTab]);
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
@@ -378,254 +463,216 @@ function ShopPage() {
   useEffect(() => {
     setCurrentPage(1);
     setJustPurchased(false);
-    if (mainTab === 'avatar') {
-      setActiveTab('all');
-    } else {
-      setActiveTab('하우스');
-    }
+    if (mainTab === 'avatar') setActiveTab('all');
+    else setActiveTab('하우스');
   }, [mainTab]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-    setJustPurchased(false);
-  }, [activeTab]);
 
   const { newItemsToBuy, totalCost } = useMemo(() => {
     if (!previewConfig || !myItems) return { newItemsToBuy: [], totalCost: 0 };
-
     const newPartIds = new Set();
     const config = previewConfig || {};
-
-    Object.values(config).forEach(value => {
-      if (typeof value === 'string') newPartIds.add(value);
-    });
-
-    if (config.accessories) {
-      Object.values(config.accessories).forEach(partId => newPartIds.add(partId));
-    }
+    Object.values(config).forEach(value => { if (typeof value === 'string') newPartIds.add(value); });
+    if (config.accessories) Object.values(config.accessories).forEach(partId => newPartIds.add(partId));
 
     const newItems = [];
     const now = new Date();
-
     newPartIds.forEach(partId => {
       if (partId && !myItems.includes(partId)) {
         const partInfo = avatarParts.find(p => p.id === partId);
         if (partInfo) {
-          const isCurrentlyOnSale = partInfo.isSale && partInfo.saleStartDate?.toDate() < now && now < partInfo.saleEndDate?.toDate();
-          const price = isCurrentlyOnSale ? partInfo.salePrice : partInfo.price;
-          newItems.push({ ...partInfo, price });
+          const isSale = partInfo.isSale && partInfo.saleStartDate?.toDate() < now && now < partInfo.saleEndDate?.toDate();
+          newItems.push({ ...partInfo, price: isSale ? partInfo.salePrice : partInfo.price });
         }
       }
     });
-
-    const cost = newItems.reduce((sum, part) => sum + part.price, 0);
-    return { newItemsToBuy: newItems, totalCost: cost };
+    return { newItemsToBuy: newItems, totalCost: newItems.reduce((sum, part) => sum + part.price, 0) };
   }, [previewConfig, myItems, avatarParts]);
-
-  const handlePurchasePreview = async () => {
-    if (newItemsToBuy.length === 0) return alert('새로 구매할 아이템이 없습니다.');
-    if (myPlayerData.points < totalCost) return alert('포인트가 부족합니다.');
-    const itemNames = newItemsToBuy.map(p => p.displayName || p.id).join(', ');
-    if (window.confirm(`총 ${newItemsToBuy.length}개의 새 아이템(${itemNames})을 ${totalCost}P에 구매하시겠습니까?`)) {
-      try {
-        await buyMultipleAvatarParts(newItemsToBuy); // 스토어 액션이므로 내부에서 classId 처리
-        alert('구매를 완료했습니다!');
-        setJustPurchased(true);
-      } catch (error) {
-        alert(`구매 실패: ${error.message}`);
-      }
-    }
-  };
-
-  const handlePreview = async (item) => {
-    setJustPurchased(false);
-    if (mainTab === 'myroom') {
-      const isOwned = myPlayerData?.ownedMyRoomItems?.includes(item.id);
-      if (isOwned) {
-        alert("이미 소유하고 있는 아이템입니다.");
-        return;
-      }
-
-      const now = new Date();
-      const isCurrentlyOnSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
-      const finalPrice = isCurrentlyOnSale ? item.salePrice : item.price;
-
-      if (myPlayerData.points < finalPrice) {
-        alert("포인트가 부족합니다.");
-        return;
-      }
-
-      if (window.confirm(`'${item.displayName || item.id}' 아이템을 ${finalPrice}P에 구매하시겠습니까?`)) {
-        try {
-          await buyMyRoomItem(item); // 스토어 액션이므로 내부에서 classId 처리
-          alert('구매를 완료했습니다!');
-        } catch (error) {
-          alert(`구매 실패: ${error.message}`);
-        }
-      }
-      return;
-    }
-
-    setPreviewConfig(prev => {
-      const { category, id, slot } = item;
-      const newConfig = JSON.parse(JSON.stringify(prev));
-
-      if (category !== 'accessory') {
-        if (prev[category] === id) {
-          delete newConfig[category];
-        } else {
-          newConfig[category] = id;
-        }
-      } else {
-        if (!newConfig.accessories) {
-          newConfig.accessories = {};
-        }
-        const currentPartInSlot = newConfig.accessories[slot];
-        if (currentPartInSlot === id) {
-          delete newConfig.accessories[slot];
-        } else {
-          newConfig.accessories[slot] = id;
-        }
-      }
-      return newConfig;
-    });
-  };
-
-  const handleResetPreview = () => setPreviewConfig(myPlayerData.avatarConfig);
-
-  const handleWearPurchased = async () => {
-    if (!classId || !myPlayerData) return alert("선수 정보를 찾을 수 없습니다."); // [수정]
-    try {
-      await updatePlayerAvatar(classId, myPlayerData.id, previewConfig); // [수정]
-      alert("선택한 아바타가 저장되었습니다!");
-      useLeagueStore.getState().fetchInitialData();
-      navigate(`/profile/${myPlayerData.id}`);
-    } catch (error) {
-      console.error("아바타 저장 오류:", error);
-      alert("저장 중 오류가 발생했습니다.");
-    }
-  };
 
   const previewPartUrls = useMemo(() => {
     if (!previewConfig) return [baseAvatar];
-    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'mouth', 'nose', 'eyes', 'face'];
+    const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
     const urls = [baseAvatar];
-    const config = previewConfig;
-    RENDER_ORDER.forEach(category => {
-      const partId = config[category];
-      if (partId) {
-        const part = avatarParts.find(p => p.id === partId);
+    RENDER_ORDER.forEach(cat => {
+      const pid = previewConfig[cat];
+      if (pid) {
+        const part = avatarParts.find(p => p.id === pid);
         if (part) urls.push(part.src);
       }
     });
-    if (config.accessories) {
-      Object.values(config.accessories).forEach(partId => {
-        const part = avatarParts.find(p => p.id === partId);
+    if (previewConfig.accessories) {
+      Object.values(previewConfig.accessories).forEach(pid => {
+        const part = avatarParts.find(p => p.id === pid);
         if (part) urls.push(part.src);
       });
     }
     return Array.from(new Set(urls));
   }, [previewConfig, avatarParts]);
 
-  const canAfford = myPlayerData && myPlayerData.points >= totalCost;
+  const handlePreview = (item) => {
+    if (mainTab === 'myroom') {
+      handleMyRoomItemClick(item);
+      return;
+    }
+    setJustPurchased(false);
+    setPreviewConfig(prev => {
+      const newConfig = JSON.parse(JSON.stringify(prev));
+      const { category, id, slot } = item;
+      if (category !== 'accessory') {
+        newConfig[category] = newConfig[category] === id ? undefined : id;
+      } else {
+        if (!newConfig.accessories) newConfig.accessories = {};
+        newConfig.accessories[slot] = newConfig.accessories[slot] === id ? undefined : id;
+      }
+      return newConfig;
+    });
+  };
+
+  const handleMyRoomItemClick = async (item) => {
+    const isOwned = myPlayerData?.ownedMyRoomItems?.includes(item.id);
+    if (isOwned) return alert("이미 소유하고 있는 아이템입니다.");
+
+    const now = new Date();
+    const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+    const price = isSale ? item.salePrice : item.price;
+
+    if (myPlayerData.points < price) return alert("포인트가 부족합니다.");
+    if (window.confirm(`'${item.displayName || item.id}'을(를) ${price}P에 구매하시겠습니까?`)) {
+      try {
+        await buyMyRoomItem(item);
+        alert('구매 완료!');
+        await fetchInitialData();
+      } catch (e) { alert(e.message); }
+    }
+  };
+
+  const handlePurchase = async () => {
+    if (newItemsToBuy.length === 0) return alert('구매할 새 아이템이 없습니다.');
+    if (myPlayerData.points < totalCost) return alert('포인트가 부족합니다.');
+    if (window.confirm(`총 ${totalCost}P를 사용하여 ${newItemsToBuy.length}개의 아이템을 구매하시겠습니까?`)) {
+      try {
+        await buyMultipleAvatarParts(newItemsToBuy);
+        alert('구매 완료!');
+        setJustPurchased(true);
+        await fetchInitialData();
+      } catch (e) { alert(e.message); }
+    }
+  };
+
+  const handleWear = async () => {
+    if (!classId || !myPlayerData) return;
+    try {
+      await updatePlayerAvatar(classId, myPlayerData.id, previewConfig);
+      alert('아바타가 저장되었습니다!');
+      navigate(`/profile/${myPlayerData.id}`);
+    } catch (e) { alert(e.message); }
+  };
+
+  const handleReset = () => setPreviewConfig(myPlayerData.avatarConfig);
 
   return (
     <ShopWrapper>
-      <Title>✨ 아이템 상점 ✨</Title>
-      {!currentUser ? (<LoginPrompt>아이템을 구매하려면 로그인이 필요합니다.</LoginPrompt>) : (
-        <>
-          <p style={{ textAlign: 'center', fontSize: '1.2rem' }}>
-            내 포인트: <strong>💰 {myPlayerData?.points ?? '...'} P</strong>
-          </p>
-          <TabContainer>
-            <TabButton $active={mainTab === 'avatar'} onClick={() => setMainTab('avatar')}>아바타</TabButton>
-            <TabButton $active={mainTab === 'myroom'} onClick={() => setMainTab('myroom')}>마이룸</TabButton>
-          </TabContainer>
-          <ContentWrapper>
-            <ItemContainer>
-              <TabContainer>
-                {partCategories.map(category => (
-                  <TabButton key={category} $active={activeTab === category} onClick={() => setActiveTab(category)}>
-                    {translateCategory(category)}
-                  </TabButton>
-                ))}
-              </TabContainer>
-              <ItemGrid>
-                {paginatedItems.map(part => {
-                  const isOwned = mainTab === 'avatar'
-                    ? myPlayerData?.ownedParts?.includes(part.id)
-                    : myPlayerData?.ownedMyRoomItems?.includes(part.id);
+      <HeaderSection>
+        <Title>🛍️ <span>아이템 상점</span></Title>
+        <PointsBadge>
+          <span>내 포인트:</span>
+          <strong>{myPlayerData?.points?.toLocaleString() ?? 0} P</strong>
+        </PointsBadge>
+      </HeaderSection>
 
-                  let isPreviewing = false;
-                  if (previewConfig && mainTab === 'avatar') {
-                    if (part.category !== 'accessory') {
-                      isPreviewing = previewConfig[part.category] === part.id;
-                    } else if (previewConfig.accessories) {
-                      isPreviewing = previewConfig.accessories[part.slot] === part.id;
-                    }
-                  }
+      <MainTabContainer>
+        <MainTabButton $active={mainTab === 'avatar'} onClick={() => setMainTab('avatar')}>👗 아바타 꾸미기</MainTabButton>
+        <MainTabButton $active={mainTab === 'myroom'} onClick={() => setMainTab('myroom')}>🏠 마이룸 꾸미기</MainTabButton>
+      </MainTabContainer>
 
-                  const now = new Date();
-                  const isCurrentlyOnSale = part.isSale && part.saleStartDate?.toDate() < now && now < part.saleEndDate?.toDate();
-                  const saleDaysText = part.saleDays && part.saleDays.length > 0 ? `[${part.saleDays.map(d => DAYS_OF_WEEK[d]).join(',')}] 한정` : null;
+      <ContentLayout>
+        <ItemSection>
+          <CategoryScroll>
+            {partCategories.map(cat => (
+              <CategoryButton key={cat} $active={activeTab === cat} onClick={() => setActiveTab(cat)}>
+                {translateCategory(cat)}
+              </CategoryButton>
+            ))}
+          </CategoryScroll>
 
-                  return (
-                    <ItemCard key={part.id} onClick={() => handlePreview(part)} className={isPreviewing ? 'previewing' : ''}>
-                      {isCurrentlyOnSale && <SaleBadge>SALE</SaleBadge>}
-                      <ItemName>{part.displayName || part.id}</ItemName>
-                      <ItemImage src={part.src} $category={part.category} />
-                      {saleDaysText && <SaleDayInfo>{saleDaysText}</SaleDayInfo>}
-                      <PriceContainer>
-                        {isCurrentlyOnSale ? (
-                          <>
-                            <OriginalPrice>{part.originalPrice} P</OriginalPrice>
-                            <FinalPrice $onSale={true}>💰 {part.salePrice} P</FinalPrice>
-                          </>
-                        ) : (
-                          <FinalPrice $onSale={false}>💰 {part.price} P</FinalPrice>
-                        )}
-                      </PriceContainer>
-                      {isOwned && <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#6c757d', marginTop: 'auto' }}>소유함</span>}
-                    </ItemCard>
-                  );
-                })}
-              </ItemGrid>
-              <PaginationContainer>
-                <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>이전</PageButton>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <PageButton key={i + 1} $isActive={currentPage === i + 1} onClick={() => setCurrentPage(i + 1)}>
-                    {i + 1}
-                  </PageButton>
-                ))}
-                <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>다음</PageButton>
-              </PaginationContainer>
-            </ItemContainer>
+          <ItemGrid>
+            {paginatedItems.map(item => {
+              const isOwned = mainTab === 'avatar'
+                ? myPlayerData?.ownedParts?.includes(item.id)
+                : myPlayerData?.ownedMyRoomItems?.includes(item.id);
 
-            {mainTab === 'avatar' && (
-              <PreviewPanel>
-                <h3 style={{ textAlign: 'center', marginTop: 0 }}>아바타 미리보기</h3>
-                <AvatarCanvas>
-                  {previewPartUrls.map(src => <PartImage key={src} src={src} />)}
-                </AvatarCanvas>
-                <BuyButton onClick={handlePurchasePreview} disabled={newItemsToBuy.length === 0 || !canAfford}>
-                  {newItemsToBuy.length > 0 ? `새 아이템 ${newItemsToBuy.length}개 구매 (${totalCost}P)` : '구매할 새 아이템 없음'}
-                </BuyButton>
-                <ActionButton onClick={handleResetPreview}>
-                  전체 초기화
-                </ActionButton>
-                <ActionButtonGroup>
-                  {justPurchased && (
-                    <WearButton onClick={handleWearPurchased}>
-                      ✨ 구입한 옷 착용하기
-                    </WearButton>
-                  )}
-                </ActionButtonGroup>
-              </PreviewPanel>
+              let isPreviewing = false;
+              if (mainTab === 'avatar' && previewConfig) {
+                if (item.category !== 'accessory') isPreviewing = previewConfig[item.category] === item.id;
+                else isPreviewing = previewConfig.accessories?.[item.slot] === item.id;
+              }
+
+              const now = new Date();
+              const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+
+              return (
+                <ItemCard key={item.id} $isPreviewing={isPreviewing} $isOwned={isOwned} onClick={() => handlePreview(item)}>
+                  {isSale && <SaleBadge>SALE</SaleBadge>}
+                  {isOwned && <OwnedBadge>보유중</OwnedBadge>}
+                  <ItemName>{item.displayName || item.id}</ItemName>
+                  <ItemImage src={item.src} $category={item.category} />
+                  <PriceTag $sale={isSale}>
+                    {isSale && <span className="original">{item.originalPrice}P</span>}
+                    <span>{isSale ? item.salePrice : item.price} P</span>
+                  </PriceTag>
+                </ItemCard>
+              );
+            })}
+          </ItemGrid>
+
+          {totalPages > 1 && (
+            <Pagination>
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>&lt;</button>
+              {Array.from({ length: totalPages }, (_, i) => (
+                <button key={i + 1} className={currentPage === i + 1 ? 'active' : ''} onClick={() => setCurrentPage(i + 1)}>{i + 1}</button>
+              ))}
+              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>&gt;</button>
+            </Pagination>
+          )}
+        </ItemSection>
+
+        {mainTab === 'avatar' && (
+          <FittingRoom>
+            <FittingTitle>👕 피팅룸</FittingTitle>
+            <AvatarPreview>
+              {previewPartUrls.map(src => <PartLayer key={src} src={src} />)}
+            </AvatarPreview>
+
+            {newItemsToBuy.length > 0 && (
+              <CartSummary>
+                <div style={{ fontWeight: '700', marginBottom: '0.5rem', color: '#343a40' }}>구매 예정 목록 ({newItemsToBuy.length})</div>
+                <CartList>
+                  {newItemsToBuy.map(item => (
+                    <li key={item.id}>
+                      <span>{item.displayName || item.id}</span>
+                      <span className="price">{item.price} P</span>
+                    </li>
+                  ))}
+                </CartList>
+                <TotalPrice>
+                  <span>총 합계</span>
+                  <span className="cost">{totalCost.toLocaleString()} P</span>
+                </TotalPrice>
+              </CartSummary>
             )}
-          </ContentWrapper>
-          <ExitButton onClick={() => navigate(-1)}>나가기</ExitButton>
-        </>
-      )}
+
+            <ActionButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
+              {newItemsToBuy.length > 0 ? '구매하기' : '선택된 새 아이템 없음'}
+            </ActionButton>
+
+            {justPurchased ? (
+              <ActionButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</ActionButton>
+            ) : (
+              <ActionButton onClick={handleReset}>초기화</ActionButton>
+            )}
+            <ActionButton onClick={() => navigate(-1)}>나가기</ActionButton>
+          </FittingRoom>
+        )}
+      </ContentLayout>
     </ShopWrapper>
   );
 }
