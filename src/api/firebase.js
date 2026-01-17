@@ -202,7 +202,7 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     throw new Error("미션을 찾을 수 없습니다.");
   }
   const missionData = missionSnap.data();
-  const MISSION_EXP_REWARD = 100; // 미션 완료 시 펫 경험치 20 지급
+  const MISSION_EXP_REWARD = 100;
 
   for (const studentId of studentIds) {
     const playerRef = doc(db, 'classes', classId, 'players', studentId);
@@ -210,26 +210,46 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
 
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
+
+      // 기존 제출 내역 확인
       const submissionQuery = query(
         collection(db, "classes", classId, "missionSubmissions"),
         where("missionId", "==", missionId),
-        where("studentId", "==", studentId),
-        where("status", "==", "pending")
+        where("studentId", "==", studentId)
       );
       const submissionSnapshot = await getDocs(submissionQuery);
 
       if (!submissionSnapshot.empty) {
+        // 이미 제출된 내역이 있다면 상태 업데이트 (pending -> approved)
+        // 이미 approved인 경우도 덮어쓰기 되지만, UI에서 막으므로 괜찮음
         const submissionDoc = submissionSnapshot.docs[0];
-        batch.update(submissionDoc.ref, {
+        if (submissionDoc.data().status !== 'approved') {
+          batch.update(submissionDoc.ref, {
+            status: 'approved',
+            checkedBy: recorderId,
+            approvedAt: serverTimestamp()
+          });
+        }
+      } else {
+        // [추가] 제출 내역이 없다면(미제출 승인), 'approved' 상태로 새로 생성
+        const newSubmissionRef = doc(collection(db, "classes", classId, "missionSubmissions"));
+        batch.set(newSubmissionRef, {
+          missionId,
+          studentId,
+          studentName: playerData.name,
           status: 'approved',
+          requestedAt: serverTimestamp(),
+          approvedAt: serverTimestamp(),
           checkedBy: recorderId,
-          approvedAt: serverTimestamp()
+          text: '(관리자 직접 승인)',
+          photoUrls: [],
+          isPublic: false
         });
       }
 
+      // 포인트 및 경험치 지급 (기존 로직)
       batch.update(playerRef, { points: increment(reward) });
 
-      // ▼▼▼ [수정] 펫 경험치 획득 로직을 공통 함수로 호출 ▼▼▼
       if (playerData.pets && playerData.pets.length > 0) {
         await updatePetExperience(playerRef, MISSION_EXP_REWARD);
       }
@@ -253,6 +273,7 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     }
   }
 
+  // 보너스 지급 로직 (기존 유지)
   const incentiveAmount = studentIds.length * 10;
   if (incentiveAmount > 0) {
     const playersRef = collection(db, 'classes', classId, 'players');
@@ -1287,9 +1308,9 @@ export async function updateMission(missionId, missionData) {
   await updateDoc(missionRef, missionData);
 }
 
-export async function getMissionSubmissions() {
-  const submissionsRef = collection(db, 'missionSubmissions');
-  // 최신순으로 정렬하는 로직 추가
+export async function getMissionSubmissions(classId) {
+  if (!classId) return [];
+  const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
   const q = query(submissionsRef, orderBy("requestedAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
