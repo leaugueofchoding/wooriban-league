@@ -1,12 +1,14 @@
 // src/pages/MissionsPage.jsx
 
 import React, { useMemo, useState, useEffect } from 'react';
-import styled, { keyframes, css } from 'styled-components'; // css 추가
+import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, getMissionHistory, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import MissionHistoryModal from '../components/MissionHistoryModal';
 import { useNavigate, useLocation } from 'react-router-dom';
+// [추가] 이미지 압축 라이브러리 (npm install browser-image-compression 필요)
+import imageCompression from 'browser-image-compression';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(20px); }
@@ -434,12 +436,49 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     return prerequisiteSubmission?.status === 'approved';
   }, [mission.prerequisiteMissionId, mySubmissions]);
 
-  const handleFileChange = (e) => {
+  // [수정] 이미지 압축 및 리사이징 적용 (0.5MB, 1280px 제한)
+  const handleFileChange = async (e) => {
     const files = Array.from(e.target.files);
-    if (files.length > 0) {
-      setSubmissionContent(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
-      e.target.value = null;
+
+    if (files.length === 0) return;
+
+    const options = {
+      maxSizeMB: 0.5, // 0.5MB (500KB) 제한
+      maxWidthOrHeight: 1280, // 긴 변 기준 1280px로 리사이징
+      useWebWorker: true,
+      fileType: 'image/jpeg' // 강제 JPEG 변환 (용량 감소)
+    };
+
+    try {
+      const compressedFiles = [];
+
+      for (const file of files) {
+        if (!file.type.match(/image.*/)) {
+          alert(`${file.name}은(는) 이미지가 아닙니다.`);
+          continue;
+        }
+
+        // 압축 진행
+        const compressedFile = await imageCompression(file, options);
+        // 원본 파일명 유지
+        const finalFile = new File([compressedFile], file.name, { type: compressedFile.type });
+
+        compressedFiles.push(finalFile);
+      }
+
+      if (compressedFiles.length > 0) {
+        setSubmissionContent(prev => ({
+          ...prev,
+          photos: [...prev.photos, ...compressedFiles]
+        }));
+      }
+
+    } catch (error) {
+      console.error("이미지 압축 실패:", error);
+      alert("이미지 처리 중 오류가 발생했습니다.");
     }
+
+    e.target.value = null;
   };
 
   const handleClearPhotos = () => {

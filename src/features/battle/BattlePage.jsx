@@ -3,15 +3,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLeagueStore, useClassStore } from '@/store/leagueStore';
-// [수정] getActiveQuizSets 추가
-import { auth, db, cancelBattleChallenge, getActiveQuizSets } from '@/api/firebase';
+import { useLeagueStore, useClassStore } from '../../store/leagueStore';
+import { auth, db, cancelBattleChallenge, getActiveQuizSets } from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
-// [삭제] 기존 하드코딩 데이터 import 제거
-// import allQuizzesData from '@/assets/missions.json'; 
-import { petImageMap } from '@/utils/petImageMap';
-import { SKILLS } from '@/features/pet/petData';
-import { filterProfanity } from '@/utils/profanityFilter';
+import { petImageMap } from '../../utils/petImageMap';
+import { SKILLS } from '../pet/petData';
+import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
 
 // --- Styled Components & Keyframes ---
@@ -101,14 +98,20 @@ const RechargeEffect = styled.div`
 
 const Arena = styled.div`
   max-width: 1200px; margin: 2rem auto; padding: 2rem; background-color: #f0f8ff;
-  border-radius: 12px; border: 5px solid #add8e6; overflow: hidden;
+  border-radius: 24px; border: 5px solid #a5d8ff; overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.1);
 `;
 
 const BattleField = styled.div`
-  height: 550px; position: relative; margin-bottom: 2rem; background-color: rgba(255, 255, 255, 0.5); border-radius: 10px;
+  height: 550px; position: relative; margin-bottom: 2rem; 
+  background: radial-gradient(circle, #ffffff 0%, #e7f5ff 100%);
+  border-radius: 20px;
+  border: 2px solid #d0ebff;
 `;
+
 const PetContainerWrapper = styled.div`
   position: absolute; width: 400px; height: 400px;
+  @media (max-width: 768px) { width: 300px; height: 300px; }
 `;
 const MyPetContainerWrapper = styled(PetContainerWrapper)` bottom: 10px; left: 10px; `;
 const OpponentPetContainerWrapper = styled(PetContainerWrapper)` top: 10px; right: 10px; `;
@@ -124,83 +127,124 @@ const PetContainer = styled.div`
 `;
 
 const PetImage = styled.img`
-  width: 400px; height: 400px; filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'none'}; transition: filter 0.3s;
+  width: 100%; height: 100%; object-fit: contain;
+  filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'}; 
+  transition: filter 0.3s;
 `;
+
 const InfoBox = styled.div`
-  position: absolute; width: 300px; padding: 1rem; border: 3px solid #333;
-  border-radius: 8px; background-color: #fff; display: flex;
-  flex-direction: column; gap: 0.5rem; z-index: 5;
+  position: absolute; width: 280px; padding: 1rem; border: 2px solid #339af0;
+  border-radius: 16px; background-color: rgba(255,255,255,0.9); backdrop-filter: blur(5px);
+  display: flex; flex-direction: column; gap: 0.5rem; z-index: 5;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  
+  span { font-weight: 800; color: #343a40; font-size: 1.1rem; }
+  @media (max-width: 768px) { width: 200px; padding: 0.8rem; span { font-size: 0.9rem; } }
 `;
-const MyInfoBox = styled(InfoBox)` right: 10px; bottom: 10px; `;
-const OpponentInfoBox = styled(InfoBox)` left: 10px; top: 10px; `;
+const MyInfoBox = styled(InfoBox)` right: 20px; bottom: 20px; `;
+const OpponentInfoBox = styled(InfoBox)` left: 20px; top: 20px; `;
+
 const StatBar = styled.div`
-  width: 100%; height: 20px; background-color: #e9ecef; border-radius: 10px; overflow: hidden;
+  width: 100%; height: 18px; background-color: #e9ecef; border-radius: 10px; overflow: hidden; position: relative;
 `;
 const BarFill = styled.div`
   width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease, background-color 0.5s ease;
-  display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: #fff;
-  text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #fff;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.5); font-weight: 700;
 `;
+
 const QuizArea = styled.div`
-  padding: 1.5rem; background-color: #fff; border: 3px solid #333;
-  border-radius: 8px; display: grid; grid-template-columns: 1fr 280px;
-  gap: 2rem; min-height: 200px;
+  padding: 1.5rem; background-color: #fff; border: 2px solid #339af0;
+  border-radius: 20px; display: grid; grid-template-columns: 1fr 320px;
+  gap: 2rem; min-height: 220px; box-shadow: 0 4px 15px rgba(51, 154, 240, 0.1);
+  
+  @media (max-width: 900px) { grid-template-columns: 1fr; }
 `;
-const LogText = styled.p` font-size: 1.2rem; font-weight: bold; min-height: 50px; margin: 0; `;
+
+const LogText = styled.p` 
+  font-size: 1.3rem; font-weight: 700; min-height: 60px; margin: 0 0 1rem 0; color: #343a40;
+  display: flex; align-items: center;
+`;
+
 const AnswerInput = styled.input`
-  width: 100%; padding: 0.75rem; font-size: 1.1rem; text-align: center;
-  border: 2px solid #ccc; border-radius: 8px; margin-top: 1rem;
+  width: 100%; padding: 1rem; font-size: 1.2rem; text-align: center;
+  border: 2px solid #dee2e6; border-radius: 12px; margin-top: 1rem;
+  font-weight: 700;
+  &:focus { outline: none; border-color: #339af0; box-shadow: 0 0 0 3px rgba(51, 154, 240, 0.1); }
 `;
+
 const ActionMenu = styled.div`
-  display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 0.75rem;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8rem;
 `;
+
 const MenuItem = styled.div`
-  font-size: 1.2rem; font-weight: bold; padding: 0.75rem; border-radius: 8px;
-  background-color: #f8f9fa; border: 1px solid #dee2e6;
+  font-size: 1.1rem; font-weight: 800; padding: 1rem; border-radius: 12px;
+  background-color: #f8f9fa; border: 2px solid #dee2e6; color: #495057;
   opacity: ${props => props.$disabled ? 0.5 : 1}; cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
-  transition: background-color 0.2s; display: flex; justify-content: center;
+  transition: all 0.2s; display: flex; justify-content: center;
   align-items: center; text-align: center;
-  &:hover:not([disabled]) { background-color: #e9ecef; }
+  
+  &:hover:not([disabled]) { 
+    background-color: #e7f5ff; 
+    border-color: #339af0; 
+    color: #1864ab; 
+    transform: translateY(-2px); 
+  }
 `;
+
 const Timer = styled.div`
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 3rem; font-weight: bold; color: #dc3545; background-color: rgba(255, 255, 255, 0.8);
-    padding: 0.5rem 2rem; border-radius: 20px; border: 3px solid #dc3545; z-index: 10;
+    font-size: 3.5rem; font-weight: 900; color: #ff6b6b; background-color: rgba(255, 255, 255, 0.9);
+    padding: 0.5rem 2rem; border-radius: 30px; border: 4px solid #ff6b6b; z-index: 10;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 `;
+
 const ModalBackground = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0, 0, 0, 0.7); display: flex;
   justify-content: center; align-items: center; z-index: 3000;
+  backdrop-filter: blur(5px);
 `;
+
 const ModalContent = styled.div`
-  padding: 2rem 3rem; background: white; border-radius: 12px; text-align: center;
-  h2 { font-size: 2.5rem; margin-bottom: 1rem; color: ${props => props.$color || '#333'}; }
-  p { font-size: 1.2rem; margin: 0.5rem 0; }
-  button { margin-top: 1rem; margin-left: 0.5rem; margin-right: 0.5rem; padding: 0.8rem 2rem; }
+  padding: 2rem 3rem; background: white; border-radius: 24px; text-align: center;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  h2 { font-size: 2.5rem; margin-bottom: 1rem; color: ${props => props.$color || '#333'}; font-weight: 900; }
+  p { font-size: 1.2rem; margin: 0.5rem 0; color: #495057; }
+  button { 
+    margin-top: 1.5rem; padding: 0.8rem 2.5rem; 
+    font-size: 1.1rem; font-weight: 800; 
+    background: #339af0; color: white; border: none; border-radius: 12px; cursor: pointer;
+    &:hover { background: #228be6; }
+  }
 `;
+
 const WaitingText = styled.div`
     display: flex; flex-direction: column; justify-content: center; align-items: center;
-    height: 100%; font-size: 1.5rem; color: #495057; gap: 1rem;
+    height: 300px; font-size: 1.5rem; color: #495057; gap: 1.5rem; font-weight: 700;
 `;
+
 const CancelButton = styled.button`
-    padding: 0.8rem 2rem; font-size: 1.2rem; background-color: #dc3545; color: white;
-    border: none; border-radius: 8px; cursor: pointer;
-    &:hover { background-color: #c82333; }
+    padding: 0.8rem 2rem; font-size: 1.1rem; background-color: #ff6b6b; color: white;
+    border: none; border-radius: 12px; cursor: pointer; font-weight: 800;
+    &:hover { background-color: #fa5252; }
 `;
 
 const ChatBubble = styled.div`
     position: absolute;
     background: white;
-    padding: 0.5rem 1rem;
+    padding: 0.8rem 1.2rem;
     border-radius: 20px;
-    border: 2px solid #333;
-    max-width: 200px;
+    border: 3px solid #333;
+    max-width: 250px;
     word-wrap: break-word;
     z-index: 10;
-    color: ${props => props.$isCorrect === false ? 'red' : (props.$isCorrect === true ? 'blue' : 'black')};
-    font-weight: ${props => props.$isCorrect === true ? 'bold' : 'normal'};
+    color: ${props => props.$isCorrect === false ? '#fa5252' : (props.$isCorrect === true ? '#20c997' : '#343a40')};
+    font-weight: 800;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    font-size: 1.1rem;
     
-    ${props => props.$isMine ? 'top: -60px; left: 50%;' : 'bottom: -60px; left: 50%;'}
+    ${props => props.$isMine ? 'top: -80px; left: 50%;' : 'bottom: -80px; left: 50%;'}
     transform: translateX(-50%);
 
     &::after {
@@ -233,19 +277,20 @@ const OptionGrid = styled.div`
 `;
 
 const OptionButton = styled.button`
-    padding: 12px;
+    padding: 1.2rem;
     font-size: 1.1rem;
-    font-weight: bold;
+    font-weight: 800;
     border: 2px solid #dee2e6;
-    border-radius: 8px;
+    border-radius: 12px;
     background-color: white;
     cursor: pointer;
     transition: all 0.2s;
     color: #495057;
 
     &:hover:not(:disabled) {
-        background-color: #e9ecef;
-        border-color: #adb5bd;
+        background-color: #e7f5ff;
+        border-color: #339af0;
+        color: #1864ab;
         transform: translateY(-2px);
     }
     
@@ -259,14 +304,13 @@ const OptionButton = styled.button`
     }
 `;
 
-// [삭제] 기존 하드코딩 퀴즈 데이터 변수 제거
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 
 const getHpColor = (current, max) => {
     const percentage = (current / max) * 100;
-    if (percentage <= 25) return '#dc3545';
-    if (percentage <= 50) return '#fd7e14';
-    return '#28a745';
+    if (percentage <= 25) return '#fa5252';
+    if (percentage <= 50) return '#fab005';
+    return '#20c997';
 };
 
 function BattlePage() {

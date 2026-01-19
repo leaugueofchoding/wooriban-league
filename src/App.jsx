@@ -37,6 +37,7 @@ import PointAdjustmentModal from './components/PointAdjustmentModal';
 import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
 import BattlePage from './features/battle/BattlePage.jsx';
+import TermsPage from './pages/TermsPage';
 
 // [추가] 전역 배경색 스타일 컴포넌트
 const GlobalBackground = createGlobalStyle`
@@ -227,6 +228,7 @@ function App() {
 
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
+            <Route path="/terms" element={<TermsPage />} />
           </Routes>
         </MainContent>
         <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} />

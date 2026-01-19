@@ -3236,6 +3236,8 @@ function PlayerManager({ onSendMessage }) {
 }
 
 
+// src/pages/AdminPage.jsx 내부의 LeagueManager 컴포넌트 교체
+
 function LeagueManager() {
     const { classId } = useClassStore();
     const {
@@ -3253,6 +3255,7 @@ function LeagueManager() {
     const [prizes, setPrizes] = useState({ first: 0, second: 0, third: 0, topScorer: 0 });
     const [newSeasonNameForCreate, setNewSeasonNameForCreate] = useState('');
     const [openedMatchId, setOpenedMatchId] = useState(null);
+    const [scoringMode, setScoringMode] = useState('striker'); // 기본값: 일반 방식
 
     const unassignedPlayers = useMemo(() => {
         const assignedPlayerIds = teams.flatMap(team => team.members);
@@ -3277,6 +3280,7 @@ function LeagueManager() {
                 third: currentSeason.thirdPlacePrize || 0,
                 topScorer: currentSeason.topScorerPrize || 0,
             });
+            setScoringMode(currentSeason.scoringMode || 'striker');
         }
     }, [currentSeason]);
 
@@ -3300,191 +3304,246 @@ function LeagueManager() {
         }
     };
 
-    const handlePrizesChange = (rank, value) => {
-        setPrizes(prev => ({ ...prev, [rank]: Number(value) || 0 }));
-    };
-
-    const handleSavePrizes = async () => {
+    const handleSaveSeasonSettings = async () => {
         try {
             await updateSeasonDetails(currentSeason.id, {
                 winningPrize: prizes.first,
                 secondPlacePrize: prizes.second,
                 thirdPlacePrize: prizes.third,
                 topScorerPrize: prizes.topScorer,
+                scoringMode: scoringMode
             });
-            alert('순위별 보상이 저장되었습니다!');
+            alert('시즌 설정(보상 및 방식)이 저장되었습니다!');
         } catch (error) {
-            alert('보상 저장 중 오류가 발생했습니다.');
+            alert('저장 중 오류가 발생했습니다.');
         }
     };
 
-    const handlePlayerSelect = (teamId, playerId) => {
-        setSelectedPlayer(prev => ({ ...prev, [teamId]: playerId }));
+    const handlePrizesChange = (rank, value) => {
+        setPrizes(prev => ({ ...prev, [rank]: Number(value) || 0 }));
     };
 
-    const handleAssignPlayer = (teamId) => {
-        assignPlayerToTeam(teamId, selectedPlayer[teamId]);
-    };
+    const handlePlayerSelect = (teamId, playerId) => { setSelectedPlayer(prev => ({ ...prev, [teamId]: playerId })); };
+    const handleAssignPlayer = (teamId) => { assignPlayerToTeam(teamId, selectedPlayer[teamId]); };
+    const handleAddTeam = () => { addNewTeam(newTeamName); setNewTeamName(''); };
+    const handleBatchCreateTeams = () => { batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount)); };
 
-    const handleAddTeam = () => {
-        addNewTeam(newTeamName);
-        setNewTeamName('');
-    };
-
-    const handleBatchCreateTeams = () => {
-        batchCreateTeams(Number(maleTeamCount), Number(femaleTeamCount));
-    };
 
     return (
         <>
             <FullWidthSection>
                 <Section>
-                    <SectionTitle>시즌 관리 🗓️</SectionTitle>
+                    {/* [수정] 명칭 변경: 시즌 컨트롤 타워 -> 리그 운영 설정 */}
+                    <SectionTitle>
+                        리그 운영 설정 ⚙️
+                        {currentSeason && (
+                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: currentSeason.status === 'active' ? '#28a745' : '#868e96' }}>
+                                    {currentSeason.status === 'preparing' ? '준비 중' : (currentSeason.status === 'active' ? '진행 중 🔥' : '종료됨')}
+                                </span>
+                                {currentSeason.status === 'preparing' && <SaveButton onClick={startSeason} style={{ backgroundColor: '#20c997' }}>▶ 시즌 시작</SaveButton>}
+                                {currentSeason.status === 'active' && <SaveButton onClick={endSeason} style={{ backgroundColor: '#fa5252' }}>⏹ 시즌 종료</SaveButton>}
+                            </div>
+                        )}
+                    </SectionTitle>
+
                     {currentSeason ? (
                         <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <h3>{currentSeason.seasonName}</h3>
-                                    <p style={{ margin: 0 }}>
-                                        현재 상태: <strong style={{ color: currentSeason.status === 'preparing' ? 'blue' : (currentSeason.status === 'active' ? 'green' : 'red') }}>{currentSeason.status}</strong>
-                                    </p>
+                            <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e9ecef' }}>
+                                <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>{currentSeason.seasonName} 설정</h3>
+
+                                {/* [수정] 경기 방식 선택 및 툴팁 */}
+                                <InputGroup>
+                                    <label>🏆 경기 방식:</label>
+                                    <div style={{ display: 'flex', gap: '1rem' }}>
+                                        <label style={{ cursor: 'help', display: 'flex', alignItems: 'center' }} title="골 득점 수로 승패를 가리는 일반적인 스포츠 방식입니다. (예: 축구, 농구, 핸드볼)">
+                                            <input
+                                                type="radio"
+                                                name="scoringMode"
+                                                value="striker"
+                                                checked={scoringMode === 'striker'}
+                                                onChange={(e) => setScoringMode(e.target.value)}
+                                                disabled={isNotPreparing}
+                                                style={{ marginRight: '5px' }}
+                                            />
+                                            ⚽ 일반 방식 (축구형)
+                                        </label>
+
+                                        <label style={{ cursor: 'help', display: 'flex', alignItems: 'center' }} title="끝까지 살아남은 인원 수(또는 상대방을 아웃시킨 수)로 승패를 가리는 방식입니다. (예: 피구, 가가볼 서바이벌)">
+                                            <input
+                                                type="radio"
+                                                name="scoringMode"
+                                                value="survivor"
+                                                checked={scoringMode === 'survivor'}
+                                                onChange={(e) => setScoringMode(e.target.value)}
+                                                disabled={isNotPreparing}
+                                                style={{ marginRight: '5px' }}
+                                            />
+                                            🛡️ 서바이벌 방식 (피구형)
+                                        </label>
+                                    </div>
+                                    <small style={{ color: '#868e96', marginLeft: 'auto', fontSize: '0.8rem' }}>
+                                        * 마우스를 올리면 설명을 볼 수 있습니다.
+                                    </small>
+                                </InputGroup>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                                    <div><label>1위 팀 보상</label><ScoreInput type="number" value={prizes.first} onChange={e => handlePrizesChange('first', e.target.value)} style={{ width: '100%' }} /></div>
+                                    <div><label>2위 팀 보상</label><ScoreInput type="number" value={prizes.second} onChange={e => handlePrizesChange('second', e.target.value)} style={{ width: '100%' }} /></div>
+                                    <div><label>3위 팀 보상</label><ScoreInput type="number" value={prizes.third} onChange={e => handlePrizesChange('third', e.target.value)} style={{ width: '100%' }} /></div>
+                                    <div><label>{scoringMode === 'striker' ? '득점왕' : '생존왕'} 보상</label><ScoreInput type="number" value={prizes.topScorer} onChange={e => handlePrizesChange('topScorer', e.target.value)} style={{ width: '100%' }} /></div>
                                 </div>
-                                <div>
-                                    {currentSeason.status === 'preparing' && <SaveButton onClick={startSeason}>시즌 시작</SaveButton>}
-                                    {currentSeason.status === 'active' && <SaveButton onClick={endSeason} style={{ backgroundColor: '#dc3545' }}>시즌 종료</SaveButton>}
+
+                                <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+                                    <SaveButton onClick={handleSaveSeasonSettings}>설정 저장</SaveButton>
                                 </div>
                             </div>
+
+                            {/* [이동] 방송 송출 화면 버튼 (시즌 중일 때만 활성화) */}
+                            <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#343a40', borderRadius: '12px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <strong>📺 경기 중계 화면 송출</strong>
+                                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.85rem', color: '#adb5bd' }}>
+                                        {currentSeason.status === 'active'
+                                            ? "교실 TV에 띄워놓고 실시간 점수판으로 활용하세요."
+                                            : "시즌이 시작되어야 방송 화면을 열 수 있습니다."}
+                                    </p>
+                                </div>
+                                {currentSeason.status === 'active' ? (
+                                    <Link to="/broadcast" target="_blank" style={{ textDecoration: 'none' }}>
+                                        <StyledButton style={{ backgroundColor: '#fa5252', fontSize: '1rem' }}>방송 화면 열기 ↗</StyledButton>
+                                    </Link>
+                                ) : (
+                                    <StyledButton disabled style={{ backgroundColor: '#495057', fontSize: '1rem', cursor: 'not-allowed' }}>방송 대기 중</StyledButton>
+                                )}
+                            </div>
+
                             {currentSeason.status === 'completed' && (
-                                <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                                <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#e7f5ff', borderRadius: '12px' }}>
+                                    <h4>새 시즌 시작하기</h4>
                                     <InputGroup>
                                         <input
                                             type="text" value={newSeasonNameForCreate} onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
                                             placeholder="새 시즌 이름 입력" style={{ flex: 1, padding: '0.5rem' }}
                                         />
-                                        <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>새 시즌 준비하기</SaveButton>
+                                        <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>생성</SaveButton>
                                     </InputGroup>
                                 </div>
                             )}
-                            <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-                                <InputGroup style={{ justifyContent: 'space-between' }}>
-                                    <div>
-                                        <label>1위: <ScoreInput type="number" value={prizes.first} onChange={e => handlePrizesChange('first', e.target.value)} /></label>
-                                        <label>2위: <ScoreInput type="number" value={prizes.second} onChange={e => handlePrizesChange('second', e.target.value)} /></label>
-                                        <label>3위: <ScoreInput type="number" value={prizes.third} onChange={e => handlePrizesChange('third', e.target.value)} /></label>
-                                        <label style={{ marginLeft: '1rem' }}>득점왕: <ScoreInput type="number" value={prizes.topScorer} onChange={e => handlePrizesChange('topScorer', e.target.value)} /></label>
-                                    </div>
-                                    <SaveButton onClick={handleSavePrizes}>보상 저장</SaveButton>
-                                </InputGroup>
-                            </div>
                         </>
                     ) : (
-                        <div>
-                            <p>현재 진행중인 시즌이 없습니다. 새 시즌을 시작해주세요.</p>
-                            <InputGroup>
+                        <div style={{ textAlign: 'center', padding: '3rem' }}>
+                            <p style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#adb5bd' }}>진행 중인 시즌이 없습니다.</p>
+                            <InputGroup style={{ maxWidth: '400px', margin: '0 auto' }}>
                                 <input
                                     type="text" value={newSeasonNameForCreate} onChange={(e) => setNewSeasonNameForCreate(e.target.value)}
-                                    placeholder="새 시즌 이름 입력 (예: 25-1 시즌)" style={{ flex: 1, padding: '0.5rem' }}
+                                    placeholder="첫 시즌 이름 (예: 1학기 가가볼)" style={{ flex: 1, padding: '0.8rem' }}
                                 />
-                                <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>새 시즌 준비하기</SaveButton>
+                                <SaveButton onClick={handleCreateSeason} style={{ backgroundColor: '#28a745' }}>시즌 생성</SaveButton>
                             </InputGroup>
                         </div>
                     )}
                 </Section>
             </FullWidthSection>
-            <FullWidthSection>
-                <Section>
-                    <SectionTitle>리그 방식 설정</SectionTitle>
-                    <TabContainer>
-                        <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')} disabled={isNotPreparing}>통합 리그</TabButton>
-                        <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')} disabled={isNotPreparing}>남녀 분리 리그</TabButton>
-                    </TabContainer>
-                </Section>
-            </FullWidthSection>
-            <FullWidthSection>
-                <Section>
-                    <SectionTitle>팀 관리</SectionTitle>
-                    {leagueType === 'separated' ? (
-                        <InputGroup>
-                            <label>남자 팀 수: <input type="number" min="0" value={maleTeamCount} onChange={e => setMaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
-                            <label>여자 팀 수: <input type="number" min="0" value={femaleTeamCount} onChange={e => setFemaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
-                            <StyledButton onClick={handleBatchCreateTeams} disabled={isNotPreparing}>팀 일괄 생성</StyledButton>
-                        </InputGroup>
-                    ) : (
-                        <InputGroup>
-                            <input type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="새 팀 이름" disabled={isNotPreparing} />
-                            <StyledButton onClick={handleAddTeam} disabled={isNotPreparing}>팀 추가</StyledButton>
-                        </InputGroup>
-                    )}
-                    <InputGroup>
-                        <StyledButton onClick={autoAssignTeams} style={{ marginLeft: 'auto' }} disabled={isNotPreparing}>팀원 자동 배정</StyledButton>
-                    </InputGroup>
-                    <List>
-                        {teams.map(team => (
-                            <ListItem key={team.id} style={{ gridTemplateColumns: '1fr auto' }}>
-                                <div style={{ flex: 1, marginRight: '1rem' }}>
-                                    <strong>{team.teamName}</strong>
-                                    <MemberList>
-                                        {team.members?.length > 0 ? team.members.map(memberId => {
-                                            const member = players.find(p => p.id === memberId);
-                                            if (!member) return null;
-                                            const isCaptain = team.captainId === memberId;
-                                            return (
-                                                <MemberListItem key={memberId}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                        <CaptainButton
-                                                            onClick={() => setTeamCaptain(team.id, memberId)}
-                                                            disabled={isNotPreparing || isCaptain}
-                                                            $isCaptain={isCaptain}
-                                                            title={isNotPreparing ? "시즌 중에는 주장을 변경할 수 없습니다." : (isCaptain ? "현재 주장" : "주장으로 임명")}
-                                                        >
-                                                            Ⓒ
-                                                        </CaptainButton>
-                                                        <PlayerProfile player={member} />
-                                                    </div>
-                                                    <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
-                                                </MemberListItem>
-                                            )
-                                        }) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
-                                    </MemberList>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
-                                    <select onChange={(e) => handlePlayerSelect(team.id, e.target.value)} disabled={isNotPreparing} style={{ width: '100px' }}>
-                                        <option value="">선수 선택</option>
-                                        {unassignedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                    <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing || !selectedPlayer[team.id]} style={{ width: '100px' }}>추가</StyledButton>
-                                    <StyledButton onClick={() => removeTeam(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>팀 삭제</StyledButton>
-                                </div>
-                            </ListItem>
-                        ))}
-                    </List>
-                </Section>
-            </FullWidthSection>
-            <FullWidthSection>
-                <Section>
-                    <SectionTitle>경기 일정 관리</SectionTitle>
-                    <StyledButton onClick={generateSchedule} disabled={isNotPreparing}>경기 일정 자동 생성</StyledButton>
-                </Section>
-            </FullWidthSection>
-            <FullWidthSection>
-                <Section>
-                    <SectionTitle>경기 결과 입력</SectionTitle>
-                    <TabContainer>
-                        <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>입력 대기</TabButton>
-                        <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
-                    </TabContainer>
-                    {filteredMatches.length > 0 ? (
-                        filteredMatches.map(match => (
-                            <MatchRow
-                                key={match.id}
-                                match={match}
-                                isInitiallyOpen={openedMatchId === match.id}
-                                onSave={handleSaveAndOpenNext}
-                            />
-                        ))
-                    ) : <p>해당 목록에 경기가 없습니다.</p>}
-                </Section>
-            </FullWidthSection>
+
+            {currentSeason && (
+                <>
+                    <FullWidthSection>
+                        <Section>
+                            <SectionTitle>리그 방식 설정</SectionTitle>
+                            <TabContainer>
+                                <TabButton $active={leagueType === 'mixed'} onClick={() => setLeagueType('mixed')} disabled={isNotPreparing}>통합 리그</TabButton>
+                                <TabButton $active={leagueType === 'separated'} onClick={() => setLeagueType('separated')} disabled={isNotPreparing}>남녀 분리 리그</TabButton>
+                            </TabContainer>
+                        </Section>
+                    </FullWidthSection>
+                    <FullWidthSection>
+                        <Section>
+                            <SectionTitle>팀 관리</SectionTitle>
+                            {leagueType === 'separated' ? (
+                                <InputGroup>
+                                    <label>남자 팀 수: <input type="number" min="0" value={maleTeamCount} onChange={e => setMaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
+                                    <label>여자 팀 수: <input type="number" min="0" value={femaleTeamCount} onChange={e => setFemaleTeamCount(e.target.value)} disabled={isNotPreparing} /></label>
+                                    <StyledButton onClick={handleBatchCreateTeams} disabled={isNotPreparing}>팀 일괄 생성</StyledButton>
+                                </InputGroup>
+                            ) : (
+                                <InputGroup>
+                                    <input type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="새 팀 이름" disabled={isNotPreparing} />
+                                    <StyledButton onClick={handleAddTeam} disabled={isNotPreparing}>팀 추가</StyledButton>
+                                </InputGroup>
+                            )}
+                            <InputGroup>
+                                <StyledButton onClick={autoAssignTeams} style={{ marginLeft: 'auto' }} disabled={isNotPreparing}>팀원 자동 배정</StyledButton>
+                            </InputGroup>
+                            <List>
+                                {teams.map(team => (
+                                    <ListItem key={team.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                                        <div style={{ flex: 1, marginRight: '1rem' }}>
+                                            <strong>{team.teamName}</strong>
+                                            <MemberList>
+                                                {team.members?.length > 0 ? team.members.map(memberId => {
+                                                    const member = players.find(p => p.id === memberId);
+                                                    if (!member) return null;
+                                                    const isCaptain = team.captainId === memberId;
+                                                    return (
+                                                        <MemberListItem key={memberId}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                <CaptainButton
+                                                                    onClick={() => setTeamCaptain(team.id, memberId)}
+                                                                    disabled={isNotPreparing || isCaptain}
+                                                                    $isCaptain={isCaptain}
+                                                                    title={isNotPreparing ? "시즌 중에는 주장을 변경할 수 없습니다." : (isCaptain ? "현재 주장" : "주장으로 임명")}
+                                                                >
+                                                                    Ⓒ
+                                                                </CaptainButton>
+                                                                <PlayerProfile player={member} />
+                                                            </div>
+                                                            <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>
+                                                        </MemberListItem>
+                                                    )
+                                                }) : <p style={{ margin: '0.5rem 0', fontSize: '0.9rem', color: '#888' }}>팀원이 없습니다.</p>}
+                                            </MemberList>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
+                                            <select onChange={(e) => handlePlayerSelect(team.id, e.target.value)} disabled={isNotPreparing} style={{ width: '100px' }}>
+                                                <option value="">선수 선택</option>
+                                                {unassignedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                            <StyledButton onClick={() => handleAssignPlayer(team.id)} disabled={isNotPreparing || !selectedPlayer[team.id]} style={{ width: '100px' }}>추가</StyledButton>
+                                            <StyledButton onClick={() => removeTeam(team.id)} disabled={isNotPreparing} style={{ width: '100px' }}>팀 삭제</StyledButton>
+                                        </div>
+                                    </ListItem>
+                                ))}
+                            </List>
+                        </Section>
+                    </FullWidthSection>
+                    <FullWidthSection>
+                        <Section>
+                            <SectionTitle>경기 일정 관리</SectionTitle>
+                            <StyledButton onClick={generateSchedule} disabled={isNotPreparing}>경기 일정 자동 생성</StyledButton>
+                        </Section>
+                    </FullWidthSection>
+                    <FullWidthSection>
+                        <Section>
+                            <SectionTitle>경기 결과 입력</SectionTitle>
+                            <TabContainer>
+                                <TabButton $active={activeTab === 'pending'} onClick={() => setActiveTab('pending')}>입력 대기</TabButton>
+                                <TabButton $active={activeTab === 'completed'} onClick={() => setActiveTab('completed')}>입력 완료</TabButton>
+                            </TabContainer>
+                            {filteredMatches.length > 0 ? (
+                                filteredMatches.map(match => (
+                                    <MatchRow
+                                        key={match.id}
+                                        match={match}
+                                        isInitiallyOpen={openedMatchId === match.id}
+                                        onSave={handleSaveAndOpenNext}
+                                    />
+                                ))
+                            ) : <p>해당 목록에 경기가 없습니다.</p>}
+                        </Section>
+                    </FullWidthSection>
+                </>
+            )}
         </>
     )
 }
