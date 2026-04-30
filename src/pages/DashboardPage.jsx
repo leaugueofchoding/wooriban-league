@@ -9,6 +9,7 @@ import DashboardSimpleMode from '../components/dashboard/DashboardSimpleMode';
 import confetti from 'canvas-confetti';
 import baseAvatar from '../assets/base-avatar.png';
 import defaultForestBg from '../assets/Background_forest.png';
+import { useNavigate } from 'react-router-dom';
 
 const PageWrapper = styled.div`
   font-family: 'Pretendard', sans-serif;
@@ -19,6 +20,33 @@ const PageWrapper = styled.div`
 const JoinLeagueButton = styled.button`
   width: 100%; padding: 1.2rem; font-size: 1.2rem; font-weight: 800; background: linear-gradient(135deg, #4dabf7, #1c7ed6); color: white; border: none; border-radius: 16px; cursor: pointer; box-shadow: 0 8px 16px rgba(28, 126, 214, 0.2); transition: transform 0.2s;
   &:hover { transform: translateY(-3px); }
+`;
+
+// 초대코드 모달 스타일
+const ModalOverlay = styled.div`
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 9999;
+`;
+const ModalCard = styled.div`
+  background: white; border-radius: 20px; padding: 2rem;
+  max-width: 380px; width: 90%; text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+`;
+const ModalInput = styled.input`
+  width: 100%; padding: 0.9rem; border: 2px solid #e9ecef; border-radius: 10px;
+  font-size: 1rem; text-align: center; margin: 1rem 0;
+  &:focus { border-color: #339af0; outline: none; }
+`;
+const ModalBtn = styled.button`
+  width: 100%; padding: 0.9rem; background: #20c997; color: white;
+  border: none; border-radius: 10px; font-size: 1rem; font-weight: 800;
+  cursor: pointer; &:hover { background: #12b886; }
+  &:disabled { background: #adb5bd; cursor: not-allowed; }
+`;
+const ModalCancelBtn = styled.button`
+  width: 100%; padding: 0.7rem; background: none; color: #868e96;
+  border: none; font-size: 0.9rem; cursor: pointer; margin-top: 0.5rem;
+  &:hover { color: #343a40; }
 `;
 
 // 토글 버튼 위치: 왼쪽 상단
@@ -77,9 +105,13 @@ const getAvatarUrls = (config, avatarParts) => {
 
 function DashboardPage() {
     const { classId } = useClassStore();
-    const { players, missions, registerAsPlayer, missionSubmissions, avatarParts, titles, standingsData } = useLeagueStore();
+    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, isLoading } = useLeagueStore();
+    const navigate = useNavigate();
     const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [inputCode, setInputCode] = useState('');
+    const [codeError, setCodeError] = useState('');
 
     // 모드 상태 관리
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('dashboardViewMode') || 'simple');
@@ -250,12 +282,58 @@ function DashboardPage() {
         localStorage.setItem('simpleBgColor', color);
     };
 
-    if (!currentUser || !myPlayerData) {
+    // 데이터 로딩 중이면 스피너 표시 (가입 직후 무한루프 방지)
+    if (isLoading) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8f9fa', fontSize: '1.2rem', color: '#868e96' }}>
+                데이터 로딩 중...
+            </div>
+        );
+    }
+
+    if (!currentUser || (!myPlayerData && !isLoading)) {
+        const handleRegisterClick = () => {
+            setCodeError('');
+            setInputCode('');
+            setShowInviteModal(true);
+        };
+
+        const handleCodeSubmit = () => {
+            const code = inputCode.trim();
+            if (!code) { setCodeError('초대 코드를 입력해주세요.'); return; }
+            sessionStorage.setItem('inviteCode', code);
+            navigate(`/join?inviteCode=${code}`);
+        };
+
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8f9fa' }}>
-                <JoinLeagueButton onClick={registerAsPlayer} style={{ maxWidth: '300px' }}>
+                <JoinLeagueButton onClick={handleRegisterClick} style={{ maxWidth: '300px' }}>
                     👋 선수 등록하고 입장하기
                 </JoinLeagueButton>
+
+                {showInviteModal && (
+                    <ModalOverlay onClick={() => setShowInviteModal(false)}>
+                        <ModalCard onClick={e => e.stopPropagation()}>
+                            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🏫</div>
+                            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.3rem' }}>학급 초대 코드 입력</h3>
+                            <p style={{ color: '#868e96', fontSize: '0.95rem', margin: 0 }}>
+                                선생님께 받은 초대 코드를 입력하세요.
+                            </p>
+                            <ModalInput
+                                placeholder="예: ABCD-1234"
+                                value={inputCode}
+                                onChange={e => setInputCode(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleCodeSubmit()}
+                                autoFocus
+                            />
+                            {codeError && <p style={{ color: '#fa5252', fontSize: '0.9rem', margin: '0 0 0.8rem' }}>{codeError}</p>}
+                            <ModalBtn onClick={handleCodeSubmit} disabled={!inputCode.trim()}>
+                                입장하기 🚀
+                            </ModalBtn>
+                            <ModalCancelBtn onClick={() => setShowInviteModal(false)}>취소</ModalCancelBtn>
+                        </ModalCard>
+                    </ModalOverlay>
+                )}
             </div>
         );
     }

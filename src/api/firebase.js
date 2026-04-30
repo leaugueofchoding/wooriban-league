@@ -1316,8 +1316,9 @@ export async function getMissionSubmissions(classId) {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-export async function updateMissionStatus(missionId, status) {
-  const missionRef = doc(db, 'missions', missionId);
+export async function updateMissionStatus(classId, missionId, status) {
+  if (!classId) return;
+  const missionRef = doc(db, 'classes', classId, 'missions', missionId);
   await updateDoc(missionRef, { status });
 }
 

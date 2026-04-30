@@ -72,6 +72,7 @@ import {
     submitBattleAction,
     processBattleResults as firebaseProcessBattleResults,
     processBattleDraw as firebaseProcessBattleDraw, // [추가]
+    migratePetData,
 } from '../api/firebase';
 import {
     collection,
@@ -81,9 +82,10 @@ import {
     limit,
     onSnapshot,
     doc,
+    setDoc,
     Timestamp,
-    updateDoc, // ◀◀◀ [추가] 문서 업데이트 함수
-    increment  // ◀◀◀ [추가] 숫자 자동 증가 함수
+    updateDoc,
+    increment
 } from "firebase/firestore";
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
@@ -142,8 +144,20 @@ export const useLeagueStore = create((set, get) => ({
         const oldListener = get().battleListener;
         if (oldListener) oldListener();
 
-        // ▼▼▼ [수정] 퀴즈를 선택하여 createOrJoinBattle 함수에 전달합니다. ▼▼▼
-        const allQuizList = Object.values(allQuizzesData).flat();
+        // 퀴즈 은행(DB)에서 활성 퀴즈 가져오기, 없으면 missions.json 폴백
+        const { getActiveQuizSets } = await import('../api/firebase');
+        const activeSets = await getActiveQuizSets(classId);
+        let allQuizList = [];
+        if (activeSets.length > 0) {
+            activeSets.forEach(set => {
+                if (Array.isArray(set.questions)) {
+                    allQuizList = [...allQuizList, ...set.questions];
+                }
+            });
+        }
+        if (allQuizList.length === 0) {
+            allQuizList = Object.values(allQuizzes).flat();
+        }
         const randomQuiz = allQuizList[Math.floor(Math.random() * allQuizList.length)];
         const battleId = await createOrJoinBattle(classId, matchId, myPlayerData, opponentPlayerData, randomQuiz);
 
@@ -162,11 +176,24 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    // ▼▼▼ [수정] dispatchBattleAction 함수에 allQuizzesData를 전달합니다. ▼▼▼
     dispatchBattleAction: async (battleId, actionData) => {
         const { classId } = useClassStore.getState();
         if (!classId) return;
-        await submitBattleAction(classId, battleId, actionData, allQuizzesData);
+        // 퀴즈 은행(DB)에서 활성 퀴즈 가져오기, 없으면 missions.json 폴백
+        const { getActiveQuizSets } = await import('../api/firebase');
+        const activeSets = await getActiveQuizSets(classId);
+        let quizData = {};
+        if (activeSets.length > 0) {
+            activeSets.forEach(set => {
+                if (Array.isArray(set.questions)) {
+                    set.questions.forEach(q => { quizData[q.id || q.question] = [q]; });
+                }
+            });
+        }
+        if (Object.keys(quizData).length === 0) {
+            quizData = allQuizzes;
+        }
+        await submitBattleAction(classId, battleId, actionData, quizData);
     },
 
     selectInitialPet: async (species, name) => {
@@ -626,11 +653,7 @@ export const useLeagueStore = create((set, get) => ({
         // 새로운 학급에 선수로 등록
         await registerPlayerInClass(targetClassId, user);
 
-        // 가입한 학급으로 앱의 classId를 설정하고 데이터를 새로고침
-        useClassStore.getState().setClassId(targetClassId);
-        await get().initializeClass(targetClassId);
-
-        // 사용자의 'users' 문서에도 마지막으로 접속한 학급 ID를 저장 (향후 자동 로그인 시 사용)
+        // ★ 새로고침 전에 반드시 DB에 저장 (이게 없으면 새로고침 후 엉뚱한 학급으로 감)
         const userRef = doc(db, 'users', user.uid);
         await setDoc(userRef, { lastJoinedClassId: targetClassId }, { merge: true });
     },

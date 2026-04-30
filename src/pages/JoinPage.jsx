@@ -142,9 +142,10 @@ function JoinPage() {
     setError('');
     try {
       await joinClassWithInviteCode(inviteCode);
-      alert(`🎉 '${className}'에 오신 것을 환영합니다!`);
       sessionStorage.removeItem('inviteCode');
-      navigate('/');
+      alert(`🎉 '${className}'에 오신 것을 환영합니다!`);
+      // 페이지 새로고침으로 store를 완전히 재초기화해서 무한루프 방지
+      window.location.href = '/';
     } catch (error) {
       console.error("가입 에러:", error);
       setError("가입 중 오류가 발생했습니다. 이미 가입된 계정인지 확인해주세요.");

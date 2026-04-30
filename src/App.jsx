@@ -4,7 +4,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from './api/firebase';
+import { auth, db } from './api/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import styled, { createGlobalStyle } from 'styled-components'; // createGlobalStyle 추가
 
 // Page Components
@@ -155,9 +156,6 @@ function App() {
 
   useEffect(() => {
     const defaultClassId = "25-hwachang-6-2";
-    if (!classId) {
-      setClassId(defaultClassId);
-    }
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -167,20 +165,37 @@ function App() {
         const inviteCode = sessionStorage.getItem('inviteCode');
         if (inviteCode) {
           // JoinPage will handle the logic
+          setAuthChecked(true);
+          setLoading(false);
         } else {
-          await initializeClass(classId || defaultClassId);
+          // 항상 DB에서 lastJoinedClassId를 읽어서 올바른 학급으로 초기화
+          let resolvedClassId;
+          try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists() && userDoc.data().lastJoinedClassId) {
+              resolvedClassId = userDoc.data().lastJoinedClassId;
+            } else {
+              resolvedClassId = defaultClassId;
+            }
+          } catch (e) {
+            resolvedClassId = classId || defaultClassId;
+          }
+          setClassId(resolvedClassId);
+          await initializeClass(resolvedClassId);
           checkAttendance();
+          setAuthChecked(true);
+          setLoading(false);
         }
       } else {
         cleanupListeners();
-        await initializeClass(classId || defaultClassId);
+        setClassId(null);
+        await initializeClass(defaultClassId);
+        setAuthChecked(true);
+        setLoading(false);
       }
-
-      setAuthChecked(true);
-      setLoading(false);
     });
     return () => unsubscribe();
-  }, [initializeClass, cleanupListeners, checkAttendance, setLoading, classId, setClassId]);
+  }, [initializeClass, cleanupListeners, checkAttendance, setLoading, setClassId]);
 
 
   if (!authChecked || isLoading) {
