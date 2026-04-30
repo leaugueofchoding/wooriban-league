@@ -11,22 +11,37 @@ import { petImageMap } from '../utils/petImageMap'; // [추가] 이미지 맵 im
 
 // ... (기존 상단 스타일: AuthWrapper, UserProfile, Button, IconContainer 등 유지) ...
 const AuthWrapper = styled.div`
-  padding: 1rem;
+  padding: 0.7rem 1rem;
   text-align: right;
   background-color: #f8f9fa;
   border-bottom: 1px solid #dee2e6;
+  position: sticky;
+  top: 0;
+  z-index: 8000;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  @media (max-width: 768px) {
+    padding: 0.5rem 0.8rem;
+    min-height: 56px;
+  }
 `;
 
 const UserProfile = styled.div`
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 1rem;
+  gap: 0.6rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
 
   img {
     width: 32px;
     height: 32px;
     border-radius: 50%;
+    flex-shrink: 0;
   }
   
   a {
@@ -34,7 +49,7 @@ const UserProfile = styled.div`
     color: inherit;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     padding: 4px;
     border-radius: 18px;
     transition: background-color 0.2s ease-in-out;
@@ -51,12 +66,23 @@ const Button = styled.button`
   border: 1px solid #ccc;
   cursor: pointer;
   background-color: white;
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
 `;
 
 const IconContainer = styled.div`
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.5rem;
+
+    @media (max-width: 768px) {
+      gap: 0.3rem;
+    }
 `;
 
 const NotificationContainer = styled.div`
@@ -72,6 +98,10 @@ const IconButton = styled.button`
     color: #495057;
     padding: 0;
     line-height: 1;
+
+    @media (max-width: 768px) {
+      font-size: 1.5rem;
+    }
 `;
 
 const IconLink = styled(Link)`
@@ -82,6 +112,10 @@ const IconLink = styled(Link)`
     transition: transform 0.2s;
     &:hover {
         transform: scale(1.1);
+    }
+
+    @media (max-width: 768px) {
+      font-size: 1.5rem;
     }
 `;
 

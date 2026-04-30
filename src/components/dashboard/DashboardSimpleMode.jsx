@@ -7,14 +7,14 @@ import baseAvatar from '../../assets/base-avatar.png';
 import { petImageMap } from '../../utils/petImageMap';
 import QuizWidget from '../QuizWidget';
 import { useLeagueStore } from '../../store/leagueStore';
-import { emblemMap } from '../../utils/emblemMap'; 
-import defaultEmblem from '../../assets/default-emblem.png'; 
+import { emblemMap } from '../../utils/emblemMap';
+import defaultEmblem from '../../assets/default-emblem.png';
 
 // ... (기타 스타일 컴포넌트 생략 - 기존 유지) ...
 const float = keyframes` 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } `;
 const shine = keyframes` 0% { left: -100%; } 100% { left: 200%; } `;
-const DashboardWrapper = styled.div` min-height: 100vh; padding: 4rem 1rem 4rem 1rem; font-family: 'Pretendard', sans-serif; overflow-x: hidden; transition: background-color 0.3s ease; display: flex; flex-direction: column; align-items: center; `;
-const PaletteContainer = styled.div` margin-top: 3rem; padding: 0.5rem 1rem; display: flex; gap: 0.8rem; background: rgba(255, 255, 255, 0.4); border-radius: 30px; backdrop-filter: blur(5px); box-shadow: none; border: none; `;
+const DashboardWrapper = styled.div` min-height: 100vh; padding: 3rem 1rem 4rem 1rem; font-family: 'Pretendard', sans-serif; overflow-x: hidden; transition: background-color 0.3s ease; display: flex; flex-direction: column; align-items: center; @media (max-width: 768px) { padding: 4.5rem 0.8rem 4rem 0.8rem; } `;
+const PaletteContainer = styled.div` margin-top: 1.5rem; padding: 0.5rem 1rem; display: flex; gap: 0.8rem; background: rgba(255, 255, 255, 0.4); border-radius: 30px; backdrop-filter: blur(5px); box-shadow: none; border: none; `;
 const ColorDot = styled.button` width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; background-color: ${props => props.$color}; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s; &:hover { transform: scale(1.2); } ${props => props.$active && ` box-shadow: 0 0 0 2px #339af0; transform: scale(1.1); `} `;
 const CustomColorBtn = styled.button` width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s; display: flex; align-items: center; justify-content: center; position: relative; &:hover { transform: scale(1.2); } input[type="color"] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; } ${props => props.$active && ` box-shadow: 0 0 0 2px #339af0; transform: scale(1.1); `} &::after { content: '+'; color: white; font-weight: bold; font-size: 1.2rem; text-shadow: 0 1px 2px rgba(0,0,0,0.5); display: ${props => props.$hasCustomColor ? 'none' : 'block'}; } `;
 const ContentContainer = styled.div` width: 100%; max-width: 1000px; display: flex; flex-direction: column; gap: 1.5rem; `;

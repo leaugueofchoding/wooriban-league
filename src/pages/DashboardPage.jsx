@@ -49,36 +49,50 @@ const ModalCancelBtn = styled.button`
   &:hover { color: #343a40; }
 `;
 
-// 토글 버튼 위치: 왼쪽 상단
+// 토글 버튼 위치: Auth 헤더 아래 왼쪽
 const ViewModeToggle = styled.div`
   position: fixed;
-  top: 15px;
-  left: 15px;
-  z-index: 9999;
+  top: 68px;
+  left: 12px;
+  z-index: 9000;
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
+
+  @media (max-width: 768px) {
+    top: 68px;
+    left: 8px;
+    gap: 5px;
+  }
 `;
 
 const ToggleBtn = styled.button`
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(0,0,0,0.15);
-  border-radius: 12px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #495057;
   cursor: pointer;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   transition: all 0.2s;
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 
   &:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     background: white;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  }
+
+  @media (max-width: 768px) {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    border-radius: 16px;
   }
 `;
 
