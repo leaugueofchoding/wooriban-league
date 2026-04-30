@@ -450,33 +450,50 @@ export const useLeagueStore = create((set, get) => ({
             // 기존 리스너 정리
             get().cleanupListeners();
 
-            // 시즌이 없는 경우 (초기화 직후 등)
+            // ==========================================
+            // ▼▼▼ [수정된 부분] 시즌이 없는 경우 ▼▼▼
+            // ==========================================
             if (!activeSeason) {
-                const [usersData, avatarPartsData, myRoomItemsData] = await Promise.all([getUsers(), getAvatarParts(), getMyRoomItems()]);
+                // ★ [수정] 시즌이 없어도 getPlayers(classId)를 호출하여 플레이어 목록을 가져옵니다.
+                const [fetchedPlayers, usersData, avatarPartsData, myRoomItemsData] = await Promise.all([
+                    getPlayers(classId), // 이 줄이 추가되었습니다!
+                    getUsers(),
+                    getAvatarParts(),
+                    getMyRoomItems()
+                ]);
 
-                // ★ 슈퍼 관리자라면 가짜 플레이어 데이터를 만들어서라도 넣어줌 (그래야 관리자 페이지 접근 가능)
-                let initialPlayers = [];
+                let finalPlayers = [...fetchedPlayers];
+
+                // ★ 슈퍼 관리자 로직 적용
                 if (isSuperAdmin) {
-                    console.log("👑 [슈퍼 관리자] 시즌 없음 상태에서도 관리자 권한 부여");
-                    initialPlayers = [{
-                        id: 'super_admin',
-                        name: '슈퍼 관리자',
-                        role: 'admin',
-                        authUid: currentUser.uid,
-                        status: 'active',
-                        points: 999999
-                    }];
+                    const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
+                    if (myIndex !== -1) {
+                        finalPlayers[myIndex] = { ...finalPlayers[myIndex], role: 'admin' };
+                    } else {
+                        console.log("👑 [슈퍼 관리자] 시즌 없음 상태에서도 관리자 권한 부여");
+                        finalPlayers.push({
+                            id: 'super_admin',
+                            name: '슈퍼 관리자',
+                            role: 'admin',
+                            authUid: currentUser.uid,
+                            status: 'active',
+                            points: 999999
+                        });
+                    }
                 }
 
                 return set({
                     isLoading: false,
-                    players: initialPlayers, // 여기서 슈퍼 관리자 포함된 배열 설정
+                    players: finalPlayers, // ★ [핵심] 기존 빈 배열([]) 대신 DB에서 갓 가져온 데이터를 넣습니다.
                     teams: [], matches: [], missions: [],
                     users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null
                 });
             }
+            // ==========================================
+            // ▲▲▲ [수정된 부분] 끝 ▲▲▲
+            // ==========================================
 
-            // 시즌이 있는 경우 - 전체 데이터 로딩
+            // 시즌이 있는 경우 - 전체 데이터 로딩 (기존 코드 그대로 유지)
             get().subscribeToMatches(activeSeason.id);
             const [
                 fetchedPlayers, teamsData, usersData,
@@ -484,7 +501,7 @@ export const useLeagueStore = create((set, get) => ({
                 titlesData,
                 allMissionsData, submissionsData
             ] = await Promise.all([
-                getPlayers(classId), // 항상 최신 데이터 가져오기
+                getPlayers(classId),
                 getTeams(classId, activeSeason.id),
                 getUsers(),
                 getAvatarParts(),
@@ -500,12 +517,8 @@ export const useLeagueStore = create((set, get) => ({
             if (isSuperAdmin) {
                 const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
                 if (myIndex !== -1) {
-                    // 이미 데이터가 있다면 역할(role)을 강제로 'admin'으로 고정
-                    console.log("👑 [슈퍼 관리자] 기존 계정에 관리자 권한 강제 부여");
                     finalPlayers[myIndex] = { ...finalPlayers[myIndex], role: 'admin' };
                 } else {
-                    // 데이터가 없다면(삭제됐다면) 가짜 관리자 객체 추가
-                    console.log("👑 [슈퍼 관리자] 삭제된 계정 복구 (가상 관리자 생성)");
                     finalPlayers.push({
                         id: 'super_admin',
                         name: '슈퍼 관리자',
@@ -517,7 +530,6 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
-            // 미션 정렬 로직
             const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
             const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
 
@@ -531,7 +543,7 @@ export const useLeagueStore = create((set, get) => ({
 
             // 상태 업데이트
             set({
-                players: finalPlayers, // 수정된 플레이어 목록 적용
+                players: finalPlayers,
                 teams: teamsData, users: usersData,
                 avatarParts: avatarPartsData,
                 myRoomItems: myRoomItemsData,
