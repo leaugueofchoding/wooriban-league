@@ -576,8 +576,10 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     subscribeToMissions: () => {
-        const { classId } = get();
+        const { classId, listeners } = get();
         if (!classId) return;
+        // 기존 미션 구독 해제
+        if (listeners.missions) listeners.missions();
         const missionsRef = collection(db, 'classes', classId, 'missions');
         const q = query(missionsRef, where('status', 'in', ['active', 'archived']));
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -965,7 +967,7 @@ export const useLeagueStore = create((set, get) => ({
             if (unsubscribe) unsubscribe();
         });
         set({
-            listeners: { notifications: null, playerData: null, missionSubmissions: null, approvalBonus: null, matches: null },
+            listeners: { notifications: null, playerData: null, missionSubmissions: null, approvalBonus: null, matches: null, missions: null },
             approvalBonus: 0
         });
     },
