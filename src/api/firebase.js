@@ -321,6 +321,23 @@ export async function uploadMissionSubmissionFile(classId, missionId, studentId,
   return await Promise.all(uploadPromises);
 }
 
+export async function cancelMissionSubmission(classId, missionId, studentId) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
+  const q = query(
+    submissionsRef,
+    where('missionId', '==', missionId),
+    where('studentId', '==', studentId),
+    where('status', '==', 'pending')
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) throw new Error('취소할 수 있는 제출이 없습니다.');
+  // pending → cancelled로 변경 (내용은 보존)
+  const batch = writeBatch(db);
+  snap.docs.forEach(d => batch.update(d.ref, { status: 'cancelled' }));
+  await batch.commit();
+}
+
 export async function requestMissionApproval(classId, missionId, studentId, studentName, submissionData = {}) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
@@ -1237,16 +1254,17 @@ export async function submitQuizAnswer(classId, studentId, quizId, userAnswer, c
 
 export async function createMission(classId, missionData) {
   if (!classId) return;
-  const missionsRef = collection(db, 'classes', classId, 'missions'); // ✅ classId 경로 추가
+  const missionsRef = collection(db, 'classes', classId, 'missions');
   const { reward, ...restOfData } = missionData;
-  await addDoc(missionsRef, {
+  const docRef = await addDoc(missionsRef, {
     ...restOfData,
-    reward: missionData.rewards[0] || 0, // [수정] 기본값 보장
+    reward: missionData.rewards[0] || 0,
     createdAt: new Date(),
     status: 'active',
     displayOrder: Date.now(),
-    placeholderText: missionData.placeholderText || '' // [추가] placeholderText 필드 추가
+    placeholderText: missionData.placeholderText || ''
   });
+  return docRef.id;
 }
 
 export async function getMissions(classId) {
@@ -3182,7 +3200,7 @@ export async function revivePet(classId, playerId, petId) {
 export async function healPet(classId, playerId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
-  const HEAL_COST = 500;
+  const HEAL_COST = 250;
 
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
@@ -3221,7 +3239,7 @@ export async function healPet(classId, playerId, petId) {
 export async function healAllPets(classId, playerId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
-  const HEAL_ALL_COST = 800;
+  const HEAL_ALL_COST = 400;
 
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);

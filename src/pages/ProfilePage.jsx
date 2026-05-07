@@ -299,7 +299,22 @@ function ProfilePage() {
   const handleSaveEquippedTitle = async () => { /* ... */ };
   const handleOpenModal = () => { fetchPointHistory(); setIsHistoryModalOpen(true); };
 
-  const fetchPointHistory = async () => { /* ... */ };
+  const fetchPointHistory = async () => {
+    if (!classId || !playerData) return;
+    try {
+      const historyRef = collection(db, 'classes', classId, 'point_history');
+      const q = query(
+        historyRef,
+        where('playerId', '==', playerData.authUid),
+        orderBy('timestamp', 'desc')
+      );
+      const snap = await getDocs(q);
+      const history = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPointHistory(history);
+    } catch (e) {
+      console.error('포인트 내역 로딩 오류:', e);
+    }
+  };
 
   // Helper Memo functions
   const equippedTitle = useMemo(() => (playerData?.equippedTitle && titles.length ? titles.find(t => t.id === playerData.equippedTitle) : null), [playerData, titles]);

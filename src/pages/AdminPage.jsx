@@ -1802,7 +1802,7 @@ function MissionManager({ onNavigate }) {
     const { classId } = useClassStore();
     const {
         missions, archivedMissions, archiveMission, unarchiveMission,
-        removeMission, reorderMissions, editMission
+        removeMission, reorderMissions, editMission, createMission
     } = useLeagueStore();
     const navigate = useNavigate();
     const sensors = useSensors(useSensor(PointerSensor));
@@ -1891,7 +1891,7 @@ function MissionManager({ onNavigate }) {
                 await editMission(editMode.id, missionData);
                 alert('미션이 성공적으로 수정되었습니다!');
             } else {
-                await createMission(classId, missionData);
+                await createMission(missionData);
                 alert('새로운 미션이 등록되었습니다!');
             }
             handleCancel();

@@ -364,7 +364,7 @@ function PetCenterPage() {
   }, [myPlayerData]);
 
   const handleHeal = async (petId) => {
-    if (!window.confirm("선택한 펫을 치료하시겠습니까? (500P 소모)")) return;
+    if (!window.confirm("선택한 펫을 치료하시겠습니까? (250P 소모)")) return;
     try {
       await healPet(petId);
       alert("치료가 완료되었습니다!");
@@ -374,7 +374,7 @@ function PetCenterPage() {
   };
 
   const handleHealAll = async () => {
-    if (!window.confirm("모든 펫을 치료하시겠습니까? (800P 소모)")) return;
+    if (!window.confirm("모든 펫을 치료하시겠습니까? (400P 소모)")) return;
     try {
       await healAllPets();
       alert("모든 펫의 치료가 완료되었습니다!");
@@ -443,7 +443,7 @@ function PetCenterPage() {
               <p>이곳에서 펫의 HP와 SP를 회복하거나 전투 불능 상태를 치료할 수 있습니다.</p>
             </ClinicHeader>
             <HealAllButton onClick={handleHealAll} disabled={isAllPetsHealthy}>
-              {isAllPetsHealthy ? "모든 펫이 건강합니다 ✨" : "모든 펫 치료하기 (800P)"}
+              {isAllPetsHealthy ? "모든 펫이 건강합니다 ✨" : "모든 펫 치료하기 (400P)"}
             </HealAllButton>
             <PetGrid>
               {myPlayerData?.pets?.map(pet => {
@@ -470,7 +470,7 @@ function PetCenterPage() {
                       </PetStatus>
                     </div>
                     <HealButton onClick={() => handleHeal(pet.id)} disabled={isHealthy}>
-                      {isHealthy ? "건강함" : "치료하기 (500P)"}
+                      {isHealthy ? "건강함" : "치료하기 (250P)"}
                     </HealButton>
                   </PetCard>
                 );

@@ -444,12 +444,27 @@ function ShopPage() {
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
 
+  // 최초 로드 시 avatarConfig 초기화 (previewConfig가 null이면 언제든 초기화)
   useEffect(() => {
-    if (myPlayerData?.avatarConfig && isInitialLoad.current) {
+    if (myPlayerData?.avatarConfig && !previewConfig) {
       setPreviewConfig(myPlayerData.avatarConfig);
       isInitialLoad.current = false;
     }
-  }, [myPlayerData]);
+  }, [myPlayerData, previewConfig]);
+
+  // 구매 완료 후 ownedParts가 바뀌면 previewConfig를 최신 avatarConfig로 동기화
+  const prevOwnedPartsRef = useRef(null);
+  useEffect(() => {
+    const currentOwned = myPlayerData?.ownedParts;
+    if (
+      currentOwned &&
+      prevOwnedPartsRef.current !== null &&
+      currentOwned.length !== prevOwnedPartsRef.current.length
+    ) {
+      setPreviewConfig(myPlayerData.avatarConfig || {});
+    }
+    prevOwnedPartsRef.current = currentOwned ?? null;
+  }, [myPlayerData?.ownedParts]);
 
   const myItems = useMemo(() => myPlayerData?.ownedParts || [], [myPlayerData]);
 
@@ -550,7 +565,8 @@ function ShopPage() {
     }
     setJustPurchased(false);
     setPreviewConfig(prev => {
-      const newConfig = JSON.parse(JSON.stringify(prev));
+      const base = prev || myPlayerData?.avatarConfig || {};
+      const newConfig = JSON.parse(JSON.stringify(base));
       const { category, id, slot } = item;
       if (category !== 'accessory') {
         newConfig[category] = newConfig[category] === id ? undefined : id;

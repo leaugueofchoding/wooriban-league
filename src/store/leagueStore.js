@@ -26,6 +26,7 @@ import {
     deleteMission,
     batchUpdateMissionOrder,
     updateMission,
+    createMission as firebaseCreateMission,
     createPlayerFromUser, // createPlayerFromUser는 이제 사용하지 않으므로 삭제해도 됩니다.
     getClassIdByInviteCode, // ◀◀◀ [추가]
     registerPlayerInClass, // ◀◀◀ [추가]
@@ -33,6 +34,7 @@ import {
     getTodaysQuizHistory,
     submitQuizAnswer as firebaseSubmitQuizAnswer,
     requestMissionApproval,
+    cancelMissionSubmission,
     uploadMissionSubmissionFile,
     batchAdjustPlayerPoints,
     isAttendanceRewardAvailable,
@@ -554,6 +556,13 @@ export const useLeagueStore = create((set, get) => ({
                 currentSeason: activeSeason, isLoading: false,
             });
 
+            // 로그인한 유저의 알림/플레이어 실시간 구독 시작
+            if (currentUser) {
+                get().subscribeToNotifications(currentUser.uid);
+                get().subscribeToPlayerData(currentUser.uid);
+                get().subscribeToMissionSubmissions(currentUser.uid);
+            }
+
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
             set({ isLoading: false });
@@ -639,6 +648,21 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
+    createMission: async (missionData) => {
+        const { classId } = get();
+        if (!classId) throw new Error('학급 정보가 없습니다.');
+        const newId = await firebaseCreateMission(classId, missionData);
+        // store 상태 즉시 반영
+        const newMission = {
+            id: newId || `temp_${Date.now()}`,
+            ...missionData,
+            status: 'active',
+            createdAt: new Date(),
+            displayOrder: Date.now(),
+        };
+        set(state => ({ missions: [...state.missions, newMission] }));
+    },
+
     editMission: async (missionId, missionData) => {
         const { classId } = get();
         await updateMission(classId, missionId, missionData);
@@ -668,6 +692,15 @@ export const useLeagueStore = create((set, get) => ({
         // ★ 새로고침 전에 반드시 DB에 저장 (이게 없으면 새로고침 후 엉뚱한 학급으로 감)
         const userRef = doc(db, 'users', user.uid);
         await setDoc(userRef, { lastJoinedClassId: targetClassId }, { merge: true });
+    },
+
+    cancelMissionSubmission: async (missionId) => {
+        const { players, classId } = get();
+        const user = auth.currentUser;
+        if (!user) throw new Error('로그인이 필요합니다.');
+        const myPlayerData = players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error('선수 정보를 찾을 수 없습니다.');
+        await cancelMissionSubmission(classId, missionId, myPlayerData.id);
     },
 
     submitMissionForApproval: async (missionId, submissionData) => {
@@ -946,8 +979,16 @@ export const useLeagueStore = create((set, get) => ({
 
         const isCorrect = await firebaseSubmitQuizAnswer(classId, myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
 
-        await get().fetchDailyQuiz(myPlayerData.id);
+        if (isCorrect) {
+            // store 포인트 즉시 반영 (+50P)
+            set(state => ({
+                players: state.players.map(p =>
+                    p.id === myPlayerData.id ? { ...p, points: (p.points || 0) + 50 } : p
+                )
+            }));
+        }
 
+        await get().fetchDailyQuiz(myPlayerData.id);
         return isCorrect;
     },
 

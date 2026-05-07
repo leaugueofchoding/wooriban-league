@@ -397,7 +397,7 @@ function SubmissionDetailsView({ submission, isOpen }) {
 
 function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView }) {
   const { classId } = useClassStore();
-  const { submitMissionForApproval } = useLeagueStore();
+  const { submitMissionForApproval, cancelMissionSubmission } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [], isPublic: !mission.defaultPrivate });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -486,7 +486,24 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
   };
 
   const handleSubmit = async () => {
-    const isDoneOrPending = ['APPROVED_TODAY', 'PENDING_TODAY', 'approved', 'pending'].includes(missionStatus);
+    const isPending = ['PENDING_TODAY', 'pending'].includes(missionStatus);
+
+    // 승인 대기중 상태에서 클릭하면 취소
+    if (isPending) {
+      if (!window.confirm('제출을 취소하시겠습니까?\n(작성 내용은 그대로 유지됩니다)')) return;
+      setIsSubmitting(true);
+      try {
+        await cancelMissionSubmission(mission.id);
+        alert('제출이 취소되었습니다.');
+      } catch (error) {
+        alert(`취소 실패: ${error.message}`);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    const isDoneOrPending = ['APPROVED_TODAY', 'approved'].includes(missionStatus);
     if (isSubmitting || isDoneOrPending || !isPrerequisiteSubmitted) return;
 
     const { text: currentText, photos: currentPhotos, isPublic } = submissionContent;
@@ -524,8 +541,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     if (!canSubmitMission) return null;
 
     const hasSubmission = !!submission;
-    const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE'].includes(missionStatus);
-    const isDoneOrPending = ['APPROVED_TODAY', 'PENDING_TODAY', 'approved', 'pending'].includes(missionStatus);
+    const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE', 'PENDING_TODAY', 'pending'].includes(missionStatus);
+    const isDoneOrPending = ['APPROVED_TODAY', 'approved'].includes(missionStatus);
     const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || isDoneOrPending;
 
     let actionButtonText;

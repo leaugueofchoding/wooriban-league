@@ -296,8 +296,8 @@ function DashboardPage() {
         localStorage.setItem('simpleBgColor', color);
     };
 
-    // 데이터 로딩 중이면 스피너 표시 (가입 직후 무한루프 방지)
-    if (isLoading) {
+    // 로딩 중이거나 players 데이터가 아직 없으면 스피너 표시
+    if (isLoading || (currentUser && players.length === 0)) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8f9fa', fontSize: '1.2rem', color: '#868e96' }}>
                 데이터 로딩 중...
