@@ -262,7 +262,9 @@ function DashboardPage() {
 
     const handleDonate = async (amountStr) => {
         const amount = Number(amountStr);
-        if (amount <= 0 || myPlayerData.points < amount) return alert('포인트가 부족하거나 올바르지 않습니다.');
+        if (!amount || amount <= 0) return alert('기부할 포인트를 입력해주세요.');
+        if (amount % 10 !== 0) return alert('포인트는 10P 단위로만 기부할 수 있습니다.\n(예: 10, 20, 50, 100)');
+        if (myPlayerData.points < amount) return alert('포인트가 부족합니다.');
         if (window.confirm(`${amount}P를 기부하시겠습니까?`)) {
             try {
                 await donatePointsToGoal(classId, myPlayerData.id, activeGoal.id, amount);

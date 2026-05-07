@@ -10,9 +10,10 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { emblemMap } from '../../utils/emblemMap';
 import defaultEmblem from '../../assets/default-emblem.png';
 
-// ... (기타 스타일 컴포넌트 생략 - 기존 유지) ...
+// --- Styled Components ---
 const float = keyframes` 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } `;
 const shine = keyframes` 0% { left: -100%; } 100% { left: 200%; } `;
+
 const DashboardWrapper = styled.div` min-height: 100vh; padding: 3rem 1rem 4rem 1rem; font-family: 'Pretendard', sans-serif; overflow-x: hidden; transition: background-color 0.3s ease; display: flex; flex-direction: column; align-items: center; @media (max-width: 768px) { padding: 4.5rem 0.8rem 4rem 0.8rem; } `;
 const PaletteContainer = styled.div` margin-top: 1.5rem; padding: 0.5rem 1rem; display: flex; gap: 0.8rem; background: rgba(255, 255, 255, 0.4); border-radius: 30px; backdrop-filter: blur(5px); box-shadow: none; border: none; `;
 const ColorDot = styled.button` width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; background-color: ${props => props.$color}; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s; &:hover { transform: scale(1.2); } ${props => props.$active && ` box-shadow: 0 0 0 2px #339af0; transform: scale(1.1); `} `;
@@ -23,20 +24,14 @@ const HeroSection = styled.section` display: flex; gap: 1.2rem; @media (max-widt
 const IDCard = styled(CommonCardStyle)` flex: 3; display: flex; align-items: center; gap: 2rem; color: #343a40; background: #ffffff; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 8px 30px rgba(0,0,0,0.08); &::before { content: ''; position: absolute; top: -50%; right: -20%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(77, 171, 247, 0.15) 0%, rgba(255,255,255,0) 70%); z-index: 0; } &:hover { transform: translateY(-5px); box-shadow: 0 15px 40px rgba(51, 154, 240, 0.15); border-color: rgba(51, 154, 240, 0.3); } @media (max-width: 768px) { flex-direction: column; text-align: center; gap: 1rem; } `;
 const IDPhotoFrame = styled.div` width: 130px; height: 130px; border-radius: 24px; border: 3px solid rgba(255, 255, 255, 0.5); box-shadow: 0 8px 20px rgba(0,0,0,0.1); background: linear-gradient(135deg, #f1f3f5 0%, #e9ecef 100%); overflow: hidden; flex-shrink: 0; position: relative; z-index: 1; transition: all 0.3s ease; ${IDCard}:hover & { box-shadow: 0 12px 25px rgba(51, 154, 240, 0.2); border-color: white; } `;
 
-// [수정] 스냅샷 이미지도 확대해서 보여주기 위해 transform 적용
 const IDPhotoContainer = styled.div`
   width: 100%; height: 100%; position: relative;
-  
-  /* 파츠 렌더링용 (기존) */
   .avatar-part {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
     transform: scale(1.5) translateY(10%); 
   }
-
-  /* 스냅샷 이미지용 (추가) */
   .avatar-snapshot {
     width: 100%; height: 100%; object-fit: contain;
-    /* 상반신 크롭 효과: 스케일을 키우고 아래로 조금 내림 */
     transform: scale(1.5) translateY(10%); 
   }
 `;
@@ -50,7 +45,7 @@ const Badge = styled.div` background: ${props => props.$bg || 'white'}; color: $
 const QuickMenuGrid = styled.div` flex: 2; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.8rem; `;
 const QuickBtn = styled(Link)` background: rgba(255, 255, 255, 0.9); border-radius: 20px; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; padding-left: 1.2rem; text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; border: 2px solid transparent; &:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); background: white; border-color: ${props => props.$themeColor}; } .icon-emoji { font-size: 1.5rem; margin-right: 0.5rem; z-index: 2; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1)); } .label { font-size: 1rem; font-weight: 800; color: #495057; z-index: 2; } .icon-bg { position: absolute; right: -5px; bottom: -10px; font-size: 3.5rem; opacity: 0.15; transform: rotate(-15deg); transition: all 0.3s ease; } &:hover .icon-bg { transform: rotate(0deg) scale(1.1); opacity: 0.25; } `;
 const MainGrid = styled.div` display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; @media (max-width: 768px) { grid-template-columns: 1fr; } `;
-const WidgetCard = styled(CommonCardStyle)` display: flex; flex-direction: column; height: 100%; min-height: 180px; border-color: 2px solid transparent; &:hover { border-color: ${props => props.$color || 'transparent'}; } `;
+const WidgetCard = styled(CommonCardStyle)` display: flex; flex-direction: column; height: 100%; min-height: 180px; border: 2px solid transparent; &:hover { border-color: ${props => props.$color || 'transparent'}; } `;
 const WidgetHeader = styled.div` display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; z-index: 2; h3 { margin: 0; font-size: 1.3rem; font-weight: 800; color: #343a40; display: flex; align-items: center; gap: 0.5rem; } h3::before { content: '${props => props.$icon || ''}'; font-size: 1.4rem; } `;
 const FriendSection = styled(WidgetCard)` background: linear-gradient(135deg, rgba(212, 252, 121, 0.85) 0%, rgba(150, 230, 161, 0.85) 100%); border: 2px solid white; &:hover { border-color: #51cf66; } `;
 const FriendCardContent = styled.div` display: flex; align-items: center; justify-content: center; gap: 1rem; height: 100%; padding-bottom: 0.5rem; position: relative; z-index: 1; `;
@@ -69,6 +64,7 @@ const GoalTitle = styled.h3` margin: 0; font-size: 1.4rem; font-weight: 900; dis
 const GoalProgress = styled.div` width: 100%; height: 20px; background-color: #e9ecef; border-radius: 12px; overflow: hidden; position: relative; border: 2px solid #dee2e6; &::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: ${props => props.$percent}%; background: linear-gradient(90deg, #ffc107, #fd7e14); box-shadow: 0 0 10px rgba(253, 126, 20, 0.5); border-radius: 8px; transition: width 1s ease; } `;
 const DonateBox = styled.div` display: flex; gap: 0.8rem; justify-content: center; margin-top: 1.5rem; align-items: center; position: relative; z-index: 1; input { padding: 0.8rem 1rem; border: 3px solid #e9ecef; border-radius: 16px; width: 140px; text-align: center; font-size: 1.1rem; font-weight: 800; outline: none; transition: all 0.2s; &:focus { border-color: #20c997; box-shadow: 0 0 0 4px rgba(32, 201, 151, 0.2); } } button { padding: 0.8rem 1.5rem; background: #20c997; color: white; border: none; border-radius: 16px; font-weight: 900; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 #12b886; &:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #12b886; } &:active { transform: translateY(2px); box-shadow: 0 0 0 #12b886; } &:disabled { background: #adb5bd; box-shadow: none; transform: none; cursor: not-allowed; } } `;
 
+// --- Helper Functions ---
 const getWinningStars = (count) => {
   if (!count || count <= 0) return null;
   const purpleStars = Math.floor(count / 5);
@@ -103,6 +99,7 @@ function MissionItem({ mission, mySubmissions, canSubmitMission }) {
 
 const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 
+// --- Main Component ---
 function DashboardSimpleMode({
   myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName,
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
@@ -114,18 +111,27 @@ function DashboardSimpleMode({
   const handleDonateClick = () => { onDonate(donationAmount); setDonationAmount(''); };
   const handleCustomColorChange = (e) => { const newColor = e.target.value; setCustomColor(newColor); setThemeColor(newColor); };
 
+  // 최고 기여자 계산 로직을 렌더링 밖으로 분리
+  const topContributionEntry = React.useMemo(() => {
+    if (!activeGoal?.contributions) return null;
+    const contribMap = {};
+    activeGoal.contributions.forEach(c => {
+      contribMap[c.playerName] = (contribMap[c.playerName] || 0) + c.amount;
+    });
+    return Object.entries(contribMap).sort((a, b) => b[1] - a[1])[0];
+  }, [activeGoal]);
+
   return (
-    <DashboardWrapper>
+    <DashboardWrapper style={{ backgroundColor: themeColor }}>
       <ContentContainer>
         <HeroSection>
           <IDCard to="/profile">
             <IDPhotoFrame>
               <IDPhotoContainer>
-                {/* [수정] 스냅샷 우선 로드 (클래스명 추가) */}
                 {myPlayerData?.avatarSnapshotUrl ? (
                   <img src={myPlayerData.avatarSnapshotUrl} alt="my avatar" className="avatar-snapshot" />
                 ) : (
-                  myAvatarUrls.map((src, i) => <img key={i} src={src} className="avatar-part" style={{ zIndex: i }} />)
+                  myAvatarUrls.map((src, i) => <img key={i} src={src} className="avatar-part" style={{ zIndex: i }} alt="avatar part" />)
                 )}
               </IDPhotoContainer>
             </IDPhotoFrame>
@@ -185,11 +191,10 @@ function DashboardSimpleMode({
                 <SpotLight />
                 <FriendAvatarGroup>
                   <FullBodyAvatar>
-                    {/* [수정] 친구 아바타 스냅샷 우선 로드 */}
                     {todaysFriend.avatarSnapshotUrl ? (
                       <img src={todaysFriend.avatarSnapshotUrl} alt="friend avatar" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     ) : (
-                      friendAvatarUrls.map((src, i) => <img key={i} src={src} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', transform: 'scale(1.1)' }} />)
+                      friendAvatarUrls.map((src, i) => <img key={i} src={src} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', transform: 'scale(1.1)' }} alt="friend part" />)
                     )}
                   </FullBodyAvatar>
                   {friendPartnerPet && (
@@ -217,22 +222,54 @@ function DashboardSimpleMode({
             <GoalTitle>🔥 우리 반 공동 목표</GoalTitle>
             {activeGoal && <span style={{ fontWeight: '800', color: '#868e96' }}>{activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()}</span>}
           </GoalHeader>
+
           {activeGoal ? (
             <>
-              <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: '#495057' }}>{activeGoal.title}</h4>
+              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', color: '#495057' }}>{activeGoal.title}</h4>
               <GoalProgress $percent={Math.min((activeGoal.currentPoints / activeGoal.targetPoints) * 100, 100)} />
+              {topContributionEntry && (
+                <div style={{ fontSize: '0.75rem', color: '#f76707', marginTop: '4px', textAlign: 'right' }}>
+                  🏆 최고 기여자: {topContributionEntry[0]} ({topContributionEntry[1].toLocaleString()}P)
+                </div>
+              )}
               <DonateBox>
-                <input type="number" placeholder="P" value={donationAmount} onChange={(e) => setDonationAmount(e.target.value)} />
-                <button onClick={handleDonateClick} disabled={activeGoal.status === 'paused'}>{activeGoal.status === 'paused' ? '일시정지' : '기부하기'}</button>
+                <input
+                  type="number"
+                  placeholder="10P 단위"
+                  step="10"
+                  min="10"
+                  value={donationAmount}
+                  onChange={(e) => setDonationAmount(e.target.value)}
+                />
+                <button
+                  onClick={handleDonateClick}
+                  disabled={activeGoal.status === 'paused'}
+                >
+                  {activeGoal.status === 'paused' ? '일시정지' : '기부하기'}
+                </button>
               </DonateBox>
             </>
-          ) : <div style={{ textAlign: 'center', color: '#adb5bd' }}>진행 중인 목표가 없습니다.</div>}
+          ) : (
+            <div style={{ textAlign: 'center', color: '#adb5bd' }}>진행 중인 목표가 없습니다.</div>
+          )}
         </GoalSection>
       </ContentContainer>
 
       <PaletteContainer>
-        {PALETTE.map(color => <ColorDot key={color} $color={color} $active={themeColor === color} onClick={() => { setCustomColor(null); setThemeColor(color); }} />)}
-        <CustomColorBtn $active={!!customColor && themeColor === customColor} $hasCustomColor={!!customColor}><input type="color" onChange={handleCustomColorChange} value={customColor || '#ffffff'} /></CustomColorBtn>
+        {PALETTE.map(color => (
+          <ColorDot
+            key={color}
+            $color={color}
+            $active={themeColor === color}
+            onClick={() => { setCustomColor(null); setThemeColor(color); }}
+          />
+        ))}
+        <CustomColorBtn
+          $active={!!customColor && themeColor === customColor}
+          $hasCustomColor={!!customColor}
+        >
+          <input type="color" onChange={handleCustomColorChange} value={customColor || '#ffffff'} />
+        </CustomColorBtn>
       </PaletteContainer>
     </DashboardWrapper>
   );

@@ -163,21 +163,35 @@ function DashboardGameMode({
           </StatusInfo>
         </PlayerStatus>
 
-        {activeGoal && (
-          <GoalWidget>
-            <h4>🔥 {activeGoal.title}</h4>
-            <ProgressBar $percent={Math.min((activeGoal.currentPoints / activeGoal.targetPoints) * 100, 100)}>
-              <div />
-            </ProgressBar>
-            <div style={{ textAlign: 'right', fontSize: '0.75rem', marginTop: '4px', color: '#495057', fontWeight: '700' }}>
-              {activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()}
-            </div>
-            <div className="donate-row" style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
-              <input type="number" placeholder="P" value={donationAmount} onChange={e => setDonationAmount(e.target.value)} style={{ flex: 1, padding: '4px', borderRadius: '4px', border: 'none' }} />
-              <button onClick={handleDonateClick} disabled={activeGoal.status === 'paused'} style={{ padding: '4px 8px', borderRadius: '4px', border: 'none', background: '#339af0', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}>기부</button>
-            </div>
-          </GoalWidget>
-        )}
+        {activeGoal && (() => {
+          // 최고 기여자 계산
+          const contribMap = {};
+          (activeGoal.contributions || []).forEach(c => {
+            contribMap[c.playerName] = (contribMap[c.playerName] || 0) + c.amount;
+          });
+          const topEntry = Object.entries(contribMap).sort((a, b) => b[1] - a[1])[0];
+
+          return (
+            <GoalWidget>
+              <h4>🔥 {activeGoal.title}</h4>
+              <ProgressBar $percent={Math.min((activeGoal.currentPoints / activeGoal.targetPoints) * 100, 100)}>
+                <div />
+              </ProgressBar>
+              <div style={{ textAlign: 'right', fontSize: '0.75rem', marginTop: '4px', color: '#495057', fontWeight: '700' }}>
+                {activeGoal.currentPoints.toLocaleString()} / {activeGoal.targetPoints.toLocaleString()}
+              </div>
+              {topEntry && (
+                <div style={{ fontSize: '0.7rem', color: '#f76707', marginTop: '2px', textAlign: 'right' }}>
+                  🏆 최고 기여자: {topEntry[0]} ({topEntry[1].toLocaleString()}P)
+                </div>
+              )}
+              <div className="donate-row" style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
+                <input type="number" placeholder="10P 단위" value={donationAmount} step="10" min="10" onChange={e => setDonationAmount(e.target.value)} style={{ flex: 1, padding: '4px', borderRadius: '4px', border: 'none' }} />
+                <button onClick={handleDonateClick} disabled={activeGoal.status === 'paused'} style={{ padding: '4px 8px', borderRadius: '4px', border: 'none', background: '#339af0', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}>기부</button>
+              </div>
+            </GoalWidget>
+          );
+        })()}
       </TopHUD>
 
       {/* (A) 캐릭터 */}

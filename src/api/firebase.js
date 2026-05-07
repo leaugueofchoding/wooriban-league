@@ -545,35 +545,25 @@ export async function toggleSubmissionImageRotation(classId, submissionId, image
 export async function adjustPlayerPoints(classId, playerId, amount, reason) {
   if (!classId) return;
   const playerRef = doc(db, "classes", classId, "players", playerId);
+  let playerAuthUid = null;
+  let playerName = null;
 
   await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
-    if (!playerDoc.exists()) {
-      throw new Error("해당 플레이어를 찾을 수 없습니다.");
-    }
+    if (!playerDoc.exists()) throw new Error("해당 플레이어를 찾을 수 없습니다.");
     const playerData = playerDoc.data();
+    playerAuthUid = playerData.authUid;
+    playerName = playerData.name;
     transaction.update(playerRef, { points: increment(amount) });
-
-    const title = `${amount > 0 ? '+' : ''}${amount}P 포인트 조정`;
-    const body = `사유: ${reason}`;
-
-    createNotification(
-      playerData.authUid,
-      title,
-      body,
-      'point',
-      null,
-      { amount, reason, title }
-    );
-
-    await addPointHistory(
-      classId,
-      playerData.authUid,
-      playerData.name,
-      amount,
-      reason
-    );
   });
+
+  // transaction 완료 후 알림·히스토리 기록 (transaction 안에서는 addDoc 불가)
+  const title = `${amount > 0 ? '+' : ''}${amount}P 포인트 조정`;
+  const body = `사유: ${reason}`;
+  if (playerAuthUid) {
+    await createNotification(playerAuthUid, title, body, 'point', null, { amount, reason, title });
+    await addPointHistory(classId, playerAuthUid, playerName, amount, reason);
+  }
 }
 
 export async function batchAdjustPlayerPoints(classId, playerIds, amount, reason) {
@@ -1490,8 +1480,22 @@ export async function getActiveGoals(classId) {
 
 export async function donatePointsToGoal(classId, playerId, goalId, amount) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
-  if (amount <= 0) {
-    throw new Error("기부할 포인트를 올바르게 입력해주세요.");
+  if (amount <= 0) throw new Error("기부할 포인트를 올바르게 입력해주세요.");
+  if (amount % 10 !== 0) throw new Error("10P 단위로만 기부할 수 있습니다.");
+
+  // 오늘 이미 기부한 금액 확인 (하루 500P 상한)
+  const todayStr = getTodayDateString();
+  const contribsRef = collection(db, 'classes', classId, 'classGoals', goalId, 'contributions');
+  const todayQuery = query(contribsRef,
+    where('playerId', '==', playerId),
+    where('date', '==', todayStr)
+  );
+  const todaySnap = await getDocs(todayQuery);
+  const todayTotal = todaySnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
+  const DAILY_LIMIT = 500;
+  if (todayTotal >= DAILY_LIMIT) throw new Error(`오늘은 이미 최대 기부액(${DAILY_LIMIT}P)을 달성했습니다.`);
+  if (todayTotal + amount > DAILY_LIMIT) {
+    throw new Error(`오늘 남은 기부 가능액은 ${DAILY_LIMIT - todayTotal}P입니다.`);
   }
 
   const playerRef = doc(db, "classes", classId, "players", playerId);
@@ -1523,10 +1527,11 @@ export async function donatePointsToGoal(classId, playerId, goalId, amount) {
     transaction.update(goalRef, { currentPoints: increment(amount) });
 
     transaction.set(contributionRef, {
-      classId, // 기부 내역에도 classId 추가
+      classId,
       playerId,
       playerName: playerData.name,
       amount: amount,
+      date: getTodayDateString(),
       timestamp: serverTimestamp()
     });
 

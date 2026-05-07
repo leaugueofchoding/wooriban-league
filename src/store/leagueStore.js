@@ -486,14 +486,18 @@ export const useLeagueStore = create((set, get) => ({
 
                 return set({
                     isLoading: false,
-                    players: finalPlayers, // ★ [핵심] 기존 빈 배열([]) 대신 DB에서 갓 가져온 데이터를 넣습니다.
+                    players: finalPlayers,
                     teams: [], matches: [], missions: [],
                     users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null
                 });
+
+                // 시즌 없어도 알림·플레이어·미션 실시간 구독
+                if (currentUser) {
+                    get().subscribeToNotifications(currentUser.uid);
+                    get().subscribeToPlayerData(currentUser.uid);
+                }
+                get().subscribeToMissions();
             }
-            // ==========================================
-            // ▲▲▲ [수정된 부분] 끝 ▲▲▲
-            // ==========================================
 
             // 시즌이 있는 경우 - 전체 데이터 로딩 (기존 코드 그대로 유지)
             get().subscribeToMatches(activeSeason.id);
@@ -562,11 +566,29 @@ export const useLeagueStore = create((set, get) => ({
                 get().subscribeToPlayerData(currentUser.uid);
                 get().subscribeToMissionSubmissions(currentUser.uid);
             }
+            // 미션 실시간 구독 (로그인 여부 무관)
+            get().subscribeToMissions();
 
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
             set({ isLoading: false });
         }
+    },
+
+    subscribeToMissions: () => {
+        const { classId } = get();
+        if (!classId) return;
+        const missionsRef = collection(db, 'classes', classId, 'missions');
+        const q = query(missionsRef, where('status', 'in', ['active', 'archived']));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const allMissions = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const sortMissions = (list) => [...list].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+            set({
+                missions: sortMissions(allMissions.filter(m => m.status === 'active')),
+                archivedMissions: sortMissions(allMissions.filter(m => m.status === 'archived')),
+            });
+        }, (error) => console.error('미션 실시간 수신 오류:', error));
+        set(state => ({ listeners: { ...state.listeners, missions: unsubscribe } }));
     },
 
     subscribeToMatches: (seasonId) => {
@@ -712,19 +734,25 @@ export const useLeagueStore = create((set, get) => ({
         if (!myPlayerData) throw new Error('선수 정보를 찾을 수 없습니다.');
 
         const dataToSend = { isPublic: submissionData.isPublic };
-        if (submissionData.text) {
-            dataToSend.text = submissionData.text;
-        }
+        if (submissionData.text) dataToSend.text = submissionData.text;
         if (submissionData.photos && submissionData.photos.length > 0) {
             const photoUrls = await uploadMissionSubmissionFile(classId, missionId, myPlayerData.id, submissionData.photos);
             dataToSend.photoUrls = photoUrls;
         }
 
-        try {
-            await requestMissionApproval(classId, missionId, myPlayerData.id, myPlayerData.name, dataToSend);
-        } catch (error) {
-            throw error;
-        }
+        await requestMissionApproval(classId, missionId, myPlayerData.id, myPlayerData.name, dataToSend);
+
+        // store 즉시 반영 → 버튼이 바로 [승인 대기중]으로 바뀜
+        const newSubmission = {
+            id: `temp_${Date.now()}`,
+            missionId,
+            studentId: myPlayerData.id,
+            studentName: myPlayerData.name,
+            status: 'pending',
+            requestedAt: new Date(),
+            ...dataToSend,
+        };
+        set(state => ({ missionSubmissions: [...state.missionSubmissions, newSubmission] }));
     },
 
     buyMultipleAvatarParts: async (partsToBuy) => {
@@ -831,14 +859,21 @@ export const useLeagueStore = create((set, get) => ({
     subscribeToPlayerData: (userId) => {
         const { classId } = get();
         if (!classId) return;
-        const playerDocRef = doc(db, 'classes', classId, 'players', userId);
-        const unsubscribe = onSnapshot(playerDocRef, (doc) => {
-            if (doc.exists()) {
-                const updatedPlayerData = { id: doc.id, ...doc.data() };
-                set(state => ({
-                    players: state.players.map(p => p.id === userId ? updatedPlayerData : p)
-                }));
-            }
+        // authUid로 플레이어 문서 쿼리 (doc id는 자동생성이므로 where로 찾아야 함)
+        const playersRef = collection(db, 'classes', classId, 'players');
+        const q = query(playersRef, where('authUid', '==', userId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            snapshot.docs.forEach(d => {
+                const updatedPlayerData = { id: d.id, ...d.data() };
+                set(state => {
+                    const exists = state.players.some(p => p.id === d.id);
+                    if (exists) {
+                        return { players: state.players.map(p => p.id === d.id ? updatedPlayerData : p) };
+                    } else {
+                        return { players: [...state.players, updatedPlayerData] };
+                    }
+                });
+            });
         }, (error) => console.error("플레이어 데이터 실시간 수신 오류:", error));
         set(state => ({ listeners: { ...state.listeners, playerData: unsubscribe } }));
     },
@@ -945,15 +980,17 @@ export const useLeagueStore = create((set, get) => ({
         const { classId } = get();
         if (!classId) return;
 
-        const todayStr = new Date().toLocaleDateString('ko-KR');
-        const storedQuizSet = JSON.parse(localStorage.getItem('dailyQuizSet'));
+        // firebase의 getTodayDateString()과 동일한 형식 사용 (YYYY-MM-DD)
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const storedQuizSet = JSON.parse(localStorage.getItem('dailyQuizSet') || 'null');
         let todaysQuizzes = [];
 
         if (storedQuizSet && storedQuizSet.date === todayStr) {
             todaysQuizzes = storedQuizSet.quizzes;
         } else {
             const allQuizList = Object.values(allQuizzes).flat();
-            const shuffled = allQuizList.sort(() => 0.5 - Math.random());
+            const shuffled = [...allQuizList].sort(() => 0.5 - Math.random());
             todaysQuizzes = shuffled.slice(0, 5);
             localStorage.setItem('dailyQuizSet', JSON.stringify({ date: todayStr, quizzes: todaysQuizzes }));
         }
@@ -968,7 +1005,8 @@ export const useLeagueStore = create((set, get) => ({
             return;
         }
 
-        const nextQuiz = todaysQuizzes.find(quiz => !todaysHistory.some(h => h.quizId === quiz.id));
+        const answeredIds = new Set(todaysHistory.map(h => h.quizId));
+        const nextQuiz = todaysQuizzes.find(quiz => !answeredIds.has(quiz.id));
         set({ dailyQuiz: nextQuiz || null });
     },
 
