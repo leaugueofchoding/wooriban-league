@@ -484,19 +484,21 @@ export const useLeagueStore = create((set, get) => ({
                     }
                 }
 
-                return set({
+                set({
                     isLoading: false,
                     players: finalPlayers,
                     teams: [], matches: [], missions: [],
                     users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null
                 });
 
-                // 시즌 없어도 알림·플레이어·미션 실시간 구독
+                // 시즌 없어도 알림·플레이어·미션 실시간 구독 (set 뒤에서 실행해야 classId가 유효)
                 if (currentUser) {
                     get().subscribeToNotifications(currentUser.uid);
                     get().subscribeToPlayerData(currentUser.uid);
+                    get().subscribeToMissionSubmissions(currentUser.uid);
                 }
                 get().subscribeToMissions();
+                return;
             }
 
             // 시즌이 있는 경우 - 전체 데이터 로딩 (기존 코드 그대로 유지)

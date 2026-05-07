@@ -164,11 +164,9 @@ function App() {
       if (user) {
         const inviteCode = sessionStorage.getItem('inviteCode');
         if (inviteCode) {
-          // JoinPage will handle the logic
           setAuthChecked(true);
           setLoading(false);
         } else {
-          // 항상 DB에서 lastJoinedClassId를 읽어서 올바른 학급으로 초기화
           let resolvedClassId;
           try {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -178,7 +176,7 @@ function App() {
               resolvedClassId = defaultClassId;
             }
           } catch (e) {
-            resolvedClassId = classId || defaultClassId;
+            resolvedClassId = defaultClassId;
           }
           setClassId(resolvedClassId);
           await initializeClass(resolvedClassId);
@@ -195,7 +193,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [initializeClass, cleanupListeners, checkAttendance, setLoading, setClassId]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   if (!authChecked || isLoading) {
