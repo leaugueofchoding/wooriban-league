@@ -131,6 +131,19 @@ const MissionReward = styled.div`
   text-shadow: 0 1px 1px rgba(0,0,0,0.1);
 `;
 
+// [추가] 미션 설명글을 위한 스타일
+const MissionDescription = styled.p`
+  margin: 0.5rem 0 0 0;
+  font-size: 0.95rem;
+  color: #495057;
+  line-height: 1.5;
+  white-space: pre-wrap; /* 줄바꿈 허용 */
+  background-color: #f1f3f5;
+  padding: 0.8rem;
+  border-radius: 8px;
+  width: 100%;
+`;
+
 const ActionGroup = styled.div`
   display: flex;
   gap: 0.5rem;
@@ -371,14 +384,22 @@ const ActionButton = styled.button`
 `;
 
 const isDateToday = (timestamp) => {
-  if (!timestamp || !timestamp.toDate) return false;
-  const date = timestamp.toDate();
+  if (!timestamp) return false;
+
+  let date;
+  if (typeof timestamp.toDate === 'function') {
+    date = timestamp.toDate(); // Firestore Timestamp인 경우
+  } else if (timestamp instanceof Date) {
+    date = timestamp; // 일반 자바스크립트 Date 객체인 경우
+  } else {
+    return false;
+  }
+
   const today = new Date();
   return date.getFullYear() === today.getFullYear() &&
     date.getMonth() === today.getMonth() &&
     date.getDate() === today.getDate();
 };
-
 
 function SubmissionDetailsView({ submission, isOpen }) {
   if (!submission || (!submission.text && !submission.photoUrls)) {
@@ -415,14 +436,26 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     return submission.status;
   }, [submission, mission.isFixed]);
 
+  // [수정] 제출 내역과 프리셋(placeholderText)을 안전하게 처리하는 useEffect
   useEffect(() => {
     const initialIsPublic = submission?.isPublic !== undefined ? submission.isPublic : !mission.defaultPrivate;
-    if (submission?.status === 'rejected') {
-      setSubmissionContent({ text: submission.text || '', photos: [], isPublic: initialIsPublic });
-    } else if (mission.placeholderText) {
-      setSubmissionContent({ text: mission.placeholderText + '\n\n', photos: [], isPublic: initialIsPublic });
-    } else {
-      setSubmissionContent({ text: '', photos: [], isPublic: initialIsPublic });
+
+    // 1. 이미 제출된 기록이 있는 경우 (반려 포함)
+    if (submission) {
+      if (submission.status === 'rejected') {
+        setSubmissionContent({ text: submission.text || '', photos: [], isPublic: initialIsPublic });
+      } else {
+        setSubmissionContent({ text: submission.text || '', photos: [], isPublic: initialIsPublic });
+      }
+    }
+    // 2. 처음 작성하는 경우 (기록 없음)
+    else {
+      // 선생님이 설정한 '프리셋 텍스트'가 있으면 초기값으로 사용
+      setSubmissionContent({
+        text: mission.placeholderText ? mission.placeholderText + '\n\n' : '',
+        photos: [],
+        isPublic: initialIsPublic
+      });
     }
   }, [submission, mission.placeholderText, mission.id, mission.defaultPrivate]);
 
@@ -619,6 +652,11 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
               {submissionType?.includes('photo') && <Tag $bg="#e6fcf5" $color="#0ca678">📸 사진</Tag>}
             </MissionTitle>
             <MissionReward>{rewardText}</MissionReward>
+
+            {/* [추가] 선생님이 작성한 미션 설명(내용) 출력 부분 */}
+            {mission.description && (
+              <MissionDescription>{mission.placeholderText}</MissionDescription>)}
+
           </MissionInfo>
           {renderButtons()}
         </MissionHeader>
@@ -721,7 +759,19 @@ function MissionsPage() {
   const mySubmissionsMap = useMemo(() => {
     if (!myPlayerData) return {};
     const submissionsMap = {};
-    const sortedSubmissions = [...missionSubmissions].sort((a, b) => (b.requestedAt?.toMillis() || 0) - (a.requestedAt?.toMillis() || 0));
+
+    // 시간 값을 밀리초로 안전하게 변환하는 헬퍼 함수
+    const getMillis = (timestamp) => {
+      if (!timestamp) return 0;
+      if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+      if (typeof timestamp.getTime === 'function') return timestamp.getTime();
+      return 0;
+    };
+
+    // toMillis() 대신 getMillis 헬퍼 함수 사용
+    const sortedSubmissions = [...missionSubmissions].sort((a, b) =>
+      getMillis(b.requestedAt) - getMillis(a.requestedAt)
+    );
 
     sortedSubmissions.forEach(sub => {
       if (sub.studentId === myPlayerData.id) {
@@ -799,7 +849,6 @@ function MissionsPage() {
           )}
         </MissionList>
 
-        {/* [수정] 통일된 스타일의 하단 버튼 */}
         <ButtonGroup>
           <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>
           <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>

@@ -1743,6 +1743,7 @@ function GoalManager() {
     );
 }
 
+// [교체할 함수] SortableListItem
 function SortableListItem(props) {
     const {
         attributes,
@@ -1761,15 +1762,18 @@ function SortableListItem(props) {
 
     const handleDelete = () => {
         if (window.confirm("정말로 이 미션을 삭제하시겠습니까? 제출된 기록도 모두 삭제됩니다.")) {
-            removeMission(classId, mission.id);
+            // 수정: classId 파라미터 제거
+            removeMission(mission.id);
         }
     };
 
     const handleArchive = () => {
         if (mission.status === 'active') {
-            archiveMission(classId, mission.id);
+            // 수정: classId 파라미터 제거
+            archiveMission(mission.id);
         } else {
-            unarchiveMission(classId, mission.id);
+            // 수정: classId 파라미터 제거
+            unarchiveMission(mission.id);
         }
     };
 
@@ -3190,7 +3194,9 @@ function PlayerManager({ onSendMessage }) {
     const { classId } = useClassStore();
     const { players, currentSeason, togglePlayerStatus } = useLeagueStore();
     const [showInactive, setShowInactive] = useState(false);
-    const isNotPreparing = currentSeason?.status !== 'preparing';
+
+    // 수정: currentSeason이 null일 때 오류가 나지 않도록 방어 코드 추가
+    const isNotPreparing = currentSeason && currentSeason.status !== 'preparing';
 
     const sortedPlayers = useMemo(() => {
         const filteredPlayers = players.filter(p => showInactive || p.status !== 'inactive');
@@ -3201,11 +3207,17 @@ function PlayerManager({ onSendMessage }) {
         <FullWidthSection>
             <Section>
                 <SectionTitle>학생 목록</SectionTitle>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+
+                {/* 추가: 선생님을 위한 명시적 안내 문구 추가 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.9rem', color: '#dc3545', fontWeight: 'bold' }}>
+                        ※ 리그 비활성화: 가가볼 리그 팀 자동 배정에서 제외되며, 리그 활동이 일시 정지됩니다.
+                    </p>
                     <StyledButton onClick={() => setShowInactive(prev => !prev)}>
                         {showInactive ? '활성 학생만 보기' : '비활성 학생 보기'}
                     </StyledButton>
                 </div>
+
                 <List>
                     {sortedPlayers.map(player => {
                         const isInactive = player.status === 'inactive';
@@ -3220,10 +3232,11 @@ function PlayerManager({ onSendMessage }) {
                                     <StyledButton
                                         onClick={() => togglePlayerStatus(player.id, player.status)}
                                         disabled={isNotPreparing && !isInactive}
-                                        title={isNotPreparing && !isInactive ? "시즌 중에는 학생을 비활성화할 수 없습니다." : ""}
+                                        title={isNotPreparing && !isInactive ? "시즌이 진행 중일 때는 리그 비활성화를 할 수 없습니다." : "리그 팀 배정에서 제외합니다."}
                                         style={{ backgroundColor: isInactive ? '#28a745' : '#dc3545' }}
                                     >
-                                        {isInactive ? '활성화' : '비활성화'}
+                                        {/* 추가: 버튼 이름 명시적으로 변경 */}
+                                        {isInactive ? '리그 활성화' : '리그 비활성화'}
                                     </StyledButton>
                                 </div>
                             </ListItem>
@@ -3234,8 +3247,6 @@ function PlayerManager({ onSendMessage }) {
         </FullWidthSection>
     );
 }
-
-
 // src/pages/AdminPage.jsx 내부의 LeagueManager 컴포넌트 교체
 
 function LeagueManager() {

@@ -313,6 +313,7 @@ function GoalManager() {
 // =============================================================================
 // [원본 유지] 미션 목록 아이템 (SortableListItem)
 // =============================================================================
+// [교체할 함수] SortableListItem
 function SortableListItem(props) {
     const {
         attributes,
@@ -331,15 +332,18 @@ function SortableListItem(props) {
 
     const handleDelete = () => {
         if (window.confirm("정말로 이 미션을 삭제하시겠습니까? 제출된 기록도 모두 삭제됩니다.")) {
-            removeMission(classId, mission.id);
+            // 수정: classId 파라미터 제거
+            removeMission(mission.id);
         }
     };
 
     const handleArchive = () => {
         if (mission.status === 'active') {
-            archiveMission(classId, mission.id);
+            // 수정: classId 파라미터 제거
+            archiveMission(mission.id);
         } else {
-            unarchiveMission(classId, mission.id);
+            // 수정: classId 파라미터 제거
+            unarchiveMission(mission.id);
         }
     };
 

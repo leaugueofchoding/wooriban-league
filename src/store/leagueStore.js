@@ -677,16 +677,12 @@ export const useLeagueStore = create((set, get) => ({
     createMission: async (missionData) => {
         const { classId } = get();
         if (!classId) throw new Error('학급 정보가 없습니다.');
-        const newId = await firebaseCreateMission(classId, missionData);
-        // store 상태 즉시 반영
-        const newMission = {
-            id: newId || `temp_${Date.now()}`,
-            ...missionData,
-            status: 'active',
-            createdAt: new Date(),
-            displayOrder: Date.now(),
-        };
-        set(state => ({ missions: [...state.missions, newMission] }));
+
+        // 파이어베이스에 미션 생성 요청 (이후 실시간 리스너가 화면을 자동 업데이트함)
+        await firebaseCreateMission(classId, missionData);
+
+        // 기존에 있던 store 상태 즉시 반영 코드( set(state => ({ missions: ... })) )는 삭제했습니다.
+        // 이제 중복으로 렌더링되지 않습니다.
     },
 
     editMission: async (missionId, missionData) => {

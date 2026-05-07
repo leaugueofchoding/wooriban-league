@@ -1311,8 +1311,10 @@ export async function checkMissionForStudent(missionId, studentId, recorderId) {
 }
 
 // 미션 수정 함수
-export async function updateMission(missionId, missionData) {
-  const missionRef = doc(db, 'missions', missionId);
+export async function updateMission(classId, missionId, missionData) {
+  if (!classId) return;
+  // 수정: doc 경로에 'classes', classId 추가
+  const missionRef = doc(db, 'classes', classId, 'missions', missionId);
   await updateDoc(missionRef, missionData);
 }
 
