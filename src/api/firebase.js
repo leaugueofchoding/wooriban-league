@@ -2807,6 +2807,7 @@ export async function buyPetItem(classId, playerId, item, quantity = 1) {
 }
 
 // ▼▼▼ [수정] usePetItem 함수 수정 ▼▼▼
+// [교체할 함수] usePetItem
 export async function usePetItem(classId, playerId, itemId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
@@ -2829,7 +2830,6 @@ export async function usePetItem(classId, playerId, itemId, petId) {
         pet.hp = Math.min(pet.maxHp, pet.hp + Math.floor(pet.maxHp * 0.15));
         pet.sp = Math.min(pet.maxSp, pet.sp + Math.floor(pet.maxSp * 0.15));
         break;
-      // ▼▼▼ [수정] 'secret_notebook' (비법 노트) 로직 ▼▼▼
       case 'secret_notebook':
         const currentSkills = pet.skills || [];
         const allLearnableSkills = Object.keys(SKILLS).filter(id => SKILLS[id].type === 'common');
@@ -2841,6 +2841,11 @@ export async function usePetItem(classId, playerId, itemId, petId) {
 
         const randomSkillId = availableSkills[Math.floor(Math.random() * availableSkills.length)];
         pet.skills = [...currentSkills, randomSkillId];
+        break;
+      // ▼▼▼ [신규 추가] 비타민 젤리 (배틀 횟수 초기화) ▼▼▼
+      case 'vitamin_jelly':
+        pet.dailyBattleCount = 0; // 오늘의 배틀 횟수를 0으로 리셋!
+        pet.lastBattleDate = new Date().toLocaleDateString(); // 날짜 동기화
         break;
       default:
         throw new Error("알 수 없는 아이템입니다.");

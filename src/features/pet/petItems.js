@@ -1,27 +1,37 @@
 // src/features/pet/petItems.js
 
 import brainSnackImg from '@/assets/items/item_brain_snack.png';
-import secretNotebookImg from '@/assets/items/item_secret_notebook.png'; // 나중에 이미지를 추가하세요.
+import secretNotebookImg from '@/assets/items/item_secret_notebook.png';
 import evolutionStoneImg from '@/assets/items/item_evolution_stone.png';
 import petEggImg from '@/assets/items/item_pet_egg.png';
+// [추가] 비타민 젤리 이미지 불러오기 (이미지 생성 후 폴더에 넣으세요!)
+import vitaminJellyImg from '@/assets/items/item_vitamin_jelly.png';
 
 export const PET_ITEMS = {
     brain_snack: {
         id: 'brain_snack',
         name: '두뇌 간식',
         description: '펫의 HP와 SP를 조금 회복시켜주는 맛있는 간식입니다.',
-        price: 150,
+        price: 100,
         image: brainSnackImg,
         icon: brainSnackImg,
     },
-    // ▼▼▼ [수정] '기술 머신'을 '비법 노트'로 변경 ▼▼▼
+    // ▼▼▼ [신규 추가] 비타민 젤리 (배틀 횟수 초기화) ▼▼▼
+    vitamin_jelly: {
+        id: 'vitamin_jelly',
+        name: '비타민 젤리',
+        description: '입맛이 싹 돕니다. 펫이 피로도를 회복하고 다시 배틀할 수 있게 됩니다. (하루 1번만 사용 가능)',
+        price: 500, // 가격은 경제 밸런스에 맞게 수정하세요!
+        image: vitaminJellyImg,
+        icon: vitaminJellyImg,
+    },
     secret_notebook: {
         id: 'secret_notebook',
         name: '비법 노트',
         description: '사용하면 펫이 새로운 스킬 하나를 랜덤하게 배웁니다.',
         price: 2000,
-        image: secretNotebookImg, // 나중에 이미지를 추가하고 이 줄의 주석을 해제하세요.
-        icon: secretNotebookImg,   // 나중에 이미지를 추가하고 이 줄의 주석을 해제하세요.
+        image: secretNotebookImg,
+        icon: secretNotebookImg,
     },
     evolution_stone: {
         id: 'evolution_stone',
@@ -35,7 +45,7 @@ export const PET_ITEMS = {
         id: 'pet_egg',
         name: '펫 알',
         description: '어떤 펫이 부화할지 모르는 신비한 알입니다. 새로운 파트너를 만나보세요!',
-        price: 8000,
+        price: 10000,
         image: petEggImg,
         icon: petEggImg,
     },
