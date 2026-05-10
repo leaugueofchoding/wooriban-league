@@ -15,12 +15,12 @@ import allQuizzesData from '../assets/missions.json';
 
 // Firebase 구성 정보
 const firebaseConfig = {
-  apiKey: "AIzaSyAJ4ktbByPOsmoruCjv8vVWiiuDWD6m8s8",
-  authDomain: "wooriban-league.firebaseapp.com",
-  projectId: "wooriban-league",
-  storageBucket: "wooriban-league.firebasestorage.app",
-  messagingSenderId: "1038292353129",
-  appId: "1:1038292353129:web:de74062d2fb8046be7e2f8"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Firebase 앱 초기화
@@ -696,10 +696,21 @@ export async function updateUserProfile(user) {
   }, { merge: true });
 }
 
+// ⚠️ 전체 users 컬렉션 조회 - 관리자 기능에서만 사용할 것
+// 학급 내 플레이어 목록은 getPlayers(classId)를 사용
 export async function getUsers() {
   const usersRef = collection(db, 'users');
   const querySnapshot = await getDocs(usersRef);
-  return querySnapshot.docs.map(doc => doc.data());
+  return querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+}
+
+// 특정 uid들의 user 데이터만 조회 (비용 효율적)
+export async function getUsersByUids(uids) {
+  if (!uids || uids.length === 0) return [];
+  const results = await Promise.all(
+    uids.map(uid => getDoc(doc(db, 'users', uid)))
+  );
+  return results.filter(d => d.exists()).map(d => ({ uid: d.id, ...d.data() }));
 }
 
 export async function linkPlayerToAuth(classId, playerId, authUid, role) {

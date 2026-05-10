@@ -6,14 +6,6 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth, updateUserProfile } from '../api/firebase.js';
 import { useNavigate } from 'react-router-dom';
 
-// ▼▼▼ [이미지 넣는 법] ▼▼▼
-// 1. 캡처한 이미지를 src/assets/landing 폴더에 저장하세요. (예: league.png)
-// 2. 아래처럼 import 하세요. (지금은 예시로 비워둠)
-// import imgLeague from '../assets/landing/league.png';
-// import imgMission from '../assets/landing/mission.png';
-// import imgPet from '../assets/landing/pet.png';
-// import imgRoom from '../assets/landing/room.png';
-
 // --- Animations ---
 const fadeInUp = keyframes`
   from { opacity: 0; transform: translateY(30px); }
@@ -146,7 +138,7 @@ const FeatureCard = styled.div`
   text-align: center;
   transition: transform 0.3s ease;
   border: 1px solid #f1f3f5;
-  overflow: hidden; /* 이미지가 튀어나오지 않게 */
+  overflow: hidden;
 
   &:hover {
     transform: translateY(-10px);
@@ -168,11 +160,10 @@ const FeatureCard = styled.div`
   }
 `;
 
-// [신규] 이미지 컨테이너 (스크린샷 들어갈 자리)
 const FeatureImageBox = styled.div`
   width: 100%;
-  height: 180px; /* 적당한 높이 고정 */
-  background-color: #f1f3f5; /* 이미지가 없을 때 회색 배경 */
+  height: 180px;
+  background-color: #f1f3f5;
   border-radius: 12px;
   margin-bottom: 1.5rem;
   overflow: hidden;
@@ -186,12 +177,12 @@ const FeatureImageBox = styled.div`
   img {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* 비율 유지하며 꽉 채우기 */
+    object-fit: cover;
     transition: transform 0.5s ease;
   }
 
   ${FeatureCard}:hover img {
-    transform: scale(1.05); /* 호버 시 살짝 확대 */
+    transform: scale(1.05);
   }
 `;
 
@@ -289,12 +280,11 @@ const TitleBadge = styled.span`
   letter-spacing: 1px;
 `;
 
-// [추가] 배경에 떠다니는 디자인 요소 (Blob)
 const BackgroundShape = styled.div`
   position: absolute;
-  filter: blur(80px); /* 아주 흐릿하게 */
-  z-index: -1; /* 뒤로 배치 */
-  opacity: 0.6; /* 은은하게 */
+  filter: blur(80px);
+  z-index: -1;
+  opacity: 0.6;
   border-radius: 50%;
 `;
 
@@ -310,7 +300,8 @@ const Shape2 = styled(BackgroundShape)`
 
 function LandingPage() {
   const navigate = useNavigate();
-  const [inviteCode, setInviteCode] = useState('');
+  // ★ [핵심] 만약 URL 파라미터나 QR을 통해 들어와 세션에 저장된 값이 있다면 인풋 창에 미리 띄워줍니다.
+  const [inviteCode, setInviteCode] = useState(sessionStorage.getItem('inviteCode') || '');
 
   const handleGoogleLogin = () => {
     const provider = new GoogleAuthProvider();
@@ -327,28 +318,21 @@ function LandingPage() {
       return;
     }
     alert("먼저 Google 계정으로 로그인해주세요!\n로그인 완료 후 자동으로 가입 화면으로 이동합니다.");
+    // ★ [핵심] 로그인 전 입력한 초대코드를 세션에 저장하여, 로그인 후 App.jsx가 낚아채게 합니다.
     sessionStorage.setItem('inviteCode', inviteCode);
     handleGoogleLogin();
   };
 
   return (
     <PageContainer>
-      {/* 1. Hero Section */}
       <Section className="hero">
         <Shape1 />
         <Shape2 />
         <ContentWrapper>
           <HeroTextGroup>
             <TitleBadge>Gamification Class Platform</TitleBadge>
-            <h1>
-              우리 반이 하나 되는<br />
-              <span>즐거운 리그의 시작</span>
-            </h1>
-            <p>
-              지루한 학교 생활은 이제 그만! <br />
-              친구들과 팀을 이루어 미션을 수행하고, <br />
-              펫을 키우며 함께 성장하는 우리 반만의 메타버스
-            </p>
+            <h1>우리 반이 하나 되는<br /><span>즐거운 리그의 시작</span></h1>
+            <p>지루한 학교 생활은 이제 그만! <br />친구들과 팀을 이루어 미션을 수행하고, <br />펫을 키우며 함께 성장하는 우리 반만의 메타버스</p>
           </HeroTextGroup>
 
           <LoginCard>
@@ -375,106 +359,51 @@ function LandingPage() {
         </ScrollDown>
       </Section>
 
-      {/* 2. Feature Section */}
       <Section>
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <h2 style={{ fontSize: '2.5rem', fontWeight: '900', marginBottom: '1rem', color: '#343a40' }}>
-            왜 '우리반 리그'일까요?
-          </h2>
-          <p style={{ fontSize: '1.1rem', color: '#868e96' }}>
-            선생님과 학생 모두가 행복해지는 특별한 기능들을 소개합니다.
-          </p>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: '900', marginBottom: '1rem', color: '#343a40' }}>왜 '우리반 리그'일까요?</h2>
+          <p style={{ fontSize: '1.1rem', color: '#868e96' }}>선생님과 학생 모두가 행복해지는 특별한 기능들을 소개합니다.</p>
         </div>
 
         <ContentWrapper $column>
           <FeatureGrid>
-            {/* 1. 실시간 리그 */}
             <FeatureCard>
-              <FeatureImageBox>
-                {/* <img src={imgLeague} alt="리그화면" /> */}
-                <span>📷 리그 순위 화면</span>
-              </FeatureImageBox>
+              <FeatureImageBox><span>📷 리그 순위 화면</span></FeatureImageBox>
               <h3>🏫 우리 반 스포츠 리그</h3>
-              <p>
-                복잡한 점수 계산, 팀 편성은 이제 그만!<br />
-                <strong>팀 자동 배정부터 경기 기록, 실시간 순위</strong>까지<br />
-                클릭 한 번으로 완벽하게 운영하세요.
-              </p>
+              <p>복잡한 점수 계산, 팀 편성은 이제 그만!<br /><strong>팀 자동 배정부터 경기 기록, 실시간 순위</strong>까지<br />클릭 한 번으로 완벽하게 운영하세요.</p>
             </FeatureCard>
-
-            {/* 2. 미션 인증 */}
             <FeatureCard>
-              <FeatureImageBox>
-                {/* <img src={imgMission} alt="미션화면" /> */}
-                <span>📷 미션 인증 화면</span>
-              </FeatureImageBox>
+              <FeatureImageBox><span>📷 미션 인증 화면</span></FeatureImageBox>
               <h3>🌱 스스로 하는 성장 습관</h3>
-              <p>
-                청소, 숙제, 독서 등 생활 습관 미션!<br />
-                아이들이 <strong>스스로 인증하고 보상</strong>을 받으며<br />
-                자연스럽게 올바른 생활 습관을 기릅니다.
-              </p>
+              <p>청소, 숙제, 독서 등 생활 습관 미션!<br />아이들이 <strong>스스로 인증하고 보상</strong>을 받으며<br />자연스럽게 올바른 생활 습관을 기릅니다.</p>
             </FeatureCard>
-
-            {/* 3. 펫 키우기 */}
             <FeatureCard>
-              <FeatureImageBox>
-                {/* <img src={imgPet} alt="펫화면" /> */}
-                <span>📷 펫 육성 화면</span>
-              </FeatureImageBox>
+              <FeatureImageBox><span>📷 펫 육성 화면</span></FeatureImageBox>
               <h3>🧠 즐거운 퀴즈 배틀</h3>
-              <p>
-                공부도 게임처럼! <strong>배운 내용으로 퀴즈 대결</strong>을 하며<br />
-                나만의 펫을 성장시킵니다.<br />
-                학습 동기 부여와 복습 효과를 동시에 잡으세요.
-              </p>
+              <p>공부도 게임처럼! <strong>배운 내용으로 퀴즈 대결</strong>을 하며<br />나만의 펫을 성장시킵니다.<br />학습 동기 부여와 복습 효과를 동시에 잡으세요.</p>
             </FeatureCard>
-
-            {/* 4. 마이룸 */}
             <FeatureCard>
-              <FeatureImageBox>
-                {/* <img src={imgRoom} alt="마이룸화면" /> */}
-                <span>📷 마이룸 화면</span>
-              </FeatureImageBox>
+              <FeatureImageBox><span>📷 마이룸 화면</span></FeatureImageBox>
               <h3>💖 소속감과 성취감</h3>
-              <p>
-                열심히 모은 포인트로 나만의 공간을 꾸미고<br />
-                친구들의 방명록에 따뜻한 말을 남겨요.<br />
-                <strong>학급에 대한 애정과 소속감</strong>이 쑥쑥 자라납니다.
-              </p>
+              <p>열심히 모은 포인트로 나만의 공간을 꾸미고<br />친구들의 방명록에 따뜻한 말을 남겨요.<br /><strong>학급에 대한 애정과 소속감</strong>이 쑥쑥 자라납니다.</p>
             </FeatureCard>
           </FeatureGrid>
         </ContentWrapper>
       </Section>
 
-      {/* 3. CTA Section */}
       <Section className="dark" style={{ padding: '5rem 2rem' }}>
         <ContentWrapper $column style={{ gap: '2rem' }}>
           <h2 style={{ fontSize: '2.2rem', margin: 0 }}>지금 바로 우리 반 리그를 시작해보세요!</h2>
-          <p style={{ color: '#adb5bd', fontSize: '1.2rem', margin: 0 }}>
-            선생님은 학급 관리를 편하게, 학생들은 학교 생활을 즐겁게.
-          </p>
+          <p style={{ color: '#adb5bd', fontSize: '1.2rem', margin: 0 }}>선생님은 학급 관리를 편하게, 학생들은 학교 생활을 즐겁게.</p>
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            style={{
-              padding: '1rem 3rem',
-              fontSize: '1.2rem',
-              fontWeight: 'bold',
-              color: '#212529',
-              background: '#20c997',
-              border: 'none',
-              borderRadius: '50px',
-              cursor: 'pointer',
-              marginTop: '1rem',
-              boxShadow: '0 4px 15px rgba(32, 201, 151, 0.4)'
-            }}
+            style={{ padding: '1rem 3rem', fontSize: '1.2rem', fontWeight: 'bold', color: '#212529', background: '#20c997', border: 'none', borderRadius: '50px', cursor: 'pointer', marginTop: '1rem', boxShadow: '0 4px 15px rgba(32, 201, 151, 0.4)' }}
           >
             무료로 시작하기 🚀
           </button>
         </ContentWrapper>
       </Section>
 
-      {/* Footer */}
       <footer style={{ padding: '2rem', textAlign: 'center', color: '#868e96', background: '#f8f9fa', fontSize: '0.9rem' }}>
         © 2026 Wooriban League. All rights reserved.<br />
         Designed for happy classrooms.

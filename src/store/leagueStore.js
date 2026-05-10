@@ -27,9 +27,9 @@ import {
     batchUpdateMissionOrder,
     updateMission,
     createMission as firebaseCreateMission,
-    createPlayerFromUser, // createPlayerFromUser는 이제 사용하지 않으므로 삭제해도 됩니다.
-    getClassIdByInviteCode, // ◀◀◀ [추가]
-    registerPlayerInClass, // ◀◀◀ [추가]
+    createPlayerFromUser,
+    getClassIdByInviteCode,
+    registerPlayerInClass,
     markNotificationsAsRead,
     getTodaysQuizHistory,
     submitQuizAnswer as firebaseSubmitQuizAnswer,
@@ -73,7 +73,7 @@ import {
     listenToBattle,
     submitBattleAction,
     processBattleResults as firebaseProcessBattleResults,
-    processBattleDraw as firebaseProcessBattleDraw, // [추가]
+    processBattleDraw as firebaseProcessBattleDraw,
     migratePetData,
 } from '../api/firebase';
 import {
@@ -92,17 +92,19 @@ import {
 import { auth } from '../api/firebase';
 import allQuizzes from '../assets/missions.json';
 
-// ▼▼▼ [신규] classId를 관리하는 스토어 생성 ▼▼▼
+// ▼▼▼ classId를 관리하는 스토어 생성 ▼▼▼
 export const useClassStore = create((set) => ({
     classId: null,
     setClassId: (classId) => set({ classId }),
 }));
 
+// ★ [핵심] 모든 함수에서 무조건 이 헬퍼를 통해 최신 classId를 가져오도록 강제합니다.
+const getClassId = () => useClassStore.getState().classId;
+
 const SUPER_ADMIN_UID = 'Zz6fKdtg00Yb3ju5dibOgkJkWS52';
 
 export const useLeagueStore = create((set, get) => ({
-    // --- [수정] State ---
-    classId: null, // 학급 ID 추가
+    // --- State ---
     seasons: [],
     showAttendanceModal: false,
     players: [],
@@ -127,26 +129,25 @@ export const useLeagueStore = create((set, get) => ({
         missionSubmissions: null,
         approvalBonus: null,
         matches: null,
+        missions: null,
     },
     dailyQuiz: null,
     dailyQuizSet: { date: null, quizzes: [] },
     quizHistory: [],
-    themeColor: '#f8f9fa', // 전역 테마 색상 (기본값)
+    themeColor: '#f8f9fa',
     setThemeColor: (color) => set({ themeColor: color }),
     currentUser: null,
     pointAdjustmentNotification: null,
-    battleState: null, // [추가] 실시간 배틀 상태
-    battleListener: null, // [추가] 배틀 리스너 해제 함수
+    battleState: null,
+    battleListener: null,
 
-    // [신규] 배틀 시작 및 실시간 데이터 수신
     startListeningToBattle: async (matchId, myPlayerData, opponentPlayerData) => {
-        const { classId } = useClassStore.getState();
+        const classId = getClassId();
         if (!classId) return;
 
         const oldListener = get().battleListener;
         if (oldListener) oldListener();
 
-        // 퀴즈 은행(DB)에서 활성 퀴즈 가져오기, 없으면 missions.json 폴백
         const { getActiveQuizSets } = await import('../api/firebase');
         const activeSets = await getActiveQuizSets(classId);
         let allQuizList = [];
@@ -179,9 +180,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     dispatchBattleAction: async (battleId, actionData) => {
-        const { classId } = useClassStore.getState();
+        const classId = getClassId();
         if (!classId) return;
-        // 퀴즈 은행(DB)에서 활성 퀴즈 가져오기, 없으면 missions.json 폴백
         const { getActiveQuizSets } = await import('../api/firebase');
         const activeSets = await getActiveQuizSets(classId);
         let quizData = {};
@@ -199,10 +199,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     selectInitialPet: async (species, name) => {
-        const { classId } = get();
+        const classId = getClassId();
         const updatedPlayerData = await firebaseSelectInitialPet(classId, species, name);
-
-        // DB에서 반환된 최신 데이터로 로컬 상태 즉시 업데이트
         set(state => ({
             players: state.players.map(p =>
                 p.authUid === auth.currentUser.uid ? updatedPlayerData : p
@@ -211,13 +209,12 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     buyPetItem: async (item, quantity = 1) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
         if (!myPlayerData) throw new Error("Player data not found.");
 
-        // [핵심] 4번째 인자로 quantity 전달!
         const updatedPlayerData = await firebaseBuyPetItem(classId, myPlayerData.id, item, quantity);
 
         set(state => ({
@@ -226,7 +223,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     usePetItem: async (itemId, petId) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -238,9 +235,8 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    // ▼▼▼ [신규] 스킬 저장 함수 추가 ▼▼▼
     updatePetSkills: async (petId, equippedSkills) => {
-        const { classId } = useClassStore.getState();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user || !classId) throw new Error("사용자 또는 학급 정보가 없습니다.");
 
@@ -252,7 +248,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     evolvePet: async (petId, evolutionStoneId) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -264,7 +260,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     revivePet: async (petId) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -277,7 +273,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     healPet: async (petId) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -290,7 +286,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     healAllPets: async () => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -302,11 +298,10 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
-    convertLikesToExp: async (amount, petId) => { // petId 인자 추가
-        const { classId } = useClassStore.getState();
+    convertLikesToExp: async (amount, petId) => {
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user || !classId) return;
-        // firebase 함수 호출 시 petId 전달
         const { expGained, updatedPlayerData } = await apiConvertLikesToExp(classId, user.uid, amount, petId);
         set(state => ({
             players: state.players.map(p => p.id === updatedPlayerData.id ? updatedPlayerData : p)
@@ -314,22 +309,20 @@ export const useLeagueStore = create((set, get) => ({
         return { expGained };
     },
 
-    processBattleResults: async (classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet) => {
+    processBattleResults: async (classIdArg, winnerId, loserId, fled, finalWinnerPet, finalLoserPet) => {
         try {
-            // firebaseApi. 제거하고 직접 호출
-            await firebaseProcessBattleResults(classId, winnerId, loserId, fled, finalWinnerPet, finalLoserPet);
-            const updatedPlayers = await getPlayers(classId);
+            await firebaseProcessBattleResults(classIdArg, winnerId, loserId, fled, finalWinnerPet, finalLoserPet);
+            const updatedPlayers = await getPlayers(classIdArg);
             set({ players: updatedPlayers });
         } catch (error) {
             console.error("Battle result processing failed:", error);
         }
     },
 
-    // [추가] 무승부/도망 처리
-    processBattleDraw: async (classId, p1Id, p2Id, p1Pet, p2Pet) => {
+    processBattleDraw: async (classIdArg, p1Id, p2Id, p1Pet, p2Pet) => {
         try {
-            await firebaseProcessBattleDraw(classId, p1Id, p2Id, p1Pet, p2Pet);
-            const updatedPlayers = await getPlayers(classId);
+            await firebaseProcessBattleDraw(classIdArg, p1Id, p2Id, p1Pet, p2Pet);
+            const updatedPlayers = await getPlayers(classIdArg);
             set({ players: updatedPlayers });
         } catch (error) {
             console.error("Battle draw processing failed:", error);
@@ -337,7 +330,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     updatePetName: async (newName, petId) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -350,7 +343,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     setPartnerPet: async (petId) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -362,7 +355,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     hatchPetEgg: async () => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -371,23 +364,20 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({
             players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
         }));
-        // ▼▼▼ [수정] hatchedPet 객체만 반환하던 것을 객체 형태로 반환 ▼▼▼
-        return { updatedPlayerData, hatchedPet }; // 부화한 펫과 업데이트된 플레이어 정보 함께 반환
+        return { updatedPlayerData, hatchedPet };
     },
-    // --- [수정] Actions ---
+
     setLoading: (status) => set({ isLoading: status }),
     setLeagueType: (type) => set({ leagueType: type }),
 
-    // [신규] classId를 설정하고 데이터를 다시 불러오는 액션
     initializeClass: async (newClassId) => {
         if (!newClassId) return;
-        set({ classId: newClassId, isLoading: true });
+        set({ isLoading: true });
         await get().fetchInitialData();
 
         const user = auth.currentUser;
         if (user) {
             const myPlayerData = get().players.find(p => p.authUid === user.uid);
-            // ▼▼▼ [수정] 기존 펫 데이터(pet)를 새로운 pets 배열로 마이그레이션하는 로직 추가 ▼▼▼
             if (myPlayerData && myPlayerData.pet && !myPlayerData.pets) {
                 const updatedPlayerData = await migratePetData(newClassId, myPlayerData);
                 if (updatedPlayerData) {
@@ -425,73 +415,48 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     fetchInitialData: async () => {
-        const { classId } = get();
-        // 학급 ID가 없으면 중단
-        if (!classId) {
-            return set({ isLoading: false });
-        }
+        const classId = getClassId();
+        if (!classId) return set({ isLoading: false });
 
         try {
             set({ isLoading: true });
-
-            // 타이틀 데이터 초기화 (필요 시)
             await seedInitialTitles(classId);
 
-            // 현재 로그인한 사용자 확인
             const currentUser = auth.currentUser;
             set({ currentUser });
-
-            // ★ [핵심] 슈퍼 관리자 여부 확인
             const isSuperAdmin = currentUser?.uid === SUPER_ADMIN_UID;
 
-            // 시즌 데이터 가져오기
             const seasonsData = await getSeasons(classId);
             set({ seasons: seasonsData });
             const activeSeason = seasonsData.find(s => s.status === 'active' || s.status === 'preparing') || seasonsData[0] || null;
 
-            // 기존 리스너 정리
             get().cleanupListeners();
 
-            // ==========================================
-            // ▼▼▼ [수정된 부분] 시즌이 없는 경우 ▼▼▼
-            // ==========================================
             if (!activeSeason) {
-                // ★ [수정] 시즌이 없어도 getPlayers(classId)를 호출하여 플레이어 목록을 가져옵니다.
                 const [fetchedPlayers, usersData, avatarPartsData, myRoomItemsData] = await Promise.all([
-                    getPlayers(classId), // 이 줄이 추가되었습니다!
+                    getPlayers(classId),
                     getUsers(),
                     getAvatarParts(),
                     getMyRoomItems()
                 ]);
 
                 let finalPlayers = [...fetchedPlayers];
-
-                // ★ 슈퍼 관리자 로직 적용
                 if (isSuperAdmin) {
                     const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
                     if (myIndex !== -1) {
                         finalPlayers[myIndex] = { ...finalPlayers[myIndex], role: 'admin' };
                     } else {
-                        console.log("👑 [슈퍼 관리자] 시즌 없음 상태에서도 관리자 권한 부여");
                         finalPlayers.push({
-                            id: 'super_admin',
-                            name: '슈퍼 관리자',
-                            role: 'admin',
-                            authUid: currentUser.uid,
-                            status: 'active',
-                            points: 999999
+                            id: 'super_admin', name: '슈퍼 관리자', role: 'admin', authUid: currentUser.uid, status: 'active', points: 999999
                         });
                     }
                 }
 
                 set({
-                    isLoading: false,
-                    players: finalPlayers,
-                    teams: [], matches: [], missions: [],
+                    isLoading: false, players: finalPlayers, teams: [], matches: [], missions: [],
                     users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null
                 });
 
-                // 시즌 없어도 알림·플레이어·미션 실시간 구독 (set 뒤에서 실행해야 classId가 유효)
                 if (currentUser) {
                     get().subscribeToNotifications(currentUser.uid);
                     get().subscribeToPlayerData(currentUser.uid);
@@ -501,46 +466,27 @@ export const useLeagueStore = create((set, get) => ({
                 return;
             }
 
-            // 시즌이 있는 경우 - 전체 데이터 로딩 (기존 코드 그대로 유지)
             get().subscribeToMatches(activeSeason.id);
             const [
-                fetchedPlayers, teamsData, usersData,
-                avatarPartsData, myRoomItemsData,
-                titlesData,
-                allMissionsData, submissionsData
+                fetchedPlayers, teamsData, usersData, avatarPartsData, myRoomItemsData, titlesData, allMissionsData, submissionsData
             ] = await Promise.all([
-                getPlayers(classId),
-                getTeams(classId, activeSeason.id),
-                getUsers(),
-                getAvatarParts(),
-                getMyRoomItems(),
-                getTitles(classId),
-                getMissions(classId),
-                getMissionSubmissions(classId)
+                getPlayers(classId), getTeams(classId, activeSeason.id), getUsers(), getAvatarParts(), getMyRoomItems(), getTitles(classId), getMissions(classId), getMissionSubmissions(classId)
             ]);
 
-            // ★ [핵심] 가져온 플레이어 목록에 슈퍼 관리자 로직 적용
             let finalPlayers = [...fetchedPlayers];
-
             if (isSuperAdmin) {
                 const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
                 if (myIndex !== -1) {
                     finalPlayers[myIndex] = { ...finalPlayers[myIndex], role: 'admin' };
                 } else {
                     finalPlayers.push({
-                        id: 'super_admin',
-                        name: '슈퍼 관리자',
-                        role: 'admin',
-                        authUid: currentUser.uid,
-                        status: 'active',
-                        points: 999999
+                        id: 'super_admin', name: '슈퍼 관리자', role: 'admin', authUid: currentUser.uid, status: 'active', points: 999999
                     });
                 }
             }
 
             const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
             const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
-
             const sortMissions = (missions) => {
                 return missions.sort((a, b) => {
                     const orderA = typeof a.displayOrder === 'number' ? a.displayOrder : a.createdAt?.toMillis() || Infinity;
@@ -549,26 +495,18 @@ export const useLeagueStore = create((set, get) => ({
                 });
             };
 
-            // 상태 업데이트
             set({
-                players: finalPlayers,
-                teams: teamsData, users: usersData,
-                avatarParts: avatarPartsData,
-                myRoomItems: myRoomItemsData,
-                titles: titlesData,
-                missions: sortMissions(activeMissionsData),
-                archivedMissions: sortMissions(archivedMissionsData),
-                missionSubmissions: submissionsData,
+                players: finalPlayers, teams: teamsData, users: usersData, avatarParts: avatarPartsData,
+                myRoomItems: myRoomItemsData, titles: titlesData, missions: sortMissions(activeMissionsData),
+                archivedMissions: sortMissions(archivedMissionsData), missionSubmissions: submissionsData,
                 currentSeason: activeSeason, isLoading: false,
             });
 
-            // 로그인한 유저의 알림/플레이어 실시간 구독 시작
             if (currentUser) {
                 get().subscribeToNotifications(currentUser.uid);
                 get().subscribeToPlayerData(currentUser.uid);
                 get().subscribeToMissionSubmissions(currentUser.uid);
             }
-            // 미션 실시간 구독 (로그인 여부 무관)
             get().subscribeToMissions();
 
         } catch (error) {
@@ -578,9 +516,9 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     subscribeToMissions: () => {
-        const { classId, listeners } = get();
+        const classId = getClassId();
+        const { listeners } = get();
         if (!classId) return;
-        // 기존 미션 구독 해제
         if (listeners.missions) listeners.missions();
         const missionsRef = collection(db, 'classes', classId, 'missions');
         const q = query(missionsRef, where('status', 'in', ['active', 'archived']));
@@ -596,7 +534,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     subscribeToMatches: (seasonId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         const matchesRef = collection(db, 'classes', classId, 'matches');
         const q = query(matchesRef, where("seasonId", "==", seasonId));
@@ -608,7 +546,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     archiveMission: async (missionId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!confirm('미션을 숨기면 활성 목록에서 사라집니다. 정말 숨기시겠습니까?')) return;
         try {
             await updateMissionStatus(classId, missionId, 'archived');
@@ -621,18 +559,12 @@ export const useLeagueStore = create((set, get) => ({
                 };
             });
             alert('미션이 보관되었습니다.');
-        } catch (error) {
-            alert('미션 보관 중 오류가 발생했습니다.');
-        }
+        } catch (error) { alert('미션 보관 중 오류가 발생했습니다.'); }
     },
 
     reorderMissions: async (reorderedMissions, listKey) => {
-        const { classId } = get();
-        set(state => ({
-            ...state,
-            [listKey]: reorderedMissions
-        }));
-
+        const classId = getClassId();
+        set(state => ({ ...state, [listKey]: reorderedMissions }));
         try {
             await batchUpdateMissionOrder(classId, reorderedMissions);
         } catch (error) {
@@ -643,7 +575,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     unarchiveMission: async (missionId) => {
-        const { classId } = get();
+        const classId = getClassId();
         try {
             await updateMissionStatus(classId, missionId, 'active');
             set(state => {
@@ -655,13 +587,11 @@ export const useLeagueStore = create((set, get) => ({
                 };
             });
             alert('미션이 다시 활성화되었습니다.');
-        } catch (error) {
-            alert('미션 활성화 중 오류가 발생했습니다.');
-        }
+        } catch (error) { alert('미션 활성화 중 오류가 발생했습니다.'); }
     },
 
     removeMission: async (missionId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!confirm('정말로 미션을 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
         try {
             await deleteMission(classId, missionId);
@@ -669,24 +599,17 @@ export const useLeagueStore = create((set, get) => ({
             const archivedMissions = await getMissions(classId, 'archived');
             set({ missions: activeMissions, archivedMissions: archivedMissions });
             alert('미션이 삭제되었습니다.');
-        } catch (error) {
-            alert('미션 삭제 중 오류가 발생했습니다.');
-        }
+        } catch (error) { alert('미션 삭제 중 오류가 발생했습니다.'); }
     },
 
     createMission: async (missionData) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) throw new Error('학급 정보가 없습니다.');
-
-        // 파이어베이스에 미션 생성 요청 (이후 실시간 리스너가 화면을 자동 업데이트함)
         await firebaseCreateMission(classId, missionData);
-
-        // 기존에 있던 store 상태 즉시 반영 코드( set(state => ({ missions: ... })) )는 삭제했습니다.
-        // 이제 중복으로 렌더링되지 않습니다.
     },
 
     editMission: async (missionId, missionData) => {
-        const { classId } = get();
+        const classId = getClassId();
         await updateMission(classId, missionId, missionData);
         set(state => {
             const updateInList = (list) => list.map(m => m.id === missionId ? { ...m, ...missionData } : m);
@@ -699,25 +622,19 @@ export const useLeagueStore = create((set, get) => ({
 
     joinClassWithInviteCode: async (inviteCode) => {
         const user = auth.currentUser;
-        if (!user) {
-            throw new Error('로그인이 필요합니다.');
-        }
+        if (!user) throw new Error('로그인이 필요합니다.');
 
         const targetClassId = await getClassIdByInviteCode(inviteCode);
-        if (!targetClassId) {
-            throw new Error(`유효하지 않은 초대 코드입니다. 코드를 다시 확인해주세요.`);
-        }
+        if (!targetClassId) throw new Error(`유효하지 않은 초대 코드입니다. 코드를 다시 확인해주세요.`);
 
-        // 새로운 학급에 선수로 등록
         await registerPlayerInClass(targetClassId, user);
-
-        // ★ 새로고침 전에 반드시 DB에 저장 (이게 없으면 새로고침 후 엉뚱한 학급으로 감)
         const userRef = doc(db, 'users', user.uid);
         await setDoc(userRef, { lastJoinedClassId: targetClassId }, { merge: true });
     },
 
     cancelMissionSubmission: async (missionId) => {
-        const { players, classId } = get();
+        const classId = getClassId();
+        const { players } = get();
         const user = auth.currentUser;
         if (!user) throw new Error('로그인이 필요합니다.');
         const myPlayerData = players.find(p => p.authUid === user.uid);
@@ -726,7 +643,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     submitMissionForApproval: async (missionId, submissionData) => {
-        const { players, classId } = get();
+        const classId = getClassId();
+        const { players } = get();
         const user = auth.currentUser;
         if (!user) throw new Error('로그인이 필요합니다.');
 
@@ -742,7 +660,6 @@ export const useLeagueStore = create((set, get) => ({
 
         await requestMissionApproval(classId, missionId, myPlayerData.id, myPlayerData.name, dataToSend);
 
-        // store 즉시 반영 → 버튼이 바로 [승인 대기중]으로 바뀜
         const newSubmission = {
             id: `temp_${Date.now()}`,
             missionId,
@@ -756,7 +673,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     buyMultipleAvatarParts: async (partsToBuy) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -770,18 +687,14 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({
             players: state.players.map(p =>
                 p.id === myPlayerData.id
-                    ? {
-                        ...p,
-                        points: p.points - totalCost,
-                        ownedParts: [...(p.ownedParts || []), ...newPartIds]
-                    }
+                    ? { ...p, points: p.points - totalCost, ownedParts: [...(p.ownedParts || []), ...newPartIds] }
                     : p
             )
         }));
     },
 
     buyMyRoomItem: async (item) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -796,15 +709,12 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({
             players: state.players.map(p =>
                 p.id === myPlayerData.id
-                    ? {
-                        ...p,
-                        points: p.points - finalPrice,
-                        ownedMyRoomItems: [...(p.ownedMyRoomItems || []), item.id]
-                    }
+                    ? { ...p, points: p.points - finalPrice, ownedMyRoomItems: [...(p.ownedMyRoomItems || []), item.id] }
                     : p
             )
         }));
     },
+
     batchMoveAvatarPartCategory: async (partIds, newCategory) => {
         try {
             await batchUpdateAvatarPartCategory(partIds, newCategory);
@@ -813,9 +723,7 @@ export const useLeagueStore = create((set, get) => ({
                     partIds.includes(part.id) ? { ...part, category: newCategory } : part
                 )
             }));
-        } catch (error) {
-            alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`);
-        }
+        } catch (error) { alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`); }
     },
 
     batchMoveMyRoomItemCategory: async (itemIds, newCategory) => {
@@ -826,13 +734,11 @@ export const useLeagueStore = create((set, get) => ({
                     itemIds.includes(item.id) ? { ...item, category: newCategory } : item
                 )
             }));
-        } catch (error) {
-            alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`);
-        }
+        } catch (error) { alert(`아이템 이동 중 오류가 발생했습니다: ${error.message}`); }
     },
 
     updatePlayerProfile: async (profileData) => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!user) throw new Error("로그인이 필요합니다.");
         const myPlayerData = get().players.find(p => p.authUid === user.uid);
@@ -846,10 +752,7 @@ export const useLeagueStore = create((set, get) => ({
         if (!userId) return;
         try {
             await deleteAllNotifications(userId);
-            set({
-                notifications: [],
-                unreadNotificationCount: 0,
-            });
+            set({ notifications: [], unreadNotificationCount: 0 });
         } catch (error) {
             console.error("알림 전체 삭제 중 오류 발생:", error);
             alert("알림을 삭제하는 데 실패했습니다.");
@@ -857,9 +760,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     subscribeToPlayerData: (userId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
-        // authUid로 플레이어 문서 쿼리 (doc id는 자동생성이므로 where로 찾아야 함)
         const playersRef = collection(db, 'classes', classId, 'players');
         const q = query(playersRef, where('authUid', '==', userId));
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -878,30 +780,24 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({ listeners: { ...state.listeners, playerData: unsubscribe } }));
     },
 
-    // src/store/leagueStore.js
-
     subscribeToMissionSubmissions: (userId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         const player = get().players.find(p => p.authUid === userId);
         if (!player) return;
 
         const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
-
-        // ▼▼▼ [수정] 관리자/기록원은 전체 내역을 실시간으로 구독하도록 변경 ▼▼▼
         let q;
         if (player.role === 'admin' || player.role === 'recorder') {
-            q = query(submissionsRef); // 모든 학생의 미션 가져오기
+            q = query(submissionsRef);
         } else {
             q = query(submissionsRef, where('studentId', '==', player.id));
         }
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const fetchedSubmissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
             set(state => {
                 if (player.role === 'admin' || player.role === 'recorder') {
-                    // 관리자면 전체 데이터를 덮어씌움
                     return { missionSubmissions: fetchedSubmissions };
                 } else {
                     const othersSubmissions = state.missionSubmissions.filter(sub => sub.studentId !== player.id);
@@ -919,35 +815,24 @@ export const useLeagueStore = create((set, get) => ({
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const notifications = [];
             let unreadCount = 0;
-
             querySnapshot.forEach(doc => {
                 const notification = { id: doc.id, ...doc.data() };
                 notifications.push(notification);
-                if (!notification.isRead) {
-                    unreadCount++;
-                }
+                if (!notification.isRead) unreadCount++;
             });
-
-            // 가장 최근의 읽지 않은 포인트 조정 알림을 찾습니다.
             const latestPointNotification = notifications.find(n => n.type === 'point' && !n.isRead && n.data);
-
-            // 상태를 업데이트합니다.
             set(state => {
-                // 새로운 포인트 조정 알림이 있고, 현재 표시된 알림과 다를 경우에만 상태를 업데이트합니다.
                 if (latestPointNotification && latestPointNotification.id !== state.pointAdjustmentNotification?.id) {
                     return { notifications, unreadNotificationCount: unreadCount, pointAdjustmentNotification: latestPointNotification };
                 }
-                // 그 외의 경우에는 일반 알림 목록과 카운트만 업데이트합니다.
                 return { notifications, unreadNotificationCount: unreadCount };
             });
-
         }, (error) => console.error("알림 실시간 수신 오류:", error));
-
         set(state => ({ listeners: { ...state.listeners, notifications: unsubscribe } }));
     },
 
     subscribeToRecorderBonus: (userId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
 
         const today = new Date();
@@ -965,9 +850,7 @@ export const useLeagueStore = create((set, get) => ({
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             let totalBonus = 0;
-            querySnapshot.forEach(doc => {
-                totalBonus += doc.data().changeAmount;
-            });
+            querySnapshot.forEach(doc => { totalBonus += doc.data().changeAmount; });
             set({ approvalBonus: totalBonus });
         }, (error) => console.error("기록원 보너스 실시간 수신 오류:", error));
 
@@ -992,10 +875,9 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     fetchDailyQuiz: async (studentId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
 
-        // firebase의 getTodayDateString()과 동일한 형식 사용 (YYYY-MM-DD)
         const today = new Date();
         const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         const storedQuizSet = JSON.parse(localStorage.getItem('dailyQuizSet') || 'null');
@@ -1026,14 +908,14 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     submitQuizAnswer: async (quizId, userAnswer) => {
-        const { players, dailyQuiz, classId } = get();
+        const classId = getClassId();
+        const { players, dailyQuiz } = get();
         const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
         if (!myPlayerData || !dailyQuiz || !classId) return false;
 
         const isCorrect = await firebaseSubmitQuizAnswer(classId, myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
 
         if (isCorrect) {
-            // store 포인트 즉시 반영 (+50P)
             set(state => ({
                 players: state.players.map(p =>
                     p.id === myPlayerData.id ? { ...p, points: (p.points || 0) + 50 } : p
@@ -1046,7 +928,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     batchAdjustPoints: async (playerIds, amount, reason) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         try {
             await batchAdjustPlayerPoints(classId, playerIds, amount, reason);
@@ -1065,7 +947,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     createSeason: async (seasonName) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         await createNewSeason(classId, seasonName);
         const seasonsData = await getSeasons(classId);
@@ -1074,7 +956,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     startSeason: async () => {
-        const { classId, currentSeason } = get();
+        const classId = getClassId();
+        const { currentSeason } = get();
         if (!classId || !currentSeason || currentSeason.status !== 'preparing') return alert('준비 중인 시즌만 시작할 수 있습니다.');
         if (!confirm('시즌을 시작하면 선수/팀 구성 및 경기 일정 생성이 불가능해집니다. 시작하시겠습니까?')) return;
         try {
@@ -1083,21 +966,18 @@ export const useLeagueStore = create((set, get) => ({
         } catch (error) { console.error("시즌 시작 오류:", error); }
     },
 
-    // src/store/leagueStore.js 내부의 actions 영역
-
     endSeason: async () => {
-        const { classId, currentSeason } = get();
+        const classId = getClassId();
+        const { currentSeason } = get();
         if (!classId || !currentSeason || currentSeason.status !== 'active') return alert('진행 중인 시즌만 종료할 수 있습니다.');
         if (!confirm('시즌을 종료하시겠습니까? 시즌의 모든 활동을 마감하고 순위별 보상을 지급합니다.')) return;
 
         try {
-            // 최신 데이터 가져오기
             const players = await getPlayers(classId);
             const teams = await getTeams(classId, currentSeason.id);
             const matches = await getMatches(classId, currentSeason.id);
             const completedMatches = matches.filter(m => m.status === '완료');
 
-            // 1. 순위 산정 로직 (기존과 동일)
             let stats = teams.map(team => ({
                 id: team.id, teamName: team.teamName, emblemId: team.emblemId, emblemUrl: team.emblemUrl,
                 played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0, goalDifference: 0
@@ -1121,42 +1001,26 @@ export const useLeagueStore = create((set, get) => ({
                 return b.goalsFor - a.goalsFor;
             });
 
-            // 2. 우승팀 처리 및 [자동 우승 횟수 증가]
             if (stats.length > 0) {
                 const winningTeam = teams.find(t => t.id === stats[0].id);
                 if (winningTeam?.members.length > 0) {
-                    // (1) 칭호 지급 (기존 로직)
                     for (const memberId of winningTeam.members) {
                         await grantTitleToPlayer(classId, memberId, 'ruler_of_the_league');
                     }
-
-                    // ▼▼▼ [추가됨] 우승 횟수 자동 증가 로직 ▼▼▼
-                    // 별도의 동기화 버튼 없이 여기서 바로 처리합니다.
                     try {
                         const winningPlayers = players.filter(p => winningTeam.members.includes(p.id));
-
-                        // 우승한 팀원들의 users 테이블 정보를 업데이트 (win_count + 1)
                         const updatePromises = winningPlayers.map(player => {
                             if (player.authUid) {
                                 const userRef = doc(db, 'users', player.authUid);
-                                return updateDoc(userRef, {
-                                    win_count: increment(1) // 기존 값에서 1 증가
-                                });
+                                return updateDoc(userRef, { win_count: increment(1) });
                             }
                             return Promise.resolve();
                         });
-
                         await Promise.all(updatePromises);
-                        console.log(`${winningTeam.teamName} 팀원들의 우승 횟수가 반영되었습니다.`);
-                    } catch (err) {
-                        console.error("우승 횟수 자동 반영 실패:", err);
-                        // 에러가 나더라도 시즌 종료 프로세스는 계속 진행되도록 함
-                    }
-                    // ▲▲▲ [여기까지 추가] ▲▲▲
+                    } catch (err) { console.error("우승 횟수 자동 반영 실패:", err); }
                 }
             }
 
-            // 3. 순위별 보상 지급 (기존과 동일)
             const prizeConfig = [
                 { rank: 1, prize: currentSeason.winningPrize || 0, label: "우승" },
                 { rank: 2, prize: currentSeason.secondPlacePrize || 0, label: "준우승" },
@@ -1172,7 +1036,6 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
-            // 4. 득점왕 보상 (기존과 동일)
             const topScorerPrize = currentSeason.topScorerPrize || 0;
             const scorerPoints = {};
             completedMatches.forEach(match => {
@@ -1196,7 +1059,6 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
-            // 5. 아바타 박제 (기존과 동일)
             const playersInSeason = teams.flatMap(team => team.members)
                 .map(playerId => players.find(p => p.id === playerId)).filter(Boolean);
 
@@ -1209,7 +1071,6 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
-            // 6. 시즌 상태 종료로 변경 (기존과 동일)
             await updateSeason(classId, currentSeason.id, { status: 'completed' });
             set(state => ({ currentSeason: { ...state.currentSeason, status: 'completed' } }));
 
@@ -1222,7 +1083,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     updateSeasonDetails: async (seasonId, dataToUpdate) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         try {
             await updateSeason(classId, seasonId, dataToUpdate);
@@ -1237,7 +1098,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     linkPlayer: async (playerId, authUid, role) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId || !playerId || !authUid || !role) return alert('선수, 사용자, 역할을 모두 선택해야 합니다.');
         try {
             await linkPlayerToAuth(classId, playerId, authUid, role);
@@ -1248,7 +1109,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     removePlayer: async (playerId) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId || !confirm('정말로 이 선수를 삭제하시겠습니까?')) return;
         await deletePlayer(classId, playerId);
         const players = await getPlayers(classId);
@@ -1256,7 +1117,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     togglePlayerStatus: async (playerId, currentStatus) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
         const actionText = newStatus === 'inactive' ? '비활성화' : '활성화';
@@ -1277,7 +1138,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     addNewTeam: async (teamName) => {
-        const { classId, currentSeason } = get();
+        const classId = getClassId();
+        const { currentSeason } = get();
         if (!classId || !currentSeason) return alert('현재 시즌 정보를 불러올 수 없습니다.');
         if (!teamName.trim()) return alert('팀 이름을 입력해주세요.');
 
@@ -1287,7 +1149,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     removeTeam: async (teamId) => {
-        const { classId, currentSeason } = get();
+        const classId = getClassId();
+        const { currentSeason } = get();
         if (!classId || !currentSeason || !confirm('정말로 이 팀을 삭제하시겠습니까?')) return;
         await deleteTeam(classId, teamId);
         const updatedTeams = await getTeams(classId, currentSeason.id);
@@ -1295,20 +1158,20 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     setTeamCaptain: async (teamId, captainId) => {
-        const { classId, currentSeason } = get();
+        const classId = getClassId();
+        const { currentSeason } = get();
         if (!classId || !currentSeason) return;
         try {
             await updateTeamCaptain(classId, teamId, captainId);
             const updatedTeams = await getTeams(classId, currentSeason.id);
             set({ teams: updatedTeams });
             alert('주장이 임명되었습니다.');
-        } catch (error) {
-            alert('주장 임명 중 오류가 발생했습니다.');
-        }
+        } catch (error) { alert('주장 임명 중 오류가 발생했습니다.'); }
     },
 
     batchCreateTeams: async (maleCount, femaleCount) => {
-        const { classId, currentSeason } = get();
+        const classId = getClassId();
+        const { currentSeason } = get();
         if (!classId || !currentSeason) return alert('현재 시즌 정보를 불러올 수 없습니다.');
 
         const newTeams = [];
@@ -1326,7 +1189,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     assignPlayerToTeam: async (teamId, playerId) => {
-        const { classId, teams, currentSeason } = get();
+        const classId = getClassId();
+        const { teams, currentSeason } = get();
         if (!classId || !currentSeason || !playerId) return;
 
         const team = teams.find(t => t.id === teamId);
@@ -1338,7 +1202,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     unassignPlayerFromTeam: async (teamId, playerId) => {
-        const { classId, teams, currentSeason } = get();
+        const classId = getClassId();
+        const { teams, currentSeason } = get();
         if (!classId || !currentSeason) return;
 
         const team = teams.find(t => t.id === teamId);
@@ -1348,7 +1213,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     autoAssignTeams: async () => {
-        const { classId, players, teams, currentSeason } = get();
+        const classId = getClassId();
+        const { players, teams, currentSeason } = get();
         if (!classId || !currentSeason || !confirm('팀원을 자동 배정하시겠습니까? 기존 팀 배정은 모두 초기화됩니다.')) return;
 
         const numTeams = teams.length;
@@ -1393,9 +1259,7 @@ export const useLeagueStore = create((set, get) => ({
             const assignRemainingPlayers = (playersToAssign, gender) => {
                 playersToAssign.forEach(player => {
                     teamUpdates.sort((a, b) => {
-                        if (a.genderCount[gender] !== b.genderCount[gender]) {
-                            return a.genderCount[gender] - b.genderCount[gender];
-                        }
+                        if (a.genderCount[gender] !== b.genderCount[gender]) return a.genderCount[gender] - b.genderCount[gender];
                         return a.members.length - b.members.length;
                     });
                     const targetTeam = teamUpdates[0];
@@ -1430,7 +1294,8 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     generateSchedule: async () => {
-        const { classId, teams, leagueType, currentSeason } = get();
+        const classId = getClassId();
+        const { teams, leagueType, currentSeason } = get();
         if (!classId || !currentSeason) return alert('현재 시즌 정보가 없습니다.');
         if (teams.length < 2) return alert('최소 2팀이 필요합니다.');
         if (!confirm('경기 일정을 새로 생성하시겠습니까? 기존 경기 일정은 모두 삭제됩니다.')) return;
@@ -1484,7 +1349,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     saveScores: async (matchId, scores, scorers) => {
-        const { classId } = get();
+        const classId = getClassId();
         if (!classId) return;
         try {
             const recorderId = auth.currentUser?.uid;
@@ -1497,7 +1362,7 @@ export const useLeagueStore = create((set, get) => ({
     },
 
     checkAttendance: async () => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!classId || !user) return;
 
@@ -1508,13 +1373,11 @@ export const useLeagueStore = create((set, get) => ({
             if (isAvailable) {
                 set({ showAttendanceModal: true });
             }
-        } catch (error) {
-            console.error("출석 체크 가능 여부 확인 중 오류:", error);
-        }
+        } catch (error) { console.error("출석 체크 가능 여부 확인 중 오류:", error); }
     },
 
     claimAttendanceReward: async () => {
-        const { classId } = get();
+        const classId = getClassId();
         const user = auth.currentUser;
         if (!classId || !user) return;
 

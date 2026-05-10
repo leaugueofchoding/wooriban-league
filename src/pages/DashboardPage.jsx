@@ -119,9 +119,9 @@ const getAvatarUrls = (config, avatarParts) => {
 
 function DashboardPage() {
     const { classId } = useClassStore();
-    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, isLoading } = useLeagueStore();
+    // ★ [핵심] currentUser를 store에서 가져와 React 상태 변화와 동기화시킵니다.
+    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, isLoading, currentUser } = useLeagueStore();
     const navigate = useNavigate();
-    const currentUser = auth.currentUser;
     const [activeGoal, setActiveGoal] = useState(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [inputCode, setInputCode] = useState('');
@@ -244,7 +244,6 @@ function DashboardPage() {
     }, [missions, mySubmissions]);
 
     const recentMissions = activeMissions.slice(0, 3);
-    // [수정] 리그 순위 최대 6개 팀 표시 (기존 3개 -> 5개)
     const topRankedTeams = useMemo(() => standingsData().slice(0, 5), [standingsData]);
     const rankIcons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"];
 

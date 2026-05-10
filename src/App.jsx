@@ -6,7 +6,7 @@ import { useLeagueStore, useClassStore } from './store/leagueStore';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from './api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import styled, { createGlobalStyle } from 'styled-components'; // createGlobalStyle 추가
+import styled, { createGlobalStyle } from 'styled-components';
 
 // Page Components
 import DashboardPage from './pages/DashboardPage';
@@ -40,7 +40,6 @@ import PatchNoteModal from './components/PatchNoteModal';
 import BattlePage from './features/battle/BattlePage.jsx';
 import TermsPage from './pages/TermsPage';
 
-// [추가] 전역 배경색 스타일 컴포넌트
 const GlobalBackground = createGlobalStyle`
   body {
     background-color: ${props => props.$themeColor};
@@ -94,7 +93,6 @@ function AccessDenied() {
   );
 }
 
-
 const ProtectedRoute = ({ children }) => {
   const { players, isLoading } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -105,9 +103,7 @@ const ProtectedRoute = ({ children }) => {
     return players.some(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
 
-  if (isLoading) {
-    return null;
-  }
+  if (isLoading) return null;
 
   const inviteCode = sessionStorage.getItem('inviteCode');
   if (currentUser && inviteCode) {
@@ -131,9 +127,7 @@ const AdminRoute = ({ children }) => {
     return players.find(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
 
-  if (isLoading) {
-    return null;
-  }
+  if (isLoading) return null;
 
   if (!currentUser || !myPlayerData || myPlayerData.role !== 'admin') {
     return <Navigate to="/access-denied" state={{ from: location }} replace />;
@@ -142,11 +136,10 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
-
 function App() {
   const {
     isLoading, setLoading, initializeClass, cleanupListeners,
-    checkAttendance, pointAdjustmentNotification, themeColor // [추가] themeColor 가져오기
+    checkAttendance, pointAdjustmentNotification, themeColor
   } = useLeagueStore();
   const { classId, setClassId } = useClassStore();
 
@@ -154,40 +147,40 @@ function App() {
   const [isPatchNoteModalOpen, setIsPatchNoteModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
 
+  // ★ [핵심] 앱이 실행되자마자 URL에 있는 초대코드를 잡아채서 킵해둡니다. (QR코드 접속 유저용)
   useEffect(() => {
-    const defaultClassId = "25-hwachang-6-2";
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('inviteCode');
+    if (code) {
+      sessionStorage.setItem('inviteCode', code);
+    }
+  }, []);
+
+  useEffect(() => {
+    const defaultClassId = import.meta.env.VITE_DEFAULT_CLASS_ID || "25-hwachang-6-2";
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       setLoading(true);
 
       if (user) {
-        const inviteCode = sessionStorage.getItem('inviteCode');
-        if (inviteCode) {
-          setAuthChecked(true);
-          setLoading(false);
-        } else {
-          let resolvedClassId;
-          try {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-            if (userDoc.exists() && userDoc.data().lastJoinedClassId) {
-              resolvedClassId = userDoc.data().lastJoinedClassId;
-            } else {
-              resolvedClassId = defaultClassId;
-            }
-          } catch (e) {
-            resolvedClassId = defaultClassId;
+        let resolvedClassId = defaultClassId;
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists() && userDoc.data().lastJoinedClassId) {
+            resolvedClassId = userDoc.data().lastJoinedClassId;
           }
-          setClassId(resolvedClassId);
-          await initializeClass(resolvedClassId);
-          checkAttendance();
-          setAuthChecked(true);
-          setLoading(false);
+        } catch (e) {
+          console.error(e);
         }
+        setClassId(resolvedClassId);
+        await initializeClass(resolvedClassId);
+        checkAttendance();
+        setAuthChecked(true);
+        setLoading(false);
       } else {
         cleanupListeners();
         setClassId(null);
-        await initializeClass(defaultClassId);
         setAuthChecked(true);
         setLoading(false);
       }
@@ -195,17 +188,17 @@ function App() {
     return () => unsubscribe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-
   if (!authChecked || isLoading) {
     const message = !authChecked ? "인증 정보 확인 중..." : (classId ? "데이터 로딩 중..." : "학급 정보를 설정하는 중...");
     return <div style={{ textAlign: 'center', padding: '2rem' }}>{message}</div>;
   }
 
+  // ★ [핵심] 로그인 처리 직후, 세션스토리지에 남은 코드가 있다면 바로 판단합니다.
+  const pendingInviteCode = sessionStorage.getItem('inviteCode');
+
   return (
     <BrowserRouter>
-      {/* [추가] 전역 배경색 적용 */}
       <GlobalBackground $themeColor={themeColor} />
-
       <AppWrapper>
         {currentUser && <Auth user={currentUser} />}
         <AttendanceModal />
@@ -213,8 +206,13 @@ function App() {
         <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>
           <Routes>
-            <Route path="/" element={currentUser ? <DashboardPage /> : <LandingPage />} />
-            <Route path="/join" element={currentUser ? <JoinPage /> : <Navigate to="/" />} />
+            {/* ★ [핵심] 로그인이 되었는데 초대코드가 있으면 Dashboard를 띄우지 않고 바로 Join으로 보냅니다. */}
+            <Route path="/" element={
+              currentUser
+                ? (pendingInviteCode ? <Navigate to={`/join?inviteCode=${pendingInviteCode}`} replace /> : <DashboardPage />)
+                : <LandingPage />
+            } />
+            <Route path="/join" element={currentUser ? <JoinPage /> : <Navigate to="/" replace />} />
             <Route path="/access-denied" element={<AccessDenied />} />
             <Route path="/broadcast" element={<BroadcastPage />} />
 
