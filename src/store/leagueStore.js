@@ -878,6 +878,8 @@ export const useLeagueStore = create((set, get) => ({
         set(state => ({ listeners: { ...state.listeners, playerData: unsubscribe } }));
     },
 
+    // src/store/leagueStore.js
+
     subscribeToMissionSubmissions: (userId) => {
         const { classId } = get();
         if (!classId) return;
@@ -885,13 +887,26 @@ export const useLeagueStore = create((set, get) => ({
         if (!player) return;
 
         const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
-        const q = query(submissionsRef, where('studentId', '==', player.id));
+
+        // ▼▼▼ [수정] 관리자/기록원은 전체 내역을 실시간으로 구독하도록 변경 ▼▼▼
+        let q;
+        if (player.role === 'admin' || player.role === 'recorder') {
+            q = query(submissionsRef); // 모든 학생의 미션 가져오기
+        } else {
+            q = query(submissionsRef, where('studentId', '==', player.id));
+        }
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const mySubmissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const fetchedSubmissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
             set(state => {
-                const othersSubmissions = state.missionSubmissions.filter(sub => sub.studentId !== player.id);
-                return { missionSubmissions: [...othersSubmissions, ...mySubmissions] };
+                if (player.role === 'admin' || player.role === 'recorder') {
+                    // 관리자면 전체 데이터를 덮어씌움
+                    return { missionSubmissions: fetchedSubmissions };
+                } else {
+                    const othersSubmissions = state.missionSubmissions.filter(sub => sub.studentId !== player.id);
+                    return { missionSubmissions: [...othersSubmissions, ...fetchedSubmissions] };
+                }
             });
         }, (error) => console.error("미션 제출 기록 실시간 수신 오류:", error));
         set(state => ({ listeners: { ...state.listeners, missionSubmissions: unsubscribe } }));

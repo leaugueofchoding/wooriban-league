@@ -113,7 +113,6 @@ const StatsBar = styled.div`
   }
 `;
 
-// [추가] 체크박스 그룹 컨테이너
 const CheckboxGroup = styled.div`
   display: flex;
   flex-direction: column;
@@ -339,304 +338,319 @@ const SelectionInfo = styled.div`
 `;
 
 function RecorderPage({ isAdminView = false, initialMissionId = null }) {
-    const { classId } = useClassStore();
-    const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
-    const { missionId } = useParams();
-    const navigate = useNavigate();
+  const { classId } = useClassStore();
+  const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
+  const { missionId } = useParams();
+  const navigate = useNavigate();
 
-    const [selectedMissionId, setSelectedMissionId] = useState(initialMissionId || missionId || '');
-    const [checkedStudents, setCheckedStudents] = useState(new Set());
-    const [expandedCardId, setExpandedCardId] = useState(null);
-    const currentUser = auth.currentUser;
+  const [selectedMissionId, setSelectedMissionId] = useState(initialMissionId || missionId || '');
+  const [checkedStudents, setCheckedStudents] = useState(new Set());
+  const [expandedCardId, setExpandedCardId] = useState(null);
+  const currentUser = auth.currentUser;
 
-    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-    const [missionHistory, setMissionHistory] = useState([]);
-    const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
-    const [modalImageSrc, setModalImageSrc] = useState(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [missionHistory, setMissionHistory] = useState([]);
+  const [selectedStudentForHistory, setSelectedStudentForHistory] = useState(null);
+  const [modalImageSrc, setModalImageSrc] = useState(null);
 
-    useEffect(() => {
-        if (initialMissionId) setSelectedMissionId(initialMissionId);
-    }, [initialMissionId]);
+  useEffect(() => {
+    if (initialMissionId) setSelectedMissionId(initialMissionId);
+  }, [initialMissionId]);
 
-    useEffect(() => {
-        if (missionId) setSelectedMissionId(missionId);
-    }, [missionId]);
+  useEffect(() => {
+    if (missionId) setSelectedMissionId(missionId);
+  }, [missionId]);
 
-    const selectedMission = useMemo(() => missions.find(m => m.id === selectedMissionId), [missions, selectedMissionId]);
+  const selectedMission = useMemo(() => missions.find(m => m.id === selectedMissionId), [missions, selectedMissionId]);
 
-    const studentSubmissionStatus = useMemo(() => {
-        const statusMap = new Map();
-        missionSubmissions
-            .filter(sub => sub.missionId === selectedMissionId)
-            .forEach(sub => { statusMap.set(sub.studentId, sub); });
-        return statusMap;
-    }, [missionSubmissions, selectedMissionId]);
+  // ▼▼▼ [수정] 여러 번 제출된 경우 최신 기록을 우선하고, 반복미션은 과거 기록 무시 ▼▼▼
+  const studentSubmissionStatus = useMemo(() => {
+    const statusMap = new Map();
 
-    const sortedPlayers = useMemo(() => {
-        return [...players].sort((a, b) => {
-            const statusA = studentSubmissionStatus.get(a.id)?.status;
-            const statusB = studentSubmissionStatus.get(b.id)?.status;
-            // 1. 승인 대기 우선
-            if (statusA === 'pending' && statusB !== 'pending') return -1;
-            if (statusA !== 'pending' && statusB === 'pending') return 1;
-            // 2. 미제출 차순위
-            const isSubmittedA = statusA === 'approved';
-            const isSubmittedB = statusB === 'approved';
-            if (!isSubmittedA && isSubmittedB) return -1;
-            if (isSubmittedA && !isSubmittedB) return 1;
-            return a.name.localeCompare(b.name);
-        });
-    }, [players, studentSubmissionStatus]);
+    // 최신순 정렬 (requestedAt 기준 내림차순)
+    const sortedSubmissions = [...missionSubmissions].sort((a, b) => {
+      const timeA = a.requestedAt?.toMillis ? a.requestedAt.toMillis() : 0;
+      const timeB = b.requestedAt?.toMillis ? b.requestedAt.toMillis() : 0;
+      return timeB - timeA;
+    });
 
-    const stats = useMemo(() => {
-        let pending = 0;
-        let approved = 0;
-        players.forEach(p => {
-            const status = studentSubmissionStatus.get(p.id)?.status;
-            if (status === 'pending') pending++;
-            if (status === 'approved') approved++;
-        });
-        return { pending, approved, total: players.length };
-    }, [players, studentSubmissionStatus]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    const handleMissionSelect = (e) => {
-        const newMissionId = e.target.value;
-        setSelectedMissionId(newMissionId);
+    sortedSubmissions
+      .filter(sub => sub.missionId === selectedMissionId)
+      .forEach(sub => {
+        // 반복 미션(isFixed)인 경우, 오늘 제출한 내역만 처리 (과거 완료 기록 무시)
+        if (selectedMission?.isFixed) {
+          let subDate = null;
+          if (sub.requestedAt?.toDate) subDate = sub.requestedAt.toDate();
+          else if (sub.requestedAt) subDate = new Date(sub.requestedAt);
+
+          if (subDate && subDate < today) return;
+        }
+
+        // 최신순으로 돌기 때문에 첫 번째 기록(가장 최신)만 Map에 저장
+        if (!statusMap.has(sub.studentId)) {
+          statusMap.set(sub.studentId, sub);
+        }
+      });
+    return statusMap;
+  }, [missionSubmissions, selectedMissionId, selectedMission]);
+
+  const sortedPlayers = useMemo(() => {
+    return [...players].sort((a, b) => {
+      const statusA = studentSubmissionStatus.get(a.id)?.status;
+      const statusB = studentSubmissionStatus.get(b.id)?.status;
+      if (statusA === 'pending' && statusB !== 'pending') return -1;
+      if (statusA !== 'pending' && statusB === 'pending') return 1;
+      const isSubmittedA = statusA === 'approved';
+      const isSubmittedB = statusB === 'approved';
+      if (!isSubmittedA && isSubmittedB) return -1;
+      if (isSubmittedA && !isSubmittedB) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [players, studentSubmissionStatus]);
+
+  const stats = useMemo(() => {
+    let pending = 0;
+    let approved = 0;
+    players.forEach(p => {
+      const status = studentSubmissionStatus.get(p.id)?.status;
+      if (status === 'pending') pending++;
+      if (status === 'approved') approved++;
+    });
+    return { pending, approved, total: players.length };
+  }, [players, studentSubmissionStatus]);
+
+  const handleMissionSelect = (e) => {
+    const newMissionId = e.target.value;
+    setSelectedMissionId(newMissionId);
+    setCheckedStudents(new Set());
+    setExpandedCardId(null);
+    if (!isAdminView) navigate(`/recorder/${newMissionId}`);
+  };
+
+  const handleCheckboxToggle = (e, studentId, status) => {
+    e.stopPropagation();
+    if (status === 'approved') return;
+
+    setCheckedStudents(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(studentId)) newSet.delete(studentId);
+      else newSet.add(studentId);
+      return newSet;
+    });
+  };
+
+  const handleCardClick = (studentId) => {
+    setExpandedCardId(prev => prev === studentId ? null : studentId);
+  };
+
+  const handleHistoryView = async (e, student) => {
+    e.stopPropagation();
+    if (!classId || !selectedMissionId) return;
+    const history = await getMissionHistory(classId, student.id, selectedMissionId);
+    setMissionHistory(history);
+    setSelectedStudentForHistory(student);
+    setIsHistoryModalOpen(true);
+  };
+
+  const handleSelectTotal = () => {
+    const eligiblePlayerIds = sortedPlayers
+      .filter(player => studentSubmissionStatus.get(player.id)?.status !== 'approved')
+      .map(player => player.id);
+
+    const isAllSelected = eligiblePlayerIds.length > 0 && eligiblePlayerIds.every(id => checkedStudents.has(id));
+
+    if (isAllSelected) {
+      setCheckedStudents(new Set());
+    } else {
+      setCheckedStudents(new Set(eligiblePlayerIds));
+    }
+  };
+
+  const handleSelectPending = () => {
+    const pendingPlayerIds = sortedPlayers
+      .filter(player => studentSubmissionStatus.get(player.id)?.status === 'pending')
+      .map(player => player.id);
+
+    const isPendingSelected = pendingPlayerIds.length > 0 &&
+      pendingPlayerIds.every(id => checkedStudents.has(id)) &&
+      checkedStudents.size === pendingPlayerIds.length;
+
+    if (isPendingSelected) {
+      setCheckedStudents(new Set());
+    } else {
+      setCheckedStudents(new Set(pendingPlayerIds));
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!classId) return;
+    const mission = missions.find(m => m.id === selectedMissionId);
+    if (!mission || checkedStudents.size === 0) return alert('미션을 선택하고, 승인할 학생을 한 명 이상 체크해주세요.');
+    if (!currentUser) return alert('기록원 정보가 없습니다.');
+
+    const studentNames = Array.from(checkedStudents).map(id => players.find(p => p.id === id)?.name).join(', ');
+    if (window.confirm(`${studentNames} 학생들의 미션 완료를 승인하고 포인트를 지급하시겠습니까?`)) {
+      try {
+        await approveMissionsInBatch(classId, selectedMissionId, Array.from(checkedStudents), currentUser.uid, mission.reward);
+        alert('포인트 지급이 완료되었습니다.');
         setCheckedStudents(new Set());
-        setExpandedCardId(null);
-        if (!isAdminView) navigate(`/recorder/${newMissionId}`);
-    };
+        await fetchInitialData();
+      } catch (error) {
+        alert(`오류: ${error.message}`);
+      }
+    }
+  };
 
-    // 체크박스 토글 (미제출도 선택 가능, 승인 완료만 불가)
-    const handleCheckboxToggle = (e, studentId, status) => {
-        e.stopPropagation();
-        if (status === 'approved') return;
+  const allEligibleCount = stats.total - stats.approved;
+  const isTotalSelected = allEligibleCount > 0 && checkedStudents.size === allEligibleCount;
 
-        setCheckedStudents(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(studentId)) newSet.delete(studentId);
-            else newSet.add(studentId);
-            return newSet;
-        });
-    };
+  const pendingIds = sortedPlayers.filter(p => studentSubmissionStatus.get(p.id)?.status === 'pending').map(p => p.id);
+  const isPendingSelected = pendingIds.length > 0 &&
+    checkedStudents.size === pendingIds.length &&
+    pendingIds.every(id => checkedStudents.has(id));
 
-    const handleCardClick = (studentId) => {
-        setExpandedCardId(prev => prev === studentId ? null : studentId);
-    };
+  return (
+    <PageContainer>
+      <ContentWrapper>
+        <HeaderSection>
+          <Title>📝 미션 기록관</Title>
+          <SubTitle>학생들의 미션 수행 내역을 확인하고 승인해주세요.</SubTitle>
+        </HeaderSection>
 
-    const handleHistoryView = async (e, student) => {
-        e.stopPropagation();
-        if (!classId || !selectedMissionId) return;
-        const history = await getMissionHistory(classId, student.id, selectedMissionId);
-        setMissionHistory(history);
-        setSelectedStudentForHistory(student);
-        setIsHistoryModalOpen(true);
-    };
+        <ControlsCard>
+          <SelectLabel>확인할 미션 선택</SelectLabel>
+          <StyledSelect value={selectedMissionId} onChange={handleMissionSelect}>
+            <option value="">-- 미션을 선택해주세요 --</option>
+            {missions.map(mission => (
+              <option key={mission.id} value={mission.id}>
+                {mission.title} (보상: {mission.reward}P)
+              </option>
+            ))}
+          </StyledSelect>
 
-    // [1] 전체 선택 (승인 완료 제외한 모든 인원)
-    const handleSelectTotal = () => {
-        const eligiblePlayerIds = sortedPlayers
-            .filter(player => studentSubmissionStatus.get(player.id)?.status !== 'approved')
-            .map(player => player.id);
+          {selectedMissionId && (
+            <ControlRow>
+              <StatsBar>
+                <div><span className="label">전체 학생</span><span className="value">{stats.total}명</span></div>
+                <div><span className="label">승인 대기</span><span className="value" style={{ color: '#e67700' }}>{stats.pending}명</span></div>
+                <div><span className="label">승인 완료</span><span className="value" style={{ color: '#20c997' }}>{stats.approved}명</span></div>
+              </StatsBar>
 
-        // eligible 인원이 모두 체크되어 있으면 해제, 아니면 전체 선택
-        const isAllSelected = eligiblePlayerIds.length > 0 && eligiblePlayerIds.every(id => checkedStudents.has(id));
+              <CheckboxGroup>
+                <SelectAllLabel>
+                  <input
+                    type="checkbox"
+                    checked={isTotalSelected}
+                    onChange={handleSelectTotal}
+                    disabled={allEligibleCount === 0}
+                  />
+                  전체 선택 (미제출 포함)
+                </SelectAllLabel>
+                <SelectAllLabel>
+                  <input
+                    type="checkbox"
+                    checked={isPendingSelected}
+                    onChange={handleSelectPending}
+                    disabled={stats.pending === 0}
+                  />
+                  승인요청 인원만 선택
+                </SelectAllLabel>
+              </CheckboxGroup>
+            </ControlRow>
+          )}
+        </ControlsCard>
 
-        if (isAllSelected) {
-            setCheckedStudents(new Set());
-        } else {
-            setCheckedStudents(new Set(eligiblePlayerIds));
-        }
-    };
+        {selectedMissionId && (
+          <GridContainer>
+            {sortedPlayers.map(player => {
+              const submission = studentSubmissionStatus.get(player.id);
+              const status = submission?.status || 'none';
+              const isChecked = checkedStudents.has(player.id);
+              const isExpanded = expandedCardId === player.id;
+              const isApproved = status === 'approved';
 
-    // [2] 승인 요청 인원(Pending)만 선택
-    const handleSelectPending = () => {
-        const pendingPlayerIds = sortedPlayers
-            .filter(player => studentSubmissionStatus.get(player.id)?.status === 'pending')
-            .map(player => player.id);
+              return (
+                <StudentCard
+                  key={player.id}
+                  $status={status}
+                  $checked={isChecked}
+                  onClick={() => handleCardClick(player.id)}
+                >
+                  <CardHeader $expanded={isExpanded}>
+                    <NameGroup>
+                      <CheckboxIcon
+                        $checked={isChecked}
+                        $disabled={isApproved}
+                        onClick={(e) => handleCheckboxToggle(e, player.id, status)}
+                      />
+                      <span style={{ fontWeight: 'bold' }}>{player.name}</span>
+                    </NameGroup>
+                    <StatusBadge $status={status}>
+                      {status === 'pending' ? '승인 대기' : (status === 'approved' ? '완료됨' : '미제출')}
+                    </StatusBadge>
+                  </CardHeader>
 
-        // pending 인원이 모두 체크되어 있으면 해제, 아니면 pending만 선택
-        // (주의: pending만 선택할 때 기존 '미제출' 체크는 풀리는 것이 '필터' 개념에 더 부합)
-        const isPendingSelected = pendingPlayerIds.length > 0 &&
-            pendingPlayerIds.every(id => checkedStudents.has(id)) &&
-            checkedStudents.size === pendingPlayerIds.length;
+                  {isExpanded && submission && (
+                    <CardBody>
+                      {submission.text && <div className="text-content">{submission.text}</div>}
+                      {submission.photoUrls && submission.photoUrls.length > 0 && (
+                        <div className="image-grid" onClick={e => e.stopPropagation()}>
+                          {submission.photoUrls.map((url, idx) => (
+                            <img key={idx} src={url} alt="submission" onClick={() => setModalImageSrc(url)} />
+                          ))}
+                        </div>
+                      )}
 
-        if (isPendingSelected) {
-            setCheckedStudents(new Set());
-        } else {
-            setCheckedStudents(new Set(pendingPlayerIds));
-        }
-    };
+                      {/* [수정] 반복 미션일 경우 이전 기록 보기 가능 */}
+                      {selectedMission?.isFixed && (
+                        <ActionButton onClick={(e) => handleHistoryView(e, player)}>
+                          📜 이전 기록 보기
+                        </ActionButton>
+                      )}
+                    </CardBody>
+                  )}
 
-    const handleSubmit = async () => {
-        if (!classId) return;
-        const mission = missions.find(m => m.id === selectedMissionId);
-        if (!mission || checkedStudents.size === 0) return alert('미션을 선택하고, 승인할 학생을 한 명 이상 체크해주세요.');
-        if (!currentUser) return alert('기록원 정보가 없습니다.');
+                  {isExpanded && !submission && (
+                    <CardBody>
+                      <div style={{ textAlign: 'center', color: '#adb5bd', padding: '1rem' }}>제출 내역이 없습니다.</div>
+                    </CardBody>
+                  )}
+                </StudentCard>
+              );
+            })}
+          </GridContainer>
+        )}
+      </ContentWrapper>
 
-        const studentNames = Array.from(checkedStudents).map(id => players.find(p => p.id === id)?.name).join(', ');
-        if (window.confirm(`${studentNames} 학생들의 미션 완료를 승인하고 포인트를 지급하시겠습니까?`)) {
-            try {
-                await approveMissionsInBatch(classId, selectedMissionId, Array.from(checkedStudents), currentUser.uid, mission.reward);
-                alert('포인트 지급이 완료되었습니다.');
-                setCheckedStudents(new Set());
-                await fetchInitialData();
-            } catch (error) {
-                alert(`오류: ${error.message}`);
-            }
-        }
-    };
-
-    // 체크박스 상태 계산
-    const allEligibleCount = stats.total - stats.approved;
-    const isTotalSelected = allEligibleCount > 0 && checkedStudents.size === allEligibleCount;
-
-    // pending만 정확히 선택되었는지 확인 (개수가 같고, pending 인원 모두 포함)
-    const pendingIds = sortedPlayers.filter(p => studentSubmissionStatus.get(p.id)?.status === 'pending').map(p => p.id);
-    const isPendingSelected = pendingIds.length > 0 &&
-        checkedStudents.size === pendingIds.length &&
-        pendingIds.every(id => checkedStudents.has(id));
-
-    return (
-        <PageContainer>
-            <ContentWrapper>
-                <HeaderSection>
-                    <Title>📝 미션 기록관</Title>
-                    <SubTitle>학생들의 미션 수행 내역을 확인하고 승인해주세요.</SubTitle>
-                </HeaderSection>
-
-                <ControlsCard>
-                    <SelectLabel>확인할 미션 선택</SelectLabel>
-                    <StyledSelect value={selectedMissionId} onChange={handleMissionSelect}>
-                        <option value="">-- 미션을 선택해주세요 --</option>
-                        {missions.map(mission => (
-                            <option key={mission.id} value={mission.id}>
-                                {mission.title} (보상: {mission.reward}P)
-                            </option>
-                        ))}
-                    </StyledSelect>
-
-                    {selectedMissionId && (
-                        <ControlRow>
-                            <StatsBar>
-                                <div><span className="label">전체 학생</span><span className="value">{stats.total}명</span></div>
-                                <div><span className="label">승인 대기</span><span className="value" style={{ color: '#e67700' }}>{stats.pending}명</span></div>
-                                <div><span className="label">승인 완료</span><span className="value" style={{ color: '#20c997' }}>{stats.approved}명</span></div>
-                            </StatsBar>
-
-                            {/* 체크박스 그룹 */}
-                            <CheckboxGroup>
-                                <SelectAllLabel>
-                                    <input
-                                        type="checkbox"
-                                        checked={isTotalSelected}
-                                        onChange={handleSelectTotal}
-                                        disabled={allEligibleCount === 0}
-                                    />
-                                    전체 선택 (미제출 포함)
-                                </SelectAllLabel>
-                                <SelectAllLabel>
-                                    <input
-                                        type="checkbox"
-                                        checked={isPendingSelected}
-                                        onChange={handleSelectPending}
-                                        disabled={stats.pending === 0}
-                                    />
-                                    승인요청 인원만 선택
-                                </SelectAllLabel>
-                            </CheckboxGroup>
-                        </ControlRow>
-                    )}
-                </ControlsCard>
-
-                {selectedMissionId && (
-                    <GridContainer>
-                        {sortedPlayers.map(player => {
-                            const submission = studentSubmissionStatus.get(player.id);
-                            const status = submission?.status || 'none';
-                            const isChecked = checkedStudents.has(player.id);
-                            const isExpanded = expandedCardId === player.id;
-                            const isApproved = status === 'approved';
-
-                            return (
-                                <StudentCard
-                                    key={player.id}
-                                    $status={status}
-                                    $checked={isChecked}
-                                    onClick={() => handleCardClick(player.id)}
-                                >
-                                    <CardHeader $expanded={isExpanded}>
-                                        <NameGroup>
-                                            <CheckboxIcon
-                                                $checked={isChecked}
-                                                $disabled={isApproved}
-                                                onClick={(e) => handleCheckboxToggle(e, player.id, status)}
-                                            />
-                                            <span style={{ fontWeight: 'bold' }}>{player.name}</span>
-                                        </NameGroup>
-                                        <StatusBadge $status={status}>
-                                            {status === 'pending' ? '승인 대기' : (status === 'approved' ? '완료됨' : '미제출')}
-                                        </StatusBadge>
-                                    </CardHeader>
-
-                                    {isExpanded && submission && (
-                                        <CardBody>
-                                            {submission.text && <div className="text-content">{submission.text}</div>}
-                                            {submission.photoUrls && submission.photoUrls.length > 0 && (
-                                                <div className="image-grid" onClick={e => e.stopPropagation()}>
-                                                    {submission.photoUrls.map((url, idx) => (
-                                                        <img key={idx} src={url} alt="submission" onClick={() => setModalImageSrc(url)} />
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {/* [조건부] 반복 미션일 경우에만 기록 보기 버튼 표시 */}
-                                            {selectedMission?.isRepeated && (
-                                                <ActionButton onClick={(e) => handleHistoryView(e, player)}>
-                                                    📜 이전 기록 보기
-                                                </ActionButton>
-                                            )}
-                                        </CardBody>
-                                    )}
-
-                                    {isExpanded && !submission && (
-                                        <CardBody>
-                                            <div style={{ textAlign: 'center', color: '#adb5bd', padding: '1rem' }}>제출 내역이 없습니다.</div>
-                                        </CardBody>
-                                    )}
-                                </StudentCard>
-                            );
-                        })}
-                    </GridContainer>
-                )}
-            </ContentWrapper>
-
-            {selectedMissionId && (
-                <BottomActionBar>
-                    <SelectionInfo>
-                        <span>{checkedStudents.size}명 선택됨</span>
-                        {checkedStudents.size > 0 && (
-                            <button onClick={() => setCheckedStudents(new Set())}>선택 해제</button>
-                        )}
-                    </SelectionInfo>
-                    <SubmitBtn onClick={handleSubmit} disabled={checkedStudents.size === 0}>
-                        승인 및 포인트 지급
-                    </SubmitBtn>
-                </BottomActionBar>
+      {selectedMissionId && (
+        <BottomActionBar>
+          <SelectionInfo>
+            <span>{checkedStudents.size}명 선택됨</span>
+            {checkedStudents.size > 0 && (
+              <button onClick={() => setCheckedStudents(new Set())}>선택 해제</button>
             )}
+          </SelectionInfo>
+          <SubmitBtn onClick={handleSubmit} disabled={checkedStudents.size === 0}>
+            승인 및 포인트 지급
+          </SubmitBtn>
+        </BottomActionBar>
+      )}
 
-            {selectedStudentForHistory && (
-                <MissionHistoryModal
-                    isOpen={isHistoryModalOpen}
-                    onClose={() => setIsHistoryModalOpen(false)}
-                    missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
-                    history={missionHistory}
-                    student={selectedStudentForHistory}
-                />
-            )}
-            <ImageModal src={modalImageSrc} onClose={() => setModalImageSrc(null)} />
-        </PageContainer>
-    );
+      {selectedStudentForHistory && (
+        <MissionHistoryModal
+          isOpen={isHistoryModalOpen}
+          onClose={() => setIsHistoryModalOpen(false)}
+          missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
+          history={missionHistory}
+          student={selectedStudentForHistory}
+        />
+      )}
+      <ImageModal src={modalImageSrc} onClose={() => setModalImageSrc(null)} />
+    </PageContainer>
+  );
 }
 
 export default RecorderPage;

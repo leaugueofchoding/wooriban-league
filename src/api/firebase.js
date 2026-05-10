@@ -195,6 +195,8 @@ async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
 // --- 미션 관리 (classId 추가) ---
 // src/api/firebase.js
 
+// src/api/firebase.js
+
 export async function approveMissionsInBatch(classId, missionId, studentIds, recorderId, reward) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const batch = writeBatch(db);
