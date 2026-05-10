@@ -2,30 +2,24 @@
 
 import React, { useState, useEffect } from 'react';
 import { useClassStore, useLeagueStore } from '../../../store/leagueStore';
-import { useNavigate } from 'react-router-dom';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-    auth, db, createMission, createClassGoal, getActiveGoals,
+    auth, db, createClassGoal, getActiveGoals,
     deleteClassGoal, completeClassGoal, updateClassGoalStatus,
-    approveMissionsInBatch, rejectMissionSubmission, editMission
+    approveMissionsInBatch, rejectMissionSubmission
 } from '../../../api/firebase';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import RecorderPage from '../../RecorderPage';
 import ApprovalModal from '../../../components/ApprovalModal';
-
-// 분리된 스타일 파일에서 가져오기 (기존 스타일 속성 유지)
 import {
     FullWidthSection, Section, SectionTitle, InputGroup,
     StyledButton, List, ListItem, PendingListItem, SaveButton,
-    GridContainer, DragHandle, MissionControls, ToggleButton,
+    DragHandle, MissionControls, ToggleButton,
     ScoreInput, TextArea
 } from '../Admin.style';
 
-// =============================================================================
-// [원본 유지] 미션 승인 위젯 (PendingMissionWidget)
-// =============================================================================
 function PendingMissionWidget({ setModalImageSrc }) {
     const { classId } = useClassStore();
     const { players, missions } = useLeagueStore();
@@ -51,10 +45,10 @@ function PendingMissionWidget({ setModalImageSrc }) {
         return () => unsubscribe();
     }, [classId, missions]);
 
-    const handleModalOpen = (index) => { setSelectedSubmissionIndex(index); };
-    const handleModalClose = () => { setSelectedSubmissionIndex(null); };
-    const handleNext = () => { setSelectedSubmissionIndex(prev => (prev < pendingSubmissions.length - 1 ? prev + 1 : prev)); };
-    const handlePrev = () => { setSelectedSubmissionIndex(prev => (prev > 0 ? prev - 1 : prev)); };
+    const handleModalOpen = (index) => setSelectedSubmissionIndex(index);
+    const handleModalClose = () => setSelectedSubmissionIndex(null);
+    const handleNext = () => setSelectedSubmissionIndex(prev => (prev < pendingSubmissions.length - 1 ? prev + 1 : prev));
+    const handlePrev = () => setSelectedSubmissionIndex(prev => (prev > 0 ? prev - 1 : prev));
 
     const handleActionInModal = (actedSubmissionId) => {
         setPendingSubmissions(prev => prev.filter(sub => sub.id !== actedSubmissionId));
@@ -120,31 +114,16 @@ function PendingMissionWidget({ setModalImageSrc }) {
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                     {isTieredReward ? (
                                         mission.rewards.map(reward => (
-                                            <StyledButton
-                                                key={reward}
-                                                onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, reward); }}
-                                                style={{ backgroundColor: '#28a745' }}
-                                                disabled={isProcessing}
-                                            >
+                                            <StyledButton key={reward} onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, reward); }} style={{ backgroundColor: '#28a745' }} disabled={isProcessing}>
                                                 {isProcessing ? '...' : `${reward}P`}
                                             </StyledButton>
                                         ))
                                     ) : (
-                                        <StyledButton
-                                            onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, mission.reward); }}
-                                            style={{ backgroundColor: '#28a745' }}
-                                            disabled={isProcessing}
-                                        >
+                                        <StyledButton onClick={(e) => { e.stopPropagation(); handleAction('approve', sub, mission.reward); }} style={{ backgroundColor: '#28a745' }} disabled={isProcessing}>
                                             {isProcessing ? '처리중...' : `${mission.reward}P`}
                                         </StyledButton>
                                     )}
-                                    <StyledButton
-                                        onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }}
-                                        style={{ backgroundColor: '#dc3545' }}
-                                        disabled={isProcessing}
-                                    >
-                                        거절
-                                    </StyledButton>
+                                    <StyledButton onClick={(e) => { e.stopPropagation(); handleAction('reject', sub); }} style={{ backgroundColor: '#dc3545' }} disabled={isProcessing}>거절</StyledButton>
                                 </div>
                             </PendingListItem>
                         )
@@ -153,23 +132,15 @@ function PendingMissionWidget({ setModalImageSrc }) {
             )}
             {submissionToShow && (
                 <ApprovalModal
-                    submission={submissionToShow}
-                    onClose={handleModalClose}
-                    onNext={handleNext}
-                    onPrev={handlePrev}
-                    currentIndex={selectedSubmissionIndex}
-                    totalCount={pendingSubmissions.length}
-                    onAction={() => handleActionInModal(submissionToShow.id)}
-                    onImageClick={(imageData) => setModalImageSrc(imageData)}
+                    submission={submissionToShow} onClose={handleModalClose} onNext={handleNext} onPrev={handlePrev}
+                    currentIndex={selectedSubmissionIndex} totalCount={pendingSubmissions.length}
+                    onAction={() => handleActionInModal(submissionToShow.id)} onImageClick={(imageData) => setModalImageSrc(imageData)}
                 />
             )}
         </Section>
     );
 }
 
-// =============================================================================
-// [원본 유지] 학급 목표 관리 (GoalManager)
-// =============================================================================
 function GoalManager() {
     const { classId } = useClassStore();
     const [title, setTitle] = useState('');
@@ -182,24 +153,16 @@ function GoalManager() {
         setActiveGoals(goals);
     };
 
-    useEffect(() => {
-        fetchGoals();
-    }, [classId]);
+    useEffect(() => { fetchGoals(); }, [classId]);
 
     const handleCreateGoal = async () => {
         if (!classId) return;
-        if (!title.trim() || targetPoints <= 0) {
-            return alert('목표 이름과 올바른 목표 포인트를 입력해주세요.');
-        }
+        if (!title.trim() || targetPoints <= 0) return alert('목표 이름과 올바른 목표 포인트를 입력해주세요.');
         try {
             await createClassGoal(classId, { title, targetPoints: Number(targetPoints) });
             alert('새로운 학급 목표가 설정되었습니다!');
-            setTitle('');
-            setTargetPoints(10000);
-            fetchGoals();
-        } catch (error) {
-            alert(`목표 생성 실패: ${error.message}`);
-        }
+            setTitle(''); setTargetPoints(10000); fetchGoals();
+        } catch (error) { alert(`목표 생성 실패: ${error.message}`); }
     };
 
     const handleGoalStatusToggle = async (goal) => {
@@ -207,39 +170,24 @@ function GoalManager() {
         const newStatus = goal.status === 'paused' ? 'active' : 'paused';
         const actionText = newStatus === 'paused' ? '일시중단' : '다시시작';
         if (window.confirm(`'${goal.title}' 목표를 '${actionText}' 상태로 변경하시겠습니까?`)) {
-            try {
-                await updateClassGoalStatus(classId, goal.id, newStatus);
-                alert(`목표가 ${actionText} 처리되었습니다.`);
-                fetchGoals();
-            } catch (error) {
-                alert(`상태 변경 실패: ${error.message}`);
-            }
+            try { await updateClassGoalStatus(classId, goal.id, newStatus); alert(`목표가 ${actionText} 처리되었습니다.`); fetchGoals(); }
+            catch (error) { alert(`상태 변경 실패: ${error.message}`); }
         }
     };
 
     const handleGoalDelete = async (goalId) => {
         if (!classId) return;
         if (window.confirm("정말로 이 목표를 삭제하시겠습니까? 기부 내역도 함께 사라집니다.")) {
-            try {
-                await deleteClassGoal(classId, goalId);
-                alert('목표가 삭제되었습니다.');
-                fetchGoals();
-            } catch (error) {
-                alert(`삭제 실패: ${error.message}`);
-            }
+            try { await deleteClassGoal(classId, goalId); alert('목표가 삭제되었습니다.'); fetchGoals(); }
+            catch (error) { alert(`삭제 실패: ${error.message}`); }
         }
     };
 
     const handleGoalComplete = async (goalId) => {
         if (!classId) return;
         if (window.confirm("이 목표를 '완료' 처리하여 대시보드에서 숨기시겠습니까?")) {
-            try {
-                await completeClassGoal(classId, goalId);
-                alert('목표가 완료 처리되었습니다.');
-                fetchGoals();
-            } catch (error) {
-                alert(`완료 처리 실패: ${error.message}`);
-            }
+            try { await completeClassGoal(classId, goalId); alert('목표가 완료 처리되었습니다.'); fetchGoals(); }
+            catch (error) { alert(`완료 처리 실패: ${error.message}`); }
         }
     };
 
@@ -248,19 +196,8 @@ function GoalManager() {
             <Section>
                 <SectionTitle>학급 목표 관리 🎯</SectionTitle>
                 <InputGroup>
-                    <input
-                        type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="목표 이름 (예: 2단계-영화 보는 날)"
-                        style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
-                    />
-                    <ScoreInput
-                        type="number"
-                        value={targetPoints}
-                        onChange={(e) => setTargetPoints(e.target.value)}
-                        style={{ width: '120px' }}
-                    />
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="목표 이름 (예: 2단계-영화 보는 날)" style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }} />
+                    <ScoreInput type="number" value={targetPoints} onChange={(e) => setTargetPoints(e.target.value)} style={{ width: '120px' }} />
                     <SaveButton onClick={handleCreateGoal}>새 목표 설정</SaveButton>
                 </InputGroup>
 
@@ -273,36 +210,20 @@ function GoalManager() {
                                     <div>
                                         <span>{goal.title}</span>
                                         {goal.status === 'paused' && <span style={{ marginLeft: '1rem', color: '#ffc107', fontWeight: 'bold' }}>[일시중단됨]</span>}
-                                        <span style={{ marginLeft: '1rem', color: '#6c757d' }}>
-                                            ({goal.currentPoints.toLocaleString()} / {goal.targetPoints.toLocaleString()} P)
-                                        </span>
+                                        <span style={{ marginLeft: '1rem', color: '#6c757d' }}>({goal.currentPoints.toLocaleString()} / {goal.targetPoints.toLocaleString()} P)</span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <SaveButton
-                                            onClick={() => handleGoalStatusToggle(goal)}
-                                            style={{ backgroundColor: goal.status === 'paused' ? '#17a2b8' : '#ffc107', color: goal.status === 'paused' ? 'white' : 'black' }}
-                                        >
+                                        <SaveButton onClick={() => handleGoalStatusToggle(goal)} style={{ backgroundColor: goal.status === 'paused' ? '#17a2b8' : '#ffc107', color: goal.status === 'paused' ? 'white' : 'black' }}>
                                             {goal.status === 'paused' ? '다시시작' : '일시중단'}
                                         </SaveButton>
-                                        <SaveButton
-                                            onClick={() => handleGoalComplete(goal.id)}
-                                            style={{ backgroundColor: '#28a745' }}
-                                            disabled={goal.currentPoints < goal.targetPoints}
-                                            title={goal.currentPoints < goal.targetPoints ? "아직 달성되지 않은 목표입니다." : ""}
-                                        >
+                                        <SaveButton onClick={() => handleGoalComplete(goal.id)} style={{ backgroundColor: '#28a745' }} disabled={goal.currentPoints < goal.targetPoints} title={goal.currentPoints < goal.targetPoints ? "아직 달성되지 않은 목표입니다." : ""}>
                                             완료 처리
                                         </SaveButton>
-                                        <SaveButton
-                                            onClick={() => handleGoalDelete(goal.id)}
-                                            style={{ backgroundColor: '#dc3545' }}>
-                                            삭제
-                                        </SaveButton>
+                                        <SaveButton onClick={() => handleGoalDelete(goal.id)} style={{ backgroundColor: '#dc3545' }}>삭제</SaveButton>
                                     </div>
                                 </ListItem>
                             ))
-                        ) : (
-                            <p>현재 진행 중인 학급 목표가 없습니다.</p>
-                        )}
+                        ) : <p>현재 진행 중인 학급 목표가 없습니다.</p>}
                     </List>
                 </div>
             </Section>
@@ -310,41 +231,20 @@ function GoalManager() {
     );
 }
 
-// =============================================================================
-// [원본 유지] 미션 목록 아이템 (SortableListItem)
-// =============================================================================
-// [교체할 함수] SortableListItem
 function SortableListItem(props) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-    } = useSortable({ id: props.id });
-
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
-
-    const { mission, classId, handleEditClick, archiveMission, unarchiveMission, removeMission, onNavigate } = props;
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: props.id });
+    const style = { transform: CSS.Transform.toString(transform), transition };
+    const { mission, handleEditClick, archiveMission, unarchiveMission, removeMission, onNavigate } = props;
 
     const handleDelete = () => {
         if (window.confirm("정말로 이 미션을 삭제하시겠습니까? 제출된 기록도 모두 삭제됩니다.")) {
-            // 수정: classId 파라미터 제거
             removeMission(mission.id);
         }
     };
 
     const handleArchive = () => {
-        if (mission.status === 'active') {
-            // 수정: classId 파라미터 제거
-            archiveMission(mission.id);
-        } else {
-            // 수정: classId 파라미터 제거
-            unarchiveMission(mission.id);
-        }
+        if (mission.status === 'active') archiveMission(mission.id);
+        else unarchiveMission(mission.id);
     };
 
     return (
@@ -363,25 +263,16 @@ function SortableListItem(props) {
             <MissionControls>
                 <StyledButton onClick={() => onNavigate(mission.id)} style={{ backgroundColor: '#17a2b8' }}>기록</StyledButton>
                 <StyledButton onClick={() => handleEditClick(mission)} style={{ backgroundColor: '#ffc107', color: 'black' }}>수정</StyledButton>
-                <StyledButton onClick={handleArchive} style={{ backgroundColor: '#6c757d' }}>
-                    {mission.status === 'active' ? '숨김' : '복구'}
-                </StyledButton>
+                <StyledButton onClick={handleArchive} style={{ backgroundColor: '#6c757d' }}>{mission.status === 'active' ? '숨김' : '복구'}</StyledButton>
                 <StyledButton onClick={handleDelete} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
             </MissionControls>
         </ListItem>
     );
 }
 
-// =============================================================================
-// [원본 유지] 미션 출제 및 관리 (MissionManager)
-// =============================================================================
 function MissionManager({ onNavigate }) {
     const { classId } = useClassStore();
-    const {
-        missions, archivedMissions, archiveMission, unarchiveMission,
-        removeMission, reorderMissions
-    } = useLeagueStore();
-    const navigate = useNavigate();
+    const { missions, archivedMissions, archiveMission, unarchiveMission, removeMission, reorderMissions, editMission, createMission } = useLeagueStore();
     const sensors = useSensors(useSensor(PointerSensor));
 
     const [editMode, setEditMode] = useState(null);
@@ -413,44 +304,24 @@ function MissionManager({ onNavigate }) {
     };
 
     const handleEditClick = (mission) => {
-        setEditMode(mission);
-        setTitle(mission.title);
-        setPlaceholderText(mission.placeholderText || '');
+        setEditMode(mission); setTitle(mission.title); setPlaceholderText(mission.placeholderText || '');
         const missionRewards = Array.isArray(mission.rewards) ? mission.rewards : [mission.reward || ''];
-        setRewards([
-            missionRewards[0]?.toString() || '',
-            missionRewards[1]?.toString() || '',
-            missionRewards[2]?.toString() || ''
-        ]);
-        setSubmissionTypes({
-            text: mission.submissionType?.includes('text') || false,
-            photo: mission.submissionType?.includes('photo') || false,
-        });
-        setIsFixed(mission.isFixed || false);
-        setAdminOnly(mission.adminOnly || false);
-        setPrerequisiteMissionId(mission.prerequisiteMissionId || '');
-        setDefaultPrivate(mission.defaultPrivate || false);
+        setRewards([missionRewards[0]?.toString() || '', missionRewards[1]?.toString() || '', missionRewards[2]?.toString() || '']);
+        setSubmissionTypes({ text: mission.submissionType?.includes('text') || false, photo: mission.submissionType?.includes('photo') || false });
+        setIsFixed(mission.isFixed || false); setAdminOnly(mission.adminOnly || false);
+        setPrerequisiteMissionId(mission.prerequisiteMissionId || ''); setDefaultPrivate(mission.defaultPrivate || false);
         window.scrollTo(0, 0);
     };
 
     const handleCancel = () => {
-        setEditMode(null);
-        setTitle('');
-        setPlaceholderText('');
-        setRewards(['100', '', '']);
-        setSubmissionTypes({ text: false, photo: false });
-        setIsFixed(false);
-        setAdminOnly(false);
-        setPrerequisiteMissionId('');
-        setDefaultPrivate(false);
-        setShowAdvanced({ rewards: false, prerequisite: false });
+        setEditMode(null); setTitle(''); setPlaceholderText(''); setRewards(['100', '', '']);
+        setSubmissionTypes({ text: false, photo: false }); setIsFixed(false); setAdminOnly(false);
+        setPrerequisiteMissionId(''); setDefaultPrivate(false); setShowAdvanced({ rewards: false, prerequisite: false });
     };
 
     const handleSaveMission = async () => {
         if (!classId) return;
-        if (!title.trim() || !rewards[0]) {
-            return alert('미션 이름과 기본 보상 포인트를 모두 입력해주세요.');
-        }
+        if (!title.trim() || !rewards[0]) return alert('미션 이름과 기본 보상 포인트를 모두 입력해주세요.');
 
         const selectedTypes = Object.entries(submissionTypes).filter(([, isSelected]) => isSelected).map(([type]) => type);
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
@@ -468,14 +339,11 @@ function MissionManager({ onNavigate }) {
                 await editMission(editMode.id, missionData);
                 alert('미션이 성공적으로 수정되었습니다!');
             } else {
-                await createMission(classId, missionData);
+                await createMission(missionData);
                 alert('새로운 미션이 등록되었습니다!');
             }
             handleCancel();
-        } catch (error) {
-            console.error("미션 저장 오류:", error);
-            alert('미션 저장 중 오류가 발생했습니다.');
-        }
+        } catch (error) { alert('미션 저장 중 오류가 발생했습니다.'); }
     };
 
     const missionsToDisplay = showArchived ? archivedMissions : missions;
@@ -538,20 +406,12 @@ function MissionManager({ onNavigate }) {
                             {missionsToDisplay.length > 0 ? (
                                 missionsToDisplay.map((mission) => (
                                     <SortableListItem
-                                        key={mission.id}
-                                        id={mission.id}
-                                        classId={classId}
-                                        mission={mission}
-                                        unarchiveMission={unarchiveMission}
-                                        archiveMission={archiveMission}
-                                        removeMission={removeMission}
-                                        handleEditClick={handleEditClick}
-                                        onNavigate={onNavigate}
+                                        key={mission.id} id={mission.id} mission={mission}
+                                        unarchiveMission={unarchiveMission} archiveMission={archiveMission}
+                                        removeMission={removeMission} handleEditClick={handleEditClick} onNavigate={onNavigate}
                                     />
                                 ))
-                            ) : (
-                                <p>{showArchived ? '숨겨진 미션이 없습니다.' : '현재 출제된 미션이 없습니다.'}</p>
-                            )}
+                            ) : <p>{showArchived ? '숨겨진 미션이 없습니다.' : '현재 출제된 미션이 없습니다.'}</p>}
                         </List>
                     </SortableContext>
                 </DndContext>
@@ -560,36 +420,15 @@ function MissionManager({ onNavigate }) {
     );
 }
 
-// =============================================================================
-// [메인 컴포넌트] MissionTab (탭 전환 관리)
-// =============================================================================
-function MissionTab({ activeSubMenu, setModalImageSrc, setPreselectedMissionId, preselectedMissionId }) {
-
-    // 기록 탭으로 이동하는 핸들러 (props로 받은 setter 사용)
-    const handleNavigateToHistory = (missionId) => {
-        // 이 부분은 상위 컴포넌트(AdminPage.jsx)에서 상태를 관리해야 하므로,
-        // 여기서는 상위에서 전달받은 함수가 있다고 가정하고 호출해야 하지만,
-        // 현재 구조상 AdminPage에서 missionSubMenu를 setMissionSubMenu로 바꿔줘야 함.
-        // 하지만 MissionTab의 props로는 activeSubMenu(값)만 들어오고 있음.
-        // 따라서 AdminPage.jsx 수정 시 setMissionSubMenu를 넘겨주도록 변경해야 함.
-        // (일단 여기서는 preselectedMissionId 설정만 하고, 탭 변경은 AdminPage 로직을 따름)
-        if (setPreselectedMissionId) setPreselectedMissionId(missionId);
-    };
-
-    switch (activeSubMenu) {
+function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, preselectedMissionId }) {
+    // AdminPage에서 렌더링하던 로직을 그대로 가져왔습니다.
+    switch (missionSubMenu) {
         case 'approval':
-            return (
-                <GridContainer style={{ gridTemplateColumns: '1fr' }}>
-                    <PendingMissionWidget setModalImageSrc={setModalImageSrc} />
-                </GridContainer>
-            );
+            return <PendingMissionWidget setModalImageSrc={setModalImageSrc} />;
         case 'creation':
             return (
                 <>
-                    <GridContainer style={{ gridTemplateColumns: '1fr' }}>
-                        {/* handleNavigateToHistory 대신 missionId를 저장하는 함수 전달 */}
-                        <MissionManager onNavigate={handleNavigateToHistory} />
-                    </GridContainer>
+                    <MissionManager onNavigate={onNavigateToHistory} />
                     <GoalManager />
                 </>
             );

@@ -193,6 +193,8 @@ async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
 }
 
 // --- 미션 관리 (classId 추가) ---
+// src/api/firebase.js
+
 export async function approveMissionsInBatch(classId, missionId, studentIds, recorderId, reward) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const batch = writeBatch(db);
@@ -211,27 +213,25 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
 
-      // 기존 제출 내역 확인
+      // [수정] 기존 제출 내역 확인 시 반드시 "pending" 상태인 것만 찾도록 조건 추가
       const submissionQuery = query(
         collection(db, "classes", classId, "missionSubmissions"),
         where("missionId", "==", missionId),
-        where("studentId", "==", studentId)
+        where("studentId", "==", studentId),
+        where("status", "==", "pending") // 이 조건이 누락되어 과거 기록이 승인되고 있었습니다.
       );
       const submissionSnapshot = await getDocs(submissionQuery);
 
       if (!submissionSnapshot.empty) {
-        // 이미 제출된 내역이 있다면 상태 업데이트 (pending -> approved)
-        // 이미 approved인 경우도 덮어쓰기 되지만, UI에서 막으므로 괜찮음
+        // pending 상태인 제출 내역이 있다면 승인 처리
         const submissionDoc = submissionSnapshot.docs[0];
-        if (submissionDoc.data().status !== 'approved') {
-          batch.update(submissionDoc.ref, {
-            status: 'approved',
-            checkedBy: recorderId,
-            approvedAt: serverTimestamp()
-          });
-        }
+        batch.update(submissionDoc.ref, {
+          status: 'approved',
+          checkedBy: recorderId,
+          approvedAt: serverTimestamp()
+        });
       } else {
-        // [추가] 제출 내역이 없다면(미제출 승인), 'approved' 상태로 새로 생성
+        // 제출 내역이 없다면(관리자가 미제출자를 강제 승인), 'approved' 상태로 새로 생성
         const newSubmissionRef = doc(collection(db, "classes", classId, "missionSubmissions"));
         batch.set(newSubmissionRef, {
           missionId,
@@ -247,7 +247,7 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
         });
       }
 
-      // 포인트 및 경험치 지급 (기존 로직)
+      // 포인트 및 경험치 지급
       batch.update(playerRef, { points: increment(reward) });
 
       if (playerData.pets && playerData.pets.length > 0) {
@@ -273,7 +273,7 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     }
   }
 
-  // 보너스 지급 로직 (기존 유지)
+  // 보너스 지급 로직
   const incentiveAmount = studentIds.length * 10;
   if (incentiveAmount > 0) {
     const playersRef = collection(db, 'classes', classId, 'players');

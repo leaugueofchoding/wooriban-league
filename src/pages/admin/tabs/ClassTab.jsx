@@ -1,116 +1,204 @@
 // src/pages/admin/tabs/ClassTab.jsx
 
-import React, { useState } from 'react';
-import { useClassStore } from '../../../store/leagueStore';
-import { createNewClass } from '../../../api/firebase';
+import React, { useState, useEffect, useCallback } from 'react';
+import styled from 'styled-components';
+import { useClassStore, useLeagueStore } from '../../../store/leagueStore';
+import { auth, db, createNewClass } from '../../../api/firebase';
+import { collection, query, where, getDocs, collectionGroup, limit, doc, setDoc } from "firebase/firestore";
 import QRCode from 'react-qr-code';
+import { FullWidthSection, Section, SectionTitle, InputGroup, StyledButton } from '../Admin.style';
 
-// 분리된 스타일 파일에서 가져오기
-import {
-    FullWidthSection, Section, SectionTitle, InputGroup,
-    StyledButton, InviteCodeWrapper, InviteCodeDisplay
-} from '../Admin.style';
+// --- 학급 탭 전용 스타일 ---
+const ClassGrid = styled.div`
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;
+`;
+const ClassCard = styled.div`
+  padding: 1.5rem; border-radius: 12px; background-color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s ease-in-out; border: 3px solid ${props => props.$isActive ? '#007bff' : 'transparent'};
+  &:hover { transform: translateY(-5px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+  h3 { margin: 0 0 0.5rem 0; font-size: 1.5rem; }
+  p { margin: 0; color: #6c757d; }
+`;
+const AddClassCard = styled(ClassCard)`
+  display: flex; flex-direction: column; justify-content: center; align-items: center; border-style: dashed; border-color: #ced4da; color: #6c757d;
+  &:hover { border-color: #007bff; color: #007bff; }
+  .plus-icon { font-size: 3rem; font-weight: 300; line-height: 1; margin-bottom: 0.5rem; }
+`;
+const QRCodeSection = styled.div`
+    margin-top: 2rem; padding: 2rem; border-radius: 8px; background-color: #fff; border: 1px solid #dee2e6;
+`;
+const InviteCodeWrapper = styled.div`
+    display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem; border: 2px dashed #007bff; border-radius: 8px; background-color: #f0f8ff; margin-top: 1.5rem;
+`;
+const InviteCodeDisplay = styled.div`
+    font-size: 1.8rem; font-weight: bold; color: #0056b3; background-color: #fff; padding: 0.5rem 1.5rem; border-radius: 8px; border: 1px solid #bce0fd; cursor: pointer;
+    &:hover { background-color: #e9f5ff; }
+`;
 
-function ClassTab() {
-    const { classId, classData, setClassId, setClassData } = useClassStore();
+function ClassManager() {
+    const { classId, setClassId } = useClassStore();
+    const { initializeClass } = useLeagueStore();
+    const currentUser = auth.currentUser;
+
+    const [allClasses, setAllClasses] = useState([]);
+    const [ghostClasses, setGhostClasses] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isCreating, setIsCreating] = useState(false);
     const [newClassName, setNewClassName] = useState('');
-    const [newClassGrade, setNewClassGrade] = useState('');
-    const [isCreatingClass, setIsCreatingClass] = useState(false);
+    const [selectedClassForQR, setSelectedClassForQR] = useState(null);
+    const [manualId, setManualId] = useState('');
+
+    const isSuperAdmin = currentUser?.uid === 'Zz6fKdtg00Yb3ju5dibOgkJkWS52';
+
+    const fetchAllClasses = useCallback(async () => {
+        if (!currentUser) { setIsLoading(false); return; }
+        setIsLoading(true);
+        try {
+            const classesRef = collection(db, "classes");
+            let q;
+            if (isSuperAdmin) { q = query(classesRef); }
+            else { q = query(classesRef, where("adminId", "==", currentUser.uid)); }
+            const querySnapshot = await getDocs(q);
+            const classes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAllClasses(classes);
+
+            if (classes.length > 0 && classId && classes.some(c => c.id === classId)) {
+                setSelectedClassForQR(classes.find(c => c.id === classId));
+            } else { setSelectedClassForQR(null); }
+        } catch (error) { console.error("학급 로딩 실패:", error); }
+        finally { setIsLoading(false); }
+    }, [currentUser, classId, isSuperAdmin]);
+
+    const scanForGhostClasses = async () => {
+        if (!isSuperAdmin) return;
+        setIsLoading(true);
+        try {
+            const playersQuery = query(collectionGroup(db, 'players'), limit(100));
+            const snapshot = await getDocs(playersQuery);
+            const foundClassIds = new Set();
+            snapshot.forEach(doc => { if (doc.ref.parent && doc.ref.parent.parent) { foundClassIds.add(doc.ref.parent.parent.id); } });
+            const existingIds = allClasses.map(c => c.id);
+            const ghosts = Array.from(foundClassIds).filter(id => !existingIds.includes(id));
+            setGhostClasses(ghosts);
+            if (ghosts.length > 0) alert(`👻 유령 학급 ${ghosts.length}개 발견!`);
+            else alert("발견된 유령 학급이 없습니다.");
+        } catch (e) { alert("스캔 오류: " + e.message); }
+        finally { setIsLoading(false); }
+    };
+
+    useEffect(() => { fetchAllClasses(); }, [fetchAllClasses]);
+
+    const handleClassCardClick = (cls) => {
+        if (isSuperAdmin && cls.adminId !== currentUser?.uid) {
+            if (!window.confirm(`[슈퍼 관리자] '${cls.name || cls.id}' 반으로 이동합니까?`)) return;
+        }
+        if (cls.id !== classId) { setClassId(cls.id); initializeClass(cls.id); }
+        setSelectedClassForQR(cls);
+    };
+
+    const resurrectClass = async (targetId) => {
+        if (!window.confirm(`학급 ID [${targetId}]를 복구하시겠습니까?\n(초대 코드가 새로 발급됩니다)`)) return;
+        try {
+            const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            await setDoc(doc(db, "classes", targetId), {
+                name: `(복구됨) ${targetId.substring(0, 6)}...`,
+                adminId: currentUser.uid,
+                createdAt: new Date(),
+                inviteCode: randomCode,
+                status: 'restored'
+            }, { merge: true });
+
+            alert(`✅ 복구 완료! 초대 코드: [${randomCode}]`);
+            fetchAllClasses();
+            setGhostClasses(prev => prev.filter(id => id !== targetId));
+        } catch (e) { alert("복구 실패: " + e.message); }
+    };
 
     const handleCreateClass = async () => {
-        if (!newClassName.trim() || !newClassGrade.trim()) return alert('학년과 반 이름을 모두 입력해주세요.');
-        if (window.confirm(`"${newClassName}" 반을 새로 개설하시겠습니까?`)) {
-            setIsCreatingClass(true);
-            try {
-                const newClassId = await createNewClass(newClassName, newClassGrade);
-                alert(`반 개설 완료! 초대 코드를 학생들에게 공유하세요.`);
-                // 상태 업데이트는 createNewClass 내부 또는 리스너에서 처리되거나, 여기서 수동으로 store 업데이트
-                // (기존 로직상 store 자동 업데이트가 안된다면 새로고침 필요할 수 있음)
-                window.location.reload();
-            } catch (error) {
-                console.error("반 생성 실패:", error);
-                alert(`반 생성 실패: ${error.message}`);
-            } finally {
-                setIsCreatingClass(false);
-            }
-        }
+        if (!newClassName.trim()) return alert("이름을 입력하세요");
+        try {
+            const { classId: newId, name, inviteCode } = await createNewClass(newClassName, currentUser);
+            alert("생성 완료");
+            await fetchAllClasses();
+            handleClassCardClick({ id: newId, name, inviteCode });
+            setNewClassName(''); setIsCreating(false);
+        } catch (e) { alert(e.message); }
     };
+
+    const handleCopyToClipboard = (t) => {
+        navigator.clipboard.writeText(t).then(() => alert('초대 코드가 복사되었습니다.'));
+    };
+
+    const btnStyle = { padding: '10px 15px', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' };
 
     return (
         <FullWidthSection>
             <Section>
-                <SectionTitle>학급 관리</SectionTitle>
+                <SectionTitle>{isSuperAdmin ? "🏫 슈퍼 관리자 학급 제어" : "🏫 학급 관리"}</SectionTitle>
 
-                {classId && classData ? (
-                    <div style={{ textAlign: 'center' }}>
-                        <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
-                            🏫 {classData.grade}학년 {classData.name}반
-                        </h3>
-                        <p style={{ color: '#868e96', marginBottom: '2rem' }}>
-                            학생들에게 아래 초대 코드 또는 QR코드를 공유하여 가입을 유도하세요.
-                        </p>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
-                            <InviteCodeWrapper>
-                                <span style={{ fontWeight: 'bold', color: '#868e96' }}>초대 코드:</span>
-                                <InviteCodeDisplay>{classData.inviteCode}</InviteCodeDisplay>
-                                <StyledButton onClick={() => {
-                                    navigator.clipboard.writeText(classData.inviteCode);
-                                    alert('초대 코드가 복사되었습니다!');
-                                }}>복사</StyledButton>
-                            </InviteCodeWrapper>
-
-                            <div style={{ padding: '1.5rem', background: 'white', borderRadius: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                                <QRCode value={classData.inviteCode} size={180} />
+                {isSuperAdmin && (
+                    <div style={{ marginBottom: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px dashed #adb5bd' }}>
+                        <h4 style={{ marginTop: 0 }}>🛠️ 슈퍼 관리자 도구</h4>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <button onClick={scanForGhostClasses} style={{ ...btnStyle, background: '#6f42c1' }}>👻 유령 학급 스캔</button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <input type="text" placeholder="학급 ID 입력" value={manualId} onChange={e => setManualId(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ced4da' }} />
+                                <button onClick={() => manualId && resurrectClass(manualId)} style={{ ...btnStyle, background: '#20c997' }}>🚑 강제 복구</button>
                             </div>
                         </div>
+                        {ghostClasses.length > 0 && (
+                            <ul style={{ marginTop: '10px' }}>
+                                {ghostClasses.map(gid => (
+                                    <li key={gid}>{gid} <button onClick={() => resurrectClass(gid)} style={{ marginLeft: '10px', cursor: 'pointer' }}>복구</button></li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                )}
 
-                        <div style={{ marginTop: '3rem', padding: '1rem', background: '#fff5f5', borderRadius: '8px', border: '1px solid #ffc9c9' }}>
-                            <h4 style={{ color: '#fa5252', marginTop: 0 }}>⚠️ 위험 구역</h4>
-                            <p style={{ fontSize: '0.9rem', color: '#495057' }}>
-                                학급을 삭제하거나 초기화하면 모든 데이터(학생, 점수, 펫 등)가 영구적으로 삭제됩니다.
-                                (현재 버전에서는 개발자에게 문의해주세요.)
-                            </p>
-                        </div>
-                    </div>
-                ) : (
-                    <div style={{ textAlign: 'center', padding: '2rem' }}>
-                        <h3>개설된 학급이 없습니다.</h3>
-                        <p style={{ marginBottom: '2rem', color: '#868e96' }}>새로운 학급을 만들어 시작해보세요!</p>
-                        <div style={{ maxWidth: '400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            <InputGroup style={{ justifyContent: 'center' }}>
-                                <label>학년:</label>
-                                <input
-                                    type="number"
-                                    value={newClassGrade}
-                                    onChange={(e) => setNewClassGrade(e.target.value)}
-                                    placeholder="예: 5"
-                                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #dee2e6' }}
-                                />
-                            </InputGroup>
-                            <InputGroup style={{ justifyContent: 'center' }}>
-                                <label>반 이름:</label>
-                                <input
-                                    type="text"
-                                    value={newClassName}
-                                    onChange={(e) => setNewClassName(e.target.value)}
-                                    placeholder="예: 우리반 (또는 3)"
-                                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #dee2e6' }}
-                                />
-                            </InputGroup>
-                            <StyledButton
-                                onClick={handleCreateClass}
-                                disabled={isCreatingClass}
-                                style={{ backgroundColor: '#20c997', padding: '1rem' }}
-                            >
-                                {isCreatingClass ? '생성 중...' : '✨ 학급 개설하기'}
-                            </StyledButton>
-                        </div>
-                    </div>
+                <ClassGrid>
+                    {allClasses.map(cls => (
+                        <ClassCard key={cls.id} $isActive={cls.id === classId} onClick={() => handleClassCardClick(cls)} style={isSuperAdmin && cls.adminId !== currentUser?.uid ? { borderColor: 'orange', borderStyle: 'dashed' } : {}}>
+                            <h3>{cls.name || '(이름 없음)'}</h3>
+                            <p>{cls.id === classId ? "✅ 현재 접속 중" : "클릭하여 관리"}</p>
+                        </ClassCard>
+                    ))}
+                    <AddClassCard onClick={() => setIsCreating(true)}>
+                        <span className="plus-icon">+</span>
+                        <h3>새 학급 만들기</h3>
+                    </AddClassCard>
+                </ClassGrid>
+
+                {isCreating && (
+                    <InputGroup style={{ marginTop: '1rem' }}>
+                        <input type="text" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} placeholder="새 학급 이름" style={{ flex: 1, padding: '0.5rem' }} />
+                        <StyledButton onClick={handleCreateClass} style={{ backgroundColor: '#28a745' }}>생성</StyledButton>
+                        <StyledButton onClick={() => setIsCreating(false)} style={{ background: '#6c757d' }}>취소</StyledButton>
+                    </InputGroup>
+                )}
+
+                {selectedClassForQR && (
+                    <QRCodeSection>
+                        <h3>'{selectedClassForQR.name}' 초대 정보</h3>
+                        <InviteCodeWrapper>
+                            <div style={{ background: 'white', padding: '16px', borderRadius: '8px' }}>
+                                {typeof QRCode !== 'undefined' ? (
+                                    <QRCode value={`${window.location.origin}/join?inviteCode=${selectedClassForQR.inviteCode || ''}`} size={128} />
+                                ) : <div style={{ width: 128, height: 128, background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>QR</div>}
+                            </div>
+                            <InviteCodeDisplay onClick={() => handleCopyToClipboard(selectedClassForQR.inviteCode)} title="클릭하여 복사">
+                                {selectedClassForQR.inviteCode || '(코드 없음)'}
+                            </InviteCodeDisplay>
+                            <small>학생들에게 위 QR코드를 보여주거나 초대 코드를 알려주세요.</small>
+                        </InviteCodeWrapper>
+                    </QRCodeSection>
                 )}
             </Section>
         </FullWidthSection>
     );
+}
+
+function ClassTab() {
+    return <ClassManager />;
 }
 
 export default ClassTab;

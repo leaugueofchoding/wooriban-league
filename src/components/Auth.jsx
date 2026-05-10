@@ -35,7 +35,6 @@ const UserProfile = styled.div`
   justify-content: flex-end;
   gap: 0.6rem;
   flex-wrap: nowrap;
-  overflow: hidden;
 
   img {
     width: 32px;

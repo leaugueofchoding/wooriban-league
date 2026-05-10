@@ -42,7 +42,6 @@ const SearchBar = styled.div`
   input { flex-grow: 1; }
 `;
 
-// --- [신규] 모달 & 페이지네이션 스타일 ---
 const ModalOverlay = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 20px;
@@ -78,16 +77,15 @@ const PageButton = styled.button`
   &:disabled { cursor: not-allowed; opacity: 0.5; }
 `;
 
-// [기존 퀴즈 데이터 생략 - 실제 파일에는 포함됨]
-const DATA_MATH = [ /* ... */];
-const DATA_COMMON = [ /* ... */];
-const DATA_SCIENCE = [ /* ... */];
-const DATA_HISTORY = [ /* ... */];
-const DATA_NONSENSE = [ /* ... */];
-const DATA_PROVERB = [ /* ... */];
-const DATA_KPOP = [ /* ... */];
-const DATA_KOREAN = [ /* ... */];
-const DATA_SPORTS = [ /* ... */];
+const DATA_MATH = [];
+const DATA_COMMON = [];
+const DATA_SCIENCE = [];
+const DATA_HISTORY = [];
+const DATA_NONSENSE = [];
+const DATA_PROVERB = [];
+const DATA_KPOP = [];
+const DATA_KOREAN = [];
+const DATA_SPORTS = [];
 
 function QuizManager({ userRole }) {
     const { classId } = useClassStore();
@@ -99,18 +97,15 @@ function QuizManager({ userRole }) {
     const [checkedIds, setCheckedIds] = useState(new Set());
     const [selectedSet, setSelectedSet] = useState(null);
 
-    // 검색 및 페이지네이션 상태
     const [filterGrade, setFilterGrade] = useState('all');
     const [filterSubject, setFilterSubject] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
-    const ITEMS_PER_PAGE = 9; // 3x3 그리드를 위한 9개씩 출력
+    const ITEMS_PER_PAGE = 9;
 
-    // 생성/수정용 상태
     const [newSetInfo, setNewSetInfo] = useState({ title: '', grade: 'common', semester: 'common', subject: 'general', isPublic: true });
     const [questions, setQuestions] = useState([]);
 
-    // 개별 문제 편집용 상태
     const [editingQuestionId, setEditingQuestionId] = useState(null);
     const [qType, setQType] = useState('multiple');
     const [qText, setQText] = useState('');
@@ -118,10 +113,8 @@ function QuizManager({ userRole }) {
     const [qAnswer, setQAnswer] = useState('');
     const [qScore, setQScore] = useState(10);
 
-    // 현재 수정 중인 문제의 인덱스를 계산
     const currentIndex = editingQuestionId ? questions.findIndex(q => q.id === editingQuestionId) : -1;
 
-    // 검색어, 학년, 과목이 변경될 때마다 1페이지로 즉시 리셋
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, filterGrade, filterSubject]);
@@ -143,7 +136,6 @@ function QuizManager({ userRole }) {
         setActiveSetIds(activeSets.map(s => s.id));
     };
 
-    // 개별 문제 수정 모드로 진입
     const handleEditQuestionClick = (q) => {
         setEditingQuestionId(q.id);
         setQType(q.type);
@@ -178,14 +170,12 @@ function QuizManager({ userRole }) {
         setQText(''); setQAnswer(''); setQOptions(['', '', '', '']); setQScore(10);
     };
 
-    // [신규] 이전/다음 문제로 이동하면서 현재 내용을 자동 저장
     const handleNavigate = (direction) => {
         if (currentIndex === -1) return;
 
         const targetIndex = currentIndex + direction;
         if (targetIndex < 0 || targetIndex >= questions.length) return;
 
-        // 1. 현재 수정 중인 내용 검증 및 덮어쓰기 (자동 저장)
         if (!qText) return alert("문제를 입력하세요.");
         if (!qAnswer) return alert("정답을 입력하세요.");
         if (qType === 'multiple' && qOptions.some(opt => !opt.trim())) return alert("객관식 보기를 모두 입력해주세요.");
@@ -202,7 +192,6 @@ function QuizManager({ userRole }) {
         const newQuestions = questions.map(q => q.id === editingQuestionId ? updatedQuestion : q);
         setQuestions(newQuestions);
 
-        // 2. 대상(이전/다음) 문제 정보로 입력창 세팅
         const targetQ = newQuestions[targetIndex];
         setEditingQuestionId(targetQ.id);
         setQType(targetQ.type);
@@ -427,7 +416,6 @@ function QuizManager({ userRole }) {
                         )}
                     </InputGroup>
 
-                    {/* [수정] 이전/다음 네비게이션 버튼을 포함한 버튼 그룹 */}
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
                         <Button
                             onClick={handleAddQuestion}
@@ -582,11 +570,16 @@ function QuizManager({ userRole }) {
                     </div>
                 )}
 
-                {totalPages > 1 && (
+                {/* 조건이 totalPages > 0 으로 변경되어 1페이지만 있어도 번호가 뜹니다 */}
+                {totalPages > 0 && (
                     <PaginationContainer>
-                        <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
-                            이전
+                        <PageButton onClick={() => setCurrentPage(1)} disabled={currentPage === 1} title="첫 페이지로">
+                            &laquo; 처음
                         </PageButton>
+                        <PageButton onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
+                            &lt; 이전
+                        </PageButton>
+
                         {Array.from({ length: totalPages }, (_, i) => (
                             <PageButton
                                 key={i + 1}
@@ -596,8 +589,12 @@ function QuizManager({ userRole }) {
                                 {i + 1}
                             </PageButton>
                         ))}
+
                         <PageButton onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
-                            다음
+                            다음 &gt;
+                        </PageButton>
+                        <PageButton onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} title="마지막 페이지로">
+                            마지막 &raquo;
                         </PageButton>
                     </PaginationContainer>
                 )}
