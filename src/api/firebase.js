@@ -3359,6 +3359,41 @@ export function listenToBattle(classId, battleId, callback) {
 export async function submitBattleAction(classId, battleId, actionData, allQuizzesData) {
   const battleRef = doc(db, "classes", classId, "battles", battleId);
 
+  // ▼▼▼ 아이템 사용 로직 추가 ▼▼▼
+  if (actionData.type === 'item') {
+    const playerRef = doc(db, 'classes', classId, 'players', actionData.playerId);
+
+    await runTransaction(db, async (transaction) => {
+      const playerDoc = await transaction.get(playerRef);
+      const playerData = playerDoc.data();
+
+      // 1. 인벤토리에서 아이템 1개 차감
+      if (playerData.petInventory[actionData.itemId] > 0) {
+        playerData.petInventory[actionData.itemId] -= 1;
+      }
+
+      // 2. 배틀 중 체력 30% 즉시 회복 (배틀에서의 밸런스를 위해 15% -> 30%로 상향!)
+      const targetPet = playerData.pets.find(p => p.id === playerData.partnerPetId);
+      const healHp = Math.floor(targetPet.maxHp * 0.30);
+      const healSp = Math.floor(targetPet.maxSp * 0.30);
+
+      targetPet.hp = Math.min(targetPet.maxHp, targetPet.hp + healHp);
+      targetPet.sp = Math.min(targetPet.maxSp, targetPet.sp + healSp);
+
+      transaction.update(playerRef, {
+        petInventory: playerData.petInventory,
+        pets: playerData.pets
+      });
+
+      // 3. 배틀 로그에 기록 남기기 (상대방도 알 수 있도록)
+      transaction.update(battleRef, {
+        [`actions.${actionData.playerId}`]: actionData,
+        logs: arrayUnion(`${playerData.name}의 펫이 두뇌 간식을 먹고 체력을 회복했습니다! (HP +${healHp})`)
+      });
+    });
+    return;
+  }
+
   return runTransaction(db, async (transaction) => {
     const battleDoc = await transaction.get(battleRef);
     if (!battleDoc.exists()) throw new Error("배틀을 찾을 수 없습니다.");

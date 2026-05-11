@@ -146,13 +146,15 @@ function QuizManager({ userRole }) {
         window.scrollTo({ top: 300, behavior: 'smooth' });
     };
 
+    // ▼▼▼ [수정] 문제 추가/수정 후 입력창 유지 ▼▼▼
     const handleAddQuestion = () => {
         if (!qText) return alert("문제를 입력하세요.");
         if (!qAnswer) return alert("정답을 입력하세요.");
         if (qType === 'multiple' && qOptions.some(opt => !opt.trim())) return alert("객관식 보기를 모두 입력해주세요.");
 
+        const newId = editingQuestionId || Date.now();
         const newQuestion = {
-            id: editingQuestionId || Date.now(),
+            id: newId,
             type: qType,
             question: qText,
             answer: qAnswer,
@@ -161,13 +163,27 @@ function QuizManager({ userRole }) {
         };
 
         if (editingQuestionId) {
+            // 수정 모드
             setQuestions(questions.map(q => q.id === editingQuestionId ? newQuestion : q));
-            setEditingQuestionId(null);
+            // 수정 후에도 계속 해당 문제를 가리키게 하여 이전/다음 버튼을 쓸 수 있게 함
         } else {
+            // 새 문제 추가 모드
             setQuestions([...questions, newQuestion]);
+            setEditingQuestionId(newId); // 방금 만든 문제를 '수정 중'인 상태로 만들어 줌
         }
 
-        setQText(''); setQAnswer(''); setQOptions(['', '', '', '']); setQScore(10);
+        // 팝업 띄우기 (입력창은 안 비움)
+        alert('문제가 리스트에 반영되었습니다.');
+    };
+
+    // ▼▼▼ [신규] 아예 빈 칸으로 만들고 새 문제 작성하기 ▼▼▼
+    const handlePrepareNewQuestion = () => {
+        setEditingQuestionId(null);
+        setQText('');
+        setQAnswer('');
+        setQOptions(['', '', '', '']);
+        setQScore(10);
+        window.scrollTo({ top: 300, behavior: 'smooth' });
     };
 
     const handleNavigate = (direction) => {
@@ -416,12 +432,14 @@ function QuizManager({ userRole }) {
                         )}
                     </InputGroup>
 
+                    {/* ▼▼▼ [수정] 이전/다음 및 새 문제 버튼 그룹 ▼▼▼ */}
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
                         <Button
                             onClick={handleAddQuestion}
-                            style={{ flex: 1, padding: '1rem', fontSize: '1.1rem', backgroundColor: editingQuestionId ? '#ffc107' : '#007bff', color: editingQuestionId ? 'black' : 'white', minWidth: '200px' }}
+                            style={{ flex: 1, padding: '1rem', fontSize: '1.1rem', backgroundColor: '#28a745', color: 'white', minWidth: '150px' }}
+                            title="현재 입력된 내용을 저장합니다 (입력창은 유지됨)"
                         >
-                            {editingQuestionId ? '✔️ 현재 문제 저장' : '+ 이 문제 리스트에 담기'}
+                            {editingQuestionId ? '✔️ 수정내용 저장' : '✔️ 이 문제 추가하기'}
                         </Button>
 
                         {editingQuestionId && (
@@ -442,14 +460,16 @@ function QuizManager({ userRole }) {
                                 >
                                     다음 문제 ▶
                                 </Button>
-                                <Button
-                                    onClick={handleCancelEdit}
-                                    style={{ padding: '1rem', backgroundColor: '#6c757d' }}
-                                >
-                                    취소
-                                </Button>
                             </>
                         )}
+
+                        <Button
+                            onClick={handlePrepareNewQuestion}
+                            style={{ padding: '1rem', backgroundColor: '#007bff' }}
+                            title="입력창을 비우고 새로운 문제를 작성합니다."
+                        >
+                            + 새 문제
+                        </Button>
                     </div>
                 </Section>
                 <Section>
@@ -570,7 +590,6 @@ function QuizManager({ userRole }) {
                     </div>
                 )}
 
-                {/* 조건이 totalPages > 0 으로 변경되어 1페이지만 있어도 번호가 뜹니다 */}
                 {totalPages > 0 && (
                     <PaginationContainer>
                         <PageButton onClick={() => setCurrentPage(1)} disabled={currentPage === 1} title="첫 페이지로">

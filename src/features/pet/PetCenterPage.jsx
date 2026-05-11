@@ -6,6 +6,7 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { auth } from '../../api/firebase';
 import { useNavigate } from 'react-router-dom';
 import { PET_ITEMS } from './petItems';
+import { SKILLS } from './petData'; // 스킬 데이터를 불러옵니다.
 import { petImageMap } from '../../utils/petImageMap';
 
 // --- Animations ---
@@ -44,6 +45,7 @@ const TabContainer = styled.div`
   justify-content: center;
   gap: 1rem;
   margin-bottom: 2rem;
+  flex-wrap: wrap;
 `;
 
 const TabButton = styled.button`
@@ -85,6 +87,8 @@ const ShopHeader = styled.div`
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 2px solid #f1f3f5;
+  flex-wrap: wrap;
+  gap: 1rem;
   
   h2 { margin: 0; font-size: 1.5rem; color: #343a40; }
   p { margin: 0; font-size: 1.1rem; font-weight: 700; color: #495057; }
@@ -303,7 +307,32 @@ const HealButton = styled.button`
   &:disabled { background-color: #e9ecef; color: #adb5bd; cursor: not-allowed; box-shadow: none; transform: none; }
 `;
 
-// [추가] 통일된 스타일의 버튼 컨테이너 및 버튼
+// 스킬 관리 (Skill) 관련 스타일
+const SkillCard = styled.div`
+  background: ${props => props.$isEquipped ? '#e7f5ff' : 'white'};
+  border: 2px solid ${props => props.$isEquipped ? '#339af0' : '#dee2e6'};
+  border-radius: 12px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  &:hover {
+    border-color: #339af0;
+    transform: translateY(-2px);
+  }
+
+  .skill-name { font-weight: 800; color: #343a40; font-size: 1.1rem; }
+  .cost { color: #868e96; font-size: 0.9rem; }
+  .skill-desc { font-size: 0.85rem; color: #495057; flex-grow: 1; }
+  .status { 
+    font-size: 0.9rem; font-weight: 700; text-align: right;
+    color: ${props => props.$isEquipped ? '#339af0' : '#adb5bd'};
+  }
+`;
+
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: center;
@@ -333,7 +362,7 @@ const ActionButton = styled.button`
 function PetCenterPage() {
   const [activeTab, setActiveTab] = useState('clinic');
   const [itemQuantities, setItemQuantities] = useState({});
-  const { players, buyPetItem, healPet, healAllPets } = useLeagueStore();
+  const { players, buyPetItem, healPet, healAllPets, updatePetSkills } = useLeagueStore();
   const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
   const navigate = useNavigate();
 
@@ -383,6 +412,25 @@ function PetCenterPage() {
     }
   };
 
+  const handleToggleSkill = async (pet, skillId, isEquipped, maxSlots) => {
+    let newEquipped = [...(pet.equippedSkills || [])];
+
+    if (isEquipped) {
+      newEquipped = newEquipped.filter(id => id !== skillId);
+    } else {
+      if (newEquipped.length >= maxSlots) {
+        return alert(`현재 진화 단계에서는 스킬을 최대 ${maxSlots}개까지만 장착할 수 있습니다!`);
+      }
+      newEquipped.push(skillId);
+    }
+
+    try {
+      await updatePetSkills(pet.id, newEquipped);
+    } catch (e) {
+      alert('스킬 장착/해제 실패: ' + e.message);
+    }
+  };
+
   if (!myPlayerData) return <PageWrapper><h2>플레이어 정보를 불러오는 중...</h2></PageWrapper>;
 
   return (
@@ -394,6 +442,7 @@ function PetCenterPage() {
       <TabContainer>
         <TabButton $active={activeTab === 'clinic'} onClick={() => setActiveTab('clinic')}>💉 치료소</TabButton>
         <TabButton $active={activeTab === 'shop'} onClick={() => setActiveTab('shop')}>🛍️ 상점</TabButton>
+        <TabButton $active={activeTab === 'skill'} onClick={() => setActiveTab('skill')}>💪 스킬 관리</TabButton>
       </TabContainer>
 
       <ContentBox>
@@ -436,6 +485,7 @@ function PetCenterPage() {
             </ItemGrid>
           </>
         )}
+
         {activeTab === 'clinic' && (
           <>
             <ClinicHeader>
@@ -478,9 +528,57 @@ function PetCenterPage() {
             </PetGrid>
           </>
         )}
+
+        {activeTab === 'skill' && (
+          <>
+            <ShopHeader>
+              <h2>스킬 관리</h2>
+              <p>진화 단계에 따라 장착 가능한 스킬 수가 늘어납니다. (1단: 2개, 2단: 3개, 3단: 4개)</p>
+            </ShopHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {myPlayerData?.pets?.map(pet => {
+                // appearanceId에서 진화 단계(lv1, lv2, lv3 등) 추출
+                const stage = parseInt(pet.appearanceId?.match(/_lv(\d)/)?.[1] || '1');
+                const maxSlots = stage === 1 ? 2 : (stage === 2 ? 3 : 4);
+                const equippedCount = pet.equippedSkills?.length || 0;
+
+                return (
+                  <div key={pet.id} style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '16px', border: '1px solid #dee2e6' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                      <PetImage src={petImageMap[`${pet.appearanceId}_idle`]} alt={pet.name} style={{ width: '60px', height: '60px', margin: 0, filter: 'none' }} />
+                      <div>
+                        <h3 style={{ margin: '0 0 0.5rem 0', color: '#343a40' }}>{pet.name} <span style={{ fontSize: '0.9rem', color: '#868e96' }}>(진화 {stage}단계)</span></h3>
+                        <p style={{ margin: 0, color: '#495057', fontWeight: 'bold' }}>장착된 스킬: <span style={{ color: '#339af0' }}>{equippedCount}</span> / {maxSlots}개</p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+                      {pet.skills?.map(skillId => {
+                        const isEquipped = pet.equippedSkills?.includes(skillId);
+                        const skillData = SKILLS[skillId.toUpperCase()];
+                        if (!skillData) return null;
+
+                        return (
+                          <SkillCard
+                            key={skillId}
+                            $isEquipped={isEquipped}
+                            onClick={() => handleToggleSkill(pet, skillId, isEquipped, maxSlots)}
+                          >
+                            <div className="skill-name">{skillData.name} <span className="cost">({skillData.cost}SP)</span></div>
+                            <div className="skill-desc">{skillData.description}</div>
+                            <div className="status">{isEquipped ? '✔️ 장착됨' : '장착하기'}</div>
+                          </SkillCard>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </ContentBox>
 
-      {/* [수정] 통일된 하단 버튼 */}
       <ButtonGroup>
         <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>
         <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>

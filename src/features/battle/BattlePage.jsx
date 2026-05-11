@@ -32,7 +32,6 @@ const shakeDamage = keyframes`
   100% { transform: translateX(0); }
 `;
 
-// [기본] 몸통박치기 (직선)
 const tackleRight = keyframes`
   0% { transform: translateX(0); }
   20% { transform: translateX(-20px); }
@@ -47,17 +46,15 @@ const tackleLeft = keyframes`
   100% { transform: translateX(0); }
 `;
 
-// [NEW] 재빠른 교란 (지그재그) - 아군용 (오른쪽으로 공격)
 const zigzagRight = keyframes`
   0% { transform: translate(0, 0); }
-  15% { transform: translate(30px, -30px); }  /* 위로 휙 */
-  30% { transform: translate(60px, 30px); }   /* 아래로 휙 */
-  45% { transform: translate(90px, -30px); }  /* 위로 휙 */
-  60% { transform: translate(150px, 0) scale(1.1); } /* 타격! */
+  15% { transform: translate(30px, -30px); }
+  30% { transform: translate(60px, 30px); }
+  45% { transform: translate(90px, -30px); }
+  60% { transform: translate(150px, 0) scale(1.1); }
   100% { transform: translate(0, 0); }
 `;
 
-// [NEW] 재빠른 교란 (지그재그) - 적군용 (왼쪽으로 공격)
 const zigzagLeft = keyframes`
   0% { transform: translate(0, 0); }
   15% { transform: translate(-30px, -30px); }
@@ -76,10 +73,7 @@ const StunEffect = styled.div`
   animation: ${rotate} 2s linear infinite;
   z-index: 20;
   
-  &::after {
-    content: '💫'; 
-    display: block;
-  }
+  &::after { content: '💫'; display: block; }
 `;
 
 const RechargeEffect = styled.div`
@@ -177,14 +171,14 @@ const ActionMenu = styled.div`
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8rem;
 `;
 
-const MenuItem = styled.div`
+const MenuItem = styled.button`
   font-size: 1.1rem; font-weight: 800; padding: 1rem; border-radius: 12px;
   background-color: #f8f9fa; border: 2px solid #dee2e6; color: #495057;
-  opacity: ${props => props.$disabled ? 0.5 : 1}; cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.5 : 1}; cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.2s; display: flex; justify-content: center;
-  align-items: center; text-align: center;
+  align-items: center; text-align: center; width: 100%;
   
-  &:hover:not([disabled]) { 
+  &:hover:not(:disabled) { 
     background-color: #e7f5ff; 
     border-color: #339af0; 
     color: #1864ab; 
@@ -331,8 +325,6 @@ function BattlePage() {
     const [currentEffect, setCurrentEffect] = useState(null);
 
     const [actionSubMenu, setActionSubMenu] = useState(null);
-
-    // [추가] DB에서 불러온 퀴즈 풀 state
     const [quizPool, setQuizPool] = useState([]);
 
     const timerRef = useRef(null);
@@ -340,7 +332,10 @@ function BattlePage() {
     const prevHpRef = useRef({ my: null, opponent: null });
     const processedTurnRef = useRef(null);
 
-    // [추가] 퀴즈 데이터 로딩 Effect
+    // 보유 중인 '두뇌 간식' 찾기
+    const usableItems = Object.entries(myPlayerData?.petInventory || {})
+        .filter(([itemId, qty]) => qty > 0 && itemId === 'brain_snack');
+
     useEffect(() => {
         const loadQuizzes = async () => {
             if (!classId) return;
@@ -354,7 +349,6 @@ function BattlePage() {
                     }
                 });
             } else {
-                // DB에 설정된게 없으면 기본 퀴즈 1개라도 넣어둠 (에러 방지)
                 allQuestions = [{ question: "선생님이 출제한 퀴즈가 없습니다.", answer: "0", type: "subjective" }];
             }
             setQuizPool(allQuestions);
@@ -465,11 +459,9 @@ function BattlePage() {
                 processedTurnRef.current = turnUniqueId;
 
                 const isAttackerMe = battleState.turn === myPlayerData.id;
-
                 const actionType = battleState.attackerAction ? battleState.attackerAction.toUpperCase() : '';
 
                 if (actionType === 'TACKLE' || actionType === 'QUICK_DISTURBANCE') {
-
                     const animType = actionType === 'TACKLE' ? 'TACKLE' : 'ZIGZAG';
 
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: animType }));
@@ -543,7 +535,6 @@ function BattlePage() {
     };
 
     const startNewTurn = async (battleRef, log) => {
-        // [수정] quizPool 사용
         const randomQuiz = (quizPool && quizPool.length > 0)
             ? quizPool[Math.floor(Math.random() * quizPool.length)]
             : { question: "퀴즈 로딩 중...", answer: "1" };
@@ -614,7 +605,6 @@ function BattlePage() {
                     else winnerId = null;
                 }
 
-                // [수정] quizPool 사용
                 const nextQuiz = (quizPool && quizPool.length > 0)
                     ? quizPool[Math.floor(Math.random() * quizPool.length)]
                     : { question: "퀴즈 로딩 중...", answer: "1" };
@@ -671,7 +661,6 @@ function BattlePage() {
 
                 const data = battleDoc.data();
                 const myId = myPlayerData.id;
-
                 const isQuestionObjective = data.question.options && data.question.options.length > 0;
 
                 if (isQuestionObjective && data.chat && data.chat[myId]) return null;
@@ -684,7 +673,6 @@ function BattlePage() {
                 const opponentIsStunned = data[opponentRole].pet.status?.stunned;
 
                 const myPet = data[myRole].pet;
-
                 const myChatEntry = { text: filteredAnswer, isCorrect, timestamp: Date.now() };
                 const updatedChat = { ...(data.chat || {}), [myId]: myChatEntry };
 
@@ -694,7 +682,6 @@ function BattlePage() {
 
                     if (newStatus.recharging) {
                         delete newStatus.recharging;
-                        // [수정] quizPool 사용
                         const nextQuiz = (quizPool && quizPool.length > 0)
                             ? quizPool[Math.floor(Math.random() * quizPool.length)]
                             : { question: "퀴즈 로딩 중...", answer: "1" };
@@ -712,7 +699,7 @@ function BattlePage() {
                         transaction.update(battleRef, {
                             status: 'action',
                             turn: winnerId,
-                            log: `정답! ${myPet.name}의 공격! 상대는 방어하세요!`,
+                            log: `정답! ${myPet.name}의 행동 선택!`,
                             question: null,
                             turnStartTime: Date.now(),
                             chat: {}
@@ -748,7 +735,6 @@ function BattlePage() {
                             else if (opponent.pet.hp > 0) winnerId = opponent.id;
                         }
 
-                        // [수정] quizPool 사용
                         const nextQuiz = (quizPool && quizPool.length > 0)
                             ? quizPool[Math.floor(Math.random() * quizPool.length)]
                             : { question: "퀴즈 로딩 중...", answer: "1" };
@@ -809,6 +795,66 @@ function BattlePage() {
 
     const handleOptionClick = (option) => {
         processQuizAnswer(option);
+    };
+
+    // ▼▼▼ 아이템 즉시 사용 로직 (공격 턴을 소모하고 다음 퀴즈로 바로 넘어감) ▼▼▼
+    const handleUseItem = async (itemId) => {
+        if (isProcessing) return;
+        setIsProcessing(true);
+        try {
+            const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+            await runTransaction(db, async (transaction) => {
+                const battleDoc = await transaction.get(battleRef);
+                if (!battleDoc.exists()) return;
+                const data = battleDoc.data();
+
+                const playerRef = doc(db, 'classes', classId, 'players', myPlayerData.id);
+                const playerDoc = await transaction.get(playerRef);
+                const playerData = playerDoc.data();
+
+                const currentQty = playerData.petInventory?.[itemId] || 0;
+                if (currentQty <= 0) return;
+
+                // 1. 인벤토리에서 간식 1개 차감
+                const newInventory = { ...playerData.petInventory };
+                newInventory[itemId] -= 1;
+                transaction.update(playerRef, { petInventory: newInventory });
+
+                // 2. 체력/마나 30% 회복
+                const myRole = myPlayerData.id === data.challenger.id ? 'challenger' : 'opponent';
+                const myPet = { ...data[myRole].pet }; // 안전하게 복사
+
+                const healHp = Math.floor(myPet.maxHp * 0.30);
+                const healSp = Math.floor(myPet.maxSp * 0.30);
+
+                myPet.hp = Math.min(myPet.maxHp, myPet.hp + healHp);
+                myPet.sp = Math.min(myPet.maxSp, myPet.sp + healSp);
+
+                // 3. 다음 퀴즈 꺼내기
+                const nextQuiz = (quizPool && quizPool.length > 0)
+                    ? quizPool[Math.floor(Math.random() * quizPool.length)]
+                    : { question: "퀴즈 로딩 중...", answer: "1" };
+
+                // 4. 배틀 로그 업데이트 및 상대방 턴(퀴즈)으로 바로 넘김
+                transaction.update(battleRef, {
+                    [myRole]: { ...data[myRole], pet: myPet },
+                    log: `${playerData.name}의 펫이 두뇌 간식을 먹었습니다! (HP/SP +30% 회복)`,
+                    status: 'quiz',
+                    turn: null,
+                    attackerAction: null,
+                    defenderAction: null,
+                    question: nextQuiz,
+                    turnStartTime: Date.now(),
+                    chat: {}
+                });
+            });
+        } catch (error) {
+            console.error("아이템 사용 오류:", error);
+            alert("아이템 사용 중 오류가 발생했습니다.");
+        } finally {
+            setIsProcessing(false);
+            setActionSubMenu(null);
+        }
     };
 
     const handleActionSelect = async (actionId) => {
@@ -929,7 +975,6 @@ function BattlePage() {
                     log += ` ${defender.pet.name}은(는) 쓰러졌다! ${attacker.name}의 승리!`;
                 }
 
-                // [수정] quizPool 사용
                 const nextQuiz = (quizPool && quizPool.length > 0)
                     ? quizPool[Math.floor(Math.random() * quizPool.length)]
                     : { question: "퀴즈 데이터 없음", answer: "1" };
@@ -1045,11 +1090,7 @@ function BattlePage() {
                             </OpponentInfoBox>
 
                             <OpponentPetContainerWrapper>
-                                <PetContainer
-                                    $isHit={hitState.opponent}
-                                    $animType={animState.opponent}
-                                    $isMine={false}
-                                >
+                                <PetContainer $isHit={hitState.opponent} $animType={animState.opponent} $isMine={false}>
                                     {opponentInfo.pet.status?.stunned && <StunEffect />}
                                     {opponentInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[opponentInfo.id] && <ChatBubble $isMine={false} $isCorrect={battleState.chat[opponentInfo.id].isCorrect}>{battleState.chat[opponentInfo.id].text}</ChatBubble>}
@@ -1058,11 +1099,7 @@ function BattlePage() {
                             </OpponentPetContainerWrapper>
 
                             <MyPetContainerWrapper>
-                                <PetContainer
-                                    $isHit={hitState.my}
-                                    $animType={animState.my}
-                                    $isMine={true}
-                                >
+                                <PetContainer $isHit={hitState.my} $animType={animState.my} $isMine={true}>
                                     {myInfo.pet.status?.stunned && <StunEffect />}
                                     {myInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
                                     {battleState.chat?.[myInfo.id] && <ChatBubble $isMine={true} $isCorrect={battleState.chat[myInfo.id].isCorrect}>{battleState.chat[myInfo.id].text}</ChatBubble>}
@@ -1070,6 +1107,7 @@ function BattlePage() {
                                 </PetContainer>
                             </MyPetContainerWrapper>
                         </BattleField>
+
                         <QuizArea>
                             <div>
                                 <LogText>{battleState.log}</LogText>
@@ -1090,10 +1128,7 @@ function BattlePage() {
                                                                 key={idx}
                                                                 onClick={() => handleOptionClick(opt)}
                                                                 disabled={isProcessing || hasSubmitted}
-                                                                style={{
-                                                                    opacity: hasSubmitted ? 0.5 : 1,
-                                                                    cursor: hasSubmitted ? 'not-allowed' : 'pointer'
-                                                                }}
+                                                                style={{ opacity: hasSubmitted ? 0.5 : 1, cursor: hasSubmitted ? 'not-allowed' : 'pointer' }}
                                                             >
                                                                 {opt}
                                                             </OptionButton>
@@ -1111,7 +1146,6 @@ function BattlePage() {
                                                         />
                                                     </form>
                                                 )}
-
                                                 {hasSubmitted && battleState.question.options && (
                                                     <div style={{ textAlign: 'center', marginTop: '15px', color: '#666', fontWeight: 'bold' }}>
                                                         {battleState.chat?.[myPlayerData.id]?.isCorrect
@@ -1132,13 +1166,39 @@ function BattlePage() {
                                                 <>
                                                     <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
                                                     <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
+                                                    {/* ▼▼▼ 아이템 가방 버튼 추가 ▼▼▼ */}
+                                                    <MenuItem
+                                                        onClick={() => setActionSubMenu('items')}
+                                                        style={{ backgroundColor: '#e2f0d9', borderColor: '#51cf66', color: '#2b8a3e' }}
+                                                    >
+                                                        🎒 간식 가방
+                                                    </MenuItem>
                                                 </> :
-                                                <>
-                                                    {myEquippedSkills.map(skill => (
-                                                        <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
-                                                    ))}
-                                                    <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
-                                                </>
+                                                actionSubMenu === 'skills' ?
+                                                    <>
+                                                        {myEquippedSkills.map(skill => (
+                                                            <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
+                                                        ))}
+                                                        <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
+                                                    </> :
+                                                    actionSubMenu === 'items' ?
+                                                        <>
+                                                            {/* ▼▼▼ 아이템 목록 렌더링 ▼▼▼ */}
+                                                            {usableItems.length > 0 ? (
+                                                                usableItems.map(([id, qty]) => (
+                                                                    <MenuItem
+                                                                        key={id}
+                                                                        onClick={() => handleUseItem(id)}
+                                                                        style={{ backgroundColor: '#fff3bf', borderColor: '#fcc419', color: '#e67700' }}
+                                                                    >
+                                                                        두뇌 간식 먹기 ({qty}개)
+                                                                    </MenuItem>
+                                                                ))
+                                                            ) : (
+                                                                <MenuItem disabled>쓸 수 있는 간식이 없습니다.</MenuItem>
+                                                            )}
+                                                            <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
+                                                        </> : null
                                         )}
                                         {showDefenseMenu && (
                                             Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
@@ -1157,7 +1217,7 @@ function BattlePage() {
                     <ModalContent $color={!battleState.winner ? '#6c757d' : (battleState.winner === myPlayerData.id ? '#007bff' : '#dc3545')}>
                         <h2>
                             {!battleState.winner
-                                ? "배틀 종료"
+                                ? "무승부"
                                 : (battleState.winner === myPlayerData.id ? "승리!" : "패배...")}
                         </h2>
                         <p>{battleState.log}</p>
