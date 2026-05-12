@@ -658,18 +658,12 @@ export const useLeagueStore = create((set, get) => ({
             dataToSend.photoUrls = photoUrls;
         }
 
+        // 서버에 승인 요청을 보냄
         await requestMissionApproval(classId, missionId, myPlayerData.id, myPlayerData.name, dataToSend);
 
-        const newSubmission = {
-            id: `temp_${Date.now()}`,
-            missionId,
-            studentId: myPlayerData.id,
-            studentName: myPlayerData.name,
-            status: 'pending',
-            requestedAt: new Date(),
-            ...dataToSend,
-        };
-        set(state => ({ missionSubmissions: [...state.missionSubmissions, newSubmission] }));
+        // [수정] 이전에 여기에 있던 temp_ 상태 강제 주입 코드를 삭제했습니다!
+        // 서버에 데이터가 들어가면 onSnapshot 리스너가 알아서 실시간으로 가장 정확한 데이터를 끌고 오기 때문에
+        // 중복해서 꼬이는 버그를 원천 차단했습니다.
     },
 
     buyMultipleAvatarParts: async (partsToBuy) => {

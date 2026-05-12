@@ -65,7 +65,7 @@ const ControlsCard = styled.div`
 const ControlRow = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: flex-end; /* 하단 정렬 */
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: 1rem;
 `;
@@ -363,15 +363,21 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
 
   const selectedMission = useMemo(() => missions.find(m => m.id === selectedMissionId), [missions, selectedMissionId]);
 
-  // ▼▼▼ [수정] 여러 번 제출된 경우 최신 기록을 우선하고, 반복미션은 과거 기록 무시 ▼▼▼
+  // ▼▼▼ [수정] 제출 시간 안전하게 파싱하여 오류 방지 ▼▼▼
+  const getMillis = (timestamp) => {
+    if (!timestamp) return Date.now(); // null 이면 방금 제출한 최신 기록으로 간주
+    if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+    if (typeof timestamp.getTime === 'function') return timestamp.getTime();
+    if (timestamp instanceof Date) return timestamp.getTime();
+    return Date.now();
+  };
+
   const studentSubmissionStatus = useMemo(() => {
     const statusMap = new Map();
 
-    // 최신순 정렬 (requestedAt 기준 내림차순)
+    // 최신순 정렬 시, 방금 제출하여 아직 DB 시간이 안 찍힌(null) 것도 제일 최신으로 정렬되도록 수정
     const sortedSubmissions = [...missionSubmissions].sort((a, b) => {
-      const timeA = a.requestedAt?.toMillis ? a.requestedAt.toMillis() : 0;
-      const timeB = b.requestedAt?.toMillis ? b.requestedAt.toMillis() : 0;
-      return timeB - timeA;
+      return getMillis(b.requestedAt) - getMillis(a.requestedAt);
     });
 
     const today = new Date();
@@ -380,7 +386,6 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
     sortedSubmissions
       .filter(sub => sub.missionId === selectedMissionId)
       .forEach(sub => {
-        // 반복 미션(isFixed)인 경우, 오늘 제출한 내역만 처리 (과거 완료 기록 무시)
         if (selectedMission?.isFixed) {
           let subDate = null;
           if (sub.requestedAt?.toDate) subDate = sub.requestedAt.toDate();
@@ -389,7 +394,6 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
           if (subDate && subDate < today) return;
         }
 
-        // 최신순으로 돌기 때문에 첫 번째 기록(가장 최신)만 Map에 저장
         if (!statusMap.has(sub.studentId)) {
           statusMap.set(sub.studentId, sub);
         }
@@ -604,7 +608,6 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
                         </div>
                       )}
 
-                      {/* [수정] 반복 미션일 경우 이전 기록 보기 가능 */}
                       {selectedMission?.isFixed && (
                         <ActionButton onClick={(e) => handleHistoryView(e, player)}>
                           📜 이전 기록 보기

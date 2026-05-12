@@ -7,7 +7,6 @@ import { auth, getMissionHistory, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import MissionHistoryModal from '../components/MissionHistoryModal';
 import { useNavigate, useLocation } from 'react-router-dom';
-// [추가] 이미지 압축 라이브러리 (npm install browser-image-compression 필요)
 import imageCompression from 'browser-image-compression';
 
 const fadeIn = keyframes`
@@ -68,10 +67,10 @@ const MissionCard = styled.div`
     bottom: 0;
     width: 6px;
     background-color: ${props => {
-    if (props.$status === 'approved' || props.$status === 'APPROVED_TODAY') return '#20c997'; // 초록
-    if (props.$status === 'pending' || props.$status === 'PENDING_TODAY') return '#adb5bd'; // 회색
-    if (props.$status === 'rejected' || props.$status === 'REJECTED_TODAY') return '#fa5252'; // 빨강
-    return '#339af0'; // 기본 파랑 (작성 가능)
+    if (props.$status === 'approved' || props.$status === 'APPROVED_TODAY') return '#20c997';
+    if (props.$status === 'pending' || props.$status === 'PENDING_TODAY') return '#adb5bd';
+    if (props.$status === 'rejected' || props.$status === 'REJECTED_TODAY') return '#fa5252';
+    return '#339af0';
   }};
   }
 
@@ -131,13 +130,12 @@ const MissionReward = styled.div`
   text-shadow: 0 1px 1px rgba(0,0,0,0.1);
 `;
 
-// [추가] 미션 설명글을 위한 스타일
 const MissionDescription = styled.p`
   margin: 0.5rem 0 0 0;
   font-size: 0.95rem;
   color: #495057;
   line-height: 1.5;
-  white-space: pre-wrap; /* 줄바꿈 허용 */
+  white-space: pre-wrap;
   background-color: #f1f3f5;
   padding: 0.8rem;
   border-radius: 8px;
@@ -356,7 +354,6 @@ const ToggleButton = styled.button`
   }
 `;
 
-// [추가] 통일된 스타일의 버튼 컨테이너 및 버튼
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: center;
@@ -384,13 +381,14 @@ const ActionButton = styled.button`
 `;
 
 const isDateToday = (timestamp) => {
-  if (!timestamp) return false;
+  // [수정] timestamp가 null인 경우(선생님이 방금 승인한 임시 서버시간) 무조건 오늘로 간주
+  if (!timestamp) return true;
 
   let date;
   if (typeof timestamp.toDate === 'function') {
-    date = timestamp.toDate(); // Firestore Timestamp인 경우
+    date = timestamp.toDate();
   } else if (timestamp instanceof Date) {
-    date = timestamp; // 일반 자바스크립트 Date 객체인 경우
+    date = timestamp;
   } else {
     return false;
   }
@@ -436,21 +434,17 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     return submission.status;
   }, [submission, mission.isFixed]);
 
-  // [수정] 제출 내역과 프리셋(placeholderText)을 안전하게 처리하는 useEffect
   useEffect(() => {
     const initialIsPublic = submission?.isPublic !== undefined ? submission.isPublic : !mission.defaultPrivate;
 
-    // 1. 이미 제출된 기록이 있는 경우 (반려 포함)
     if (submission) {
-      if (submission.status === 'rejected') {
+      // 취소되었거나 반려된 경우에도 작성했던 텍스트는 복구해줌
+      if (submission.status === 'rejected' || submission.status === 'cancelled') {
         setSubmissionContent({ text: submission.text || '', photos: [], isPublic: initialIsPublic });
       } else {
         setSubmissionContent({ text: submission.text || '', photos: [], isPublic: initialIsPublic });
       }
-    }
-    // 2. 처음 작성하는 경우 (기록 없음)
-    else {
-      // 선생님이 설정한 '프리셋 텍스트'가 있으면 초기값으로 사용
+    } else {
       setSubmissionContent({
         text: mission.placeholderText ? mission.placeholderText + '\n\n' : '',
         photos: [],
@@ -469,33 +463,26 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     return prerequisiteSubmission?.status === 'approved';
   }, [mission.prerequisiteMissionId, mySubmissions]);
 
-  // [수정] 이미지 압축 및 리사이징 적용 (0.5MB, 1280px 제한)
   const handleFileChange = async (e) => {
     const files = Array.from(e.target.files);
-
     if (files.length === 0) return;
 
     const options = {
-      maxSizeMB: 0.5, // 0.5MB (500KB) 제한
-      maxWidthOrHeight: 1280, // 긴 변 기준 1280px로 리사이징
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 1280,
       useWebWorker: true,
-      fileType: 'image/jpeg' // 강제 JPEG 변환 (용량 감소)
+      fileType: 'image/jpeg'
     };
 
     try {
       const compressedFiles = [];
-
       for (const file of files) {
         if (!file.type.match(/image.*/)) {
           alert(`${file.name}은(는) 이미지가 아닙니다.`);
           continue;
         }
-
-        // 압축 진행
         const compressedFile = await imageCompression(file, options);
-        // 원본 파일명 유지
         const finalFile = new File([compressedFile], file.name, { type: compressedFile.type });
-
         compressedFiles.push(finalFile);
       }
 
@@ -505,12 +492,10 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
           photos: [...prev.photos, ...compressedFiles]
         }));
       }
-
     } catch (error) {
       console.error("이미지 압축 실패:", error);
       alert("이미지 처리 중 오류가 발생했습니다.");
     }
-
     e.target.value = null;
   };
 
@@ -521,7 +506,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
   const handleSubmit = async () => {
     const isPending = ['PENDING_TODAY', 'pending'].includes(missionStatus);
 
-    // 승인 대기중 상태에서 클릭하면 취소
     if (isPending) {
       if (!window.confirm('제출을 취소하시겠습니까?\n(작성 내용은 그대로 유지됩니다)')) return;
       setIsSubmitting(true);
@@ -574,7 +558,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     if (!canSubmitMission) return null;
 
     const hasSubmission = !!submission;
-    const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE', 'PENDING_TODAY', 'pending'].includes(missionStatus);
+    // [수정] cancelled 상태도 액션 가능한 상태로 추가하여 제출 버튼이 영영 사라지지 않게 보호
+    const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE', 'PENDING_TODAY', 'pending', 'cancelled'].includes(missionStatus);
     const isDoneOrPending = ['APPROVED_TODAY', 'approved'].includes(missionStatus);
     const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || isDoneOrPending;
 
@@ -592,6 +577,8 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
         case 'approved': actionButtonText = '승인 완료!'; actionButtonStyle = 'approved'; break;
         case 'pending': actionButtonText = '승인 대기중'; actionButtonStyle = 'pending'; break;
         case 'rejected': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
+        // [수정] 취소된 경우 다시 제출할 수 있도록 버튼 활성화
+        case 'cancelled': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
         default: actionButtonText = '미션 제출'; actionButtonStyle = 'default'; break;
       }
     }
@@ -652,11 +639,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
               {submissionType?.includes('photo') && <Tag $bg="#e6fcf5" $color="#0ca678">📸 사진</Tag>}
             </MissionTitle>
             <MissionReward>{rewardText}</MissionReward>
-
-            {/* [추가] 선생님이 작성한 미션 설명(내용) 출력 부분 */}
-            {mission.description && (
-              <MissionDescription>{mission.placeholderText}</MissionDescription>)}
-
+            {mission.description && (<MissionDescription>{mission.placeholderText}</MissionDescription>)}
           </MissionInfo>
           {renderButtons()}
         </MissionHeader>
@@ -701,13 +684,11 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
             )}
           </SubmissionArea>
         )}
-
         <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
       </MissionCard>
     </>
   );
 }
-
 
 function MissionsPage() {
   const { classId } = useClassStore();
@@ -755,20 +736,19 @@ function MissionsPage() {
     }
   }, [location, navigate, myPlayerData, missions, classId]);
 
-
   const mySubmissionsMap = useMemo(() => {
     if (!myPlayerData) return {};
     const submissionsMap = {};
 
-    // 시간 값을 밀리초로 안전하게 변환하는 헬퍼 함수
+    // [수정] timestamp가 없어도 완벽하게 현재 시간으로 정렬되도록 개선
     const getMillis = (timestamp) => {
-      if (!timestamp) return 0;
+      if (!timestamp) return Date.now();
       if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
       if (typeof timestamp.getTime === 'function') return timestamp.getTime();
-      return 0;
+      if (timestamp instanceof Date) return timestamp.getTime();
+      return Date.now();
     };
 
-    // toMillis() 대신 getMillis 헬퍼 함수 사용
     const sortedSubmissions = [...missionSubmissions].sort((a, b) =>
       getMillis(b.requestedAt) - getMillis(a.requestedAt)
     );
@@ -784,14 +764,13 @@ function MissionsPage() {
   }, [missionSubmissions, myPlayerData]);
 
   const filteredMissions = useMemo(() => {
-    if (!hideCompleted) {
-      return missions;
-    }
+    if (!hideCompleted) return missions;
 
     return missions.filter(mission => {
       const submission = mySubmissionsMap[mission.id];
       if (!submission) return true;
 
+      // 선생님이 직접 승인하여 텍스트가 없는 경우에도 완벽하게 목록에서 제거
       if (mission.isFixed) {
         if (submission.status === 'approved' && isDateToday(submission.approvedAt)) {
           return false;
@@ -801,7 +780,6 @@ function MissionsPage() {
           return false;
         }
       }
-
       return true;
     });
   }, [missions, mySubmissionsMap, hideCompleted]);
