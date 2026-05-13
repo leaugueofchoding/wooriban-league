@@ -461,12 +461,14 @@ function PetPage() {
   const handleSaveName = async () => {
     const filteredName = filterProfanity(newName);
     if (filteredName.includes('*')) return alert("부적절한 단어가 포함되어 있어 사용할 수 없습니다.");
+    if (!filteredName.trim()) return alert("이름을 입력해주세요.");
     try {
       const updatedPets = [...myPlayerData.pets];
       const petIndex = updatedPets.findIndex(p => p.id === selectedPet.id);
       if (petIndex !== -1) {
         updatedPets[petIndex] = { ...updatedPets[petIndex], name: filteredName };
-        await updatePlayerProfile(classId, myPlayerData.id, { pets: updatedPets });
+        // ★ store.updatePlayerProfile은 인자가 1개(profileData)임
+        await updatePlayerProfile({ pets: updatedPets });
         setIsEditingName(false);
         setNewName(filteredName);
         alert(`이름이 '${filteredName}'(으)로 변경되었습니다!`);

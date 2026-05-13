@@ -7,7 +7,7 @@ import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, updatePlayerAvatar, updatePlayerProfile, storage } from '../api/firebase'; // updatePlayerProfile 추가
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import baseAvatar from '../assets/base-avatar.png';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas'; // 더 이상 사용 안 함 (Canvas API로 교체)
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -234,25 +234,76 @@ function AvatarEditPage() {
         let avatarSnapshotUrl = "";
 
         try {
-            // 1. 아바타 캡처 (투명 배경)
-            if (avatarRef.current) {
-                const canvas = await html2canvas(avatarRef.current, {
-                    backgroundColor: null, // [중요] 투명 배경 설정
-                    scale: 1.5, // 용량 절감을 위해 스케일 조정 (2 -> 1.5)
-                    useCORS: true,
-                    logging: false
-                });
+            // ★ html2canvas 제거 → Canvas API + fetch-blob 방식 (구형 WebView CORS 문제 해결)
+            const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
+            const config = avatarConfig || {};
 
-                const imageDataUrl = canvas.toDataURL("image/png");
-                const storageRef = ref(storage, `classes/${classId}/players/${myPlayerData.id}/avatarSnapshot_${Date.now()}.png`);
-                await uploadString(storageRef, imageDataUrl, 'data_url');
-                avatarSnapshotUrl = await getDownloadURL(storageRef);
+            // fetch → blob → ObjectURL 변환 헬퍼
+            const loadImage = (src) => new Promise((resolve) => {
+                if (!src) return resolve(null);
+                if (!src.startsWith('http')) {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => resolve(null);
+                    img.src = src;
+                    return;
+                }
+                fetch(src, { mode: 'cors' })
+                    .then(r => r.blob())
+                    .then(blob => {
+                        const url = URL.createObjectURL(blob);
+                        const img = new Image();
+                        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+                        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+                        img.src = url;
+                    })
+                    .catch(() => {
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => resolve(img);
+                        img.onerror = () => resolve(null);
+                        img.src = src;
+                    });
+            });
+
+            const SIZE = 300;
+            const canvas = document.createElement('canvas');
+            canvas.width = SIZE;
+            canvas.height = SIZE;
+            const ctx = canvas.getContext('2d');
+
+            // 베이스 아바타
+            const baseImg = await loadImage(baseAvatar);
+            if (baseImg) ctx.drawImage(baseImg, 0, 0, SIZE, SIZE);
+
+            // 파트 레이어 순서대로 그리기
+            for (const category of RENDER_ORDER) {
+                const partId = config[category];
+                if (!partId) continue;
+                const part = avatarParts.find(p => p.id === partId);
+                if (!part?.src) continue;
+                const img = await loadImage(part.src);
+                if (img) ctx.drawImage(img, 0, 0, SIZE, SIZE);
             }
+            // 악세서리
+            if (config.accessories) {
+                for (const partId of Object.values(config.accessories)) {
+                    const part = avatarParts.find(p => p.id === partId);
+                    if (!part?.src) continue;
+                    const img = await loadImage(part.src);
+                    if (img) ctx.drawImage(img, 0, 0, SIZE, SIZE);
+                }
+            }
+
+            const imageDataUrl = canvas.toDataURL("image/png");
+            const storageRef = ref(storage, `classes/${classId}/players/${myPlayerData.id}/avatarSnapshot_${Date.now()}.png`);
+            await uploadString(storageRef, imageDataUrl, 'data_url');
+            avatarSnapshotUrl = await getDownloadURL(storageRef);
 
             // 2. avatarConfig 저장
             await updatePlayerAvatar(classId, myPlayerData.id, avatarConfig);
 
-            // 3. avatarSnapshotUrl 저장 (확실하게 하기 위해 updatePlayerProfile 사용)
+            // 3. avatarSnapshotUrl 저장
             if (avatarSnapshotUrl) {
                 await updatePlayerProfile(classId, myPlayerData.id, { avatarSnapshotUrl });
             }
@@ -295,10 +346,10 @@ function AvatarEditPage() {
                 <AvatarSection>
                     <AvatarFrame>
                         {/* 캡처 대상은 배경색이 없는 이 내부 div */}
-                        <AvatarCaptureArea ref={avatarRef}>
-                            <BaseAvatar src={baseAvatar} alt="기본 바디" crossOrigin="anonymous" />
-                            {selectedPartUrls.map(src => (
-                                <PartImage key={src} src={src} crossOrigin="anonymous" />
+                        <AvatarCaptureArea>
+                            <BaseAvatar src={baseAvatar} alt="기본 바디" />
+                            {selectedPartUrls.filter(src => !!src).map(src => (
+                                <PartImage key={src} src={src} crossOrigin="anonymous" onError={e => { e.target.style.display = 'none'; }} />
                             ))}
                         </AvatarCaptureArea>
                     </AvatarFrame>

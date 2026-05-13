@@ -2879,7 +2879,7 @@ export async function usePetItem(classId, playerId, itemId, petId) {
         pet.hp = Math.min(pet.maxHp, pet.hp + Math.floor(pet.maxHp * 0.15));
         pet.sp = Math.min(pet.maxSp, pet.sp + Math.floor(pet.maxSp * 0.15));
         break;
-      case 'secret_notebook':
+      case 'secret_notebook': {
         const currentSkills = pet.skills || [];
         const allLearnableSkills = Object.keys(SKILLS).filter(id => SKILLS[id].type === 'common');
         const availableSkills = allLearnableSkills.filter(id => !currentSkills.includes(id));
@@ -2891,6 +2891,7 @@ export async function usePetItem(classId, playerId, itemId, petId) {
         const randomSkillId = availableSkills[Math.floor(Math.random() * availableSkills.length)];
         pet.skills = [...currentSkills, randomSkillId];
         break;
+      }
       // ▼▼▼ [신규 추가] 비타민 젤리 (배틀 횟수 초기화) ▼▼▼
       case 'vitamin_jelly':
         pet.dailyBattleCount = 0; // 오늘의 배틀 횟수를 0으로 리셋!

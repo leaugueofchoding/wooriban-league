@@ -371,29 +371,30 @@ function Auth({ user }) {
 
         try {
             const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
+            const todayStr = new Date().toLocaleDateString();
 
-            // ★ 실제 배틀이 시작되는 시점에 challenger의 dailyBattleCount 증가
-            const challengerId = battleChallenge.challenger.id;
-            const challengerRef = doc(db, 'classes', classId, 'players', challengerId);
-            const challengerSnap = await getDoc(challengerRef);
-            if (challengerSnap.exists()) {
-                const challengerData = challengerSnap.data();
-                const todayStr = new Date().toLocaleDateString();
-                const pets = JSON.parse(JSON.stringify(challengerData.pets || []));
-                const partnerPetIdx = pets.findIndex(p => p.id === challengerData.partnerPetId);
-                if (partnerPetIdx !== -1) {
-                    const pet = pets[partnerPetIdx];
-                    const currentCount = pet.lastBattleDate === todayStr ? (pet.dailyBattleCount || 0) : 0;
-                    pets[partnerPetIdx] = {
-                        ...pet,
-                        lastBattleDate: todayStr,
-                        dailyBattleCount: currentCount + 1,
-                    };
-                    await updateDoc(challengerRef, { pets });
-                }
-            }
+            // 배틀 카운트 증가 헬퍼 (challenger / opponent 공통)
+            const incrementBattleCount = async (playerId) => {
+                const playerRef = doc(db, 'classes', classId, 'players', playerId);
+                const snap = await getDoc(playerRef);
+                if (!snap.exists()) return;
+                const data = snap.data();
+                const pets = JSON.parse(JSON.stringify(data.pets || []));
+                const idx = pets.findIndex(p => p.id === data.partnerPetId);
+                if (idx === -1) return;
+                const pet = pets[idx];
+                const count = pet.lastBattleDate === todayStr ? (pet.dailyBattleCount || 0) : 0;
+                pets[idx] = { ...pet, lastBattleDate: todayStr, dailyBattleCount: count + 1 };
+                await updateDoc(playerRef, { pets });
+            };
 
-            // ★ 여기가 핵심: DB 상태를 starting으로 바꿔야 게임이 시작됨 ★
+            // ★ 신청자(challenger) + 수락자(opponent) 모두 배틀 횟수 증가
+            await Promise.all([
+                incrementBattleCount(battleChallenge.challenger.id),
+                incrementBattleCount(myPlayerData.id),
+            ]);
+
+            // DB 상태를 starting으로 전환 → 게임 시작
             await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
             navigate(`/battle/${battleChallenge.challenger.id}`);
             setBattleChallenge(null);
