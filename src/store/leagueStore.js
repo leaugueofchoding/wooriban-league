@@ -907,17 +907,12 @@ export const useLeagueStore = create((set, get) => ({
         const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
         if (!myPlayerData || !dailyQuiz || !classId) return false;
 
+        // Firebase에서 정답 판정 + DB 포인트 조정(+50) 수행
+        // subscribeToPlayerData onSnapshot이 실시간으로 포인트를 갱신하므로
+        // 클라이언트 낙관적 업데이트 없이 Firebase 반환값만 사용
         const isCorrect = await firebaseSubmitQuizAnswer(classId, myPlayerData.id, quizId, userAnswer, dailyQuiz.answer);
 
-        if (isCorrect) {
-            set(state => ({
-                players: state.players.map(p =>
-                    p.id === myPlayerData.id ? { ...p, points: (p.points || 0) + 50 } : p
-                )
-            }));
-        }
-
-        await get().fetchDailyQuiz(myPlayerData.id);
+        // fetchDailyQuiz는 QuizWidget에서 호출하므로 여기서는 호출 안 함
         return isCorrect;
     },
 

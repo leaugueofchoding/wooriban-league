@@ -415,6 +415,7 @@ function PetPage() {
   const [equippedSkills, setEquippedSkills] = useState([]);
   const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
+  const [vitaminJellyPopup, setVitaminJellyPopup] = useState({ show: false, pendingOpponent: null });
 
   useEffect(() => {
     if (myPlayerData?.id || !classId) return;
@@ -573,7 +574,30 @@ function PetPage() {
     try {
       await createBattleChallenge(classId, myPlayerData, opponent);
       navigate(`/battle/${opponent.id}`);
-    } catch (error) { alert(`대결 신청 실패: ${error.message}`); }
+    } catch (error) {
+      // 배틀 횟수 10회 초과 에러인지 확인
+      if (error.message?.includes('오늘 너무 지쳤어요')) {
+        const vitaminCount = myPlayerData?.petInventory?.vitamin_jelly || 0;
+        setVitaminJellyPopup({ show: true, pendingOpponent: opponent, vitaminCount });
+      } else {
+        alert(`대결 신청 실패: ${error.message}`);
+      }
+    }
+  };
+
+  // 비타민 젤리 사용 후 배틀 재신청
+  const handleUseVitaminAndBattle = async () => {
+    const { pendingOpponent } = vitaminJellyPopup;
+    setVitaminJellyPopup({ show: false, pendingOpponent: null });
+    try {
+      await usePetItem('vitamin_jelly', selectedPet.id);
+      // 아이템 사용 후 잠깐 대기 (DB 반영 시간)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await createBattleChallenge(classId, myPlayerData, pendingOpponent);
+      navigate(`/battle/${pendingOpponent.id}`);
+    } catch (error) {
+      alert(`대결 신청 실패: ${error.message}`);
+    }
   };
 
   if (!myPlayerData || !myPlayerData.pets || myPlayerData.pets.length === 0 || !selectedPet) {
@@ -679,6 +703,20 @@ function PetPage() {
               {Object.values(PET_ITEMS).map(item => (
                 <InventoryItem key={item.id}><img src={item.icon} alt={item.name} />{item.name}: {petInventory?.[item.id] || 0}개</InventoryItem>
               ))}
+              {/* 오늘의 배틀 횟수 현황 */}
+              {(() => {
+                const todayStr = new Date().toLocaleDateString();
+                const dailyCount = selectedPet.lastBattleDate === todayStr ? (selectedPet.dailyBattleCount || 0) : 0;
+                const vitaminCount = petInventory?.vitamin_jelly || 0;
+                return (
+                  <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.8rem', background: dailyCount >= 10 ? '#fff5f5' : '#f8f9fa', borderRadius: '10px', fontSize: '0.85rem', color: dailyCount >= 10 ? '#e03131' : '#495057', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>⚔️ 오늘 배틀: {dailyCount} / 10회</span>
+                    {dailyCount >= 10 && vitaminCount > 0 && (
+                      <span style={{ color: '#e03131', fontSize: '0.78rem' }}>🍬 젤리로 초기화 가능</span>
+                    )}
+                  </div>
+                );
+              })()}
             </InfoCard>
 
             <ActionButtonGroup>
@@ -776,6 +814,62 @@ function PetPage() {
                 })
               )}
             </OpponentList>
+          </ModalContent>
+        </ModalBackground>
+      )}
+
+      {/* [추가] 비타민 젤리 팝업 모달 */}
+      {vitaminJellyPopup.show && (
+        <ModalBackground onClick={() => setVitaminJellyPopup({ show: false, pendingOpponent: null })}>
+          <ModalContent onClick={e => e.stopPropagation()} style={{ textAlign: 'center', maxWidth: '360px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🍬</div>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', color: '#343a40' }}>
+              오늘 배틀 횟수({10}회)를 모두 사용했어요!
+            </h3>
+            <p style={{ color: '#868e96', fontSize: '0.95rem', margin: '0 0 1.2rem', lineHeight: '1.5' }}>
+              <strong style={{ color: '#f03e3e' }}>비타민 젤리</strong>를 사용하면<br />
+              배틀 횟수가 초기화되어 바로 대결할 수 있어요.
+            </p>
+            <div style={{ background: '#fff5f5', borderRadius: '12px', padding: '0.8rem 1rem', marginBottom: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1.4rem' }}>🍬</span>
+              <span style={{ fontWeight: '800', color: '#e03131' }}>
+                비타민 젤리 보유: {vitaminJellyPopup.vitaminCount ?? (myPlayerData?.petInventory?.vitamin_jelly || 0)}개
+              </span>
+            </div>
+            {(vitaminJellyPopup.vitaminCount ?? myPlayerData?.petInventory?.vitamin_jelly ?? 0) > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <button
+                  onClick={handleUseVitaminAndBattle}
+                  style={{ padding: '0.9rem', background: 'linear-gradient(135deg, #ff6b6b, #f03e3e)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(240,62,62,0.3)' }}
+                >
+                  🍬 비타민 젤리 사용하고 배틀하기
+                </button>
+                <button
+                  onClick={() => setVitaminJellyPopup({ show: false, pendingOpponent: null })}
+                  style={{ padding: '0.7rem', background: 'none', color: '#868e96', border: '1px solid #dee2e6', borderRadius: '12px', fontWeight: '700', fontSize: '0.9rem', cursor: 'pointer' }}
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <p style={{ color: '#868e96', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>
+                  비타민 젤리가 없어요. 상점에서 구매하거나 내일 다시 도전해보세요!
+                </p>
+                <button
+                  onClick={() => navigate('/shop')}
+                  style={{ padding: '0.9rem', background: 'linear-gradient(135deg, #339af0, #1c7ed6)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer' }}
+                >
+                  🛒 상점 가기
+                </button>
+                <button
+                  onClick={() => setVitaminJellyPopup({ show: false, pendingOpponent: null })}
+                  style={{ padding: '0.7rem', background: 'none', color: '#868e96', border: '1px solid #dee2e6', borderRadius: '12px', fontWeight: '700', fontSize: '0.9rem', cursor: 'pointer' }}
+                >
+                  닫기
+                </button>
+              </div>
+            )}
           </ModalContent>
         </ModalBackground>
       )}

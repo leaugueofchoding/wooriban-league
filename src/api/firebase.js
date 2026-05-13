@@ -3484,8 +3484,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   // ▼▼▼ [추가] 상대방이 현재 '다른 사람'과 대결 중인지 확인 ▼▼▼
   // -----------------------------------------------------------
   const battlesRef = collection(db, 'classes', classId, 'battles');
-  // 배틀 진행 중으로 간주할 상태 목록
-  const activeStatuses = ['starting', 'quiz', 'action', 'resolution'];
+  // 배틀 진행 중으로 간주할 상태 목록 (pending 포함)
+  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution'];
 
   // 1. 상대방이 '도전자(challenger)'로서 대결 중인 경우 조회
   const q1 = query(
@@ -3501,10 +3501,37 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     where('status', 'in', activeStatuses)
   );
 
-  const [busyAsChallenger, busyAsOpponent] = await Promise.all([getDocs(q1), getDocs(q2)]);
+  // 3. 내가 '도전자(challenger)'로서 이미 대결 중인 경우 조회
+  const q3 = query(
+    battlesRef,
+    where('challenger.id', '==', challenger.id),
+    where('status', 'in', activeStatuses)
+  );
+
+  // 4. 내가 '상대(opponent)'로서 이미 대결 중인 경우 조회
+  const q4 = query(
+    battlesRef,
+    where('opponent.id', '==', challenger.id),
+    where('status', 'in', activeStatuses)
+  );
+
+  const [busyAsChallenger, busyAsOpponent, meBusyAsChallenger, meBusyAsOpponent] = await Promise.all([
+    getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4)
+  ]);
 
   if (!busyAsChallenger.empty || !busyAsOpponent.empty) {
     throw new Error("상대방이 현재 다른 친구와 대결을 진행 중입니다. 잠시 후에 신청해주세요.");
+  }
+
+  // 내가 이미 다른 배틀에 참여 중인 경우 (현재 신청할 상대와의 배틀 제외)
+  const battleId = [challenger.id, opponent.id].sort().join('_');
+  const myActiveBattles = [
+    ...meBusyAsChallenger.docs,
+    ...meBusyAsOpponent.docs,
+  ].filter(d => d.id !== battleId);
+
+  if (myActiveBattles.length > 0) {
+    throw new Error("이미 다른 대결이 진행 중입니다. 기존 대결을 완료하거나 취소 후 신청해주세요.");
   }
   // ▲▲▲ [추가 끝] ▲▲▲
 
@@ -3557,7 +3584,6 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   // 플레이어 정보 업데이트 (펫 상태 저장)
   await updateDoc(challengerRef, { pets: challengerPets });
 
-  const battleId = [challenger.id, opponent.id].sort().join('_');
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
   const battleSnap = await getDoc(battleRef);
 
