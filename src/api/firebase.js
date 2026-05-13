@@ -869,7 +869,25 @@ export async function updateAvatarPartStatus(partId, status) {
 export async function getAvatarParts() {
   const partsRef = collection(db, 'avatarParts');
   const querySnapshot = await getDocs(partsRef);
-  return querySnapshot.docs.map(doc => doc.data());
+  const parts = querySnapshot.docs.map(doc => doc.data());
+
+  // gs:// URL은 브라우저에서 직접 렌더링 불가 → HTTPS downloadURL로 변환
+  const resolved = await Promise.all(
+    parts.map(async (part) => {
+      if (part.src && part.src.startsWith('gs://')) {
+        try {
+          const storageRef = ref(storage, part.src);
+          const downloadUrl = await getDownloadURL(storageRef);
+          return { ...part, src: downloadUrl };
+        } catch (e) {
+          console.warn(`아바타 파트 URL 변환 실패 (${part.id}):`, e);
+          return { ...part, src: '' }; // 실패 시 빈 문자열로 안전 처리
+        }
+      }
+      return part;
+    })
+  );
+  return resolved;
 }
 
 export async function updateAvatarPartPrice(partId, price) {
@@ -2241,7 +2259,25 @@ export async function uploadMyRoomItem(file, category) {
 export async function getMyRoomItems() {
   const itemsRef = collection(db, 'myRoomItems');
   const querySnapshot = await getDocs(itemsRef);
-  return querySnapshot.docs.map(doc => doc.data());
+  const items = querySnapshot.docs.map(doc => doc.data());
+
+  // gs:// URL은 브라우저에서 직접 렌더링 불가 → HTTPS downloadURL로 변환
+  const resolved = await Promise.all(
+    items.map(async (item) => {
+      if (item.src && item.src.startsWith('gs://')) {
+        try {
+          const storageRef = ref(storage, item.src);
+          const downloadUrl = await getDownloadURL(storageRef);
+          return { ...item, src: downloadUrl };
+        } catch (e) {
+          console.warn(`마이룸 아이템 URL 변환 실패 (${item.id}):`, e);
+          return { ...item, src: '' };
+        }
+      }
+      return item;
+    })
+  );
+  return resolved;
 }
 
 /**
@@ -3519,16 +3555,53 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4)
   ]);
 
-  if (!busyAsChallenger.empty || !busyAsOpponent.empty) {
+  const now = Date.now();
+  // 좀비 판정 기준: pending은 5분, 그 외 active는 3분 이상 무활동
+  const isZombie = (docData) => {
+    const status = docData.status;
+    const lastActivity = docData.turnStartTime || docData.createdAt?.toMillis() || 0;
+    const elapsed = now - lastActivity;
+    if (status === 'pending') return elapsed > 5 * 60 * 1000;
+    return elapsed > 3 * 60 * 1000;
+  };
+
+  // 좀비 배틀 자동 cancelled 처리 (비동기, 결과를 기다리지 않아도 됨)
+  const allActiveDocs = [
+    ...busyAsChallenger.docs,
+    ...busyAsOpponent.docs,
+    ...meBusyAsChallenger.docs,
+    ...meBusyAsOpponent.docs,
+  ];
+  const uniqueZombies = new Map();
+  allActiveDocs.forEach(d => {
+    if (isZombie(d.data()) && !uniqueZombies.has(d.id)) {
+      uniqueZombies.set(d.id, d.ref);
+    }
+  });
+  if (uniqueZombies.size > 0) {
+    const zombieBatch = writeBatch(db);
+    uniqueZombies.forEach((ref) => {
+      zombieBatch.update(ref, { status: 'cancelled', log: '⏰ 무활동으로 자동 종료된 배틀입니다.' });
+    });
+    zombieBatch.commit().catch(e => console.warn('좀비 배틀 정리 실패:', e));
+  }
+
+  // 살아있는(non-zombie) 배틀만 충돌 판정에 사용
+  const opponentLiveBattles = [
+    ...busyAsChallenger.docs,
+    ...busyAsOpponent.docs,
+  ].filter(d => !isZombie(d.data()));
+
+  if (opponentLiveBattles.length > 0) {
     throw new Error("상대방이 현재 다른 친구와 대결을 진행 중입니다. 잠시 후에 신청해주세요.");
   }
 
-  // 내가 이미 다른 배틀에 참여 중인 경우 (현재 신청할 상대와의 배틀 제외)
+  // 내가 이미 다른 배틀에 참여 중인 경우 (현재 신청할 상대와의 배틀 제외, 좀비 제외)
   const battleId = [challenger.id, opponent.id].sort().join('_');
   const myActiveBattles = [
     ...meBusyAsChallenger.docs,
     ...meBusyAsOpponent.docs,
-  ].filter(d => d.id !== battleId);
+  ].filter(d => d.id !== battleId && !isZombie(d.data()));
 
   if (myActiveBattles.length > 0) {
     throw new Error("이미 다른 대결이 진행 중입니다. 기존 대결을 완료하거나 취소 후 신청해주세요.");
@@ -3574,15 +3647,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     throw new Error(`'${challengerPet.name}'(은)는 오늘 너무 지쳤어요! 🛌\n파트너펫을 교체하여 배틀을 진행해주세요.`);
   }
 
-  // 배틀 횟수 증가 및 저장 (신청 시점에 카운트)
-  challengerPets[petIndex] = {
-    ...challengerPet,
-    lastBattleDate: todayStr,
-    dailyBattleCount: dailyCount + 1
-  };
-
-  // 플레이어 정보 업데이트 (펫 상태 저장)
-  await updateDoc(challengerRef, { pets: challengerPets });
+  // ★ 배틀 횟수는 신청 시점이 아닌 실제 배틀 수락(starting) 시점에 증가시킴
+  // (거절/취소/무응답으로 소모되는 횟수 방지)
 
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
   const battleSnap = await getDoc(battleRef);
@@ -3652,6 +3718,45 @@ export async function cancelBattleChallenge(classId, battleId) {
   if (!classId || !battleId) return;
   const battleRef = doc(db, 'classes', classId, 'battles', battleId);
   await updateDoc(battleRef, { status: 'cancelled', log: '배틀 신청이 취소되었습니다.' });
+}
+
+/**
+ * [관리자용] 학급 내 모든 좀비 배틀(무활동 상태)을 cancelled로 정리합니다.
+ * @param {string} classId
+ * @returns {{ cleaned: number, details: Array }} 정리된 배틀 수와 상세 정보
+ */
+export async function adminCleanupZombieBattles(classId) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  const battlesRef = collection(db, 'classes', classId, 'battles');
+  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution'];
+  const q = query(battlesRef, where('status', 'in', activeStatuses));
+  const snapshot = await getDocs(q);
+
+  const now = Date.now();
+  const zombies = snapshot.docs.filter(d => {
+    const data = d.data();
+    const lastActivity = data.turnStartTime || data.createdAt?.toMillis() || 0;
+    const elapsed = now - lastActivity;
+    if (data.status === 'pending') return elapsed > 5 * 60 * 1000;  // pending: 5분
+    return elapsed > 3 * 60 * 1000;  // 그 외: 3분
+  });
+
+  if (zombies.length === 0) return { cleaned: 0, details: [] };
+
+  const batch = writeBatch(db);
+  const details = [];
+  zombies.forEach(d => {
+    const data = d.data();
+    batch.update(d.ref, { status: 'cancelled', log: '⏰ 관리자에 의해 정리된 배틀입니다.' });
+    details.push({
+      id: d.id,
+      status: data.status,
+      challenger: data.challenger?.name || '?',
+      opponent: data.opponent?.name || '?',
+    });
+  });
+  await batch.commit();
+  return { cleaned: zombies.length, details };
 }
 
 /**

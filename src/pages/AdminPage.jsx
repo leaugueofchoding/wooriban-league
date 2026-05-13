@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '../store/leagueStore';
-import { auth, db } from '../api/firebase.js';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
+import { auth, db, adminCleanupZombieBattles } from '../api/firebase.js';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ImageModal from '../components/ImageModal';
 import QuizManager from '../components/QuizManager';
@@ -102,6 +102,9 @@ function AdminPage() {
             const myPlayer = players.find(p => p.authUid === auth.currentUser?.uid);
             return <QuizManager userRole={myPlayer?.role} />;
         }
+        if (activeMenu === 'battle') {
+            return <BattleAdminPanel />;
+        }
         if (activeMenu === 'class') {
             return <ClassTab />;
         }
@@ -183,6 +186,9 @@ function AdminPage() {
                             )}
                         </NavItem>
                         <NavItem>
+                            <NavButton $active={activeMenu === 'battle'} onClick={() => handleMenuClick('battle')}>⚔️ 배틀 관리</NavButton>
+                        </NavItem>
+                        <NavItem>
                             <NavButton $active={activeMenu === 'title'} onClick={() => handleMenuClick('title')}>칭호 관리</NavButton>
                         </NavItem>
                         <NavItem>
@@ -196,6 +202,95 @@ function AdminPage() {
                 </MainContent>
             </AdminWrapper>
         </>
+    );
+}
+
+// ─── 배틀 관리 패널 ────────────────────────────────────────────────
+const BattleAdminPanelWrapper = styled.div`
+  padding: 1.5rem;
+  max-width: 700px;
+`;
+const BattleSection = styled.div`
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  border: 1px solid #f1f3f5;
+`;
+const BattleTitle = styled.h3`
+  margin: 0 0 0.8rem;
+  font-size: 1.05rem;
+  color: #343a40;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+`;
+const BattleBtn = styled.button`
+  padding: 0.75rem 1.5rem;
+  background: ${p => p.$danger ? 'linear-gradient(135deg,#f03e3e,#c92a2a)' : 'linear-gradient(135deg,#339af0,#1c7ed6)'};
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &:hover:not(:disabled) { opacity: 0.88; }
+`;
+const ResultBox = styled.div`
+  margin-top: 0.8rem;
+  padding: 0.8rem 1rem;
+  background: #f8f9fa;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  color: #495057;
+  white-space: pre-wrap;
+  line-height: 1.6;
+`;
+
+function BattleAdminPanel() {
+    const { classId } = useClassStore();
+    const [cleaning, setCleaning] = React.useState(false);
+    const [result, setResult] = React.useState(null);
+
+    const handleCleanup = async () => {
+        if (!window.confirm('진행 중인 배틀 중 5분(pending) / 3분(진행 중) 이상 무활동 상태인 배틀을 모두 취소 처리합니다.\n계속하시겠습니까?')) return;
+        setCleaning(true);
+        setResult(null);
+        try {
+            const res = await adminCleanupZombieBattles(classId);
+            if (res.cleaned === 0) {
+                setResult('✅ 정리할 좀비 배틀이 없습니다. 모든 배틀이 정상 상태입니다.');
+            } else {
+                const detail = res.details.map(d =>
+                    `• [${d.status}] ${d.challenger} vs ${d.opponent}`
+                ).join('\n');
+                setResult(`✅ ${res.cleaned}개의 좀비 배틀을 취소 처리했습니다:\n\n${detail}`);
+            }
+        } catch (e) {
+            setResult(`❌ 오류 발생: ${e.message}`);
+        } finally {
+            setCleaning(false);
+        }
+    };
+
+    return (
+        <BattleAdminPanelWrapper>
+            <BattleSection>
+                <BattleTitle>⏰ 좀비 배틀 정리</BattleTitle>
+                <p style={{ margin: '0 0 1rem', fontSize: '0.9rem', color: '#868e96', lineHeight: '1.6' }}>
+                    비정상 종료 등으로 <strong>pending / 진행 중 상태가 멈춰버린 배틀</strong>을 일괄 취소합니다.<br />
+                    특정 학생이 "상대방이 배틀 중"이라는 오류로 신청이 안 될 때 실행하세요.<br />
+                    <span style={{ color: '#f03e3e' }}>※ 실제 진행 중인 배틀은 영향 없습니다 (무활동 기준으로만 판정).</span>
+                </p>
+                <BattleBtn onClick={handleCleanup} disabled={cleaning || !classId}>
+                    {cleaning ? '정리 중...' : '🧹 좀비 배틀 정리 실행'}
+                </BattleBtn>
+                {result && <ResultBox>{result}</ResultBox>}
+            </BattleSection>
+        </BattleAdminPanelWrapper>
     );
 }
 

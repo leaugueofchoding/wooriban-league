@@ -6,6 +6,7 @@ import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, updatePlayerAvatar } from '../api/firebase';
 import baseAvatar from '../assets/base-avatar.png';
 import { useNavigate } from 'react-router-dom';
+import { PET_ITEMS } from '../features/pet/petItems';
 
 // --- Animations ---
 const fadeIn = keyframes`
@@ -416,6 +417,92 @@ const ActionButton = styled.button`
   }
 `;
 
+/* ===== 펫 아이템 탭 전용 스타일 ===== */
+const PetItemSection = styled.div`
+  max-width: 900px;
+  margin: 1.5rem auto;
+  padding: 0 0.5rem;
+`;
+
+const PetItemGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.2rem;
+  @media (max-width: 600px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.8rem;
+  }
+`;
+
+const PetItemCard = styled.div`
+  background: white;
+  border-radius: 20px;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+  border: 2px solid #f1f3f5;
+  transition: transform 0.2s, box-shadow 0.2s;
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    border-color: #ffe066;
+  }
+`;
+
+const PetItemName = styled.div`
+  font-weight: 800;
+  font-size: 1rem;
+  color: #343a40;
+  text-align: center;
+`;
+
+const PetItemDesc = styled.div`
+  font-size: 0.78rem;
+  color: #868e96;
+  text-align: center;
+  line-height: 1.4;
+  min-height: 2.4em;
+`;
+
+const PetItemMeta = styled.div`
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+  margin-top: 0.2rem;
+`;
+
+const PetItemBuyRow = styled.div`
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  width: 100%;
+`;
+
+const PetItemBuyBtn = styled.button`
+  flex: 1;
+  padding: 0.5rem 0;
+  background: linear-gradient(135deg, #fcc419, #f59f00);
+  color: #343a40;
+  border: none;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 2px 4px rgba(245,159,0,0.25);
+  &:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+  }
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 // ... (기타 상수 및 헬퍼 함수 유지) ...
 const DAYS_OF_WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const ITEMS_PER_PAGE = 8;
@@ -431,7 +518,7 @@ const translateCategory = (category) => {
 
 function ShopPage() {
   const { classId } = useClassStore();
-  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts, fetchInitialData } = useLeagueStore();
+  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts, fetchInitialData, buyPetItem } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
 
@@ -631,96 +718,146 @@ function ShopPage() {
       <MainTabContainer>
         <MainTabButton $active={mainTab === 'avatar'} onClick={() => setMainTab('avatar')}>👗 아바타 꾸미기</MainTabButton>
         <MainTabButton $active={mainTab === 'myroom'} onClick={() => setMainTab('myroom')}>🏠 마이룸 꾸미기</MainTabButton>
+        <MainTabButton $active={mainTab === 'petitem'} onClick={() => setMainTab('petitem')}>🐾 펫 아이템</MainTabButton>
       </MainTabContainer>
 
-      <ContentLayout>
-        <ItemSection>
-          <CategoryScroll>
-            {partCategories.map(cat => (
-              <CategoryButton key={cat} $active={activeTab === cat} onClick={() => setActiveTab(cat)}>
-                {translateCategory(cat)}
-              </CategoryButton>
-            ))}
-          </CategoryScroll>
-
-          <ItemGrid>
-            {paginatedItems.map(item => {
-              const isOwned = mainTab === 'avatar'
-                ? myPlayerData?.ownedParts?.includes(item.id)
-                : myPlayerData?.ownedMyRoomItems?.includes(item.id);
-
-              let isPreviewing = false;
-              if (mainTab === 'avatar' && previewConfig) {
-                if (item.category !== 'accessory') isPreviewing = previewConfig[item.category] === item.id;
-                else isPreviewing = previewConfig.accessories?.[item.slot] === item.id;
-              }
-
-              const now = new Date();
-              const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
-
+      {/* ===== 펫 아이템 탭 ===== */}
+      {mainTab === 'petitem' && (
+        <PetItemSection>
+          <PetItemGrid>
+            {Object.values(PET_ITEMS).map(item => {
+              const owned = myPlayerData?.petInventory?.[item.id] || 0;
               return (
-                <ItemCard key={item.id} $isPreviewing={isPreviewing} $isOwned={isOwned} onClick={() => handlePreview(item)}>
-                  {isSale && <SaleBadge>SALE</SaleBadge>}
-                  {isOwned && <OwnedBadge>보유중</OwnedBadge>}
-                  <ItemName>{item.displayName || item.id}</ItemName>
-                  <ItemImage src={item.src} $category={item.category} />
-                  <PriceTag $sale={isSale}>
-                    {isSale && <span className="original">{item.originalPrice}P</span>}
-                    <span>{isSale ? item.salePrice : item.price} P</span>
-                  </PriceTag>
-                </ItemCard>
+                <PetItemCard key={item.id}>
+                  <img src={item.icon} alt={item.name} style={{ width: '72px', height: '72px', objectFit: 'contain', marginBottom: '0.5rem' }} />
+                  <PetItemName>{item.name}</PetItemName>
+                  <PetItemDesc>{item.description}</PetItemDesc>
+                  <PetItemMeta>
+                    <span style={{ color: '#f59f00', fontWeight: '800' }}>{item.price} P</span>
+                    <span style={{ color: '#868e96', fontSize: '0.82rem' }}>보유 {owned}개</span>
+                  </PetItemMeta>
+                  <PetItemBuyRow>
+                    {[1, 3, 5].map(qty => (
+                      <PetItemBuyBtn
+                        key={qty}
+                        onClick={async () => {
+                          const totalCost = item.price * qty;
+                          if ((myPlayerData?.points || 0) < totalCost) return alert('포인트가 부족합니다.');
+                          if (!window.confirm(`${item.name} ${qty}개를 ${totalCost.toLocaleString()}P에 구매하시겠습니까?`)) return;
+                          try {
+                            await buyPetItem(item, qty);
+                            alert(`${item.name} ${qty}개 구매 완료! 🎉`);
+                          } catch (e) { alert(e.message); }
+                        }}
+                      >
+                        {qty}개 구매
+                      </PetItemBuyBtn>
+                    ))}
+                  </PetItemBuyRow>
+                </PetItemCard>
               );
             })}
-          </ItemGrid>
+          </PetItemGrid>
+        </PetItemSection>
+      )}
 
-          {totalPages > 1 && (
-            <Pagination>
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>&lt;</button>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button key={i + 1} className={currentPage === i + 1 ? 'active' : ''} onClick={() => setCurrentPage(i + 1)}>{i + 1}</button>
+      {/* ===== 아바타 / 마이룸 탭 ===== */}
+      {mainTab !== 'petitem' && (
+        <ContentLayout>
+          <ItemSection>
+            <CategoryScroll>
+              {partCategories.map(cat => (
+                <CategoryButton key={cat} $active={activeTab === cat} onClick={() => setActiveTab(cat)}>
+                  {translateCategory(cat)}
+                </CategoryButton>
               ))}
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>&gt;</button>
-            </Pagination>
+            </CategoryScroll>
+
+            <ItemGrid>
+              {paginatedItems.map(item => {
+                const isOwned = mainTab === 'avatar'
+                  ? myPlayerData?.ownedParts?.includes(item.id)
+                  : myPlayerData?.ownedMyRoomItems?.includes(item.id);
+
+                let isPreviewing = false;
+                if (mainTab === 'avatar' && previewConfig) {
+                  if (item.category !== 'accessory') isPreviewing = previewConfig[item.category] === item.id;
+                  else isPreviewing = previewConfig.accessories?.[item.slot] === item.id;
+                }
+
+                const now = new Date();
+                const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+
+                return (
+                  <ItemCard key={item.id} $isPreviewing={isPreviewing} $isOwned={isOwned} onClick={() => handlePreview(item)}>
+                    {isSale && <SaleBadge>SALE</SaleBadge>}
+                    {isOwned && <OwnedBadge>보유중</OwnedBadge>}
+                    <ItemName>{item.displayName || item.id}</ItemName>
+                    <ItemImage src={item.src} $category={item.category} />
+                    <PriceTag $sale={isSale}>
+                      {isSale && <span className="original">{item.originalPrice}P</span>}
+                      <span>{isSale ? item.salePrice : item.price} P</span>
+                    </PriceTag>
+                  </ItemCard>
+                );
+              })}
+            </ItemGrid>
+
+            {totalPages > 1 && (
+              <Pagination>
+                <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>&lt;</button>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <button key={i + 1} className={currentPage === i + 1 ? 'active' : ''} onClick={() => setCurrentPage(i + 1)}>{i + 1}</button>
+                ))}
+                <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>&gt;</button>
+              </Pagination>
+            )}
+          </ItemSection>
+
+          {mainTab === 'avatar' && (
+            <FittingRoom>
+              <FittingTitle>👕 피팅룸</FittingTitle>
+              <AvatarPreview>
+                {previewPartUrls.filter(src => !!src).map(src => (
+                  <PartLayer
+                    key={src}
+                    src={src}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                ))}
+              </AvatarPreview>
+
+              {newItemsToBuy.length > 0 && (
+                <CartSummary>
+                  <div style={{ fontWeight: '700', marginBottom: '0.5rem', color: '#343a40' }}>구매 예정 목록 ({newItemsToBuy.length})</div>
+                  <CartList>
+                    {newItemsToBuy.map(item => (
+                      <li key={item.id}>
+                        <span>{item.displayName || item.id}</span>
+                        <span className="price">{item.price} P</span>
+                      </li>
+                    ))}
+                  </CartList>
+                  <TotalPrice>
+                    <span>총 합계</span>
+                    <span className="cost">{totalCost.toLocaleString()} P</span>
+                  </TotalPrice>
+                </CartSummary>
+              )}
+
+              <FittingButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
+                {newItemsToBuy.length > 0 ? '구매하기' : '선택된 새 아이템 없음'}
+              </FittingButton>
+
+              {justPurchased ? (
+                <FittingButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</FittingButton>
+              ) : (
+                <FittingButton onClick={handleReset}>초기화</FittingButton>
+              )}
+            </FittingRoom>
           )}
-        </ItemSection>
-
-        {mainTab === 'avatar' && (
-          <FittingRoom>
-            <FittingTitle>👕 피팅룸</FittingTitle>
-            <AvatarPreview>
-              {previewPartUrls.map(src => <PartLayer key={src} src={src} />)}
-            </AvatarPreview>
-
-            {newItemsToBuy.length > 0 && (
-              <CartSummary>
-                <div style={{ fontWeight: '700', marginBottom: '0.5rem', color: '#343a40' }}>구매 예정 목록 ({newItemsToBuy.length})</div>
-                <CartList>
-                  {newItemsToBuy.map(item => (
-                    <li key={item.id}>
-                      <span>{item.displayName || item.id}</span>
-                      <span className="price">{item.price} P</span>
-                    </li>
-                  ))}
-                </CartList>
-                <TotalPrice>
-                  <span>총 합계</span>
-                  <span className="cost">{totalCost.toLocaleString()} P</span>
-                </TotalPrice>
-              </CartSummary>
-            )}
-
-            <FittingButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
-              {newItemsToBuy.length > 0 ? '구매하기' : '선택된 새 아이템 없음'}
-            </FittingButton>
-
-            {justPurchased ? (
-              <FittingButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</FittingButton>
-            ) : (
-              <FittingButton onClick={handleReset}>초기화</FittingButton>
-            )}
-          </FittingRoom>
-        )}
-      </ContentLayout>
+        </ContentLayout>
+      )} {/* mainTab !== 'petitem' 끝 */}
 
       {/* [수정] 통일된 스타일의 하단 버튼 */}
       <ButtonGroup>

@@ -11,7 +11,6 @@ import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
 import { petImageMap } from '../utils/petImageMap';
 import { filterProfanity } from '../utils/profanityFilter';
-import html2canvas from 'html2canvas';
 
 // --- Animations ---
 
@@ -615,23 +614,105 @@ function MyRoomPage() {
   const handleSaveLayout = async () => {
     if (!classId || !isMyRoom || !isEditing || !roomContainerRef.current) return;
     setIsLoadingSnapshot(true);
-    const avatarEl = roomContainerRef.current.querySelector('.player-avatar');
-    const petEl = roomContainerRef.current.querySelector('.player-pet');
-    if (avatarEl) avatarEl.style.display = 'none';
-    if (petEl) petEl.style.display = 'none';
+
     try {
-      const canvas = await html2canvas(roomContainerRef.current, { useCORS: true, scale: 2, backgroundColor: null });
-      const imageDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      // ★ html2canvas 대신 Canvas API로 직접 그리기 (구형 WebView CORS 문제 해결)
+      const container = roomContainerRef.current;
+      const W = container.offsetWidth;
+      const H = container.offsetHeight;
+      const SCALE = 2;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = W * SCALE;
+      canvas.height = H * SCALE;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(SCALE, SCALE);
+
+      // fetch → blob → ObjectURL 변환 헬퍼 (CORS 우회)
+      const loadImage = (src) => new Promise((resolve) => {
+        if (!src) return resolve(null);
+        // 로컬 asset은 직접 사용
+        if (!src.startsWith('http')) {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+          img.src = src;
+          return;
+        }
+        fetch(src, { mode: 'cors' })
+          .then(r => r.blob())
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+            img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+            img.src = url;
+          })
+          .catch(() => {
+            // fetch 실패 시 직접 로드 시도 (같은 origin 등)
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = src;
+          });
+      });
+
+      // 1. 배경 (base)
+      const bgImg = await loadImage(myRoomBg);
+      if (bgImg) ctx.drawImage(bgImg, 0, 0, W, H);
+
+      // 2. 하우스
+      if (appliedHouse?.src) {
+        const houseImg = await loadImage(appliedHouse.src);
+        if (houseImg) ctx.drawImage(houseImg, 0, 0, W, H);
+      }
+
+      // 3. 배경 오버레이
+      if (appliedBackground?.src) {
+        const bgOverImg = await loadImage(appliedBackground.src);
+        if (bgOverImg) ctx.drawImage(bgOverImg, 0, 0, W, H);
+      }
+
+      // 4. 가구/아이템 (zIndex 순 정렬)
+      const sortedItems = [...roomConfig.items].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      for (const item of sortedItems) {
+        const info = myRoomItems.find(i => i.id === item.itemId);
+        if (!info?.src) continue;
+        const itemImg = await loadImage(info.src);
+        if (!itemImg) continue;
+        const itemW = ((info.width || 15) / 100) * W;
+        const aspectRatio = itemImg.naturalHeight / itemImg.naturalWidth;
+        const itemH = itemW * aspectRatio;
+        const itemX = (item.left / 100) * W - itemW / 2;
+        const itemY = (item.top / 100) * H - itemH / 2;
+        ctx.save();
+        if (item.isFlipped) {
+          ctx.translate(itemX + itemW, itemY);
+          ctx.scale(-1, 1);
+          ctx.drawImage(itemImg, 0, 0, itemW, itemH);
+        } else {
+          ctx.drawImage(itemImg, itemX, itemY, itemW, itemH);
+        }
+        ctx.restore();
+      }
+
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
       const storageRef = ref(storage, `classes/${classId}/players/${playerId}/myRoomSnapshot.jpg`);
       await uploadString(storageRef, imageDataUrl, 'data_url');
       const downloadUrl = await getDownloadURL(storageRef);
       const downloadUrlWithCache = `${downloadUrl}?t=${Date.now()}`;
       await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig, myRoomSnapshotUrl: downloadUrlWithCache });
       setSnapshotUrl(downloadUrlWithCache);
-      setIsEditing(false); setSelectedItemId(null);
+      setIsEditing(false);
+      setSelectedItemId(null);
       alert('저장되었습니다! 📸');
-    } catch (e) { console.error(e); alert('저장 중 오류 발생'); }
-    finally { if (avatarEl) avatarEl.style.display = ''; if (petEl) petEl.style.display = ''; setIsLoadingSnapshot(false); }
+    } catch (e) {
+      console.error(e);
+      alert('저장 중 오류 발생: ' + e.message);
+    } finally {
+      setIsLoadingSnapshot(false);
+    }
   };
 
   // --- Handlers (Visitor Drag) ---

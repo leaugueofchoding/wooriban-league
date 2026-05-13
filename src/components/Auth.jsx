@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { auth, updateUserProfile, db, rejectBattleChallenge } from '../api/firebase.js';
 import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
-import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import styled from 'styled-components';
 import { petImageMap } from '../utils/petImageMap'; // [추가] 이미지 맵 import
 
@@ -371,6 +371,28 @@ function Auth({ user }) {
 
         try {
             const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
+
+            // ★ 실제 배틀이 시작되는 시점에 challenger의 dailyBattleCount 증가
+            const challengerId = battleChallenge.challenger.id;
+            const challengerRef = doc(db, 'classes', classId, 'players', challengerId);
+            const challengerSnap = await getDoc(challengerRef);
+            if (challengerSnap.exists()) {
+                const challengerData = challengerSnap.data();
+                const todayStr = new Date().toLocaleDateString();
+                const pets = JSON.parse(JSON.stringify(challengerData.pets || []));
+                const partnerPetIdx = pets.findIndex(p => p.id === challengerData.partnerPetId);
+                if (partnerPetIdx !== -1) {
+                    const pet = pets[partnerPetIdx];
+                    const currentCount = pet.lastBattleDate === todayStr ? (pet.dailyBattleCount || 0) : 0;
+                    pets[partnerPetIdx] = {
+                        ...pet,
+                        lastBattleDate: todayStr,
+                        dailyBattleCount: currentCount + 1,
+                    };
+                    await updateDoc(challengerRef, { pets });
+                }
+            }
+
             // ★ 여기가 핵심: DB 상태를 starting으로 바꿔야 게임이 시작됨 ★
             await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
             navigate(`/battle/${battleChallenge.challenger.id}`);
