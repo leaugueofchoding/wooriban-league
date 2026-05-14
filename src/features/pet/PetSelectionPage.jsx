@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useLeagueStore } from '@/store/leagueStore';
+import { useLeagueStore, useClassStore } from '@/store/leagueStore';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '@/api/firebase'; // db 추가
-import { doc, getDoc } from 'firebase/firestore'; // firestore 함수 추가
+import { doc, getDoc, getDocs, collection, query, where } from 'firebase/firestore'; // firestore 함수 추가
 import { petImageMap } from '@/utils/petImageMap';
 import { PET_DATA } from '@/features/pet/petData';
 
@@ -106,7 +106,8 @@ function PetSelectionPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(true); // DB 확인 로딩 상태
 
-  const { selectInitialPet, classId } = useLeagueStore(); // classId 가져오기
+  const { selectInitialPet } = useLeagueStore();
+  const { classId } = useClassStore(); // ★ classId는 useClassStore에 있음
   const navigate = useNavigate();
   const currentUser = auth.currentUser;
 
@@ -126,31 +127,38 @@ function PetSelectionPage() {
       if (!classId) return;
 
       try {
-        // Store 데이터가 아닌 Firestore 최신 데이터 조회
-        // (플레이어 ID는 보통 authUid와 동일하게 생성되므로 currentUser.uid 사용)
-        const playerRef = doc(db, 'classes', classId, 'players', currentUser.uid);
-        const playerSnap = await getDoc(playerRef);
+        // ★ store의 players에서 authUid로 실제 player를 찾아 ID로 조회
+        const { players } = useLeagueStore.getState();
+        const myPlayer = players.find(p => p.authUid === currentUser.uid);
 
-        if (playerSnap.exists()) {
-          const playerData = playerSnap.data();
-
-          // [핵심] partnerPetId가 있더라도 실제 pets 배열이 비어있으면 펫이 없는 것으로 간주합니다.
-          // DB에서 pets 필드를 삭제해도 찌꺼기 partnerPetId가 남아 무한 루프가 도는 것을 방지합니다.
-          const hasRealPet = playerData.pets && Array.isArray(playerData.pets) && playerData.pets.length > 0;
-
+        if (myPlayer) {
+          // store 데이터로 바로 판단 (빠른 경로)
+          const hasRealPet = myPlayer.pets && Array.isArray(myPlayer.pets) && myPlayer.pets.length > 0;
           if (hasRealPet) {
-            alert("이미 파트너 펫이 있습니다! 마이펫 페이지로 이동합니다.");
+            navigate('/pet', { replace: true });
+            return;
+          }
+          setIsCheckingStatus(false);
+          return;
+        }
+
+        // store에 아직 없으면 Firestore 직접 조회 (fallback)
+        const playersRef = collection(db, 'classes', classId, 'players');
+        const q = query(playersRef, where('authUid', '==', currentUser.uid));
+        const querySnap = await getDocs(q);
+
+        if (!querySnap.empty) {
+          const playerData = querySnap.docs[0].data();
+          const hasRealPet = playerData.pets && Array.isArray(playerData.pets) && playerData.pets.length > 0;
+          if (hasRealPet) {
             navigate('/pet', { replace: true });
             return;
           }
         }
-        // 펫이 없으면 선택 페이지 유지
         setIsCheckingStatus(false);
 
       } catch (error) {
         console.error("펫 상태 확인 중 오류:", error);
-        // 에러 발생 시 일단 선택 페이지를 보여주되 알림
-        // alert("정보를 불러오는 중 오류가 발생했습니다.");
         setIsCheckingStatus(false);
       }
     };

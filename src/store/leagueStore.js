@@ -1386,8 +1386,18 @@ export const useLeagueStore = create((set, get) => ({
         set({ showAttendanceModal: false });
     },
 
-    clearPointAdjustmentNotification: () => {
+    clearPointAdjustmentNotification: async () => {
+        const notification = get().pointAdjustmentNotification;
         set({ pointAdjustmentNotification: null });
+        // ★ DB에서 isRead 처리 → onSnapshot 재트리거 시 팝업 반복 방지
+        if (notification?.id) {
+            try {
+                const notiRef = doc(db, 'notifications', notification.id);
+                await updateDoc(notiRef, { isRead: true });
+            } catch (e) {
+                console.warn('알림 읽음 처리 실패:', e);
+            }
+        }
     },
 
     standingsData: () => {

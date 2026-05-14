@@ -180,7 +180,7 @@ const FIXED_CATEGORIES = ['face', 'eyes', 'nose', 'mouth', 'hair', 'top', 'botto
 function AvatarEditPage() {
     const navigate = useNavigate();
     const { classId } = useClassStore();
-    const { players, avatarParts, fetchInitialData } = useLeagueStore();
+    const { players, avatarParts } = useLeagueStore();
     const currentUser = auth.currentUser;
     const [avatarConfig, setAvatarConfig] = useState({});
     const [isSaving, setIsSaving] = useState(false);
@@ -309,7 +309,6 @@ function AvatarEditPage() {
             }
 
             alert("✨ 아바타가 저장되었습니다!");
-            await fetchInitialData();
             navigate(`/profile/${myPlayerData.id}`);
         } catch (error) {
             console.error("아바타 저장 오류:", error);
@@ -351,6 +350,7 @@ function AvatarEditPage() {
                             {selectedPartUrls.filter(src => !!src).map(src => (
                                 <PartImage key={src} src={src} crossOrigin="anonymous" onError={e => { e.target.style.display = 'none'; }} />
                             ))}
+
                         </AvatarCaptureArea>
                     </AvatarFrame>
                 </AvatarSection>

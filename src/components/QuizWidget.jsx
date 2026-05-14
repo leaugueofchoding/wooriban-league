@@ -81,7 +81,7 @@ function QuizWidget() {
             const isCorrect = await submitQuizAnswer(dailyQuiz.id, finalAnswer);
 
             if (isCorrect) {
-                setFeedback({ isCorrect: true, msg: `정답입니다! 50P를 획득했습니다. 🎉` });
+                setFeedback({ isCorrect: true, msg: `정답입니다! 🎉` });
             } else {
                 setFeedback({ isCorrect: false, msg: `아쉽네요. 정답은 '${dailyQuiz.answer}' 입니다.` });
             }

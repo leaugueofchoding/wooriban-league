@@ -1019,7 +1019,12 @@ function MyRoomPage() {
                     <CommentBody>{comment.text}</CommentBody>
                     <CommentActions>
                       {isMyRoom && <button onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}>답글</button>}
-                      <button onClick={() => likeMyRoomComment(classId, playerId, comment.id, myPlayerData.id)} style={{ color: comment.likes.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
+                      <button onClick={async () => {
+                        try {
+                          await likeMyRoomComment(classId, playerId, comment.id, myPlayerData.id);
+                          await fetchRoomSocialData(playerId);
+                        } catch (e) { alert('좋아요 처리 중 오류가 발생했습니다.'); }
+                      }} style={{ color: comment.likes.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
                         {comment.likes.includes(myPlayerData?.id) ? '❤️' : '🤍'} {comment.likes.length}
                       </button>
                       {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId) && (
@@ -1043,7 +1048,12 @@ function MyRoomPage() {
                       </CommentHeader>
                       <CommentBody>{reply.text}</CommentBody>
                       <CommentActions>
-                        <button onClick={() => likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id)} style={{ color: reply.likes?.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
+                        <button onClick={async () => {
+                          try {
+                            await likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id);
+                            await fetchRoomSocialData(playerId);
+                          } catch (e) { alert('좋아요 처리 중 오류가 발생했습니다.'); }
+                        }} style={{ color: reply.likes?.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
                           {reply.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'} {reply.likes?.length || 0}
                         </button>
                         {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === reply.replierId) && (

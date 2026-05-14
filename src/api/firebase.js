@@ -2035,7 +2035,10 @@ export async function likeMyRoomReply(classId, roomId, commentId, reply, likerId
   const commentRef = doc(db, "classes", classId, "players", roomId, "myRoomComments", commentId);
   const roomOwnerRef = doc(db, "classes", classId, "players", roomId);
 
-  return runTransaction(db, async (transaction) => {
+  let shouldReward = false;
+  let roomOwnerName = '';
+
+  await runTransaction(db, async (transaction) => {
     const commentSnap = await transaction.get(commentRef);
     const roomOwnerSnap = await transaction.get(roomOwnerRef);
 
@@ -2049,23 +2052,29 @@ export async function likeMyRoomReply(classId, roomId, commentId, reply, likerId
     );
 
     if (replyIndex === -1) throw new Error("답글을 찾을 수 없습니다.");
-    if (replies[replyIndex].likes.includes(likerId)) throw new Error("이미 '좋아요'를 누른 답글입니다.");
-
-    transaction.update(roomOwnerRef, { points: increment(15), totalLikes: increment(1) });
-    replies[replyIndex].likes.push(likerId);
-    transaction.update(commentRef, { replies: replies });
+    if (replies[replyIndex].likes?.includes(likerId)) throw new Error("이미 '좋아요'를 누른 답글입니다.");
 
     const roomOwnerData = roomOwnerSnap.data();
-    await addPointHistory(classId, roomId, roomOwnerData.name, 15, "내 답글 '좋아요' 보상");
+    roomOwnerName = roomOwnerData.name;
 
-    await createOrUpdateAggregatedNotification(
-      roomId,
-      "reply_like",
-      15,
-      "❤️ 내 답글에 '좋아요'를 받았어요!",
-      "답글 '좋아요' 보상으로 {amount}P를 획득했습니다!"
-    );
+    // ★ 방 주인의 답글에 하트를 누른 경우에만 보상
+    const isReplyByRoomOwner = replies[replyIndex].replierId === roomId;
+    if (isReplyByRoomOwner) {
+      transaction.update(roomOwnerRef, { points: increment(15), totalLikes: increment(1) });
+      shouldReward = true;
+    }
+
+    replies[replyIndex] = {
+      ...replies[replyIndex],
+      likes: [...(replies[replyIndex].likes || []), likerId]
+    };
+    transaction.update(commentRef, { replies });
   });
+
+  // ★ transaction 완료 후 포인트 내역/알림 처리 (transaction 밖에서 처리)
+  if (shouldReward) {
+    await addPointHistory(classId, roomId, roomOwnerName, 15, "내 답글 '좋아요' 보상");
+  }
 }
 
 
