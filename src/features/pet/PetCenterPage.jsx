@@ -442,7 +442,7 @@ function PetCenterPage() {
       <TabContainer>
         <TabButton $active={activeTab === 'clinic'} onClick={() => setActiveTab('clinic')}>💉 치료소</TabButton>
         <TabButton $active={activeTab === 'shop'} onClick={() => setActiveTab('shop')}>🛍️ 상점</TabButton>
-        <TabButton $active={activeTab === 'skill'} onClick={() => setActiveTab('skill')}>💪 스킬 관리</TabButton>
+        {/* [수정 이슈 8] 스킬 관리 탭 삭제 — 펫 페이지 내 스킬 관리와 중복 */}
       </TabContainer>
 
       <ContentBox>
@@ -529,54 +529,6 @@ function PetCenterPage() {
           </>
         )}
 
-        {activeTab === 'skill' && (
-          <>
-            <ShopHeader>
-              <h2>스킬 관리</h2>
-              <p>진화 단계에 따라 장착 가능한 스킬 수가 늘어납니다. (1단: 2개, 2단: 3개, 3단: 4개)</p>
-            </ShopHeader>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-              {myPlayerData?.pets?.map(pet => {
-                // appearanceId에서 진화 단계(lv1, lv2, lv3 등) 추출
-                const stage = parseInt(pet.appearanceId?.match(/_lv(\d)/)?.[1] || '1');
-                const maxSlots = stage === 1 ? 2 : (stage === 2 ? 3 : 4);
-                const equippedCount = pet.equippedSkills?.length || 0;
-
-                return (
-                  <div key={pet.id} style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '16px', border: '1px solid #dee2e6' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                      <PetImage src={petImageMap[`${pet.appearanceId}_idle`]} alt={pet.name} style={{ width: '60px', height: '60px', margin: 0, filter: 'none' }} />
-                      <div>
-                        <h3 style={{ margin: '0 0 0.5rem 0', color: '#343a40' }}>{pet.name} <span style={{ fontSize: '0.9rem', color: '#868e96' }}>(진화 {stage}단계)</span></h3>
-                        <p style={{ margin: 0, color: '#495057', fontWeight: 'bold' }}>장착된 스킬: <span style={{ color: '#339af0' }}>{equippedCount}</span> / {maxSlots}개</p>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-                      {pet.skills?.map(skillId => {
-                        const isEquipped = pet.equippedSkills?.includes(skillId);
-                        const skillData = SKILLS[skillId.toUpperCase()];
-                        if (!skillData) return null;
-
-                        return (
-                          <SkillCard
-                            key={skillId}
-                            $isEquipped={isEquipped}
-                            onClick={() => handleToggleSkill(pet, skillId, isEquipped, maxSlots)}
-                          >
-                            <div className="skill-name">{skillData.name} <span className="cost">({skillData.cost}SP)</span></div>
-                            <div className="skill-desc">{skillData.description}</div>
-                            <div className="status">{isEquipped ? '✔️ 장착됨' : '장착하기'}</div>
-                          </SkillCard>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
       </ContentBox>
 
       <ButtonGroup>

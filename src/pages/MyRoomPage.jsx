@@ -780,8 +780,9 @@ function MyRoomPage() {
     try { await addMyRoomComment(classId, playerId, { commenterId: myPlayerData.id, commenterName: myPlayerData.name, text: filterProfanity(newComment) }); setNewComment(""); fetchRoomSocialData(playerId); } catch (e) { alert(e.message); }
   };
   const handleLikeRoom = async () => {
+    if (!myPlayerData) return alert('로그인 후 이용해주세요.');
     if (hasLikedThisMonth) return;
-    try { await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name); setLikes(prev => [...prev, { id: myPlayerData.id, lastLikedMonth: new Date().toISOString().slice(0, 7) }]); } catch (e) { alert("좋아요 실패"); }
+    try { await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name); setLikes(prev => [...prev, { id: myPlayerData.id, lastLikedMonth: new Date().toISOString().slice(0, 7) }]); } catch (e) { alert(`좋아요 처리 중 오류가 발생했습니다: ${e.message}`); }
   };
 
   const handleRandomVisit = () => {

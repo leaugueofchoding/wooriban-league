@@ -32,7 +32,8 @@ function PendingMissionWidget({ setModalImageSrc }) {
         if (!classId) return;
 
         const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
-        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "desc"));
+        // [수정 이슈 5] 오래된 미션부터 위에 쌓이도록 asc 정렬 (기존 desc → asc)
+        const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "asc"));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const submissions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -51,12 +52,11 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const handlePrev = () => setSelectedSubmissionIndex(prev => (prev > 0 ? prev - 1 : prev));
 
     const handleActionInModal = (actedSubmissionId) => {
+        // [수정 이슈 4] 승인/반려 후 자동으로 다음 미션으로 이동하지 않음.
+        // 모달 내 StatusMessage가 표시되고, 사용자가 직접 ◀▶ 화살표로 이동.
+        // 처리된 항목은 목록에서 제거하되 현재 인덱스를 유지(다음 항목이 같은 자리로 올라옴).
         setPendingSubmissions(prev => prev.filter(sub => sub.id !== actedSubmissionId));
-        setSelectedSubmissionIndex(prev => {
-            if (prev === null) return null;
-            if (prev >= pendingSubmissions.length - 2) return null;
-            return prev;
-        });
+        // 인덱스는 그대로 유지 (목록이 줄어들면 자연스럽게 다음 항목이 보임)
     };
 
     const handleAction = async (action, submission, reward) => {

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, db, getApprovedSubmissions, addMissionComment, toggleSubmissionAdminVisibility, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, where } from "firebase/firestore";
 import { Link } from 'react-router-dom';
 import CommentThread from '../components/CommentThread';
 import ImageModal from '../components/ImageModal';
@@ -485,370 +485,381 @@ const LoadMoreButton = styled.button`
 `;
 
 const getSafeKeyFromUrl = (url) => {
-    try {
-        return btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    } catch (e) {
-        return url.replace(/[^a-zA-Z0-9]/g, '');
-    }
+  try {
+    return btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  } catch (e) {
+    return url.replace(/[^a-zA-Z0-9]/g, '');
+  }
 };
 
 function MissionGalleryPage() {
-    const { classId } = useClassStore();
-    const { players, missions, archivedMissions } = useLeagueStore();
-    const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
+  const { classId } = useClassStore();
+  const { players, missions, archivedMissions } = useLeagueStore();
+  const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
-    const [allSubmissions, setAllSubmissions] = useState([]);
-    const [visibleCount, setVisibleCount] = useState(9);
-    const ITEMS_PER_PAGE = 9;
+  const [allSubmissions, setAllSubmissions] = useState([]);
+  const [visibleCount, setVisibleCount] = useState(9);
+  const ITEMS_PER_PAGE = 9;
 
-    const [isLoading, setIsLoading] = useState(true);
-    const [selectedMission, setSelectedMission] = useState('all');
-    const [selectedSubmission, setSelectedSubmission] = useState(null);
-    const [modalImageSrc, setModalImageSrc] = useState(null);
-    const [comments, setComments] = useState([]);
-    const [newComment, setNewComment] = useState("");
-    const [rotations, setRotations] = useState({});
-    const [isFilterExpanded, setIsFilterExpanded] = useState(false); // [추가] 필터 확장 상태
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedMission, setSelectedMission] = useState('all');
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [modalImageSrc, setModalImageSrc] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState("");
+  const [rotations, setRotations] = useState({});
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false); // [추가] 필터 확장 상태
 
-    const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
+  const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
 
-    useEffect(() => {
-        const fetchAllApprovedSubmissions = async () => {
-            if (!classId || allMissionsList.length === 0) return;
-            setIsLoading(true);
-            const approvedSubmissions = await getApprovedSubmissions(classId);
-            setAllSubmissions(approvedSubmissions);
-            setIsLoading(false);
-        };
-        fetchAllApprovedSubmissions();
-    }, [allMissionsList, classId]);
-
-    useEffect(() => {
-        if (selectedSubmission && classId) {
-            setRotations(selectedSubmission.rotations || {});
-            const commentsRef = collection(db, "classes", classId, "missionSubmissions", selectedSubmission.id, "comments");
-            const q = query(commentsRef, orderBy("createdAt", "asc"));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-            return () => unsubscribe();
-        }
-    }, [selectedSubmission, classId]);
-
-    const publiclyVisibleSubmissions = useMemo(() => {
-        if (allMissionsList.length === 0) return [];
-
-        return allSubmissions.filter(sub => {
-            const mission = allMissionsList.find(m => m.id === sub.missionId);
-            if (!mission) return false;
-            if (sub.adminHidden) return false;
-            if (sub.isPublic === false) return false;
-            if (sub.isPublic === true) return true;
-            if (sub.isPublic === undefined) {
-                return !mission.defaultPrivate;
-            }
-            return false;
-        });
-    }, [allSubmissions, allMissionsList]);
-
-    const allSelectableMissions = useMemo(() => {
-        if (publiclyVisibleSubmissions.length === 0) return [];
-        const publicMissionIds = new Set(publiclyVisibleSubmissions.map(sub => sub.missionId));
-        return allMissionsList
-            .filter(mission => publicMissionIds.has(mission.id))
-            .sort((a, b) => a.title.localeCompare(b.title));
-    }, [allMissionsList, publiclyVisibleSubmissions]);
-
-    // [수정] 필터 표시 개수 제한 로직
-    const visibleFilters = useMemo(() => {
-        if (isFilterExpanded) return allSelectableMissions;
-        return allSelectableMissions.slice(0, 8); // 기본 8개만 표시
-    }, [allSelectableMissions, isFilterExpanded]);
-
-    const hotSubmissions = useMemo(() => {
-        return [...publiclyVisibleSubmissions]
-            .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
-            .slice(0, 3);
-    }, [publiclyVisibleSubmissions]);
-
-    const filteredSubmissions = useMemo(() => {
-        if (selectedMission === 'all') return publiclyVisibleSubmissions;
-        return publiclyVisibleSubmissions.filter(sub => sub.missionId === selectedMission);
-    }, [publiclyVisibleSubmissions, selectedMission]);
-
-    const displayedSubmissions = useMemo(() => {
-        return filteredSubmissions.slice(0, visibleCount);
-    }, [filteredSubmissions, visibleCount]);
-
-    const handleLoadMore = () => {
-        setVisibleCount(prevCount => prevCount + ITEMS_PER_PAGE);
-    };
-
-    const handleAdminToggleVisibility = async (submission) => {
-        if (!classId) return;
-        const action = submission.adminHidden ? "표시" : "숨김";
-        if (window.confirm(`이 게시물을 갤러리에서 ${action} 처리하시겠습니까?`)) {
-            await toggleSubmissionAdminVisibility(classId, submission.id);
-            const updatedSubmission = { ...submission, adminHidden: !submission.adminHidden };
-            setAllSubmissions(prev => prev.map(s => s.id === submission.id ? updatedSubmission : s));
-            setSelectedSubmission(updatedSubmission);
-        }
-    };
-
-    const handleCommentSubmit = async () => {
-        if (!classId || !newComment.trim() || !myPlayerData) return;
-
-        const filteredText = filterProfanity(newComment);
-
-        const student = players.find(p => p.id === selectedSubmission.studentId);
-        await addMissionComment(
-            classId,
-            selectedSubmission.id,
-            { commenterId: myPlayerData.id, commenterName: myPlayerData.name, commenterRole: myPlayerData.role, text: filteredText },
-            student?.authUid,
-            getMissionTitle(selectedSubmission.missionId)
-        );
-        setNewComment("");
-    };
-
-    const handleLikeSubmission = async (e) => {
-        e.stopPropagation();
-        if (!classId || !myPlayerData) return;
-        await toggleSubmissionLike(classId, selectedSubmission.id, myPlayerData.id);
-        const newLikes = selectedSubmission.likes?.includes(myPlayerData.id)
-            ? selectedSubmission.likes.filter(id => id !== myPlayerData.id)
-            : [...(selectedSubmission.likes || []), myPlayerData.id];
-        const updatedSubmission = { ...selectedSubmission, likes: newLikes };
-        setAllSubmissions(prev => prev.map(s => s.id === selectedSubmission.id ? updatedSubmission : s));
-        setSelectedSubmission(updatedSubmission);
-    };
-
-    const handleRotate = async (url) => {
-        if (!classId) return;
-        try {
-            await toggleSubmissionImageRotation(classId, selectedSubmission.id, url);
-            const imageKey = getSafeKeyFromUrl(url);
-            const newRotation = ((rotations[imageKey] || 0) + 90) % 360;
-
-            const updatedRotations = { ...rotations, [imageKey]: newRotation };
-            setRotations(updatedRotations);
-
-            const updatedSubmission = { ...selectedSubmission, rotations: updatedRotations };
-            setSelectedSubmission(updatedSubmission);
-            setAllSubmissions(prev => prev.map(s => s.id === selectedSubmission.id ? updatedSubmission : s));
-
-        } catch (error) {
-            console.error("Rotation update failed: ", error);
-            alert("이미지 회전 정보 저장에 실패했습니다.");
-        }
-    };
-
-    const getPlayerName = (studentId) => players.find(p => p.id === studentId)?.name || '알 수 없음';
-    const getMissionTitle = (missionId) => allMissionsList.find(m => m.id === missionId)?.title || '알 수 없음';
-
-    // [수정] 카드 이미지 or 텍스트 판별 함수
-    const getCardImage = (sub) => {
-        if (sub.photoUrls && sub.photoUrls.length > 0) return sub.photoUrls[0];
-        if (sub.photoUrl) return sub.photoUrl;
-        return null;
-    };
-
-    if (isLoading) {
-        return <Wrapper style={{ textAlign: 'center', marginTop: '3rem', color: '#adb5bd' }}>갤러리를 불러오는 중입니다... 🎨</Wrapper>;
-    }
-
-    const canRotateSelected = myPlayerData?.role === 'admin' || myPlayerData?.id === selectedSubmission?.studentId;
-    const hasPhotos = selectedSubmission?.photoUrls && selectedSubmission.photoUrls.length > 0;
-
-    return (
-        <>
-            <Wrapper>
-                <Header>
-                    <Title>🖼️ 미션 갤러리</Title>
-                    <SubTitle>친구들의 멋진 활동을 감상하고 하트를 눌러주세요!</SubTitle>
-                </Header>
-
-                {hotSubmissions.length > 0 && (
-                    <>
-                        <SectionTitle>🔥 주간 인기 포토</SectionTitle>
-                        <GalleryGrid>
-                            {hotSubmissions.map(sub => (
-                                <SubmissionCard key={sub.id} onClick={() => setSelectedSubmission(sub)}>
-                                    <CardImageWrapper $hasImage={!!getCardImage(sub)}>
-                                        {getCardImage(sub) ? (
-                                            <CardImage style={{ backgroundImage: `url(${getCardImage(sub)})` }} />
-                                        ) : (
-                                            <CardTextPreview>{sub.text}</CardTextPreview>
-                                        )}
-                                        <LikeBadge>❤️ {sub.likes?.length || 0}</LikeBadge>
-                                    </CardImageWrapper>
-                                    <CardContent>
-                                        <CardTitle>{getMissionTitle(sub.missionId)}</CardTitle>
-                                        <CardAuthor>
-                                            <span>{getPlayerName(sub.studentId)}</span>
-                                        </CardAuthor>
-                                    </CardContent>
-                                </SubmissionCard>
-                            ))}
-                        </GalleryGrid>
-                    </>
-                )}
-
-                <SectionTitle>✨ 전체 갤러리</SectionTitle>
-                <FilterWrapper>
-                    <FilterContainer>
-                        <FilterButton
-                            $active={selectedMission === 'all'}
-                            onClick={() => { setSelectedMission('all'); setVisibleCount(9); }}
-                        >
-                            전체 보기
-                        </FilterButton>
-                        {visibleFilters.map(mission => (
-                            <FilterButton
-                                key={mission.id}
-                                $active={selectedMission === mission.id}
-                                onClick={() => { setSelectedMission(mission.id); setVisibleCount(9); }}
-                            >
-                                {mission.title}
-                            </FilterButton>
-                        ))}
-                    </FilterContainer>
-                    {allSelectableMissions.length > 8 && (
-                        <ExpandButton onClick={() => setIsFilterExpanded(!isFilterExpanded)}>
-                            {isFilterExpanded ? '접기 ▲' : '더 많은 미션 보기 ▼'}
-                        </ExpandButton>
-                    )}
-                </FilterWrapper>
-
-                <GalleryGrid>
-                    {displayedSubmissions.length > 0 ? displayedSubmissions.map(sub => (
-                        <SubmissionCard key={sub.id} onClick={() => setSelectedSubmission(sub)}>
-                            <CardImageWrapper $hasImage={!!getCardImage(sub)}>
-                                {getCardImage(sub) ? (
-                                    <CardImage style={{ backgroundImage: `url(${getCardImage(sub)})` }} />
-                                ) : (
-                                    // [수정] 텍스트 미리보기 (회색박스 제거)
-                                    <CardTextPreview>{sub.text}</CardTextPreview>
-                                )}
-                                {(sub.likes?.length || 0) > 0 && <LikeBadge>❤️ {sub.likes?.length}</LikeBadge>}
-                            </CardImageWrapper>
-                            <CardContent>
-                                <CardTitle>{getMissionTitle(sub.missionId)}</CardTitle>
-                                <CardAuthor>
-                                    <span>{getPlayerName(sub.studentId)}</span>
-                                </CardAuthor>
-                            </CardContent>
-                        </SubmissionCard>
-                    )) : <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', color: '#adb5bd' }}>등록된 게시물이 없습니다.</div>}
-                </GalleryGrid>
-
-                {filteredSubmissions.length > visibleCount && (
-                    <div style={{ textAlign: 'center' }}>
-                        <LoadMoreButton onClick={handleLoadMore}>더 보기</LoadMoreButton>
-                    </div>
-                )}
-
-                <div style={{ textAlign: 'center' }}>
-                    <ExitButton to="/">홈으로 돌아가기</ExitButton>
-                </div>
-            </Wrapper>
-
-            {selectedSubmission && (
-                <ModalBackground onClick={() => setSelectedSubmission(null)}>
-                    <ModalContainer onClick={e => e.stopPropagation()}>
-                        <ModalHeader>
-                            <div>
-                                <h2>{getMissionTitle(selectedSubmission.missionId)}</h2>
-                                <p style={{ margin: 0, fontSize: '0.9rem', color: '#868e96' }}>by {getPlayerName(selectedSubmission.studentId)}</p>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <LikeButton onClick={handleLikeSubmission}>
-                                    {selectedSubmission.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'}
-                                    <span>{selectedSubmission.likes?.length || 0}</span>
-                                </LikeButton>
-                                {myPlayerData?.role === 'admin' && (
-                                    <AdminButton onClick={() => handleAdminToggleVisibility(selectedSubmission)} $isHidden={selectedSubmission.adminHidden}>
-                                        {selectedSubmission.adminHidden ? '표시하기' : '숨기기'}
-                                    </AdminButton>
-                                )}
-                                <button onClick={() => setSelectedSubmission(null)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
-                            </div>
-                        </ModalHeader>
-
-                        <ModalBody>
-                            {/* 왼쪽: 이미지 영역 OR 대왕 텍스트 영역 */}
-                            <ModalImageSection>
-                                {hasPhotos ? (
-                                    selectedSubmission.photoUrls.map((url, index) => {
-                                        const imageKey = getSafeKeyFromUrl(url);
-                                        const rotation = rotations[imageKey] || 0;
-                                        return (
-                                            <ImageContainer key={index}>
-                                                <img
-                                                    src={url}
-                                                    alt={`제출 이미지 ${index + 1}`}
-                                                    style={{ transform: `rotate(${rotation}deg)` }}
-                                                    onClick={() => setModalImageSrc({
-                                                        src: url,
-                                                        rotation: rotation,
-                                                        onRotate: canRotateSelected ? () => handleRotate(url) : null
-                                                    })}
-                                                />
-                                                {canRotateSelected && <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>}
-                                            </ImageContainer>
-                                        );
-                                    })
-                                ) : (
-                                    // [수정] 텍스트만 있는 경우 왼쪽 화면에 크게 표시
-                                    <TextOnlyDisplay>
-                                        {selectedSubmission.text}
-                                    </TextOnlyDisplay>
-                                )}
-                            </ModalImageSection>
-
-                            {/* 오른쪽: 정보 및 댓글 영역 */}
-                            <ModalInfoSection>
-                                {/* 사진이 있을 때만 본문 텍스트를 오른쪽에 작게 표시 (없으면 왼쪽 대왕 텍스트로 대체됨) */}
-                                {hasPhotos && selectedSubmission.text && <SubmissionText>{selectedSubmission.text}</SubmissionText>}
-
-                                <CommentList>
-                                    {comments.length > 0 ? comments.map(comment => (
-                                        <CommentThread
-                                            key={comment.id}
-                                            classId={classId}
-                                            submissionId={selectedSubmission.id}
-                                            comment={comment}
-                                            missionTitle={getMissionTitle(selectedSubmission.missionId)}
-                                            permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId }}
-                                        />
-                                    )) : <div style={{ textAlign: 'center', color: '#adb5bd', marginTop: '2rem' }}>첫 댓글을 남겨보세요!</div>}
-                                </CommentList>
-
-                                {myPlayerData && (
-                                    <CommentInputContainer>
-                                        <CommentTextarea
-                                            value={newComment}
-                                            onChange={e => setNewComment(e.target.value)}
-                                            placeholder="칭찬과 응원의 한마디! (엔터로 줄바꿈)"
-                                            rows="2"
-                                        />
-                                        <CommentSubmitButton onClick={handleCommentSubmit}>등록</CommentSubmitButton>
-                                    </CommentInputContainer>
-                                )}
-                            </ModalInfoSection>
-                        </ModalBody>
-                    </ModalContainer>
-                </ModalBackground>
-            )}
-
-            <ImageModal
-                src={modalImageSrc?.src}
-                rotation={modalImageSrc?.rotation}
-                onClose={() => setModalImageSrc(null)}
-                onRotate={modalImageSrc?.onRotate}
-            />
-        </>
+  useEffect(() => {
+    // [수정 이슈 2] 일회성 fetch → onSnapshot 실시간 구독으로 전환
+    // Firestore 쿼리 레벨에서 isPublic != false 조건 추가 (비공개 제출 즉시 제외)
+    if (!classId || allMissionsList.length === 0) return;
+    setIsLoading(true);
+    const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
+    const q = query(
+      submissionsRef,
+      where("status", "==", "approved"),
+      where("isPublic", "!=", false),
+      orderBy("isPublic"),          // where("isPublic","!=") 사용 시 orderBy 필요
+      orderBy("approvedAt", "desc")
     );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const subs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAllSubmissions(subs);
+      setIsLoading(false);
+    }, () => setIsLoading(false));
+    return () => unsubscribe();
+  }, [allMissionsList, classId]);
+
+  useEffect(() => {
+    if (selectedSubmission && classId) {
+      setRotations(selectedSubmission.rotations || {});
+      const commentsRef = collection(db, "classes", classId, "missionSubmissions", selectedSubmission.id, "comments");
+      const q = query(commentsRef, orderBy("createdAt", "asc"));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+      return () => unsubscribe();
+    }
+  }, [selectedSubmission, classId]);
+
+  const publiclyVisibleSubmissions = useMemo(() => {
+    if (allMissionsList.length === 0) return [];
+
+    return allSubmissions.filter(sub => {
+      const mission = allMissionsList.find(m => m.id === sub.missionId);
+      if (!mission) return false;
+      if (sub.adminHidden) return false;
+      if (sub.isPublic === false) return false;
+      if (sub.isPublic === true) return true;
+      if (sub.isPublic === undefined) {
+        return !mission.defaultPrivate;
+      }
+      return false;
+    });
+  }, [allSubmissions, allMissionsList]);
+
+  const allSelectableMissions = useMemo(() => {
+    if (publiclyVisibleSubmissions.length === 0) return [];
+    const publicMissionIds = new Set(publiclyVisibleSubmissions.map(sub => sub.missionId));
+    return allMissionsList
+      .filter(mission => publicMissionIds.has(mission.id))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [allMissionsList, publiclyVisibleSubmissions]);
+
+  // [수정] 필터 표시 개수 제한 로직
+  const visibleFilters = useMemo(() => {
+    if (isFilterExpanded) return allSelectableMissions;
+    return allSelectableMissions.slice(0, 8); // 기본 8개만 표시
+  }, [allSelectableMissions, isFilterExpanded]);
+
+  const hotSubmissions = useMemo(() => {
+    return [...publiclyVisibleSubmissions]
+      .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
+      .slice(0, 3);
+  }, [publiclyVisibleSubmissions]);
+
+  const filteredSubmissions = useMemo(() => {
+    if (selectedMission === 'all') return publiclyVisibleSubmissions;
+    return publiclyVisibleSubmissions.filter(sub => sub.missionId === selectedMission);
+  }, [publiclyVisibleSubmissions, selectedMission]);
+
+  const displayedSubmissions = useMemo(() => {
+    return filteredSubmissions.slice(0, visibleCount);
+  }, [filteredSubmissions, visibleCount]);
+
+  const handleLoadMore = () => {
+    setVisibleCount(prevCount => prevCount + ITEMS_PER_PAGE);
+  };
+
+  const handleAdminToggleVisibility = async (submission) => {
+    if (!classId) return;
+    const action = submission.adminHidden ? "표시" : "숨김";
+    if (window.confirm(`이 게시물을 갤러리에서 ${action} 처리하시겠습니까?`)) {
+      await toggleSubmissionAdminVisibility(classId, submission.id);
+      const updatedSubmission = { ...submission, adminHidden: !submission.adminHidden };
+      setAllSubmissions(prev => prev.map(s => s.id === submission.id ? updatedSubmission : s));
+      setSelectedSubmission(updatedSubmission);
+    }
+  };
+
+  const handleCommentSubmit = async () => {
+    if (!classId || !newComment.trim() || !myPlayerData) return;
+
+    const filteredText = filterProfanity(newComment);
+
+    const student = players.find(p => p.id === selectedSubmission.studentId);
+    await addMissionComment(
+      classId,
+      selectedSubmission.id,
+      { commenterId: myPlayerData.id, commenterName: myPlayerData.name, commenterRole: myPlayerData.role, text: filteredText },
+      student?.authUid,
+      getMissionTitle(selectedSubmission.missionId)
+    );
+    setNewComment("");
+  };
+
+  const handleLikeSubmission = async (e) => {
+    e.stopPropagation();
+    if (!classId || !myPlayerData) return;
+    await toggleSubmissionLike(classId, selectedSubmission.id, myPlayerData.id);
+    const newLikes = selectedSubmission.likes?.includes(myPlayerData.id)
+      ? selectedSubmission.likes.filter(id => id !== myPlayerData.id)
+      : [...(selectedSubmission.likes || []), myPlayerData.id];
+    const updatedSubmission = { ...selectedSubmission, likes: newLikes };
+    setAllSubmissions(prev => prev.map(s => s.id === selectedSubmission.id ? updatedSubmission : s));
+    setSelectedSubmission(updatedSubmission);
+  };
+
+  const handleRotate = async (url) => {
+    if (!classId) return;
+    try {
+      await toggleSubmissionImageRotation(classId, selectedSubmission.id, url);
+      const imageKey = getSafeKeyFromUrl(url);
+      const newRotation = ((rotations[imageKey] || 0) + 90) % 360;
+
+      const updatedRotations = { ...rotations, [imageKey]: newRotation };
+      setRotations(updatedRotations);
+
+      const updatedSubmission = { ...selectedSubmission, rotations: updatedRotations };
+      setSelectedSubmission(updatedSubmission);
+      setAllSubmissions(prev => prev.map(s => s.id === selectedSubmission.id ? updatedSubmission : s));
+
+    } catch (error) {
+      console.error("Rotation update failed: ", error);
+      alert("이미지 회전 정보 저장에 실패했습니다.");
+    }
+  };
+
+  const getPlayerName = (studentId) => players.find(p => p.id === studentId)?.name || '알 수 없음';
+  const getMissionTitle = (missionId) => allMissionsList.find(m => m.id === missionId)?.title || '알 수 없음';
+
+  // [수정] 카드 이미지 or 텍스트 판별 함수
+  const getCardImage = (sub) => {
+    if (sub.photoUrls && sub.photoUrls.length > 0) return sub.photoUrls[0];
+    if (sub.photoUrl) return sub.photoUrl;
+    return null;
+  };
+
+  if (isLoading) {
+    return <Wrapper style={{ textAlign: 'center', marginTop: '3rem', color: '#adb5bd' }}>갤러리를 불러오는 중입니다... 🎨</Wrapper>;
+  }
+
+  const canRotateSelected = myPlayerData?.role === 'admin' || myPlayerData?.id === selectedSubmission?.studentId;
+  const hasPhotos = selectedSubmission?.photoUrls && selectedSubmission.photoUrls.length > 0;
+
+  return (
+    <>
+      <Wrapper>
+        <Header>
+          <Title>🖼️ 미션 갤러리</Title>
+          <SubTitle>친구들의 멋진 활동을 감상하고 하트를 눌러주세요!</SubTitle>
+        </Header>
+
+        {hotSubmissions.length > 0 && (
+          <>
+            <SectionTitle>🔥 주간 인기 포토</SectionTitle>
+            <GalleryGrid>
+              {hotSubmissions.map(sub => (
+                <SubmissionCard key={sub.id} onClick={() => setSelectedSubmission(sub)}>
+                  <CardImageWrapper $hasImage={!!getCardImage(sub)}>
+                    {getCardImage(sub) ? (
+                      <CardImage style={{ backgroundImage: `url(${getCardImage(sub)})` }} />
+                    ) : (
+                      <CardTextPreview>{sub.text}</CardTextPreview>
+                    )}
+                    <LikeBadge>❤️ {sub.likes?.length || 0}</LikeBadge>
+                  </CardImageWrapper>
+                  <CardContent>
+                    <CardTitle>{getMissionTitle(sub.missionId)}</CardTitle>
+                    <CardAuthor>
+                      <span>{getPlayerName(sub.studentId)}</span>
+                    </CardAuthor>
+                  </CardContent>
+                </SubmissionCard>
+              ))}
+            </GalleryGrid>
+          </>
+        )}
+
+        <SectionTitle>✨ 전체 갤러리</SectionTitle>
+        {/* [수정 이슈 7] 미션 필터 버튼 + 더 많은 미션 보기 버튼 → 콤보박스로 교체 */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <select
+            value={selectedMission}
+            onChange={(e) => { setSelectedMission(e.target.value); setVisibleCount(9); }}
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              padding: '0.7rem 1rem',
+              fontSize: '1rem',
+              fontWeight: '600',
+              border: '2px solid #dee2e6',
+              borderRadius: '12px',
+              backgroundColor: '#f8f9fa',
+              color: '#495057',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value="all">전체 보기</option>
+            {allSelectableMissions.map(mission => (
+              <option key={mission.id} value={mission.id}>{mission.title}</option>
+            ))}
+          </select>
+        </div>
+
+        <GalleryGrid>
+          {displayedSubmissions.length > 0 ? displayedSubmissions.map(sub => (
+            <SubmissionCard key={sub.id} onClick={() => setSelectedSubmission(sub)}>
+              <CardImageWrapper $hasImage={!!getCardImage(sub)}>
+                {getCardImage(sub) ? (
+                  <CardImage style={{ backgroundImage: `url(${getCardImage(sub)})` }} />
+                ) : (
+                  // [수정] 텍스트 미리보기 (회색박스 제거)
+                  <CardTextPreview>{sub.text}</CardTextPreview>
+                )}
+                {(sub.likes?.length || 0) > 0 && <LikeBadge>❤️ {sub.likes?.length}</LikeBadge>}
+              </CardImageWrapper>
+              <CardContent>
+                <CardTitle>{getMissionTitle(sub.missionId)}</CardTitle>
+                <CardAuthor>
+                  <span>{getPlayerName(sub.studentId)}</span>
+                </CardAuthor>
+              </CardContent>
+            </SubmissionCard>
+          )) : <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', color: '#adb5bd' }}>등록된 게시물이 없습니다.</div>}
+        </GalleryGrid>
+
+        {filteredSubmissions.length > visibleCount && (
+          <div style={{ textAlign: 'center' }}>
+            <LoadMoreButton onClick={handleLoadMore}>더 보기</LoadMoreButton>
+          </div>
+        )}
+
+        <div style={{ textAlign: 'center' }}>
+          <ExitButton to="/">홈으로 돌아가기</ExitButton>
+        </div>
+      </Wrapper>
+
+      {selectedSubmission && (
+        <ModalBackground onClick={() => setSelectedSubmission(null)}>
+          <ModalContainer onClick={e => e.stopPropagation()}>
+            <ModalHeader>
+              <div>
+                <h2>{getMissionTitle(selectedSubmission.missionId)}</h2>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#868e96' }}>by {getPlayerName(selectedSubmission.studentId)}</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <LikeButton onClick={handleLikeSubmission}>
+                  {selectedSubmission.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'}
+                  <span>{selectedSubmission.likes?.length || 0}</span>
+                </LikeButton>
+                {myPlayerData?.role === 'admin' && (
+                  <AdminButton onClick={() => handleAdminToggleVisibility(selectedSubmission)} $isHidden={selectedSubmission.adminHidden}>
+                    {selectedSubmission.adminHidden ? '표시하기' : '숨기기'}
+                  </AdminButton>
+                )}
+                <button onClick={() => setSelectedSubmission(null)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
+              </div>
+            </ModalHeader>
+
+            <ModalBody>
+              {/* 왼쪽: 이미지 영역 OR 대왕 텍스트 영역 */}
+              <ModalImageSection>
+                {hasPhotos ? (
+                  selectedSubmission.photoUrls.map((url, index) => {
+                    const imageKey = getSafeKeyFromUrl(url);
+                    const rotation = rotations[imageKey] || 0;
+                    return (
+                      <ImageContainer key={index}>
+                        <img
+                          src={url}
+                          alt={`제출 이미지 ${index + 1}`}
+                          style={{ transform: `rotate(${rotation}deg)` }}
+                          onClick={() => setModalImageSrc({
+                            src: url,
+                            rotation: rotation,
+                            onRotate: canRotateSelected ? () => handleRotate(url) : null
+                          })}
+                        />
+                        {canRotateSelected && <RotateButton onClick={(e) => { e.stopPropagation(); handleRotate(url); }}>↻</RotateButton>}
+                      </ImageContainer>
+                    );
+                  })
+                ) : (
+                  // [수정] 텍스트만 있는 경우 왼쪽 화면에 크게 표시
+                  <TextOnlyDisplay>
+                    {selectedSubmission.text}
+                  </TextOnlyDisplay>
+                )}
+              </ModalImageSection>
+
+              {/* 오른쪽: 정보 및 댓글 영역 */}
+              <ModalInfoSection>
+                {/* 사진이 있을 때만 본문 텍스트를 오른쪽에 작게 표시 (없으면 왼쪽 대왕 텍스트로 대체됨) */}
+                {hasPhotos && selectedSubmission.text && <SubmissionText>{selectedSubmission.text}</SubmissionText>}
+
+                <CommentList>
+                  {comments.length > 0 ? comments.map(comment => (
+                    <CommentThread
+                      key={comment.id}
+                      classId={classId}
+                      submissionId={selectedSubmission.id}
+                      comment={comment}
+                      missionTitle={getMissionTitle(selectedSubmission.missionId)}
+                      permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId }}
+                    />
+                  )) : <div style={{ textAlign: 'center', color: '#adb5bd', marginTop: '2rem' }}>첫 댓글을 남겨보세요!</div>}
+                </CommentList>
+
+                {myPlayerData && (
+                  <CommentInputContainer>
+                    <CommentTextarea
+                      value={newComment}
+                      onChange={e => setNewComment(e.target.value)}
+                      placeholder="칭찬과 응원의 한마디! (엔터로 줄바꿈)"
+                      rows="2"
+                    />
+                    <CommentSubmitButton onClick={handleCommentSubmit}>등록</CommentSubmitButton>
+                  </CommentInputContainer>
+                )}
+              </ModalInfoSection>
+            </ModalBody>
+          </ModalContainer>
+        </ModalBackground>
+      )}
+
+      <ImageModal
+        src={modalImageSrc?.src}
+        rotation={modalImageSrc?.rotation}
+        onClose={() => setModalImageSrc(null)}
+        onRotate={modalImageSrc?.onRotate}
+      />
+    </>
+  );
 }
 
 export default MissionGalleryPage;

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore'; // useClassStore import
-import { auth, db, toggleSubmissionImageRotation } from '../api/firebase';
+import { auth, db, toggleSubmissionImageRotation, cancelMissionApproval } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import CommentThread from './CommentThread';
 
@@ -161,18 +161,28 @@ const getSafeKeyFromUrl = (url) => {
     }
 };
 
-function HistoryItem({ item, student, missionTitle, onImageClick }) {
-    const { players } = useLeagueStore();
-    const { classId } = useClassStore(); // classId 가져오기
+function HistoryItem({ item, student, missionTitle, missions, onImageClick, onRefresh }) {
+    const { players, missions: storeMissions } = useLeagueStore();
+    const { classId } = useClassStore();
     const [comments, setComments] = useState([]);
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const [rotations, setRotations] = useState(item.rotations || {});
+    const [isCancelling, setIsCancelling] = useState(false);
 
     const canRotate = myPlayerData?.role === 'admin' || myPlayerData?.id === student.id;
+    const isAdmin = myPlayerData?.role === 'admin';
+
+    // 이 제출에 해당하는 미션 정보 (차등 보상 여부 확인용)
+    const relatedMission = useMemo(() =>
+        storeMissions.find(m => m.id === item.missionId),
+        [storeMissions, item.missionId]
+    );
+    const isTieredReward = relatedMission?.rewards && relatedMission.rewards.length > 1;
+    const originalReward = item.approvedReward || relatedMission?.reward || 0;
 
     useEffect(() => {
         setRotations(item.rotations || {});
-        if (!classId) return; // classId 가드 추가
+        if (!classId) return;
 
         const commentsRef = collection(db, "classes", classId, "missionSubmissions", item.id, "comments");
         const q = query(commentsRef, orderBy("createdAt", "asc"));
@@ -193,20 +203,92 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
         }
     };
 
+    // [이슈 8] 승인 취소 핸들러
+    const handleCancelApproval = async () => {
+        if (!classId || !isAdmin) return;
+        if (!window.confirm(`'${missionTitle}' 미션 승인을 취소하고 ${originalReward}P를 회수하시겠습니까?`)) return;
+        setIsCancelling(true);
+        try {
+            await cancelMissionApproval(classId, item.id, originalReward, null);
+            alert('승인이 취소되었습니다. 포인트가 회수되었습니다.');
+            if (onRefresh) onRefresh();
+        } catch (e) {
+            alert(`취소 실패: ${e.message}`);
+        } finally {
+            setIsCancelling(false);
+        }
+    };
+
+    // [이슈 8] 차등 보상 정정 핸들러
+    const handleCorrectReward = async (newReward) => {
+        if (!classId || !isAdmin) return;
+        if (newReward === originalReward) return alert('현재 보상과 동일한 금액입니다.');
+        const diff = newReward - originalReward;
+        const diffText = diff > 0 ? `+${diff}P 추가 지급` : `${diff}P 회수`;
+        if (!window.confirm(`보상을 ${originalReward}P → ${newReward}P로 정정합니다.\n(${diffText})`)) return;
+        setIsCancelling(true);
+        try {
+            await cancelMissionApproval(classId, item.id, originalReward, newReward);
+            alert(`보상이 ${newReward}P로 정정되었습니다.`);
+            if (onRefresh) onRefresh();
+        } catch (e) {
+            alert(`정정 실패: ${e.message}`);
+        } finally {
+            setIsCancelling(false);
+        }
+    };
+
     const formatDate = (timestamp) => {
         if (!timestamp?.toDate) return '날짜 정보 없음';
         return timestamp.toDate().toLocaleString('ko-KR');
     };
 
     const handleImageClick = (imageData) => {
-        if (onImageClick) {
-            onImageClick(imageData);
-        }
+        if (onImageClick) onImageClick(imageData);
     };
 
     return (
         <HistoryItemWrapper>
-            <HistoryHeader>{formatDate(item.approvedAt || item.requestedAt)} 제출</HistoryHeader>
+            <HistoryHeader>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span>
+                        {formatDate(item.approvedAt || item.requestedAt)} 제출
+                        {item.status === 'approved' && (
+                            <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', background: '#d3f9d8', color: '#2f9e44', padding: '2px 7px', borderRadius: '6px', fontWeight: 700 }}>
+                                승인완료 ({originalReward}P)
+                            </span>
+                        )}
+                    </span>
+                    {/* [이슈 8] 관리자 전용 승인 취소 / 보상 정정 버튼 */}
+                    {isAdmin && item.status === 'approved' && (
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {isTieredReward ? (
+                                <>
+                                    <span style={{ fontSize: '0.8rem', color: '#868e96', alignSelf: 'center' }}>보상 정정:</span>
+                                    {relatedMission.rewards.map(r => (
+                                        <button
+                                            key={r}
+                                            onClick={() => handleCorrectReward(r)}
+                                            disabled={isCancelling}
+                                            style={{ padding: '3px 8px', fontSize: '0.78rem', fontWeight: 700, border: `1px solid ${r === originalReward ? '#adb5bd' : '#339af0'}`, borderRadius: '6px', background: r === originalReward ? '#f1f3f5' : '#e7f5ff', color: r === originalReward ? '#adb5bd' : '#1c7ed6', cursor: r === originalReward ? 'not-allowed' : 'pointer' }}
+                                        >
+                                            {r}P
+                                        </button>
+                                    ))}
+                                    <span style={{ color: '#dee2e6' }}>|</span>
+                                </>
+                            ) : null}
+                            <button
+                                onClick={handleCancelApproval}
+                                disabled={isCancelling}
+                                style={{ padding: '3px 10px', fontSize: '0.78rem', fontWeight: 700, border: '1px solid #fa5252', borderRadius: '6px', background: '#fff5f5', color: '#fa5252', cursor: 'pointer' }}
+                            >
+                                {isCancelling ? '처리중...' : '↩️ 승인 취소'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </HistoryHeader>
             <SubmissionDetails>
                 {item.text && <p>{item.text}</p>}
                 {item.photoUrls && item.photoUrls.map((url, index) => {
@@ -231,7 +313,7 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
                     {comments.map(comment => (
                         <CommentThread
                             key={comment.id}
-                            classId={classId} // classId 전달
+                            classId={classId}
                             submissionId={item.id}
                             comment={comment}
                             missionTitle={missionTitle}
@@ -244,7 +326,7 @@ function HistoryItem({ item, student, missionTitle, onImageClick }) {
     );
 }
 
-const MissionHistoryModal = ({ isOpen, onClose, missionTitle, history, student, onImageClick }) => {
+const MissionHistoryModal = ({ isOpen, onClose, missionTitle, history, student, onImageClick, onRefresh }) => {
     if (!isOpen) return null;
 
     return (
@@ -260,6 +342,7 @@ const MissionHistoryModal = ({ isOpen, onClose, missionTitle, history, student, 
                                 student={student}
                                 missionTitle={missionTitle}
                                 onImageClick={onImageClick}
+                                onRefresh={onRefresh}
                             />
                         ))
                     ) : (

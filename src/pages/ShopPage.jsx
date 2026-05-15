@@ -518,7 +518,7 @@ const translateCategory = (category) => {
 
 function ShopPage() {
   const { classId } = useClassStore();
-  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts, fetchInitialData, buyPetItem } = useLeagueStore();
+  const { players, avatarParts, myRoomItems, buyMyRoomItem, buyMultipleAvatarParts, buyMultipleMyRoomItems, fetchInitialData, buyPetItem } = useLeagueStore();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
 
@@ -528,6 +528,8 @@ function ShopPage() {
   const [previewConfig, setPreviewConfig] = useState(null);
   const [justPurchased, setJustPurchased] = useState(false);
   const isInitialLoad = useRef(true);
+  // [이슈 4] 마이룸 아이템 카트
+  const [myRoomCart, setMyRoomCart] = useState([]);
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
 
@@ -665,20 +667,30 @@ function ShopPage() {
     });
   };
 
-  const handleMyRoomItemClick = async (item) => {
+  // [수정 이슈 4] 마이룸 아이템 클릭 → 카트에 추가/제거 (미리보기 없음)
+  const handleMyRoomItemClick = (item) => {
     const isOwned = myPlayerData?.ownedMyRoomItems?.includes(item.id);
     if (isOwned) return alert("이미 소유하고 있는 아이템입니다.");
+    setMyRoomCart(prev => {
+      const inCart = prev.find(i => i.id === item.id);
+      return inCart ? prev.filter(i => i.id !== item.id) : [...prev, item];
+    });
+  };
+
+  const handleMyRoomCartPurchase = async () => {
+    if (myRoomCart.length === 0) return alert('구매할 아이템을 선택해주세요.');
     const now = new Date();
-    const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
-    const price = isSale ? item.salePrice : item.price;
-    if (myPlayerData.points < price) return alert("포인트가 부족합니다.");
-    if (window.confirm(`'${item.displayName || item.id}'을(를) ${price}P에 구매하시겠습니까?`)) {
-      try {
-        await buyMyRoomItem(item);
-        alert('구매 완료!');
-        await fetchInitialData();
-      } catch (e) { alert(e.message); }
-    }
+    const totalCost = myRoomCart.reduce((sum, item) => {
+      const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+      return sum + (isSale ? item.salePrice : item.price);
+    }, 0);
+    if (myPlayerData.points < totalCost) return alert('포인트가 부족합니다.');
+    if (!window.confirm(`총 ${totalCost.toLocaleString()}P로 ${myRoomCart.length}개 아이템을 구매하시겠습니까?`)) return;
+    try {
+      await buyMultipleMyRoomItems(myRoomCart);
+      alert('구매 완료!');
+      setMyRoomCart([]);
+    } catch (e) { alert(e.message); }
   };
 
   const handlePurchase = async () => {
@@ -718,48 +730,9 @@ function ShopPage() {
       <MainTabContainer>
         <MainTabButton $active={mainTab === 'avatar'} onClick={() => setMainTab('avatar')}>👗 아바타 꾸미기</MainTabButton>
         <MainTabButton $active={mainTab === 'myroom'} onClick={() => setMainTab('myroom')}>🏠 마이룸 꾸미기</MainTabButton>
-        <MainTabButton $active={mainTab === 'petitem'} onClick={() => setMainTab('petitem')}>🐾 펫 아이템</MainTabButton>
       </MainTabContainer>
 
-      {/* ===== 펫 아이템 탭 ===== */}
-      {mainTab === 'petitem' && (
-        <PetItemSection>
-          <PetItemGrid>
-            {Object.values(PET_ITEMS).map(item => {
-              const owned = myPlayerData?.petInventory?.[item.id] || 0;
-              return (
-                <PetItemCard key={item.id}>
-                  <img src={item.icon} alt={item.name} style={{ width: '72px', height: '72px', objectFit: 'contain', marginBottom: '0.5rem' }} />
-                  <PetItemName>{item.name}</PetItemName>
-                  <PetItemDesc>{item.description}</PetItemDesc>
-                  <PetItemMeta>
-                    <span style={{ color: '#f59f00', fontWeight: '800' }}>{item.price} P</span>
-                    <span style={{ color: '#868e96', fontSize: '0.82rem' }}>보유 {owned}개</span>
-                  </PetItemMeta>
-                  <PetItemBuyRow>
-                    {[1, 3, 5].map(qty => (
-                      <PetItemBuyBtn
-                        key={qty}
-                        onClick={async () => {
-                          const totalCost = item.price * qty;
-                          if ((myPlayerData?.points || 0) < totalCost) return alert('포인트가 부족합니다.');
-                          if (!window.confirm(`${item.name} ${qty}개를 ${totalCost.toLocaleString()}P에 구매하시겠습니까?`)) return;
-                          try {
-                            await buyPetItem(item, qty);
-                            alert(`${item.name} ${qty}개 구매 완료! 🎉`);
-                          } catch (e) { alert(e.message); }
-                        }}
-                      >
-                        {qty}개 구매
-                      </PetItemBuyBtn>
-                    ))}
-                  </PetItemBuyRow>
-                </PetItemCard>
-              );
-            })}
-          </PetItemGrid>
-        </PetItemSection>
-      )}
+      {/* [수정 이슈 5] 펫 아이템 탭 삭제 — 펫센터 내 상점과 중복 */}
 
       {/* ===== 아바타 / 마이룸 탭 ===== */}
       {mainTab !== 'petitem' && (
@@ -789,7 +762,12 @@ function ShopPage() {
                 const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
 
                 return (
-                  <ItemCard key={item.id} $isPreviewing={isPreviewing} $isOwned={isOwned} onClick={() => handlePreview(item)}>
+                  <ItemCard
+                    key={item.id}
+                    $isPreviewing={mainTab === 'myroom' ? myRoomCart.some(i => i.id === item.id) : isPreviewing}
+                    $isOwned={isOwned}
+                    onClick={() => mainTab === 'myroom' ? handleMyRoomItemClick(item) : handlePreview(item)}
+                  >
                     {isSale && <SaleBadge>SALE</SaleBadge>}
                     {isOwned && <OwnedBadge>보유중</OwnedBadge>}
                     <ItemName>{item.displayName || item.id}</ItemName>
@@ -814,48 +792,94 @@ function ShopPage() {
             )}
           </ItemSection>
 
-          {mainTab === 'avatar' && (
+          {mainTab === 'myroom' && (
             <FittingRoom>
-              <FittingTitle>👕 피팅룸</FittingTitle>
-              <AvatarPreview>
-                {previewPartUrls.filter(src => !!src).map(src => (
-                  <PartLayer
-                    key={src}
-                    src={src}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                ))}
-              </AvatarPreview>
-
-              {newItemsToBuy.length > 0 && (
+              <FittingTitle>🛒 구매 목록</FittingTitle>
+              {myRoomCart.length === 0 ? (
+                <div style={{ color: '#adb5bd', fontSize: '0.9rem', textAlign: 'center', padding: '2rem 0' }}>
+                  아이템을 클릭하여<br />구매 목록에 추가하세요
+                </div>
+              ) : (
                 <CartSummary>
-                  <div style={{ fontWeight: '700', marginBottom: '0.5rem', color: '#343a40' }}>구매 예정 목록 ({newItemsToBuy.length})</div>
+                  <div style={{ fontWeight: '700', marginBottom: '0.5rem', color: '#343a40' }}>선택한 아이템 ({myRoomCart.length})</div>
                   <CartList>
-                    {newItemsToBuy.map(item => (
-                      <li key={item.id}>
-                        <span>{item.displayName || item.id}</span>
-                        <span className="price">{item.price} P</span>
-                      </li>
-                    ))}
+                    {myRoomCart.map(item => {
+                      const now = new Date();
+                      const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+                      const price = isSale ? item.salePrice : item.price;
+                      return (
+                        <li key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.displayName || item.id}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                            <span className="price">{price.toLocaleString()} P</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setMyRoomCart(prev => prev.filter(i => i.id !== item.id)); }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '1rem', padding: '0 2px' }}
+                            >✕</button>
+                          </span>
+                        </li>
+                      );
+                    })}
                   </CartList>
                   <TotalPrice>
                     <span>총 합계</span>
-                    <span className="cost">{totalCost.toLocaleString()} P</span>
+                    <span className="cost">
+                      {myRoomCart.reduce((sum, item) => {
+                        const now = new Date();
+                        const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+                        return sum + (isSale ? item.salePrice : item.price);
+                      }, 0).toLocaleString()} P
+                    </span>
                   </TotalPrice>
                 </CartSummary>
               )}
-
-              <FittingButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
-                {newItemsToBuy.length > 0 ? '구매하기' : '선택된 새 아이템 없음'}
+              <FittingButton $primary onClick={handleMyRoomCartPurchase} disabled={myRoomCart.length === 0}>
+                {myRoomCart.length > 0 ? `${myRoomCart.length}개 구매하기` : '아이템을 선택하세요'}
               </FittingButton>
-
-              {justPurchased ? (
-                <FittingButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</FittingButton>
-              ) : (
-                <FittingButton onClick={handleReset}>초기화</FittingButton>
-              )}
+              <FittingButton onClick={() => setMyRoomCart([])}>초기화</FittingButton>
             </FittingRoom>
           )}
+          <FittingRoom>
+            <FittingTitle>👕 피팅룸</FittingTitle>
+            <AvatarPreview>
+              {previewPartUrls.filter(src => !!src).map(src => (
+                <PartLayer
+                  key={src}
+                  src={src}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              ))}
+            </AvatarPreview>
+
+            {newItemsToBuy.length > 0 && (
+              <CartSummary>
+                <div style={{ fontWeight: '700', marginBottom: '0.5rem', color: '#343a40' }}>구매 예정 목록 ({newItemsToBuy.length})</div>
+                <CartList>
+                  {newItemsToBuy.map(item => (
+                    <li key={item.id}>
+                      <span>{item.displayName || item.id}</span>
+                      <span className="price">{item.price} P</span>
+                    </li>
+                  ))}
+                </CartList>
+                <TotalPrice>
+                  <span>총 합계</span>
+                  <span className="cost">{totalCost.toLocaleString()} P</span>
+                </TotalPrice>
+              </CartSummary>
+            )}
+
+            <FittingButton $primary onClick={handlePurchase} disabled={newItemsToBuy.length === 0}>
+              {newItemsToBuy.length > 0 ? '구매하기' : '선택된 새 아이템 없음'}
+            </FittingButton>
+
+            {justPurchased ? (
+              <FittingButton onClick={handleWear} style={{ background: '#ffc107', color: 'black' }}>✨ 바로 착용하고 저장</FittingButton>
+            ) : (
+              <FittingButton onClick={handleReset}>초기화</FittingButton>
+            )}
+          </FittingRoom>
+
         </ContentLayout>
       )} {/* mainTab !== 'petitem' 끝 */}
 

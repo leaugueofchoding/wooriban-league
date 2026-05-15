@@ -1,6 +1,6 @@
 // src/pages/ProfilePage.jsx
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import {
@@ -12,10 +12,8 @@ import baseAvatar from '../assets/base-avatar.png';
 import {
   collection, query, where, orderBy, getDocs, onSnapshot, updateDoc, doc
 } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import PointHistoryModal from '../components/PointHistoryModal';
 import { petImageMap } from '../utils/petImageMap';
-import html2canvas from 'html2canvas';
 
 // --- Animations ---
 const fadeIn = keyframes`
@@ -260,7 +258,7 @@ function ProfilePage() {
   const [incomingChallenge, setIncomingChallenge] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  const avatarRef = useRef(null); // 아바타 캡처용 ref
+  // avatarRef 제거됨 - 이슈 6 수정: ProfilePage에서 avatarSnapshotUrl을 재생성하지 않음
 
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
@@ -352,24 +350,12 @@ function ProfilePage() {
     if (!selectedGender) return alert('성별을 선택해주세요.');
 
     setIsSavingProfile(true);
-    let avatarSnapshotUrl = playerData.avatarSnapshotUrl || "";
+    // [수정 이슈 6] 프로필 저장 시 avatarSnapshotUrl을 html2canvas로 재생성하지 않음.
+    // avatarSnapshotUrl은 아바타 꾸미기(AvatarEditPage)에서만 갱신되어야 함.
+    // html2canvas로 캡처하면 파츠 없이 기본 등신대만 찍혀 스냅샷이 덮어씌워지는 버그 발생.
+    const avatarSnapshotUrl = playerData.avatarSnapshotUrl || "";
 
     try {
-      if (avatarRef.current) {
-        // [중요] 캡처 옵션 최적화: 투명 배경, 적절한 scale
-        const canvas = await html2canvas(avatarRef.current, {
-          backgroundColor: null,
-          scale: 2, // 해상도 (2배 정도면 충분)
-          useCORS: true, // 외부 이미지 사용 시 필수
-          logging: false
-        });
-
-        const imageDataUrl = canvas.toDataURL("image/png");
-        const storageRef = ref(storage, `classes/${classId}/players/${playerData.id}/avatarSnapshot_${Date.now()}.png`);
-        await uploadString(storageRef, imageDataUrl, 'data_url');
-        avatarSnapshotUrl = await getDownloadURL(storageRef);
-      }
-
       await updatePlayerProfile(classId, playerData.id, {
         name: newName.trim(),
         gender: selectedGender,
@@ -396,7 +382,7 @@ function ProfilePage() {
         <ProfileHeader>
           <AvatarSection onClick={() => setIsAvatarModalOpen(true)}>
             {/* [중요] ref는 여기(AvatarCircle)에 겁니다 */}
-            <AvatarCircle ref={avatarRef}>
+            <AvatarCircle>
               {/* 스냅샷이 있고 편집 중이 아니라면 스냅샷 이미지 표시 */}
               {!isEditing && playerData.avatarSnapshotUrl ? (
                 <img

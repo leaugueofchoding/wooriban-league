@@ -46,6 +46,7 @@ import {
     getMyRoomItems,
     updateMyRoomItemDisplayName,
     buyMyRoomItem,
+    buyMultipleMyRoomItems as buyMultipleMyRoomItemsFirebase,
     updatePlayerProfile,
     updateMatchStatus,
     batchUpdateAvatarPartCategory,
@@ -704,6 +705,32 @@ export const useLeagueStore = create((set, get) => ({
             players: state.players.map(p =>
                 p.id === myPlayerData.id
                     ? { ...p, points: p.points - finalPrice, ownedMyRoomItems: [...(p.ownedMyRoomItems || []), item.id] }
+                    : p
+            )
+        }));
+    },
+
+    // [이슈 4] 마이룸 아이템 다중 구매
+    buyMultipleMyRoomItems: async (items) => {
+        const classId = getClassId();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+
+        await buyMultipleMyRoomItemsFirebase(classId, myPlayerData.id, items);
+
+        const now = new Date();
+        const totalCost = items.reduce((sum, item) => {
+            const isSale = item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate();
+            return sum + (isSale ? item.salePrice : item.price);
+        }, 0);
+        const newItemIds = items.map(i => i.id);
+
+        set(state => ({
+            players: state.players.map(p =>
+                p.id === myPlayerData.id
+                    ? { ...p, points: p.points - totalCost, ownedMyRoomItems: [...(p.ownedMyRoomItems || []), ...newItemIds] }
                     : p
             )
         }));

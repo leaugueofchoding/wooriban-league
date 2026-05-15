@@ -274,14 +274,14 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
         if (!classId) return alert('학급 정보가 없습니다.');
         try {
             if (action === 'approve') {
-                // approveMissionsInBatch 호출 시 classId를 첫 번째 인자로 전달
                 await approveMissionsInBatch(classId, mission.id, [student.id], myPlayerData.authUid, reward);
                 setStatus('approved');
             } else if (action === 'reject') {
                 await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
                 setStatus('rejected');
             }
-            onAction();
+            // [수정 이슈 4] submission.id를 전달하여 목록에서 제거하되, 모달은 닫지 않음
+            onAction(submission.id);
         } catch (error) {
             alert(`처리 중 오류 발생: ${error.message}`);
         }
@@ -314,8 +314,14 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
         if (!myPlayerData || !classId) return alert("사용자 정보를 찾을 수 없습니다.");
         try {
             await toggleSubmissionLike(classId, submission.id, myPlayerData.id);
+            // [수정 이슈 1] 로컬 likes 상태를 즉시 업데이트하여 UI 반응
+            setLikes(prev =>
+                prev.includes(myPlayerData.id)
+                    ? prev.filter(id => id !== myPlayerData.id)
+                    : [...prev, myPlayerData.id]
+            );
         } catch (error) {
-            alert("좋아요 처리에 실패했습니다.");
+            alert(`좋아요 처리에 실패했습니다: ${error.message}`);
         }
     };
 

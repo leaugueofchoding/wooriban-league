@@ -208,6 +208,9 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
   const missionData = missionSnap.data();
   const MISSION_EXP_REWARD = 100;
 
+  // [수정] batch.commit() 이후에 실행할 작업들을 별도로 수집
+  const postCommitTasks = [];
+
   for (const studentId of studentIds) {
     const playerRef = doc(db, 'classes', classId, 'players', studentId);
     const playerDoc = await getDoc(playerRef);
@@ -215,17 +218,15 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     if (playerDoc.exists()) {
       const playerData = playerDoc.data();
 
-      // [수정] 기존 제출 내역 확인 시 반드시 "pending" 상태인 것만 찾도록 조건 추가
       const submissionQuery = query(
         collection(db, "classes", classId, "missionSubmissions"),
         where("missionId", "==", missionId),
         where("studentId", "==", studentId),
-        where("status", "==", "pending") // 이 조건이 누락되어 과거 기록이 승인되고 있었습니다.
+        where("status", "==", "pending")
       );
       const submissionSnapshot = await getDocs(submissionQuery);
 
       if (!submissionSnapshot.empty) {
-        // pending 상태인 제출 내역이 있다면 승인 처리
         const submissionDoc = submissionSnapshot.docs[0];
         batch.update(submissionDoc.ref, {
           status: 'approved',
@@ -233,7 +234,6 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
           approvedAt: serverTimestamp()
         });
       } else {
-        // 제출 내역이 없다면(관리자가 미제출자를 강제 승인), 'approved' 상태로 새로 생성
         const newSubmissionRef = doc(collection(db, "classes", classId, "missionSubmissions"));
         batch.set(newSubmissionRef, {
           missionId,
@@ -249,34 +249,34 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
         });
       }
 
-      // 포인트 및 경험치 지급
       batch.update(playerRef, { points: increment(reward) });
 
-      if (playerData.pets && playerData.pets.length > 0) {
-        await updatePetExperience(playerRef, MISSION_EXP_REWARD);
-      }
-
-      createNotification(
-        playerData.authUid,
-        `'${missionData.title}' 미션 완료!`,
-        `${reward}P와 펫 경험치 ${MISSION_EXP_REWARD}을 획득했습니다.`,
-        'mission'
-      );
-
-      await addPointHistory(
-        classId,
-        playerData.authUid,
-        playerData.name,
-        reward,
-        `${missionData.title} 미션 완료`
-      );
-
-      await checkAndGrantAutoTitles(classId, studentId, playerData.authUid);
+      // [수정] addPointHistory, 펫 경험치, 알림, 칭호 체크는 batch.commit() 이후로 이동
+      postCommitTasks.push(async () => {
+        await addPointHistory(
+          classId,
+          playerData.authUid,
+          playerData.name,
+          reward,
+          `${missionData.title} 미션 완료`
+        );
+        if (playerData.pets && playerData.pets.length > 0) {
+          await updatePetExperience(playerRef, MISSION_EXP_REWARD);
+        }
+        createNotification(
+          playerData.authUid,
+          `'${missionData.title}' 미션 완료!`,
+          `${reward}P와 펫 경험치 ${MISSION_EXP_REWARD}을 획득했습니다.`,
+          'mission'
+        );
+        await checkAndGrantAutoTitles(classId, studentId, playerData.authUid);
+      });
     }
   }
 
   // 보너스 지급 로직
   const incentiveAmount = studentIds.length * 10;
+  let recorderPostTask = null;
   if (incentiveAmount > 0) {
     const playersRef = collection(db, 'classes', classId, 'players');
     const q = query(playersRef, where("authUid", "==", recorderId), limit(1));
@@ -287,24 +287,33 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
       const recorderData = recorderDoc.data();
       batch.update(recorderDoc.ref, { points: increment(incentiveAmount) });
 
-      await addPointHistory(
-        classId,
-        recorderId,
-        recorderData.name,
-        incentiveAmount,
-        `보너스 (미션 승인 ${studentIds.length}건)`
-      );
-
-      createNotification(
-        recorderId,
-        `✅ 미션 승인 완료`,
-        `${studentIds.length}건의 미션을 확인하여 ${incentiveAmount}P를 획득했습니다.`,
-        'mission_reward'
-      );
+      // [수정] 보너스 내역 기록도 commit 이후로 이동
+      recorderPostTask = async () => {
+        await addPointHistory(
+          classId,
+          recorderId,
+          recorderData.name,
+          incentiveAmount,
+          `보너스 (미션 승인 ${studentIds.length}건)`
+        );
+        createNotification(
+          recorderId,
+          `✅ 미션 승인 완료`,
+          `${studentIds.length}건의 미션을 확인하여 ${incentiveAmount}P를 획득했습니다.`,
+          'mission_reward'
+        );
+      };
     }
   }
 
+  // [수정] 모든 DB 쓰기를 원자적으로 커밋한 뒤 부수 작업 실행
   await batch.commit();
+
+  // commit 성공 후 포인트 내역 기록 및 알림 처리
+  for (const task of postCommitTasks) {
+    await task();
+  }
+  if (recorderPostTask) await recorderPostTask();
 }
 
 export async function uploadMissionSubmissionFile(classId, missionId, studentId, files) {
@@ -434,6 +443,70 @@ export async function rejectMissionSubmission(classId, submissionId, studentAuth
       '/missions'
     );
   }
+}
+
+/**
+ * [이슈 8] 승인된 미션을 취소하고 포인트를 회수합니다.
+ * - newReward: null이면 전액 회수, 숫자면 차등 보상 정정 (차액 지급 또는 회수)
+ */
+export async function cancelMissionApproval(classId, submissionId, originalReward, newReward = null) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+
+  const submissionRef = doc(db, 'classes', classId, 'missionSubmissions', submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+  if (!submissionSnap.exists()) throw new Error("제출 내역을 찾을 수 없습니다.");
+
+  const submissionData = submissionSnap.data();
+  if (submissionData.status !== 'approved') throw new Error("승인된 제출 내역만 취소할 수 있습니다.");
+
+  const playerRef = doc(db, 'classes', classId, 'players', submissionData.studentId);
+  const playerSnap = await getDoc(playerRef);
+  if (!playerSnap.exists()) throw new Error("학생 정보를 찾을 수 없습니다.");
+  const playerData = playerSnap.data();
+
+  const missionRef = doc(db, 'classes', classId, 'missions', submissionData.missionId);
+  const missionSnap = await getDoc(missionRef);
+  const missionTitle = missionSnap.exists() ? missionSnap.data().title : '(삭제된 미션)';
+
+  const isCorrection = newReward !== null; // true: 차등 보상 정정, false: 전액 취소
+  const pointDiff = isCorrection ? (newReward - originalReward) : -originalReward;
+
+  const batch = writeBatch(db);
+
+  if (isCorrection) {
+    // 차등 보상 정정: 승인 상태 유지, 보상만 변경
+    batch.update(submissionRef, { approvedReward: newReward });
+  } else {
+    // 전액 취소: 상태를 pending으로 되돌려 재승인 가능하게 함
+    batch.update(submissionRef, {
+      status: 'pending',
+      approvedAt: null,
+      checkedBy: null,
+      cancelledAt: serverTimestamp()
+    });
+  }
+
+  if (pointDiff !== 0) {
+    batch.update(playerRef, { points: increment(pointDiff) });
+  }
+
+  await batch.commit();
+
+  if (pointDiff !== 0) {
+    const reason = isCorrection
+      ? `${missionTitle} 미션 보상 정정 (${originalReward}P → ${newReward}P)`
+      : `${missionTitle} 미션 승인 취소 (포인트 회수)`;
+    await addPointHistory(classId, playerData.authUid, playerData.name, pointDiff, reason);
+  }
+
+  createNotification(
+    playerData.authUid,
+    isCorrection ? '📝 미션 보상이 정정되었습니다.' : '↩️ 미션 승인이 취소되었습니다.',
+    isCorrection
+      ? `'${missionTitle}' 미션 보상이 ${originalReward}P에서 ${newReward}P로 정정되었습니다.`
+      : `'${missionTitle}' 미션 승인이 취소되었습니다. ${originalReward}P가 회수됩니다.`,
+    'mission'
+  );
 }
 
 export async function deleteMission(classId, missionId) {
@@ -1474,6 +1547,53 @@ export async function buyMyRoomItem(classId, playerId, item) {
   });
 }
 
+// [이슈 4] 마이룸 아이템 다중 구매 함수
+export async function buyMultipleMyRoomItems(classId, playerId, items) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const now = new Date();
+
+  const getFinalPrice = (item) => {
+    if (item.isSale && item.saleStartDate?.toDate() < now && now < item.saleEndDate?.toDate()) {
+      return item.salePrice;
+    }
+    return item.price;
+  };
+
+  const totalCost = items.reduce((sum, item) => sum + getFinalPrice(item), 0);
+  const itemIds = items.map(i => i.id);
+
+  let playerAuthUid = null;
+  let playerName = null;
+
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+    const playerData = playerDoc.data();
+
+    if (playerData.points < totalCost) throw new Error("포인트가 부족합니다.");
+
+    const alreadyOwned = itemIds.filter(id => playerData.ownedMyRoomItems?.includes(id));
+    if (alreadyOwned.length > 0) throw new Error(`이미 소유한 아이템이 포함되어 있습니다.`);
+
+    playerAuthUid = playerData.authUid;
+    playerName = playerData.name;
+
+    transaction.update(playerRef, {
+      points: increment(-totalCost),
+      ownedMyRoomItems: [...(playerData.ownedMyRoomItems || []), ...itemIds]
+    });
+  });
+
+  await addPointHistory(
+    classId,
+    playerAuthUid,
+    playerName,
+    -totalCost,
+    `마이룸 아이템 ${items.length}개 구매`
+  );
+}
+
 export async function updatePlayerProfile(classId, playerId, profileData) {
   if (!classId) return;
   if (profileData.name && profileData.name.trim().length === 0) {
@@ -1895,7 +2015,7 @@ export async function getPlayerSeasonStats(classId, playerId) {
  * @param {string} likerName - '좋아요'를 누르는 플레이어 이름
  */
 export async function likeMyRoom(classId, roomId, likerId, likerName) {
-  if (!classId) return;
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   const roomOwnerRef = doc(db, "classes", classId, "players", roomId);
   const likerRef = doc(db, "classes", classId, "players", likerId);
   const likeHistoryRef = doc(db, "classes", classId, "players", roomId, "myRoomLikes", likerId);
@@ -1971,54 +2091,48 @@ export async function addMyRoomComment(classId, roomId, commentData) {
  * @param {string} likerId - '좋아요'를 누르는 사람 ID
  */
 export async function likeMyRoomComment(classId, roomId, commentId, likerId) {
-  if (!classId) return;
+  if (!classId) throw new Error("학급 정보가 없습니다.");
   const commentRef = doc(db, "classes", classId, "players", roomId, "myRoomComments", commentId);
 
-  return runTransaction(db, async (transaction) => {
+  let rewardNeeded = false;
+  let commenterAuthUid = null;
+  let commenterName = null;
+
+  // [수정 이슈 6] Firestore 트랜잭션 규칙: 모든 read를 write 이전에 먼저 실행
+  await runTransaction(db, async (transaction) => {
     const commentSnap = await transaction.get(commentRef);
     if (!commentSnap.exists()) throw new Error("댓글을 찾을 수 없습니다.");
 
     const commentData = commentSnap.data();
     const likes = commentData.likes || [];
-    if (likes.includes(likerId)) {
-      // 이미 좋아요를 누른 경우, 아무 작업도 하지 않음 (또는 좋아요 취소 로직 추가 가능)
-      return;
-    }
+    if (likes.includes(likerId)) return;
 
-    // 모든 사용자가 '좋아요'를 누를 수 있도록 하고, DB에만 기록
-    const newLikes = [...likes, likerId];
-    transaction.update(commentRef, { likes: newLikes });
+    const shouldReward = likerId === roomId;
+    let commenterRef = null;
 
-    // '좋아요'를 누른 사람이 방 주인일 경우에만 보상 지급
-    if (likerId === roomId) {
-      const commenterRef = doc(db, "classes", classId, "players", commentData.commenterId);
-      const commenterSnap = await transaction.get(commenterRef);
+    if (shouldReward) {
+      commenterRef = doc(db, "classes", classId, "players", commentData.commenterId);
+      const commenterSnap = await transaction.get(commenterRef); // read before write
       if (!commenterSnap.exists()) throw new Error("댓글 작성자 정보를 찾을 수 없습니다.");
-
-      // 포인트와 totalLikes를 함께 증가
-      transaction.update(commenterRef, {
-        points: increment(30),
-        totalLikes: increment(1)
-      });
-
-      // addPointHistory는 트랜잭션 밖에서 호출
+      commenterAuthUid = commenterSnap.data().authUid;
+      commenterName = commenterSnap.data().name;
+      rewardNeeded = true;
+      transaction.update(commenterRef, { points: increment(30), totalLikes: increment(1) });
     }
-  }).then(async () => {
-    // 트랜잭션 성공 후 포인트 내역 기록
-    const commentSnap = await getDoc(commentRef);
-    const commentData = commentSnap.data();
-    if (likerId === roomId) {
-      await addPointHistory(classId, commentData.commenterId, commentData.commenterName, 30, "칭찬 댓글 '좋아요' 보상");
-      // 알림 로직은 그대로 유지
-      await createOrUpdateAggregatedNotification(
-        commentData.commenterId,
-        "comment_like",
-        30,
-        "❤️ 내 댓글에 '좋아요'를 받았어요!",
-        "칭찬 댓글 보상으로 {amount}P를 획득했습니다!"
-      );
-    }
+
+    transaction.update(commentRef, { likes: [...likes, likerId] });
   });
+
+  if (rewardNeeded && commenterAuthUid) {
+    await addPointHistory(classId, commenterAuthUid, commenterName, 30, "칭찬 댓글 '좋아요' 보상");
+    await createOrUpdateAggregatedNotification(
+      commenterAuthUid,
+      "comment_like",
+      30,
+      "❤️ 내 댓글에 '좋아요'를 받았어요!",
+      "칭찬 댓글 보상으로 {amount}P를 획득했습니다!"
+    );
+  }
 }
 
 
@@ -3273,7 +3387,11 @@ export async function healPet(classId, playerId, petId) {
   const playerRef = doc(db, "classes", classId, "players", playerId);
   const HEAL_COST = 250;
 
-  return await runTransaction(db, async (transaction) => {
+  // [수정] 트랜잭션에서 배열 직접 변이(mutation) 대신 새 배열 생성 방식으로 변경
+  // 또한 addPointHistory를 트랜잭션 성공 후 실행하여 포인트 내역 불일치 방지
+  let savedPlayerData = null;
+
+  await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
@@ -3282,7 +3400,7 @@ export async function healPet(classId, playerId, petId) {
       throw new Error(`포인트가 부족합니다. (필요: ${HEAL_COST}P)`);
     }
 
-    let pets = playerData.pets || [];
+    const pets = playerData.pets || [];
     const petIndex = pets.findIndex(p => p.id === petId);
     if (petIndex === -1) throw new Error("치료할 펫을 찾을 수 없습니다.");
 
@@ -3291,20 +3409,26 @@ export async function healPet(classId, playerId, petId) {
       throw new Error("이미 건강한 펫입니다.");
     }
 
-    pets[petIndex].hp = pet.maxHp;
-    pets[petIndex].sp = pet.maxSp;
+    // [수정] 배열 직접 변이 대신 새 배열을 생성하여 Firestore에 저장
+    const updatedPets = pets.map((p, i) =>
+      i === petIndex ? { ...p, hp: p.maxHp, sp: p.maxSp } : p
+    );
 
     transaction.update(playerRef, {
-      pets: pets,
+      pets: updatedPets,
       points: increment(-HEAL_COST)
     });
 
-  }).then(async () => {
-    const playerDoc = await getDoc(playerRef);
-    const playerData = playerDoc.data();
-    await addPointHistory(classId, playerData.authUid, playerData.name, -HEAL_COST, "펫 센터 개별 치료");
-    return playerDoc.data();
+    savedPlayerData = playerData;
   });
+
+  // [수정] 트랜잭션 성공 후 포인트 내역 기록 (실패 시 포인트 차감도 롤백됨)
+  if (savedPlayerData) {
+    await addPointHistory(classId, savedPlayerData.authUid, savedPlayerData.name, -HEAL_COST, "펫 센터 개별 치료");
+  }
+
+  const updatedDoc = await getDoc(playerRef);
+  return updatedDoc.data();
 }
 
 export async function healAllPets(classId, playerId) {

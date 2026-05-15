@@ -838,6 +838,16 @@ function MissionsPage() {
         missionTitle={historyModalState.missionTitle}
         history={historyModalState.history}
         student={historyModalState.student}
+        onRefresh={async () => {
+          // 학생 본인 화면에서도 취소 후 기록 갱신
+          if (classId && historyModalState.student && historyModalState.missionTitle) {
+            const mission = missions.find(m => m.title === historyModalState.missionTitle);
+            if (mission) {
+              const updated = await getMissionHistory(classId, historyModalState.student.id, mission.id);
+              setHistoryModalState(prev => ({ ...prev, history: updated }));
+            }
+          }
+        }}
       />
     </>
   );

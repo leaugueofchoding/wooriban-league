@@ -608,11 +608,10 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
                         </div>
                       )}
 
-                      {selectedMission?.isFixed && (
-                        <ActionButton onClick={(e) => handleHistoryView(e, player)}>
-                          📜 이전 기록 보기
-                        </ActionButton>
-                      )}
+                      {/* [수정 이슈 7] isFixed 조건 제거 — 모든 미션에서 기록 확인 및 승인 취소 가능 */}
+                      <ActionButton onClick={(e) => handleHistoryView(e, player)}>
+                        📜 기록 확인 / 승인 취소
+                      </ActionButton>
                     </CardBody>
                   )}
 
@@ -649,6 +648,14 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
           missionTitle={`${selectedStudentForHistory.name} - ${selectedMission?.title}`}
           history={missionHistory}
           student={selectedStudentForHistory}
+          onRefresh={async () => {
+            // 승인 취소 후 기록 목록 갱신
+            if (classId && selectedStudentForHistory && selectedMissionId) {
+              const updated = await getMissionHistory(classId, selectedStudentForHistory.id, selectedMissionId);
+              setMissionHistory(updated);
+            }
+            await fetchInitialData();
+          }}
         />
       )}
       <ImageModal src={modalImageSrc} onClose={() => setModalImageSrc(null)} />
