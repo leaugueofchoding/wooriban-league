@@ -228,19 +228,15 @@ const InteractiveItem = styled.div`
 // [방문자 모드] 내 아바타 드래그 & 둥실둥실
 const VisitorWrapper = styled.div`
   position: absolute;
-  /* 드래그 상태에 따라 커서 변경 */
   cursor: grab;
   &:active { cursor: grabbing; }
-  
   width: 15%;
   height: 25%;
   z-index: 200;
-  pointer-events: auto; /* 드래그 가능하게 */
-
-  /* 드래그 위치 적용 */
+  pointer-events: auto;
   left: ${props => props.$x}%;
   top: ${props => props.$y}%;
-  transform: translate(-50%, -50%); /* 중심 기준 배치 */
+  transform: translate(-50%, -50%);
 
   .label {
     position: absolute;
@@ -258,7 +254,6 @@ const VisitorWrapper = styled.div`
   }
 `;
 
-// 둥실둥실 애니메이션만 담당하는 내부 래퍼
 const FloatingContent = styled.div`
   width: 100%;
   height: 100%;
@@ -337,7 +332,7 @@ const CommentHeader = styled.div` display: flex; justify-content: space-between;
 const CommentBody = styled.p` margin: 0; font-size: 0.95rem; color: #495057; line-height: 1.4; white-space: pre-wrap; `;
 const CommentActions = styled.div` display: flex; gap: 0.8rem; margin-top: 0.5rem; justify-content: flex-end; button { background: none; border: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #868e96; display: flex; align-items: center; gap: 0.2rem; padding: 0; &:hover { color: #339af0; } &.delete { &:hover { color: #fa5252; } } } `;
 
-/* 친구 목록 드롭다운 (수정됨: 펫+이름) */
+/* 친구 목록 드롭다운 */
 const FriendListDropdown = styled.div`
   position: absolute; top: 110%; right: 0; 
   background: white; border-radius: 16px; 
@@ -374,7 +369,7 @@ const SecondaryBtn = styled(ActionButton)` background: #868e96; color: white; &:
 
 function MyRoomPage() {
   const { classId } = useClassStore();
-  const { playerId } = useParams(); // URL의 playerId
+  const { playerId } = useParams();
   const navigate = useNavigate();
   const { players, myRoomItems, avatarParts, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -397,7 +392,6 @@ function MyRoomPage() {
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
 
-  // 방문자(나)의 위치 상태 (초기값: 우측 하단)
   const [visitorPos, setVisitorPos] = useState({ x: 85, y: 80 });
   const [isDraggingVisitor, setIsDraggingVisitor] = useState(false);
 
@@ -490,13 +484,12 @@ function MyRoomPage() {
   useEffect(() => {
     if (!classId || !playerId) return;
 
-    // 방 변경 시 초기화
     setRoomConfig(initialRoomConfig);
     setSnapshotUrl(null);
     setComments([]);
     setLikes([]);
     setIsEditing(false);
-    setVisitorPos({ x: 85, y: 80 }); // 방문자 위치 초기화
+    setVisitorPos({ x: 85, y: 80 });
 
     const loadRoomData = async () => {
       const playerRef = doc(db, 'classes', classId, 'players', playerId);
@@ -616,7 +609,6 @@ function MyRoomPage() {
     setIsLoadingSnapshot(true);
 
     try {
-      // ★ html2canvas 대신 Canvas API로 직접 그리기 (구형 WebView CORS 문제 해결)
       const container = roomContainerRef.current;
       const W = container.offsetWidth;
       const H = container.offsetHeight;
@@ -628,10 +620,8 @@ function MyRoomPage() {
       const ctx = canvas.getContext('2d');
       ctx.scale(SCALE, SCALE);
 
-      // fetch → blob → ObjectURL 변환 헬퍼 (CORS 우회)
       const loadImage = (src) => new Promise((resolve) => {
         if (!src) return resolve(null);
-        // 로컬 asset은 직접 사용
         if (!src.startsWith('http')) {
           const img = new Image();
           img.onload = () => resolve(img);
@@ -639,7 +629,8 @@ function MyRoomPage() {
           img.src = src;
           return;
         }
-        fetch(src, { mode: 'cors' })
+
+        fetch(src, { mode: 'cors', cache: 'no-cache' })
           .then(r => r.blob())
           .then(blob => {
             const url = URL.createObjectURL(blob);
@@ -649,16 +640,15 @@ function MyRoomPage() {
             img.src = url;
           })
           .catch(() => {
-            // fetch 실패 시 직접 로드 시도 (같은 origin 등)
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => resolve(img);
             img.onerror = () => resolve(null);
-            img.src = src;
+            img.src = src + (src.includes('?') ? '&' : '?') + 'cb=' + Date.now();
           });
       });
 
-      // 1. 배경 (base)
+      // 1. 배경
       const bgImg = await loadImage(myRoomBg);
       if (bgImg) ctx.drawImage(bgImg, 0, 0, W, H);
 
@@ -674,25 +664,47 @@ function MyRoomPage() {
         if (bgOverImg) ctx.drawImage(bgOverImg, 0, 0, W, H);
       }
 
-      // 4. 가구/아이템 (zIndex 순 정렬)
-      const sortedItems = [...roomConfig.items].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
-      for (const item of sortedItems) {
+      // ★수정됨: 아바타와 펫은 스냅샷에서 완전히 제외합니다.
+      // 이렇게 하면 가구들만 캡처되어 저장되고, 캐릭터/펫은 마이룸 접속 시 그 위에 "항상 최신 상태로" 동적 렌더링 됩니다.
+      const allRenderItems = [];
+
+      // 4. 아이템(가구/소품)만 추가
+      roomConfig.items.forEach(item => {
         const info = myRoomItems.find(i => i.id === item.itemId);
-        if (!info?.src) continue;
-        const itemImg = await loadImage(info.src);
-        if (!itemImg) continue;
-        const itemW = ((info.width || 15) / 100) * W;
-        const aspectRatio = itemImg.naturalHeight / itemImg.naturalWidth;
+        if (info?.src) {
+          allRenderItems.push({
+            src: info.src,
+            width: info.width || 15,
+            left: item.left,
+            top: item.top,
+            zIndex: item.zIndex || 0,
+            isFlipped: item.isFlipped
+          });
+        }
+      });
+
+      // zIndex 오름차순 정렬
+      allRenderItems.sort((a, b) => a.zIndex - b.zIndex);
+
+      // 5. 통합 렌더링 루프
+      for (const renderItem of allRenderItems) {
+        const img = await loadImage(renderItem.src);
+        if (!img) continue;
+
+        const itemW = (renderItem.width / 100) * W;
+        const aspectRatio = img.naturalHeight / img.naturalWidth;
         const itemH = itemW * aspectRatio;
-        const itemX = (item.left / 100) * W - itemW / 2;
-        const itemY = (item.top / 100) * H - itemH / 2;
+
+        const itemX = (renderItem.left / 100) * W - itemW / 2;
+        const itemY = (renderItem.top / 100) * H - itemH / 2;
+
         ctx.save();
-        if (item.isFlipped) {
+        if (renderItem.isFlipped) {
           ctx.translate(itemX + itemW, itemY);
           ctx.scale(-1, 1);
-          ctx.drawImage(itemImg, 0, 0, itemW, itemH);
+          ctx.drawImage(img, 0, 0, itemW, itemH);
         } else {
-          ctx.drawImage(itemImg, itemX, itemY, itemW, itemH);
+          ctx.drawImage(img, itemX, itemY, itemW, itemH);
         }
         ctx.restore();
       }
@@ -702,11 +714,16 @@ function MyRoomPage() {
       await uploadString(storageRef, imageDataUrl, 'data_url');
       const downloadUrl = await getDownloadURL(storageRef);
       const downloadUrlWithCache = `${downloadUrl}?t=${Date.now()}`;
-      await updateDoc(doc(db, 'classes', classId, 'players', playerId), { myRoomConfig: roomConfig, myRoomSnapshotUrl: downloadUrlWithCache });
+
+      await updateDoc(doc(db, 'classes', classId, 'players', playerId), {
+        myRoomConfig: roomConfig,
+        myRoomSnapshotUrl: downloadUrlWithCache
+      });
+
       setSnapshotUrl(downloadUrlWithCache);
       setIsEditing(false);
       setSelectedItemId(null);
-      alert('저장되었습니다! 📸');
+      alert('✨ 마이룸이 저장되었습니다!');
     } catch (e) {
       console.error(e);
       alert('저장 중 오류 발생: ' + e.message);
@@ -721,7 +738,6 @@ function MyRoomPage() {
     setIsDraggingVisitor(true);
   };
 
-  // 글로벌 드래그 이벤트 (화면 밖으로 나가는 것 등 방지)
   useEffect(() => {
     if (!isDraggingVisitor) return;
 
@@ -732,11 +748,9 @@ function MyRoomPage() {
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-      // 컨테이너 내 상대 좌표 계산 (0~100%)
       let newX = ((clientX - containerRect.left) / containerRect.width) * 100;
       let newY = ((clientY - containerRect.top) / containerRect.height) * 100;
 
-      // 범위 제한 (화면 밖 이탈 방지)
       newX = Math.max(0, Math.min(100, newX));
       newY = Math.max(0, Math.min(100, newY));
 
@@ -900,7 +914,6 @@ function MyRoomPage() {
                   <div className="label">Visiting...</div>
                   <FloatingContent>
                     <VisitorAvatar>
-                      {/* [수정] 스냅샷 이미지가 있으면 우선 로드, 없으면 기존 파츠 렌더링 */}
                       {myPlayerData.avatarSnapshotUrl ? (
                         <img
                           src={myPlayerData.avatarSnapshotUrl}
@@ -919,6 +932,7 @@ function MyRoomPage() {
                   </FloatingContent>
                 </VisitorWrapper>
               )}
+
               {/* 편집 컨트롤러 */}
               {isEditing && selectedItemId && (
                 <>
@@ -1020,12 +1034,18 @@ function MyRoomPage() {
                     <CommentActions>
                       {isMyRoom && <button onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}>답글</button>}
                       <button onClick={async () => {
+                        // ★수정됨: 내 계정 정보가 없을 때 튕기지 않도록 방어 로직 추가
+                        if (!myPlayerData?.id) return alert('로그인 후 이용해주세요.');
                         try {
                           await likeMyRoomComment(classId, playerId, comment.id, myPlayerData.id);
                           await fetchRoomSocialData(playerId);
-                        } catch (e) { alert('좋아요 처리 중 오류가 발생했습니다.'); }
-                      }} style={{ color: comment.likes.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
-                        {comment.likes.includes(myPlayerData?.id) ? '❤️' : '🤍'} {comment.likes.length}
+                        } catch (e) {
+                          console.error("댓글 좋아요 에러:", e);
+                          alert(`좋아요 실패: ${e.message}`);
+                        }
+                      }} style={{ color: comment.likes?.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
+                        {/* ★수정됨: likes 배열이 없을 때 화면이 터지지 않도록 옵셔널 체이닝(?.) 적용 */}
+                        {comment.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'} {comment.likes?.length || 0}
                       </button>
                       {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId) && (
                         <button className="delete" onClick={() => { if (confirm("삭제하시겠습니까?")) deleteMyRoomComment(classId, playerId, comment.id).then(() => fetchRoomSocialData(playerId)); }}>삭제</button>
@@ -1049,10 +1069,14 @@ function MyRoomPage() {
                       <CommentBody>{reply.text}</CommentBody>
                       <CommentActions>
                         <button onClick={async () => {
+                          if (!myPlayerData?.id) return alert('로그인 후 이용해주세요.');
                           try {
                             await likeMyRoomReply(classId, playerId, comment.id, reply, myPlayerData.id);
                             await fetchRoomSocialData(playerId);
-                          } catch (e) { alert('좋아요 처리 중 오류가 발생했습니다.'); }
+                          } catch (e) {
+                            console.error("답글 좋아요 에러:", e);
+                            alert(`좋아요 실패: ${e.message}`);
+                          }
                         }} style={{ color: reply.likes?.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
                           {reply.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'} {reply.likes?.length || 0}
                         </button>
