@@ -58,7 +58,6 @@ const AvatarFrame = styled.div`
   width: 200px;
   height: 200px;
   border-radius: 40px; 
-  /* 배경색은 여기에만 적용 (캡처 시 제외됨) */
   background: radial-gradient(circle at 50% 30%, #e7f5ff, #fff);
   position: relative;
   border: 4px solid #fff;
@@ -66,12 +65,11 @@ const AvatarFrame = styled.div`
   overflow: hidden;
 `;
 
-/* [추가] 캡처 전용 투명 래퍼 */
 const AvatarCaptureArea = styled.div`
   width: 100%;
   height: 100%;
   position: relative;
-  background: transparent; /* 투명 배경 */
+  background: transparent; 
 `;
 
 const PartImage = styled.img`
@@ -82,7 +80,6 @@ const PartImage = styled.img`
   height: 100%;
   object-fit: contain;
   transition: transform 0.2s;
-  /* transform: scale(1.1) translateY(10px); 위치 어긋남 방지를 위해 제거함 */
 `;
 
 const BaseAvatar = styled(PartImage)``;
@@ -232,11 +229,10 @@ function AvatarEditPage() {
         let avatarSnapshotUrl = "";
 
         try {
-            // ★ html2canvas 제거 → Canvas API + fetch-blob 방식 (구형 WebView CORS 문제 해결)
             const RENDER_ORDER = ['shoes', 'bottom', 'top', 'hair', 'face', 'eyes', 'nose', 'mouth'];
             const config = avatarConfig || {};
 
-            // fetch → blob → ObjectURL 변환 헬퍼
+            // ★ 수정됨: CORS 캐시 우회를 위한 fetch 설정 추가
             const loadImage = (src) => new Promise((resolve) => {
                 if (!src) return resolve(null);
                 if (!src.startsWith('http')) {
@@ -246,7 +242,9 @@ function AvatarEditPage() {
                     img.src = src;
                     return;
                 }
-                fetch(src, { mode: 'cors' })
+
+                // 캐시에 남은 잘못된 이미지를 방지하기 위해 cache: 'no-cache'
+                fetch(src, { mode: 'cors', cache: 'no-cache' })
                     .then(r => r.blob())
                     .then(blob => {
                         const url = URL.createObjectURL(blob);
@@ -260,7 +258,8 @@ function AvatarEditPage() {
                         img.crossOrigin = 'anonymous';
                         img.onload = () => resolve(img);
                         img.onerror = () => resolve(null);
-                        img.src = src;
+                        // 최후의 수단: 쿼리 파라미터를 추가해 브라우저 캐시를 완전히 무시하고 새로 요청
+                        img.src = src + (src.includes('?') ? '&' : '?') + 'cb=' + Date.now();
                     });
             });
 
@@ -294,9 +293,14 @@ function AvatarEditPage() {
             }
 
             const imageDataUrl = canvas.toDataURL("image/png");
-            const storageRef = ref(storage, `classes/${classId}/players/${myPlayerData.id}/avatarSnapshot_${Date.now()}.png`);
+
+            // ★ 최적화: 파일명을 Date.now()로 매번 새로 만들지 않고 하나의 파일을 덮어쓰도록 수정
+            const storageRef = ref(storage, `classes/${classId}/players/${myPlayerData.id}/avatarSnapshot.png`);
             await uploadString(storageRef, imageDataUrl, 'data_url');
-            avatarSnapshotUrl = await getDownloadURL(storageRef);
+            const downloadUrl = await getDownloadURL(storageRef);
+
+            // 이미지 주소 뒤에 시간을 붙여서 브라우저가 새 이미지로 강제 인식하게 함
+            avatarSnapshotUrl = `${downloadUrl}?t=${Date.now()}`;
 
             // 2. avatarConfig 저장
             await updatePlayerAvatar(classId, myPlayerData.id, avatarConfig);
@@ -331,8 +335,7 @@ function AvatarEditPage() {
             Object.values(config.accessories).forEach(partId => {
                 const part = avatarParts.find(p => p.id === partId);
                 if (part) urls.push(part.src);
-            }
-            );
+            });
         }
         return urls;
     }, [avatarConfig, avatarParts]);
@@ -343,7 +346,6 @@ function AvatarEditPage() {
                 <Header><Title>👗 아바타 꾸미기</Title></Header>
                 <AvatarSection>
                     <AvatarFrame>
-                        {/* 캡처 대상은 배경색이 없는 이 내부 div */}
                         <AvatarCaptureArea>
                             <BaseAvatar src={baseAvatar} alt="기본 바디" />
                             {selectedPartUrls.filter(src => !!src).map((src, index) => (
