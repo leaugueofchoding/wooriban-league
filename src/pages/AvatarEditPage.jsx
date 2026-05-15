@@ -4,10 +4,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, updatePlayerAvatar, updatePlayerProfile, storage } from '../api/firebase'; // updatePlayerProfile 추가
+import { auth, updatePlayerAvatar, updatePlayerProfile, storage } from '../api/firebase';
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import baseAvatar from '../assets/base-avatar.png';
-import html2canvas from 'html2canvas'; // 더 이상 사용 안 함 (Canvas API로 교체)
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -83,7 +82,7 @@ const PartImage = styled.img`
   height: 100%;
   object-fit: contain;
   transition: transform 0.2s;
-  transform: scale(1.1) translateY(10px); 
+  /* transform: scale(1.1) translateY(10px); 위치 어긋남 방지를 위해 제거함 */
 `;
 
 const BaseAvatar = styled(PartImage)``;
@@ -184,7 +183,6 @@ function AvatarEditPage() {
     const currentUser = auth.currentUser;
     const [avatarConfig, setAvatarConfig] = useState({});
     const [isSaving, setIsSaving] = useState(false);
-    const avatarRef = useRef(null); // 캡처용 ref
 
     const myPlayerData = useMemo(() => players.find(p => p.authUid === currentUser?.uid), [players, currentUser]);
 
@@ -333,7 +331,8 @@ function AvatarEditPage() {
             Object.values(config.accessories).forEach(partId => {
                 const part = avatarParts.find(p => p.id === partId);
                 if (part) urls.push(part.src);
-            });
+            }
+            );
         }
         return urls;
     }, [avatarConfig, avatarParts]);
@@ -347,10 +346,13 @@ function AvatarEditPage() {
                         {/* 캡처 대상은 배경색이 없는 이 내부 div */}
                         <AvatarCaptureArea>
                             <BaseAvatar src={baseAvatar} alt="기본 바디" />
-                            {selectedPartUrls.filter(src => !!src).map(src => (
-                                <PartImage key={src} src={src} crossOrigin="anonymous" onError={e => { e.target.style.display = 'none'; }} />
+                            {selectedPartUrls.filter(src => !!src).map((src, index) => (
+                                <PartImage
+                                    key={`${src}-${index}`}
+                                    src={src}
+                                    alt="아바타 파츠"
+                                />
                             ))}
-
                         </AvatarCaptureArea>
                     </AvatarFrame>
                 </AvatarSection>
