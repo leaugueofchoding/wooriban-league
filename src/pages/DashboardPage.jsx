@@ -375,6 +375,7 @@ function DashboardPage() {
                     myPlayerData={myPlayerDataWithWins}
                     myAvatarUrls={myAvatarUrls}
                     myPartnerPet={myPartnerPet}
+                    equippedTitle={equippedTitle} // 👈 이 부분을 꼭 추가해 주세요!
                     todaysFriend={todaysFriendWithWins}
                     friendAvatarUrls={friendAvatarUrls}
                     friendPartnerPet={friendPartnerPet}

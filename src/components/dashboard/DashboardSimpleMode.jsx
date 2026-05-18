@@ -136,10 +136,36 @@ function DashboardSimpleMode({
               </IDPhotoContainer>
             </IDPhotoFrame>
             <IDInfo>
-              <RoleBadge>{equippedTitle ? equippedTitle.name : (myPlayerData.role === 'admin' ? 'TEACHER' : 'PLAYER')}</RoleBadge>
-              <NameTitle>{myPlayerData.name}{getWinningStars(myPlayerData.win_count || 0)}</NameTitle>
+              {/* ▼ 테두리와 상단 뱃지를 완전히 지우고, 이름 왼쪽으로 칭호를 자연스럽게 녹여냈습니다 ▼ */}
+              <NameTitle>
+                {equippedTitle && (
+                  <span style={{
+                    fontWeight: 900,
+                    fontSize: '1.1rem', // 이름(1.8rem) 크기와 밸런스를 맞춘 세련된 크기
+                    color: equippedTitle.color,
+                    marginRight: '10px',
+                    letterSpacing: '-0.3px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    verticalAlign: 'middle'
+                  }}>
+                    {equippedTitle.icon} {equippedTitle.name}
+                  </span>
+                )}
+                <span style={{ verticalAlign: 'middle' }}>{myPlayerData.name}</span>
+                {getWinningStars(myPlayerData.win_count || 0)}
+              </NameTitle>
+
               <StatBadges>
-                <Badge $bg="#e6fcf5" $color="#0ca678">{myPartnerPet ? <><img src={petImageMap[`${myPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" className="pet-icon" /><span>Lv.{myPartnerPet.level} {myPartnerPet.name}</span></> : "펫 없음"}</Badge>
+                <Badge $bg="#e6fcf5" $color="#0ca678">
+                  {myPartnerPet ? (
+                    <>
+                      <img src={petImageMap[`${myPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" className="pet-icon" />
+                      <span>Lv.{myPartnerPet.level} {myPartnerPet.name}</span>
+                    </>
+                  ) : "펫 없음"}
+                </Badge>
                 <Badge $bg="#fff9db" $color="#f59f00">💰 {myPlayerData.points?.toLocaleString()}</Badge>
                 <Badge $bg="#fff5f5" $color="#fa5252">❤️ {myPlayerData.totalLikes?.toLocaleString()}</Badge>
               </StatBadges>

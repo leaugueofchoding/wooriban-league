@@ -5,7 +5,7 @@ import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import {
   auth, db, updatePlayerProfile, equipTitle,
-  createBattleChallenge, rejectBattleChallenge, storage
+  createBattleChallenge, rejectBattleChallenge, storage, getTitles // <- 추가
 } from '../api/firebase.js';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../assets/base-avatar.png';
@@ -242,8 +242,7 @@ const ChallengeButton = styled.button` width: 100%; background-color: #ff6b6b; c
 
 function ProfilePage() {
   const { classId } = useClassStore();
-  const { players, avatarParts, fetchInitialData, teams, currentSeason, titles } = useLeagueStore();
-  const currentUser = auth.currentUser;
+  const { players, avatarParts, fetchInitialData, teams, currentSeason } = useLeagueStore(); const currentUser = auth.currentUser;
   const { playerId } = useParams();
   const navigate = useNavigate();
 
@@ -258,8 +257,21 @@ function ProfilePage() {
   const [incomingChallenge, setIncomingChallenge] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  // avatarRef 제거됨 - 이슈 6 수정: ProfilePage에서 avatarSnapshotUrl을 재생성하지 않음
+  // ▼▼▼ [수정: 새로 추가할 코드] ▼▼▼
+  const [titles, setTitles] = useState([]);
 
+  useEffect(() => {
+    const fetchTitles = async () => {
+      if (!classId) return;
+      try {
+        const titlesData = await getTitles(classId);
+        setTitles(titlesData);
+      } catch (error) {
+        console.error('칭호 목록 로딩 오류:', error);
+      }
+    };
+    fetchTitles();
+  }, [classId]);
   const playerData = useMemo(() => {
     const targetId = playerId || currentUser?.uid;
     return players.find(p => p.id === targetId || p.authUid === targetId);
@@ -294,7 +306,23 @@ function ProfilePage() {
   const handleAcceptChallenge = async () => { /* ... */ };
   const handleRejectChallenge = async () => { /* ... */ };
   const handleBattleRequest = async () => { /* ... */ };
-  const handleSaveEquippedTitle = async () => { /* ... */ };
+  const handleSaveEquippedTitle = async () => {
+    if (!classId || !playerData) return;
+    try {
+      // 선택한 칭호 ID(selectedTitleId)를 학생의 프로필 데이터에 업데이트
+      await updatePlayerProfile(classId, playerData.id, {
+        equippedTitle: selectedTitleId
+      });
+
+      alert(selectedTitleId ? '칭호가 성공적으로 장착되었습니다!' : '칭호가 해제되었습니다.');
+
+      // 스토어 정보 갱신 (변경된 칭호가 프로필 배지와 대시보드에 즉시 반영되도록 함)
+      await fetchInitialData();
+    } catch (error) {
+      console.error('칭호 장착 에러:', error);
+      alert(`칭호 장착에 실패했습니다: ${error.message}`);
+    }
+  };
   const handleOpenModal = () => { fetchPointHistory(); setIsHistoryModalOpen(true); };
 
   const fetchPointHistory = async () => {

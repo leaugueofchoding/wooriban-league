@@ -36,6 +36,16 @@ const QuizOverlay = styled.div` position: fixed; top: 0; left: 0; right: 0; bott
 const QuizModalContent = styled.div` background: white; width: 90%; max-width: 500px; padding: 2rem; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); position: relative; `;
 const CloseButton = styled.button` position: absolute; top: 1rem; right: 1rem; background: #f1f3f5; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 1.2rem; cursor: pointer; &:hover { background: #dee2e6; } `;
 const StarContainer = styled.span` display: inline-flex; align-items: center; gap: 2px; font-size: 0.6em; margin-left: 6px; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); `;
+const TitleElement = styled.span`
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: ${props => props.color || '#fff'};
+  margin-right: 6px;
+  text-shadow: 0px 0px 8px ${props => props.color || 'rgba(255,255,255,0.6)'};
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+`;
 
 const getWinningStars = (count) => {
   if (!count || count <= 0) return null;
@@ -93,7 +103,7 @@ const DraggableWidget = ({ id, initialX, initialY, children, onSavePos }) => {
 
 // --- Main Component ---
 function DashboardGameMode({
-  myPlayerData, myAvatarUrls, myPartnerPet, todaysFriend, friendAvatarUrls,
+  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls,
   activeGoal, activeMissions, recentMissions, bgUrl, onDonate
 }) {
   const navigate = useNavigate();
@@ -150,6 +160,11 @@ function DashboardGameMode({
           </AvatarCircle>
           <StatusInfo>
             <PlayerName>
+              {equippedTitle && (
+                <TitleElement color={equippedTitle.color}>
+                  {equippedTitle.icon} {equippedTitle.name}
+                </TitleElement>
+              )}
               {myPlayerData.name}
               {getWinningStars(myPlayerData.win_count || 0)}
               <span style={{ fontSize: '0.8rem', opacity: 0.9, marginLeft: '4px' }}>

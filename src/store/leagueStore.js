@@ -434,11 +434,13 @@ export const useLeagueStore = create((set, get) => ({
             get().cleanupListeners();
 
             if (!activeSeason) {
-                const [fetchedPlayers, usersData, avatarPartsData, myRoomItemsData] = await Promise.all([
+                // getTitles(classId)를 함께 불러오도록 수정합니다.
+                const [fetchedPlayers, usersData, avatarPartsData, myRoomItemsData, titlesData] = await Promise.all([
                     getPlayers(classId),
                     getUsers(),
                     getAvatarParts(),
-                    getMyRoomItems()
+                    getMyRoomItems(),
+                    getTitles(classId) // 👈 여기에 추가
                 ]);
 
                 let finalPlayers = [...fetchedPlayers];
@@ -455,7 +457,8 @@ export const useLeagueStore = create((set, get) => ({
 
                 set({
                     isLoading: false, players: finalPlayers, teams: [], matches: [], missions: [],
-                    users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null
+                    users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null,
+                    titles: titlesData // 👈 빈 배열 대신 불러온 titlesData를 주입합니다!
                 });
 
                 if (currentUser) {

@@ -538,13 +538,62 @@ export async function getMissionHistory(classId, studentId, missionId) {
 
 export async function addMissionComment(classId, submissionId, commentData, studentAuthUid, missionTitle) {
   if (!classId) return;
+
+  const submissionRef = doc(db, "classes", classId, "missionSubmissions", submissionId);
+  const commenterRef = doc(db, "classes", classId, "players", commentData.commenterId);
   const commentsRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments");
-  // 🔽 [수정] commentData와 함께 classId를 명시적으로 추가합니다.
+
+  let rewardAmount = 0;
+  let commenterAuthUid = null;
+  let commenterName = null;
+
+  await runTransaction(db, async (transaction) => {
+    const submissionSnap = await transaction.get(submissionRef);
+    const commenterSnap = await transaction.get(commenterRef);
+
+    if (submissionSnap.exists() && commenterSnap.exists()) {
+      const submissionData = submissionSnap.data();
+      const commenterData = commenterSnap.data();
+
+      // [방어] 타인의 미션일 것
+      if (submissionData.studentId !== commentData.commenterId) {
+        const todayStr = new Date().toLocaleDateString();
+        let dailyCommentCount = commenterData.dailyMissionCommentCount || 0;
+        let dailyCommentedUsers = commenterData.dailyMissionCommentedUsers || [];
+
+        if (commenterData.lastMissionCommentDate !== todayStr) {
+          dailyCommentCount = 0;
+          dailyCommentedUsers = [];
+        }
+
+        const alreadyCommentedOnThisUser = dailyCommentedUsers.includes(submissionData.studentId);
+
+        // 하루 최대 10회, 동일 친구 미션에 중복 보상 방지
+        if ((dailyCommentCount < 10) && !alreadyCommentedOnThisUser) {
+          rewardAmount = 10;
+          commenterAuthUid = commenterData.authUid;
+          commenterName = commenterData.name;
+
+          transaction.update(commenterRef, {
+            points: increment(rewardAmount),
+            dailyMissionCommentCount: dailyCommentCount + 1,
+            dailyMissionCommentedUsers: [...dailyCommentedUsers, submissionData.studentId],
+            lastMissionCommentDate: todayStr
+          });
+        }
+      }
+    }
+  });
+
   await addDoc(commentsRef, {
     ...commentData,
-    classId, // classId 필드 추가
+    classId,
     createdAt: serverTimestamp(),
   });
+
+  if (rewardAmount > 0 && commenterAuthUid) {
+    await addPointHistory(classId, commenterAuthUid, commenterName, rewardAmount, "친구 미션 칭찬 댓글 보상");
+  }
 
   if (studentAuthUid && commentData.commenterId !== studentAuthUid) {
     createNotification(
@@ -2093,31 +2142,58 @@ export async function addMyRoomComment(classId, roomId, commentData) {
 export async function likeMyRoomComment(classId, roomId, commentId, likerId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const commentRef = doc(db, "classes", classId, "players", roomId, "myRoomComments", commentId);
+  const roomOwnerRef = doc(db, "classes", classId, "players", roomId);
 
   let rewardNeeded = false;
   let commenterAuthUid = null;
   let commenterName = null;
 
-  // [수정 이슈 6] Firestore 트랜잭션 규칙: 모든 read를 write 이전에 먼저 실행
   await runTransaction(db, async (transaction) => {
     const commentSnap = await transaction.get(commentRef);
+    const roomOwnerSnap = await transaction.get(roomOwnerRef);
+
     if (!commentSnap.exists()) throw new Error("댓글을 찾을 수 없습니다.");
+    if (!roomOwnerSnap.exists()) throw new Error("방 주인 정보를 찾을 수 없습니다.");
 
     const commentData = commentSnap.data();
+    const roomOwnerData = roomOwnerSnap.data();
     const likes = commentData.likes || [];
     if (likes.includes(likerId)) return;
 
-    const shouldReward = likerId === roomId;
-    let commenterRef = null;
+    // [방어 1] 자기 추천 금지
+    const isRoomOwnerLiking = likerId === roomId;
+    const isNotSelfComment = commentData.commenterId !== roomId;
+
+    // [방어 2] 일일 한도(10회) 및 특정인 중복 보상 방지
+    const todayStr = new Date().toLocaleDateString();
+    let dailyRewardCount = roomOwnerData.dailyCommentRewardCount || 0;
+    let dailyRewardedUsers = roomOwnerData.dailyCommentRewardedUsers || [];
+
+    if (roomOwnerData.lastCommentRewardDate !== todayStr) {
+      dailyRewardCount = 0;
+      dailyRewardedUsers = [];
+    }
+
+    const alreadyRewardedThisUser = dailyRewardedUsers.includes(commentData.commenterId);
+    const shouldReward = isRoomOwnerLiking && isNotSelfComment && (dailyRewardCount < 10) && !alreadyRewardedThisUser;
 
     if (shouldReward) {
-      commenterRef = doc(db, "classes", classId, "players", commentData.commenterId);
-      const commenterSnap = await transaction.get(commenterRef); // read before write
-      if (!commenterSnap.exists()) throw new Error("댓글 작성자 정보를 찾을 수 없습니다.");
-      commenterAuthUid = commenterSnap.data().authUid;
-      commenterName = commenterSnap.data().name;
-      rewardNeeded = true;
-      transaction.update(commenterRef, { points: increment(30), totalLikes: increment(1) });
+      const commenterRef = doc(db, "classes", classId, "players", commentData.commenterId);
+      const commenterSnap = await transaction.get(commenterRef);
+      if (commenterSnap.exists()) {
+        commenterAuthUid = commenterSnap.data().authUid;
+        commenterName = commenterSnap.data().name;
+        rewardNeeded = true;
+
+        transaction.update(commenterRef, { points: increment(30), totalLikes: increment(1) });
+
+        // 방 주인의 지급 기록 업데이트
+        transaction.update(roomOwnerRef, {
+          dailyCommentRewardCount: dailyRewardCount + 1,
+          dailyCommentRewardedUsers: [...dailyRewardedUsers, commentData.commenterId],
+          lastCommentRewardDate: todayStr
+        });
+      }
     }
 
     transaction.update(commentRef, { likes: [...likes, likerId] });
@@ -2171,10 +2247,30 @@ export async function likeMyRoomReply(classId, roomId, commentId, reply, likerId
     const roomOwnerData = roomOwnerSnap.data();
     roomOwnerName = roomOwnerData.name;
 
-    // ★ 방 주인의 답글에 하트를 누른 경우에만 보상
+    // [방어 1] 내(방 주인)가 쓴 글이고, 내가 누른 하트가 아닐 것
     const isReplyByRoomOwner = replies[replyIndex].replierId === roomId;
-    if (isReplyByRoomOwner) {
-      transaction.update(roomOwnerRef, { points: increment(15), totalLikes: increment(1) });
+    const isNotSelfLike = likerId !== roomId;
+
+    // [방어 2] 일일 한도(10회) 및 동일 친구 하트 중복 보상 방지
+    const todayStr = new Date().toLocaleDateString();
+    let dailyReplyRewardCount = roomOwnerData.dailyReplyRewardCount || 0;
+    let dailyReplyRewardedUsers = roomOwnerData.dailyReplyRewardedUsers || []; // 하트를 눌러준 사람 목록
+
+    if (roomOwnerData.lastReplyRewardDate !== todayStr) {
+      dailyReplyRewardCount = 0;
+      dailyReplyRewardedUsers = [];
+    }
+
+    const alreadyRewardedByThisUser = dailyReplyRewardedUsers.includes(likerId);
+
+    if (isReplyByRoomOwner && isNotSelfLike && (dailyReplyRewardCount < 10) && !alreadyRewardedByThisUser) {
+      transaction.update(roomOwnerRef, {
+        points: increment(15),
+        totalLikes: increment(1),
+        dailyReplyRewardCount: dailyReplyRewardCount + 1,
+        dailyReplyRewardedUsers: [...dailyReplyRewardedUsers, likerId],
+        lastReplyRewardDate: todayStr
+      });
       shouldReward = true;
     }
 
@@ -2185,12 +2281,10 @@ export async function likeMyRoomReply(classId, roomId, commentId, reply, likerId
     transaction.update(commentRef, { replies });
   });
 
-  // ★ transaction 완료 후 포인트 내역/알림 처리 (transaction 밖에서 처리)
   if (shouldReward) {
     await addPointHistory(classId, roomId, roomOwnerName, 15, "내 답글 '좋아요' 보상");
   }
 }
-
 
 /**
  * 특정 마이룸의 모든 댓글을 불러옵니다.
@@ -2661,12 +2755,21 @@ export async function deleteMissionReply(classId, submissionId, commentId, reply
 export async function toggleSubmissionLike(classId, submissionId, likerId) {
   if (!classId) return;
   const submissionRef = doc(db, "classes", classId, "missionSubmissions", submissionId);
+  const likerRef = doc(db, "classes", classId, "players", likerId);
+
+  let rewardAmount = 0;
+  let likerAuthUid = null;
+  let likerName = null;
 
   await runTransaction(db, async (transaction) => {
     const submissionDoc = await transaction.get(submissionRef);
     if (!submissionDoc.exists()) throw new Error("Submission not found");
 
+    const likerDoc = await transaction.get(likerRef);
+    if (!likerDoc.exists()) throw new Error("Liker not found");
+
     const submissionData = submissionDoc.data();
+    const likerData = likerDoc.data();
     const likes = submissionData.likes || [];
     const authorRef = doc(db, "classes", classId, "players", submissionData.studentId);
     const isLiked = likes.includes(likerId);
@@ -2677,17 +2780,45 @@ export async function toggleSubmissionLike(classId, submissionId, likerId) {
     } else {
       transaction.update(submissionRef, { likes: [...likes, likerId] });
       transaction.update(authorRef, { totalLikes: increment(1) });
+
+      // [신규 & 방어] 미션 하트 상호작용 보상 (하루 10회 한도 및 동일인 중복 방지)
+      const todayStr = new Date().toLocaleDateString();
+      let dailyLikeCount = likerData.dailyMissionLikeCount || 0;
+      let dailyLikedUsers = likerData.dailyMissionLikedUsers || []; // 오늘 하트를 눌러준 미션 주인 목록
+
+      if (likerData.lastMissionLikeDate !== todayStr) {
+        dailyLikeCount = 0;
+        dailyLikedUsers = [];
+      }
+
+      const alreadyLikedThisUser = dailyLikedUsers.includes(submissionData.studentId);
+
+      // 내 미션이 아니고, 일일 한도 내이며, 오늘 이 친구에게 보상을 받은 적 없을 때 5P 지급
+      if (submissionData.studentId !== likerId && (dailyLikeCount < 10) && !alreadyLikedThisUser) {
+        rewardAmount = 5;
+        likerAuthUid = likerData.authUid;
+        likerName = likerData.name;
+        transaction.update(likerRef, {
+          points: increment(rewardAmount),
+          dailyMissionLikeCount: dailyLikeCount + 1,
+          dailyMissionLikedUsers: [...dailyLikedUsers, submissionData.studentId],
+          lastMissionLikeDate: todayStr
+        });
+      }
     }
   });
 
-  // 인기 게시물 보상 로직은 트랜잭션과 별도로 처리해도 무방
+  if (rewardAmount > 0 && likerAuthUid) {
+    await addPointHistory(classId, likerAuthUid, likerName, rewardAmount, "친구 미션 응원(하트) 보상");
+  }
+
+  // (아래에 기존에 있던 인기 게시물 보상 로직 그대로 유지)
   const submissionDoc = await getDoc(submissionRef);
   const submissionData = submissionDoc.data();
   const POPULARITY_THRESHOLD = 10;
-  const REWARD_AMOUNT = 200;
 
   if ((submissionData.likes.length >= POPULARITY_THRESHOLD) && !submissionData.popularRewardGranted) {
-    // ... (기존 보상 로직 유지)
+    // ...
   }
 }
 
