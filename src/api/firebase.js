@@ -29,27 +29,29 @@ export const storage = getStorage(app); // <- export를 추가해주세요.
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// =================================================================
-// ▼▼▼ [수정] 칭호 데이터 자동 등록(seeding) 함수 (classId 추가) ▼▼▼
-// =================================================================
+// src/api/firebase.js
+
 export async function seedInitialTitles(classId) {
   if (!classId) return;
   const titlesRef = collection(db, "classes", classId, "titles");
-  const snapshot = await getDocs(query(titlesRef, limit(1)));
 
-  if (snapshot.empty) {
-    console.log(`[${classId}] 칭호 데이터가 비어있어, titles.json의 기본값으로 자동 등록을 시작합니다.`);
-    const batch = writeBatch(db);
-    initialTitles.forEach(title => {
-      const docRef = doc(titlesRef, title.id);
-      batch.set(docRef, {
-        ...title,
-        createdAt: serverTimestamp()
-      });
-    });
-    await batch.commit();
-    console.log(`[${classId}] 기본 칭호 데이터 자동 등록 완료.`);
-  }
+  // [수정됨] 기존에는 비어있을 때만(snapshot.empty) 넣었지만, 
+  // 이제는 앱이 실행될 때마다 titles.json의 최신 데이터로 기존 DB를 업데이트(merge) 합니다.
+  console.log(`[${classId}] titles.json의 최신 내용으로 칭호 데이터를 강제 동기화합니다.`);
+
+  const batch = writeBatch(db);
+  initialTitles.forEach(title => {
+    const docRef = doc(titlesRef, title.id);
+    // merge: true 옵션을 주면 기존에 유저들이 획득한 기록은 안전하게 놔두고,
+    // 설명(description)이나 아이콘 같은 정보만 최신으로 덮어씌웁니다.
+    batch.set(docRef, {
+      ...title,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  });
+
+  await batch.commit();
+  console.log(`[${classId}] 칭호 데이터 강제 동기화 완료.`);
 }
 
 // --- 포인트 기록 헬퍼 함수 (classId 추가) ---
@@ -3391,6 +3393,8 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
   return { expGained, updatedPlayerData: updatedPlayerSnap.data() };
 }
 
+// src/api/firebase.js
+
 export async function processBattleResults(classId, winnerId, loserId, fled = false, finalWinnerPet, finalLoserPet) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
@@ -3405,14 +3409,36 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     const winnerData = winnerDoc.data();
     const loserData = loserDoc.data();
 
+    // ▼▼▼ [버프 적용] 장착한 칭호 확인 ▼▼▼
+    const winnerTitle = winnerData.equippedTitle;
+    const loserTitle = loserData.equippedTitle;
+
+    // 1. 포인트 부자 버프: 승리 보상 20% 증가
+    let victoryReward = 150;
+    if (winnerTitle === 'point_rich') {
+      victoryReward = Math.floor(victoryReward * 1.2); // 180P
+    }
+
+    // 2. 기부천사 버프: 패배/도망 페널티 50% 면제
+    let defeatPenalty = fled ? 0 : 50;
+    if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
+      defeatPenalty = Math.floor(defeatPenalty * 0.5); // 25P 차감으로 감소
+    }
+    // ▲▲▲ [버프 적용 끝] ▲▲▲
+
     let winnerPets = winnerData.pets || [];
     let loserPets = loserData.pets || [];
 
-    // 승자 펫 업데이트 (배틀 중 깎인 체력 반영)
+    // 승자 펫 업데이트
     if (finalWinnerPet) {
       const idx = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
       if (idx !== -1) {
-        winnerPets[idx] = { ...winnerPets[idx], hp: finalWinnerPet.hp, sp: finalWinnerPet.sp, status: {} };
+        winnerPets[idx] = {
+          ...winnerPets[idx],
+          hp: Math.min(winnerPets[idx].maxHp, finalWinnerPet.hp), // 👈 쉴드 초과분 컷!
+          sp: finalWinnerPet.sp,
+          status: {}
+        };
         if (winnerPets[idx].hp > 0) {
           winnerPets[idx].exp += 100; // 승리 경험치
           const { leveledUpPet } = calculateLevelUp(winnerPets[idx]);
@@ -3421,11 +3447,16 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
       }
     }
 
-    // 패자 펫 업데이트 (배틀 중 깎인 체력 반영)
+    // 패자 펫 업데이트
     if (finalLoserPet) {
       const idx = loserPets.findIndex(p => p.id === finalLoserPet.id);
       if (idx !== -1) {
-        loserPets[idx] = { ...loserPets[idx], hp: finalLoserPet.hp, sp: finalLoserPet.sp, status: {} };
+        loserPets[idx] = {
+          ...loserPets[idx],
+          hp: Math.min(loserPets[idx].maxHp, finalLoserPet.hp), // 👈 쉴드 초과분 컷!
+          sp: finalLoserPet.sp,
+          status: {}
+        };
         if (loserPets[idx].hp > 0) {
           loserPets[idx].exp += fled ? 10 : 30; // 패배/도망 경험치
           const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
@@ -3436,11 +3467,14 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
       }
     }
 
-    transaction.update(winnerRef, { points: increment(150), pets: winnerPets });
-    transaction.update(loserRef, { points: increment(fled ? 0 : -50), pets: loserPets });
+    // 포인트 증감 적용 (버프 수치 반영)
+    transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
+    transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
-    await addPointHistory(classId, winnerData.authUid, winnerData.name, 150, "퀴즈 배틀 승리");
-    await addPointHistory(classId, loserData.authUid, loserData.name, fled ? 0 : -50, fled ? "퀴즈 배틀에서 도망침" : "퀴즈 배틀 패배");
+    await addPointHistory(classId, winnerData.authUid, winnerData.name, victoryReward, "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : ''));
+    if (defeatPenalty > 0) {
+      await addPointHistory(classId, loserData.authUid, loserData.name, -defeatPenalty, "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : ''));
+    }
   });
 }
 
@@ -3613,31 +3647,54 @@ export async function healAllPets(classId, playerId) {
  * @returns {string} 배틀 문서 ID
  */
 // ▼▼▼ [수정] createOrJoinBattle 함수가 randomQuiz를 인자로 받도록 변경 ▼▼▼
+// src/api/firebase.js
+
 export async function createOrJoinBattle(classId, matchId, myPlayerData, opponentPlayerData, randomQuiz) {
   const battleRef = doc(db, "classes", classId, "battles", matchId);
   const battleSnap = await getDoc(battleRef);
 
-  if (battleSnap.exists()) {
+  if (battleSnap.exists() && battleSnap.data().gameState) {
     return matchId;
   }
 
-  const myPet = myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId);
-  const opponentPet = opponentPlayerData.pets.find(p => p.id === opponentPlayerData.partnerPetId);
+  let myPet = { ...myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) };
+  let opponentPet = { ...opponentPlayerData.pets.find(p => p.id === opponentPlayerData.partnerPetId) };
+
+  // ▼▼▼ [버프 적용] 시작 시 발동하는 스탯 보너스 ▼▼▼
+  // 1. 숨은 영웅(god_of_tidiness): 최대 HP 5% 쉴드 보너스
+  if (myPlayerData.equippedTitle === 'god_of_tidiness') {
+    const shield = Math.floor(myPet.maxHp * 0.05);
+    myPet.hp += shield;
+  }
+  if (opponentPlayerData.equippedTitle === 'god_of_tidiness') {
+    const shield = Math.floor(opponentPet.maxHp * 0.05);
+    opponentPet.hp += shield;
+  }
+
+  // 2. [변경] 인기스타(popular_star): 초기 SP 20% 오버차지
+  if (myPlayerData.equippedTitle === 'popular_star') {
+    myPet.sp = Math.floor(myPet.maxSp * 1.2);
+  }
+  if (opponentPlayerData.equippedTitle === 'popular_star') {
+    opponentPet.sp = Math.floor(opponentPet.maxSp * 1.2);
+  }
+  // ▲▲▲ [버프 적용 끝] ▲▲▲
+
   const firstTurnPlayerId = Math.random() < 0.5 ? myPlayerData.id : opponentPlayerData.id;
 
   const initialBattleState = {
     matchId: matchId,
-    playerA: { id: myPlayerData.id, name: myPlayerData.name, pet: { ...myPet, status: {} } },
-    playerB: { id: opponentPlayerData.id, name: opponentPlayerData.name, pet: { ...opponentPet, status: {} } },
+    playerA: { id: myPlayerData.id, name: myPlayerData.name, pet: { ...myPet, status: {} }, equippedTitle: myPlayerData.equippedTitle },
+    playerB: { id: opponentPlayerData.id, name: opponentPlayerData.name, pet: { ...opponentPet, status: {} }, equippedTitle: opponentPlayerData.equippedTitle },
     turn: firstTurnPlayerId,
     gameState: 'TURN_START',
     log: `${myPlayerData.name}이(가) ${opponentPlayerData.name}에게 대결을 신청했습니다!`,
-    currentQuestion: randomQuiz, // 외부에서 전달받은 퀴즈 사용
+    currentQuestion: randomQuiz,
     winner: null,
     createdAt: serverTimestamp(),
   };
 
-  await setDoc(battleRef, initialBattleState);
+  await setDoc(battleRef, initialBattleState, { merge: true });
   return matchId;
 }
 
@@ -3657,10 +3714,11 @@ export function listenToBattle(classId, battleId, callback) {
  * 플레이어의 행동을 받아 배틀 상태를 업데이트합니다.
  */
 // ▼▼▼ [수정] submitBattleAction 함수에 allQuizzesData를 인자로 전달 ▼▼▼
+// src/api/firebase.js 내부 submitBattleAction 함수 교체
+
 export async function submitBattleAction(classId, battleId, actionData, allQuizzesData) {
   const battleRef = doc(db, "classes", classId, "battles", battleId);
 
-  // ▼▼▼ 아이템 사용 로직 추가 ▼▼▼
   if (actionData.type === 'item') {
     const playerRef = doc(db, 'classes', classId, 'players', actionData.playerId);
 
@@ -3668,12 +3726,10 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
       const playerDoc = await transaction.get(playerRef);
       const playerData = playerDoc.data();
 
-      // 1. 인벤토리에서 아이템 1개 차감
       if (playerData.petInventory[actionData.itemId] > 0) {
         playerData.petInventory[actionData.itemId] -= 1;
       }
 
-      // 2. 배틀 중 체력 30% 즉시 회복 (배틀에서의 밸런스를 위해 15% -> 30%로 상향!)
       const targetPet = playerData.pets.find(p => p.id === playerData.partnerPetId);
       const healHp = Math.floor(targetPet.maxHp * 0.30);
       const healSp = Math.floor(targetPet.maxSp * 0.30);
@@ -3686,7 +3742,6 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
         pets: playerData.pets
       });
 
-      // 3. 배틀 로그에 기록 남기기 (상대방도 알 수 있도록)
       transaction.update(battleRef, {
         [`actions.${actionData.playerId}`]: actionData,
         logs: arrayUnion(`${playerData.name}의 펫이 두뇌 간식을 먹고 체력을 회복했습니다! (HP +${healHp})`)
@@ -3703,6 +3758,7 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
     if (battleData.gameState === 'FINISHED') return;
 
     const { type, payload } = actionData;
+    // ▼ [수정됨] 띄어쓰기 오타 해결
     const isPlayerA_Turn = battleData.turn === battleData.playerA.id;
 
     const attackerKey = isPlayerA_Turn ? 'playerA' : 'playerB';
@@ -3717,7 +3773,11 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
         const { userAnswer } = payload;
         const isCorrect = userAnswer.trim().toLowerCase() === newBattleData.currentQuestion.answer.toLowerCase();
         if (isCorrect) {
-          newBattleData.log = "정답! 행동을 선택하세요!";
+          if (attacker.equippedTitle === 'daily_helper') {
+            newBattleData.log = "💡 일타강사의 명쾌한 정답! 공격 주도권을 완벽히 잡았습니다!";
+          } else {
+            newBattleData.log = "정답! 행동을 선택하세요!";
+          }
           newBattleData.gameState = 'ACTION';
         } else {
           newBattleData.log = `오답! 상대방 턴! (정답: ${newBattleData.currentQuestion.answer})`;
@@ -3736,15 +3796,59 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
           break;
         }
 
-        const skillLog = skill.effect(attacker.pet, defender.pet);
         if (skill.cost > 0) attacker.pet.sp -= skill.cost;
-        newBattleData.log = skillLog;
+
+        if (skillId.toLowerCase() === 'charge') {
+          let spGain = 20;
+          if (attacker.equippedTitle === 'idea_bank') {
+            spGain = Math.floor(spGain * 1.2);
+          }
+          attacker.pet.sp = Math.min(attacker.pet.maxSp, attacker.pet.sp + spGain);
+
+          let treeHeal = 0;
+          if (attacker.equippedTitle === 'diligent_tree') {
+            treeHeal = Math.floor(attacker.pet.maxHp * 0.02);
+            attacker.pet.hp = Math.min(attacker.pet.maxHp, attacker.pet.hp + treeHeal);
+          }
+
+          newBattleData.log = `${attacker.name}의 펫이 집중하여 에너지를 모았습니다! (SP +${spGain})${treeHeal > 0 ? ` [성실한 나무 효과로 HP +${treeHeal} 회복]` : ''}`;
+        } else {
+          let baseDamage = Math.floor(attacker.pet.atk * skill.multiplier);
+
+          if (attacker.equippedTitle === 'goal_machine') {
+            baseDamage = Math.floor(baseDamage * 1.05);
+          }
+
+          let isCritical = false;
+          if (attacker.equippedTitle === 'ruler_of_the_league' && Math.random() < 0.15) {
+            baseDamage = Math.floor(baseDamage * 1.5);
+            isCritical = true;
+          }
+
+          if (defender.equippedTitle === 'icon_of_diligence') {
+            baseDamage = Math.floor(baseDamage * 0.95);
+          }
+          if (defender.equippedTitle === 'star_of_compliments') {
+            baseDamage = Math.floor(baseDamage * 0.97);
+          }
+
+          const finalDamage = Math.max(1, baseDamage);
+          defender.pet.hp = Math.max(0, defender.pet.hp - finalDamage);
+
+          let treeHeal = 0;
+          if (attacker.equippedTitle === 'diligent_tree') {
+            treeHeal = Math.floor(attacker.pet.maxHp * 0.02);
+            attacker.pet.hp = Math.min(attacker.pet.maxHp, attacker.pet.hp + treeHeal);
+          }
+
+          newBattleData.log = `${isCritical ? '💥 [치명타 매치!] ' : ''}${attacker.name}의 펫이 [${skill.name}] 스킬을 사용하여 ${defender.name}의 펫에게 ${finalDamage}의 데미지를 입혔습니다!${treeHeal > 0 ? ` (성실한 나무 효과로 HP +${treeHeal} 회복)` : ''}`;
+        }
 
         if (defender.pet.hp <= 0) {
           defender.pet.hp = 0;
           newBattleData.gameState = 'FINISHED';
           newBattleData.winner = attacker.id;
-          newBattleData.log = `${attacker.name}의 승리!`;
+          newBattleData.log = `🏆 ${attacker.name}의 펫이 승리했습니다!`;
         } else {
           newBattleData.turn = defender.id;
           newBattleData.gameState = 'TURN_START';
@@ -3887,12 +3991,38 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
 
   if (!challenger.partnerPetId || !opponent.partnerPetId) throw new Error("양쪽 플레이어 모두 파트너 펫을 선택해야 합니다.");
 
-  // 펫 정보 가져오기
+
+  // =========================================================
+  // ▼▼▼ [수정] 펫 정보 가져오기 및 숨은 영웅 쉴드 버프 부여 ▼▼▼
+  // =========================================================
   let challengerPets = challenger.pets || [];
   const petIndex = challengerPets.findIndex(p => p.id === challenger.partnerPetId);
-  const challengerPet = challengerPets[petIndex];
 
-  const opponentPet = opponent.pets.find(p => p.id === opponent.partnerPetId);
+  // (중요) DB에 영구적으로 체력이 늘어나지 않도록 얕은 복사(...)를 사용합니다.
+  let challengerPet = { ...challengerPets[petIndex] };
+  let opponentPet = { ...opponent.pets.find(p => p.id === opponent.partnerPetId) };
+
+  // [버프 적용] 숨은 영웅(god_of_tidiness): 배틀 스탯 생성 시 최대 HP 5% 쉴드 보너스 부여
+  if (challenger.equippedTitle === 'god_of_tidiness') {
+    const shield = Math.floor(challengerPet.maxHp * 0.05);
+    challengerPet.hp += shield;
+  }
+  if (opponent.equippedTitle === 'god_of_tidiness') {
+    const shield = Math.floor(opponentPet.maxHp * 0.05);
+    opponentPet.hp += shield;
+  }
+
+  // ▼▼▼ [추가] 인기스타(popular_star): 배틀 스탯 생성 시 SP 20% 오버차지 부여 ▼▼▼
+  if (challenger.equippedTitle === 'popular_star') {
+    const bonusSp = Math.floor(challengerPet.maxSp * 0.2);
+    challengerPet.sp = challengerPet.maxSp + bonusSp; // 최대치를 뚫고 저장
+  }
+  if (opponent.equippedTitle === 'popular_star') {
+    const bonusSp = Math.floor(opponentPet.maxSp * 0.2);
+    opponentPet.sp = opponentPet.maxSp + bonusSp;
+  }
+  // ▲▲▲ [버프 적용 완료] ▲▲▲
+
 
   // 기절 상태 체크
   if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
@@ -3944,8 +4074,9 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   const battleData = {
     id: battleId,
     status: 'pending',
-    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet }, // 업데이트된 펫 정보 사용
-    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false },
+    // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
+    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet, equippedTitle: challenger.equippedTitle || null },
+    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false, equippedTitle: opponent.equippedTitle || null },
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
     question: null,

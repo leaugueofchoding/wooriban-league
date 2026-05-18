@@ -6,17 +6,28 @@ export const PET_SPECIES = {
     TURTLE: 'turtle',
 };
 
-// [헬퍼 함수] 데미지 계산 공통 로직
-const calculateDamage = (basePower, attacker, defender) => {
-    // 1. 기초 데미지 (공격력 계수)
+// src/features/pet/petData.js (기존 calculateDamage부터 SKILLS 객체 끝까지 덮어쓰기)
+
+// [헬퍼 함수] 데미지 계산 및 칭호 버프 공통 로직
+const calculateDamage = (basePower, attackerPlayer, defenderPlayer) => {
+    const attacker = attackerPlayer.pet;
+    const defender = defenderPlayer.pet;
+
     let damage = basePower + (attacker.atk * 1.5);
-
-    // 2. 공격자 상태 확인 (기 모으기)
     let multiplier = 1.0;
-    if (attacker.status?.focusCharge) multiplier *= 2.0; // 기 모으기: 2배
 
-    // 3. 방어자 상태 확인 (방어력 상승)
-    if (defender.status?.defenseUp) multiplier *= 0.7;   // 단단해지기: 30% 감소
+    // 1. 공격자 기 모으기 상태
+    if (attacker.status?.focusCharge) multiplier *= 2.0;
+
+    // 2. 방어자 단단해지기 상태
+    if (defender.status?.defenseUp) multiplier *= 0.7;
+
+    // 3. [칭호 버프] 득점 기계 (공격 데미지 5% 증가)
+    if (attackerPlayer.equippedTitle === 'goal_machine') multiplier *= 1.05;
+
+    // 4. [칭호 버프] 성실의 아이콘 & 칭찬의 주인공 (피격 데미지 감소)
+    if (defenderPlayer.equippedTitle === 'icon_of_diligence') multiplier *= 0.95;
+    if (defenderPlayer.equippedTitle === 'star_of_compliments') multiplier *= 0.97;
 
     return damage * multiplier;
 };
@@ -24,265 +35,227 @@ const calculateDamage = (basePower, attacker, defender) => {
 // [헬퍼 함수] 실명(도발) 체크 로직
 const checkBlindMiss = (attacker) => {
     if (attacker.status?.blind) {
-        // 효과 소모 (이번 턴에 적용되고 사라짐)
         attacker.status.blind = false;
-
-        // 50% 확률로 빗나감
-        if (Math.random() < 0.5) {
-            return true; // 빗나감 발생
-        }
+        if (Math.random() < 0.5) return true;
     }
-    return false; // 정상 공격
+    return false;
 };
 
 export const SKILLS = {
-    // [기본] 몸통박치기
     TACKLE: {
-        id: 'tackle',
-        name: '몸통박치기',
-        cost: 0,
-        type: 'basic',
-        description: '기본적인 몸통박치기로 피해를 줍니다.',
-        basePower: 20,
-        effect: (attacker, defender, defenderAction) => {
-            // [Safety] status 객체가 없으면 초기화
-            if (!attacker.status) attacker.status = {};
-            if (!defender.status) defender.status = {};
+        id: 'tackle', name: '몸통박치기', cost: 0, type: 'basic',
+        description: '기본적인 몸통박치기로 피해를 줍니다.', basePower: 20,
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
 
-            // 1. 도발(실명) 체크
-            if (checkBlindMiss(attacker)) {
-                return `'${attacker.name}'의 몸통박치기! ...하지만 도발에 넘어가 허공을 가랐습니다! (공격 빗나감 💨)`;
-            }
+            if (checkBlindMiss(attacker)) return `'${attacker.name}'의 몸통박치기! ...하지만 도발에 넘어가 빗나갔습니다! 💨`;
 
-            let damage = calculateDamage(SKILLS.TACKLE.basePower, attacker, defender);
+            let damage = calculateDamage(SKILLS.TACKLE.basePower, attackerPlayer, defenderPlayer);
             let log = `'${attacker.name}'의 몸통박치기!`;
 
             if (attacker.status?.focusCharge) log += ` ⚡️ 강력한 한방!`;
+            if (attackerPlayer.equippedTitle === 'ruler_of_the_league' && Math.random() < 0.15) {
+                damage *= 1.5; log = `💥 [치명타!] ` + log;
+            }
 
             switch (defenderAction) {
-                case 'BRACE': damage *= 0.5; log += ` (상대방은 웅크려서 버텼다!)`; break;
+                case 'BRACE': damage *= 0.7; log += ` (상대는 웅크려 피해를 줄였다!)`; break;
                 case 'EVADE':
-                    if (Math.random() < 0.5) { damage = 0; log += ` (상대방이 날렵하게 회피했다!)`; }
-                    else { log += ` (상대방의 회피 실패!)`; }
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    if (Math.random() < evadeChance) { damage = 0; log += ` (상대방이 날렵하게 회피했다!)`; }
+                    else { damage *= 1.5; log += ` (회피 실패! 치명적인 피해!)`; }
                     break;
                 case 'FOCUS':
                     defender.status.focusCharge = 1;
-                    log += ` (상대방은 맞으면서 기를 모았다!)`;
+                    if (defenderPlayer.equippedTitle === 'idea_bank') {
+                        const spGain = Math.floor(defender.maxSp * 0.2);
+                        defender.sp = Math.min(defender.maxSp, defender.sp + spGain);
+                        log += ` (💡 [아이디어 뱅크] 기를 모으며 SP를 ${spGain} 회복했다!)`;
+                    } else {
+                        log += ` (상대는 다음 공격을 위해 집중하며 기를 모았다!)`;
+                    }
                     break;
                 case 'FLEE_FAILED': log += ` (도망에 실패해 무방비하다!)`; break;
+                case 'STUNNED': log += ` (상대는 혼란 상태라 방어하지 못했다!)`; break;
             }
 
             damage = Math.round(damage);
-            if (damage > 0) {
-                defender.hp = Math.max(0, defender.hp - damage);
-                log += ` ${damage}의 피해!`;
-            }
+            if (damage > 0) { defender.hp = Math.max(0, defender.hp - damage); log += ` ${damage}의 피해!`; }
             if (attacker.status?.focusCharge) attacker.status.focusCharge = 0;
             return log;
         },
     },
 
-    // [방어] 단단해지기
     HARDEN: {
-        id: 'harden',
-        name: '단단해지기',
-        cost: 15,
-        type: 'common',
+        id: 'harden', name: '단단해지기', cost: 15, type: 'common',
         description: '전투 동안 방어력을 높여 받는 피해를 줄입니다.',
-        effect: (attacker) => {
-            // [Safety] status 객체가 없으면 초기화
-            if (!attacker.status) attacker.status = {};
-
+        effect: (attackerPlayer) => {
+            const attacker = attackerPlayer.pet; if (!attacker.status) attacker.status = {};
             attacker.status.defenseUp = true;
-            return `'${attacker.name}'의 피부가 강철처럼 단단해졌습니다! (받는 피해 감소)`;
+            return `'${attacker.name}'의 피부가 단단해졌습니다!`;
         },
     },
 
-    // [회복] 회복의 기도
     HEALING_PRAYER: {
-        id: 'healing_prayer',
-        name: '회복의 기도',
-        cost: 25,
-        type: 'common',
+        id: 'healing_prayer', name: '회복의 기도', cost: 25, type: 'common',
         description: '자신의 HP를 최대 체력의 30%만큼 회복합니다.',
-        effect: (attacker) => {
+        effect: (attackerPlayer) => {
+            const attacker = attackerPlayer.pet;
             const healAmount = Math.round(attacker.maxHp * 0.3);
             attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmount);
-            return `'${attacker.name}'이(가) 기도를 올려 체력을 ${healAmount} 회복했습니다! ✨`;
+            return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! ✨`;
         },
     },
 
-    // [디버프] 도발 (효과 변경: 공격력 감소 -> 50% 빗나감)
     TAUNT: {
-        id: 'taunt',
-        name: '도발',
-        cost: 15,
-        type: 'common',
+        id: 'taunt', name: '도발', cost: 15, type: 'common',
         description: '상대를 흥분시켜 다음 공격이 50% 확률로 빗나가게 합니다.',
-        effect: (attacker, defender) => {
-            // [Safety] status 객체가 없으면 초기화
+        effect: (attackerPlayer, defenderPlayer) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!defender.status) defender.status = {};
-
-            defender.status.blind = true; // 상대에게 실명(blind) 상태 부여
-            return `'${attacker.name}'의 도발! ${defender.name}은(는) 흥분해서 앞이 잘 보이지 않습니다! (다음 공격 명중률 하락)`;
+            defender.status.blind = true;
+            return `'${attacker.name}'의 도발! ${defender.name}은(는) 흥분해서 앞이 잘 보이지 않습니다!`;
         },
     },
 
-    // --- 시그니처 스킬 ---
-
-    // [공격] 용의 숨결
     FIERY_BREATH: {
-        id: 'fiery_breath',
-        name: '용의 숨결',
-        cost: 30,
-        type: 'signature',
-        basePower: 55,
+        id: 'fiery_breath', name: '용의 숨결', cost: 30, type: 'signature', basePower: 55,
         description: '강력한 화염 피해를 입히지만, 사용 후 잠시 동안 행동할 수 없습니다.',
-        effect: (attacker, defender, defenderAction) => {
-            // [Safety] status 객체가 없으면 초기화
-            if (!attacker.status) attacker.status = {};
-            if (!defender.status) defender.status = {};
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
 
-            // 1. 도발(실명) 체크
-            if (checkBlindMiss(attacker)) {
-                return `'${attacker.name}'의 용의 숨결! ...하지만 엉뚱한 방향으로 불을 뿜었습니다! (공격 빗나감 💨)`;
-            }
+            if (checkBlindMiss(attacker)) return `'${attacker.name}'의 용의 숨결! ...하지만 엉뚱한 방향으로 뿜었습니다! 💨`;
 
-            let damage = calculateDamage(SKILLS.FIERY_BREATH.basePower, attacker, defender);
-            damage *= 1.2; // 시그니처 보정
-
+            let damage = calculateDamage(SKILLS.FIERY_BREATH.basePower, attackerPlayer, defenderPlayer) * 1.2;
             let log = `'${attacker.name}'의 용의 숨결! 🔥`;
 
             if (attacker.status?.focusCharge) log += ` ⚡️ 초고열의 불꽃!`;
+            if (attackerPlayer.equippedTitle === 'ruler_of_the_league' && Math.random() < 0.15) {
+                damage *= 1.5; log = `💥 [치명타!] ` + log;
+            }
 
             switch (defenderAction) {
-                case 'BRACE': damage *= 0.5; log += ` (상대는 필사적으로 막아냈다!)`; break;
+                case 'BRACE': damage *= 0.7; log += ` (상대는 막아냈다!)`; break;
                 case 'EVADE':
-                    if (Math.random() < 0.5) { damage = 0; log += ` (상대가 불길을 피했다!)`; }
-                    else { log += ` (범위가 너무 넓어 피하지 못했다!)`; }
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    if (Math.random() < evadeChance) { damage = 0; log += ` (상대가 피했다!)`; }
+                    else { damage *= 1.5; log += ` (피하지 못하고 직격!)`; }
                     break;
                 case 'FOCUS':
                     defender.status.focusCharge = 1;
-                    log += ` (상대는 불길 속에서 기를 모았다!)`;
+                    if (defenderPlayer.equippedTitle === 'idea_bank') {
+                        const spGain = Math.floor(defender.maxSp * 0.2);
+                        defender.sp = Math.min(defender.maxSp, defender.sp + spGain);
+                        log += ` (💡 [아이디어 뱅크] 기를 모으며 SP를 ${spGain} 회복했다!)`;
+                    } else {
+                        log += ` (상대는 다음 공격을 위해 집중하며 기를 모았다!)`;
+                    }
                     break;
-                case 'FLEE_FAILED': log += ` (도망치지 못하고 직격!)`; break;
+                case 'FLEE_FAILED': log += ` (도망치지 못했다!)`; break;
+                case 'STUNNED': log += ` (상대는 무방비하다!)`; break;
             }
 
             damage = Math.round(damage);
-            if (damage > 0) {
-                defender.hp = Math.max(0, defender.hp - damage);
-                log += ` ${damage}의 엄청난 피해!`;
-            }
-
-            // 반동
-            attacker.status.recharging = true;
-            log += ` (반동으로 인해 잠시 움직일 수 없다!)`;
-
+            if (damage > 0) { defender.hp = Math.max(0, defender.hp - damage); log += ` ${damage}의 엄청난 피해!`; }
+            attacker.status.recharging = true; log += ` (반동으로 인해 잠시 움직일 수 없다!)`;
             if (attacker.status?.focusCharge) attacker.status.focusCharge = 0;
             return log;
         },
     },
 
-    // [공격] 재빠른 교란
     QUICK_DISTURBANCE: {
-        id: 'quick_disturbance',
-        name: '재빠른 교란',
-        cost: 15,
-        type: 'signature',
-        basePower: 20,
+        id: 'quick_disturbance', name: '재빠른 교란', cost: 15, type: 'signature', basePower: 20,
         description: '빠르게 공격하여 50% 확률로 상대를 혼란(스턴)에 빠뜨립니다.',
-        effect: (attacker, defender, defenderAction) => {
-            // [Safety] status 객체가 없으면 초기화
-            if (!attacker.status) attacker.status = {};
-            if (!defender.status) defender.status = {};
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
 
-            // 1. 도발(실명) 체크
-            if (checkBlindMiss(attacker)) {
-                return `'${attacker.name}'의 재빠른 교란! ...하지만 도발 때문에 스텝이 꼬였습니다! (공격 빗나감 💨)`;
-            }
+            if (checkBlindMiss(attacker)) return `'${attacker.name}'의 재빠른 교란! ...스텝이 꼬였습니다! 💨`;
 
-            let damage = calculateDamage(SKILLS.QUICK_DISTURBANCE.basePower, attacker, defender);
+            let damage = calculateDamage(SKILLS.QUICK_DISTURBANCE.basePower, attackerPlayer, defenderPlayer);
             let log = `'${attacker.name}'의 재빠른 교란! 💨`;
 
             if (attacker.status?.focusCharge) log += ` ⚡️ 보이지 않는 속도!`;
+            if (attackerPlayer.equippedTitle === 'ruler_of_the_league' && Math.random() < 0.15) {
+                damage *= 1.5; log = `💥 [치명타!] ` + log;
+            }
 
             switch (defenderAction) {
-                case 'BRACE': damage *= 0.5; log += ` (상대는 침착하게 방어했다!)`; break;
+                case 'BRACE': damage *= 0.7; log += ` (상대는 방어했다!)`; break;
                 case 'EVADE':
-                    if (Math.random() < 0.3) { damage = 0; log += ` (상대도 같이 움직여 피했다!)`; }
-                    else { log += ` (너무 빨라 피할 수 없었다!)`; }
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    if (Math.random() < evadeChance) { damage = 0; log += ` (상대도 피했다!)`; }
+                    else { damage *= 1.5; log += ` (너무 빨라 치명상!)`; }
                     break;
                 case 'FOCUS':
                     defender.status.focusCharge = 1;
-                    log += ` (상대는 공격을 무시하고 집중했다!)`;
+                    if (defenderPlayer.equippedTitle === 'idea_bank') {
+                        const spGain = Math.floor(defender.maxSp * 0.2);
+                        defender.sp = Math.min(defender.maxSp, defender.sp + spGain);
+                        log += ` (💡 [아이디어 뱅크] 기를 모으며 SP를 ${spGain} 회복했다!)`;
+                    } else {
+                        log += ` (상대는 다음 공격을 위해 집중하며 기를 모았다!)`;
+                    }
                     break;
                 case 'FLEE_FAILED': log += ` (도망갈 틈이 없다!)`; break;
+                case 'STUNNED': log += ` (상대는 무방비하다!)`; break;
             }
 
             damage = Math.round(damage);
-            if (damage > 0) {
-                defender.hp = Math.max(0, defender.hp - damage);
-                log += ` ${damage}의 피해!`;
-            }
-
-            // 스턴 효과
-            if (Math.random() < 0.5) {
-                defender.status.stunned = true;
-                log += ` 💫 ${defender.name}은(는) 어지러움을 느꼈다! (다음 턴 행동 불가)`;
-            }
-
+            if (damage > 0) { defender.hp = Math.max(0, defender.hp - damage); log += ` ${damage}의 피해!`; }
+            if (Math.random() < 0.5) { defender.status.stunned = true; log += ` 💫 ${defender.name}은(는) 어지러움을 느꼈다!`; }
             if (attacker.status?.focusCharge) attacker.status.focusCharge = 0;
             return log;
         },
     },
 
-    // [공격/흡혈] 씨뿌리기
     LEECH_SEED: {
-        id: 'leech_seed',
-        name: '씨뿌리기',
-        cost: 20,
-        type: 'signature',
-        basePower: 30,
+        id: 'leech_seed', name: '씨뿌리기', cost: 20, type: 'signature', basePower: 30,
         description: '상대의 체력을 흡수하여 자신의 체력을 회복합니다.',
-        effect: (attacker, defender, defenderAction) => {
-            // [Safety] status 객체가 없으면 초기화
-            if (!attacker.status) attacker.status = {};
-            if (!defender.status) defender.status = {};
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
 
-            // 1. 도발(실명) 체크
-            if (checkBlindMiss(attacker)) {
-                return `'${attacker.name}'의 씨뿌리기! ...하지만 엉뚱한 곳에 씨앗을 뿌렸습니다! (공격 빗나감 💨)`;
-            }
+            if (checkBlindMiss(attacker)) return `'${attacker.name}'의 씨뿌리기! ...엉뚱한 곳에 뿌렸습니다! 💨`;
 
-            let damage = calculateDamage(SKILLS.LEECH_SEED.basePower, attacker, defender);
+            let damage = calculateDamage(SKILLS.LEECH_SEED.basePower, attackerPlayer, defenderPlayer);
             let log = `'${attacker.name}'의 씨뿌리기! 🌱`;
 
-            if (attacker.status?.focusCharge) log += ` ⚡️ 생명력을 강하게 빨아들인다!`;
+            if (attacker.status?.focusCharge) log += ` ⚡️ 강력하게 빨아들인다!`;
+            if (attackerPlayer.equippedTitle === 'ruler_of_the_league' && Math.random() < 0.15) {
+                damage *= 1.5; log = `💥 [치명타!] ` + log;
+            }
 
             switch (defenderAction) {
-                case 'BRACE': damage *= 0.5; log += ` (상대는 웅크려 피해를 줄였다!)`; break;
+                case 'BRACE': damage *= 0.7; log += ` (상대는 피해를 줄였다!)`; break;
                 case 'EVADE':
-                    if (Math.random() < 0.5) { damage = 0; log += ` (상대가 씨앗을 피했다!)`; }
-                    else { log += ` (회피 실패! 씨앗이 몸에 붙었다!)`; }
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    if (Math.random() < evadeChance) { damage = 0; log += ` (상대가 피했다!)`; }
+                    else { damage *= 1.5; log += ` (씨앗이 몸에 깊게 붙었다!)`; }
                     break;
                 case 'FOCUS':
                     defender.status.focusCharge = 1;
-                    log += ` (상대는 고통을 참으며 기를 모았다!)`;
+                    if (defenderPlayer.equippedTitle === 'idea_bank') {
+                        const spGain = Math.floor(defender.maxSp * 0.2);
+                        defender.sp = Math.min(defender.maxSp, defender.sp + spGain);
+                        log += ` (💡 [아이디어 뱅크] 기를 모으며 SP를 ${spGain} 회복했다!)`;
+                    } else {
+                        log += ` (상대는 다음 공격을 위해 집중하며 기를 모았다!)`;
+                    }
                     break;
                 case 'FLEE_FAILED': log += ` (도망치지 못했다!)`; break;
+                case 'STUNNED': log += ` (상대는 무방비하다!)`; break;
             }
 
             damage = Math.round(damage);
             if (damage > 0) {
                 defender.hp = Math.max(0, defender.hp - damage);
-
-                // 흡혈
                 const healAmount = Math.round(damage * 0.6);
                 attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmount);
-
                 log += ` ${damage}의 피해를 주고, 체력을 ${healAmount} 회복했다!`;
             }
-
             if (attacker.status?.focusCharge) attacker.status.focusCharge = 0;
             return log;
         },

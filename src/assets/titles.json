@@ -2,7 +2,7 @@
     {
         "id": "icon_of_diligence",
         "name": "성실의 아이콘",
-        "description": "미션 누적 완료 30회 이상",
+        "description": "미션 누적 완료 30회 이상 (⚔️ 배틀 효과: 상대에게 받는 데미지 5% 감소)",
         "icon": "🏆",
         "color": "#d4af37",
         "type": "auto",
@@ -11,7 +11,7 @@
     {
         "id": "classroom_intellectual",
         "name": "우리반 지식인",
-        "description": "퀴즈 누적 정답 50회 이상",
+        "description": "퀴즈 누적 정답 50회 이상 (⚔️ 배틀 효과: 모든 스킬 SP 소모량 20% 감소)",
         "icon": "🧠",
         "color": "#8a2be2",
         "type": "auto",
@@ -20,7 +20,7 @@
     {
         "id": "ruler_of_the_league",
         "name": "리그의 지배자",
-        "description": "가가볼 리그 시즌 우승",
+        "description": "가가볼 리그 시즌 우승 (⚔️ 배틀 효과: 공격 시 15% 확률로 1.5배 치명타)",
         "icon": "👑",
         "color": "#ffc107",
         "type": "auto",
@@ -29,7 +29,7 @@
     {
         "id": "goal_machine",
         "name": "득점 기계",
-        "description": "가가볼 리그 시즌 득점왕",
+        "description": "가가볼 리그 시즌 득점왕 (⚔️ 배틀 효과: 공격 데미지 5% 증가)",
         "icon": "⚽",
         "color": "#28a745",
         "type": "auto",
@@ -38,7 +38,7 @@
     {
         "id": "diligent_giver",
         "name": "성실한 기부천사",
-        "description": "학급 목표 누적 기부 5,000P 이상",
+        "description": "학급 목표 누적 기부 5,000P 이상 (⚔️ 배틀 효과: 패배 및 도망 시 포인트 페널티 50% 감면)",
         "icon": "🕊️",
         "color": "#17a2b8",
         "type": "auto",
@@ -47,7 +47,7 @@
     {
         "id": "popular_star",
         "name": "인기스타",
-        "description": "마이룸 누적 '좋아요' 20개 이상",
+        "description": "마이룸 누적 '좋아요' 20개 이상 (⚔️ 배틀 효과: 배틀 시작 시 SP 20% 오버차지 충전)",
         "icon": "⭐",
         "color": "#ff69b4",
         "type": "auto",
@@ -56,7 +56,7 @@
     {
         "id": "diligent_tree",
         "name": "성실한 나무",
-        "description": "30일 연속 출석",
+        "description": "30일 연속 출석 (⚔️ 배틀 효과: 매 턴 종료 시 체력(HP) 5% 자동 회복)",
         "icon": "🌳",
         "color": "#228b22",
         "type": "auto",
@@ -65,7 +65,7 @@
     {
         "id": "daily_helper",
         "name": "일타강사",
-        "description": "이렇게 쉽게 공부를 가르쳐 주다니 대단해요!",
+        "description": "이렇게 쉽게 공부를 가르쳐 주다니 대단해요! (⚔️ 배틀 효과: 상대가 퀴즈 오답 시 페널티 2배 증폭)",
         "icon": "👨",
         "color": "#fd7e14",
         "type": "manual",
@@ -74,7 +74,7 @@
     {
         "id": "star_of_compliments",
         "name": "칭찬의 주인공",
-        "description": "월별 쪽지상담에서 긍정적 평가",
+        "description": "월별 쪽지상담에서 긍정적 평가 (⚔️ 배틀 효과: 상대 펫의 공격력 3% 감소 디버프)",
         "icon": "🎤",
         "color": "#6f42c1",
         "type": "manual",
@@ -83,7 +83,7 @@
     {
         "id": "idea_bank",
         "name": "아이디어 뱅크",
-        "description": "좋은 의견이나 건의사항을 제시했을 때",
+        "description": "좋은 의견이나 건의사항 제시 (⚔️ 배틀 효과: '기 모으기' 시 전체 SP의 20% 회복)",
         "icon": "💡",
         "color": "#007bff",
         "type": "manual",
@@ -92,7 +92,7 @@
     {
         "id": "class_dj",
         "name": "우리반 오르페우스",
-        "description": "학급에 좋은 음악(연주)를 선물했을 때",
+        "description": "학급에 좋은 음악(연주)을 선물했을 때 (⚔️ 배틀 효과: '회피하기' 성공 확률 50%로 대폭 상승)",
         "icon": "🎵",
         "color": "#e83e8c",
         "type": "manual",
@@ -101,7 +101,7 @@
     {
         "id": "god_of_tidiness",
         "name": "숨은 영웅",
-        "description": "묵묵히 돕는 당신의 모습이 아름답군요!",
+        "description": "묵묵히 돕는 당신의 모습이 아름답군요! (⚔️ 배틀 효과: 배틀 시작 시 체력 5% 쉴드 생성)",
         "icon": "💪",
         "color": "#20c997",
         "type": "manual",
@@ -110,10 +110,10 @@
     {
         "id": "point_rich",
         "name": "포인트 부자",
-        "description": "현재 보유 포인트 10,000P 이상 달성",
+        "description": "현재 보유 포인트 10,000P 이상 달성 (⚔️ 배틀 효과: 배틀 승리 보상 포인트 20% 증가)",
         "icon": "💰",
         "color": "#f0ad4e",
         "type": "auto",
         "conditionId": "point_10000_owned"
-      }
+    }
 ]

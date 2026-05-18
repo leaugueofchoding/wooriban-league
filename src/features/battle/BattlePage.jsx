@@ -140,11 +140,34 @@ const OpponentInfoBox = styled(InfoBox)` left: 20px; top: 20px; `;
 
 const StatBar = styled.div`
   width: 100%; height: 18px; background-color: #e9ecef; border-radius: 10px; overflow: hidden; position: relative;
+  display: flex;
 `;
 const BarFill = styled.div`
-  width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease, background-color 0.5s ease;
-  display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #fff;
-  text-shadow: 1px 1px 1px rgba(0,0,0,0.5); font-weight: 700;
+  width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease;
+`;
+
+// ▼▼▼ [수정완료] 보호막을 영롱한 보라색과 입체감 있는 그림자로 업데이트 완료했습니다! ▼▼▼
+const ShieldFill = styled.div`
+  width: ${props => props.$percent}%; height: 100%; 
+  background-color: #845ef7; 
+  transition: width 0.5s ease;
+  border-left: 1px solid rgba(255,255,255,0.6);
+  box-shadow: inset 0 0 10px rgba(255,255,255,0.4);
+`;
+
+const SpOverflowFill = styled.div`
+  width: ${props => props.$percent}%; height: 100%; 
+  background-color: #fcc419; /* 인기스타 전용 황금색 오버차지 효과 */
+  transition: width 0.5s ease;
+  border-left: 1px solid rgba(255,255,255,0.6);
+  box-shadow: inset 0 0 10px rgba(255,255,255,0.6);
+`;
+
+const BarText = styled.div`
+  position: absolute; width: 100%; height: 100%; top: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; color: #fff; font-weight: 800; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  pointer-events: none;
 `;
 
 const QuizArea = styled.div`
@@ -332,7 +355,6 @@ function BattlePage() {
     const prevHpRef = useRef({ my: null, opponent: null });
     const processedTurnRef = useRef(null);
 
-    // 보유 중인 '두뇌 간식' 찾기
     const usableItems = Object.entries(myPlayerData?.petInventory || {})
         .filter(([itemId, qty]) => qty > 0 && itemId === 'brain_snack');
 
@@ -574,6 +596,7 @@ function BattlePage() {
         }
     };
 
+    // ▼▼▼ [수정완료] 일타강사 칭호 효과 연동 (시간 초과 오답 페널티 폭증) ▼▼▼
     const handleTimeout = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -587,8 +610,12 @@ function BattlePage() {
                 if (Date.now() - data.turnStartTime < 14500) return null;
 
                 let { challenger, opponent } = data;
-                const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
-                const damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
+
+                let damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
+                if (opponent.equippedTitle === 'daily_helper') damageChallenger *= 2; // 일타강사 저격 패시브
+
+                let damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
+                if (challenger.equippedTitle === 'daily_helper') damageOpponent *= 2; // 일타강사 저격 패시브
 
                 challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
                 opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
@@ -602,7 +629,6 @@ function BattlePage() {
                 if (isFinished) {
                     if (challenger.pet.hp > 0) winnerId = challenger.id;
                     else if (opponent.pet.hp > 0) winnerId = opponent.id;
-                    else winnerId = null;
                 }
 
                 const nextQuiz = (quizPool && quizPool.length > 0)
@@ -642,6 +668,8 @@ function BattlePage() {
         }
     };
 
+    // ▼▼▼ [수정완료] 일타강사 칭호 효과 연동 (퀴즈 오답 시 실전 페널티 폭증) ▼▼▼
+    // ▼▼▼ [수정완료] 일타강사 칭호 효과 연동 (퀴즈 오답 시 즉발 데미지 처벌) ▼▼▼
     const processQuizAnswer = async (submittedAnswer) => {
         if (!battleState.question || !submittedAnswer || isProcessing) return;
 
@@ -718,8 +746,11 @@ function BattlePage() {
                     if (shouldEndTurn) {
                         let { challenger, opponent } = data;
 
-                        const damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
-                        const damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
+                        let damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
+                        if (opponent.equippedTitle === 'daily_helper') damageChallenger *= 2;
+
+                        let damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
+                        if (challenger.equippedTitle === 'daily_helper') damageOpponent *= 2;
 
                         challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
                         opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
@@ -739,9 +770,9 @@ function BattlePage() {
                             ? quizPool[Math.floor(Math.random() * quizPool.length)]
                             : { question: "퀴즈 로딩 중...", answer: "1" };
 
-                        let logMessage = `둘 다 오답! 서로 틀려서 데미지를 입었습니다 (-5%). 다음 문제!`;
-                        if (opponentIsStunned) {
-                            logMessage = `오답! 상대방은 혼란 상태라 답변할 수 없어, 둘 다 피해를 입었습니다! (-5%) (혼란 해제)`;
+                        let logMessage = `둘 다 오답! 서로 틀려서 데미지를 입었습니다. 다음 문제!`;
+                        if (opponent.equippedTitle === 'daily_helper' || challenger.equippedTitle === 'daily_helper') {
+                            logMessage = `💥 [일타강사 패시브] 일타강사의 날카로운 압박으로 오답 페널티가 2배로 증폭되었습니다! (-10%)`;
                         }
 
                         const updateData = {
@@ -763,10 +794,46 @@ function BattlePage() {
                             return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
                         }
                     } else {
-                        transaction.update(battleRef, {
-                            chat: updatedChat,
-                            log: `${myPlayerData.name} 오답! (다시 시도하세요)`
-                        });
+                        // ▼▼▼ [신규] 즉각 처벌 로직: 혼자 오답을 냈을 때 상대가 일타강사인지 확인 ▼▼▼
+                        const opponentTitle = data[opponentRole].equippedTitle;
+
+                        if (opponentTitle === 'daily_helper') {
+                            let damage = Math.max(1, Math.floor(myPet.maxHp * 0.05));
+                            myPet.hp = Math.max(0, myPet.hp - damage);
+                            const isFinished = myPet.hp <= 0;
+
+                            if (isFinished) {
+                                // 오답 데미지 누적으로 사망한 경우
+                                let { challenger, opponent } = data;
+                                challenger.pet = myRole === 'challenger' ? myPet : data.challenger.pet;
+                                opponent.pet = myRole === 'opponent' ? myPet : data.opponent.pet;
+
+                                transaction.update(battleRef, {
+                                    challenger,
+                                    opponent,
+                                    chat: updatedChat,
+                                    log: `💥 팩트 폭력! ${myPlayerData.name}님이 일타강사의 지적을 버티지 못하고 쓰러졌습니다!`,
+                                    status: 'finished',
+                                    winner: opponentId,
+                                    turn: null
+                                });
+                                return { isFinished: true, winnerId: opponentId, finalChallenger: challenger, finalOpponent: opponent };
+                            } else {
+                                // 생존 시 즉발 데미지만 입고 기회 유지
+                                transaction.update(battleRef, {
+                                    chat: updatedChat,
+                                    [`${myRole}.pet.hp`]: myPet.hp,
+                                    log: `💥 [일타강사 압박] 틀렸습니다! 날카로운 지적에 데미지를 입었습니다! (-5%)`
+                                });
+                            }
+                        } else {
+                            // 일반적인 오답
+                            transaction.update(battleRef, {
+                                chat: updatedChat,
+                                log: `${myPlayerData.name} 오답! (다시 시도하세요)`
+                            });
+                        }
+                        // ▲▲▲ [신규 로직 끝] ▲▲▲
                     }
                     return null;
                 }
@@ -797,7 +864,6 @@ function BattlePage() {
         processQuizAnswer(option);
     };
 
-    // ▼▼▼ 아이템 즉시 사용 로직 (공격 턴을 소모하고 다음 퀴즈로 바로 넘어감) ▼▼▼
     const handleUseItem = async (itemId) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -815,14 +881,12 @@ function BattlePage() {
                 const currentQty = playerData.petInventory?.[itemId] || 0;
                 if (currentQty <= 0) return;
 
-                // 1. 인벤토리에서 간식 1개 차감
                 const newInventory = { ...playerData.petInventory };
                 newInventory[itemId] -= 1;
                 transaction.update(playerRef, { petInventory: newInventory });
 
-                // 2. 체력/마나 30% 회복
                 const myRole = myPlayerData.id === data.challenger.id ? 'challenger' : 'opponent';
-                const myPet = { ...data[myRole].pet }; // 안전하게 복사
+                const myPet = { ...data[myRole].pet };
 
                 const healHp = Math.floor(myPet.maxHp * 0.30);
                 const healSp = Math.floor(myPet.maxSp * 0.30);
@@ -830,12 +894,10 @@ function BattlePage() {
                 myPet.hp = Math.min(myPet.maxHp, myPet.hp + healHp);
                 myPet.sp = Math.min(myPet.maxSp, myPet.sp + healSp);
 
-                // 3. 다음 퀴즈 꺼내기
                 const nextQuiz = (quizPool && quizPool.length > 0)
                     ? quizPool[Math.floor(Math.random() * quizPool.length)]
                     : { question: "퀴즈 로딩 중...", answer: "1" };
 
-                // 4. 배틀 로그 업데이트 및 상대방 턴(퀴즈)으로 바로 넘김
                 transaction.update(battleRef, {
                     [myRole]: { ...data[myRole], pet: myPet },
                     log: `${playerData.name}의 펫이 두뇌 간식을 먹었습니다! (HP/SP +30% 회복)`,
@@ -861,7 +923,6 @@ function BattlePage() {
         if (isProcessing) return;
         setIsProcessing(true);
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-
         const isMyTurn = battleState.turn === myPlayerData.id;
 
         try {
@@ -913,6 +974,7 @@ function BattlePage() {
         }
     };
 
+    // ▼▼▼ [수정완료] 우리반 지식인(스킬코스트 감면) 및 성실한 나무(턴 종료시 5% 힐) 연동 완료 ▼▼▼
     const handleResolution = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -940,32 +1002,43 @@ function BattlePage() {
                 let isSpInsufficient = false;
                 const originalSkillName = skill?.name;
 
-                if (skill && skill.cost > attacker.pet.sp) {
+                // [지식인 칭호 효과 버프] 스킬 코스트 계산 전 20% 할인
+                let actualCost = skill ? skill.cost : 0;
+                if (skill && attacker.equippedTitle === 'classroom_intellectual') {
+                    actualCost = Math.floor(actualCost * 0.8);
+                }
+
+                if (skill && actualCost > attacker.pet.sp) {
                     skillId = 'TACKLE';
                     skill = SKILLS.TACKLE;
                     isSpInsufficient = true;
+                    actualCost = 0;
                 }
 
                 let log = "";
-
                 if (skill && skill.effect) {
-                    log = skill.effect(attacker.pet, defender.pet, defenderAction);
+                    // petData에 플레이어 전체 정보를 넘겨 칭호를 판별합니다.
+                    log = skill.effect(attacker, defender, defenderAction);
                     if (isSpInsufficient) {
                         log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                     }
-                    if (defenderAction === 'STUNNED') {
-                        log += ` (상대는 혼란 상태라 방어하지 못했다!)`;
-                    }
                 } else {
                     let damage = 20 + attacker.pet.atk * 2;
-                    if (defenderAction === 'BRACE') damage *= 0.5;
+                    if (defenderAction === 'BRACE') damage *= 0.7; // 밸런싱 수정치 적용
                     damage = Math.round(damage);
                     defender.pet.hp = Math.max(0, defender.pet.hp - damage);
                     log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
                 }
 
                 if (skill) {
-                    attacker.pet.sp = Math.max(0, attacker.pet.sp - skill.cost);
+                    attacker.pet.sp = Math.max(0, attacker.pet.sp - actualCost);
+                }
+
+                // [성실한 나무 칭호 효과 버프] 턴 종료 시 행동한 펫 최대체력의 5% 자가 회복 발동
+                if (attacker.equippedTitle === 'diligent_tree') {
+                    const heal = Math.floor(attacker.pet.maxHp * 0.05);
+                    attacker.pet.hp = Math.min(attacker.pet.maxHp, attacker.pet.hp + heal);
+                    log += ` 🌳 [성실한 나무 효과로 HP +${heal} 회복]`;
                 }
 
                 const isFinished = defender.pet.hp <= 0;
@@ -1011,6 +1084,41 @@ function BattlePage() {
         } finally {
             setIsProcessing(false);
         }
+    };
+
+    // ▼▼▼ [수정완료] 지식인 버프 연동 헬퍼 함수 (메뉴 UI 표시용) ▼▼▼
+    const getSkillCost = (skill) => {
+        return myInfo.equippedTitle === 'classroom_intellectual' ? Math.floor(skill.cost * 0.8) : skill.cost;
+    };
+
+    const renderHpBar = (hp, maxHp) => {
+        const interstateShield = hp > maxHp;
+        const displayMax = interstateShield ? hp : maxHp;
+        const baseHpPercent = interstateShield ? (maxHp / displayMax) * 100 : (hp / maxHp) * 100;
+        const shieldPercent = interstateShield ? ((hp - maxHp) / displayMax) * 100 : 0;
+
+        return (
+            <StatBar>
+                <BarFill $percent={Math.max(0, baseHpPercent)} color={getHpColor(Math.min(hp, maxHp), maxHp)} />
+                {interstateShield && <ShieldFill $percent={shieldPercent} />}
+                <BarText>HP: {hp} / {maxHp}</BarText>
+            </StatBar>
+        );
+    };
+
+    const renderSpBar = (sp, maxSp) => {
+        const hasOverflow = sp > maxSp;
+        const displayMax = hasOverflow ? sp : maxSp;
+        const baseSpPercent = hasOverflow ? (maxSp / displayMax) * 100 : (sp / maxSp) * 100;
+        const overflowPercent = hasOverflow ? ((sp - maxSp) / displayMax) * 100 : 0;
+
+        return (
+            <StatBar>
+                <BarFill $percent={Math.max(0, baseSpPercent)} color="#007bff" />
+                {hasOverflow && <SpOverflowFill $percent={overflowPercent} />}
+                <BarText>SP: {sp} / {maxSp}</BarText>
+            </StatBar>
+        );
     };
 
     if (!myPlayerData) return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
@@ -1066,27 +1174,14 @@ function BattlePage() {
 
                             <MyInfoBox>
                                 <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
-                                <StatBar>
-                                    <BarFill
-                                        $percent={Math.max(0, (myInfo.pet.hp / myInfo.pet.maxHp) * 100)}
-                                        color={getHpColor(myInfo.pet.hp, myInfo.pet.maxHp)}
-                                    >
-                                        HP: {myInfo.pet.hp}/{myInfo.pet.maxHp}
-                                    </BarFill>
-                                </StatBar>
-                                <StatBar><BarFill $percent={Math.max(0, (myInfo.pet.sp / myInfo.pet.maxSp) * 100)} color="#007bff">SP: {myInfo.pet.sp}/{myInfo.pet.maxSp}</BarFill></StatBar>
+                                {renderHpBar(myInfo.pet.hp, myInfo.pet.maxHp)}
+                                {renderSpBar(myInfo.pet.sp, myInfo.pet.maxSp)}
                             </MyInfoBox>
+
                             <OpponentInfoBox>
                                 <span>{opponentInfo.pet.name} (Lv.{opponentInfo.pet.level})</span>
-                                <StatBar>
-                                    <BarFill
-                                        $percent={Math.max(0, (opponentInfo.pet.hp / opponentInfo.pet.maxHp) * 100)}
-                                        color={getHpColor(opponentInfo.pet.hp, opponentInfo.pet.maxHp)}
-                                    >
-                                        HP: {opponentInfo.pet.hp}/{opponentInfo.pet.maxHp}
-                                    </BarFill>
-                                </StatBar>
-                                <StatBar><BarFill $percent={Math.max(0, (opponentInfo.pet.sp / opponentInfo.pet.maxSp) * 100)} color="#007bff">SP: {opponentInfo.pet.sp}/{opponentInfo.pet.maxSp}</BarFill></StatBar>
+                                {renderHpBar(opponentInfo.pet.hp, opponentInfo.pet.maxHp)}
+                                {renderSpBar(opponentInfo.pet.sp, opponentInfo.pet.maxSp)}
                             </OpponentInfoBox>
 
                             <OpponentPetContainerWrapper>
@@ -1166,7 +1261,6 @@ function BattlePage() {
                                                 <>
                                                     <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
                                                     <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
-                                                    {/* ▼▼▼ 아이템 가방 버튼 추가 ▼▼▼ */}
                                                     <MenuItem
                                                         onClick={() => setActionSubMenu('items')}
                                                         style={{ backgroundColor: '#e2f0d9', borderColor: '#51cf66', color: '#2b8a3e' }}
@@ -1177,13 +1271,15 @@ function BattlePage() {
                                                 actionSubMenu === 'skills' ?
                                                     <>
                                                         {myEquippedSkills.map(skill => (
-                                                            <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < skill.cost}>{skill.name} ({skill.cost}SP)</MenuItem>
+                                                            // ▼ [수정완료] 스킬 렌더링 시 감면된 지식인 SP 소모 비용 표시 연동 완료
+                                                            <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < getSkillCost(skill)}>
+                                                                {skill.name} ({getSkillCost(skill)}SP)
+                                                            </MenuItem>
                                                         ))}
                                                         <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
                                                     </> :
                                                     actionSubMenu === 'items' ?
                                                         <>
-                                                            {/* ▼▼▼ 아이템 목록 렌더링 ▼▼▼ */}
                                                             {usableItems.length > 0 ? (
                                                                 usableItems.map(([id, qty]) => (
                                                                     <MenuItem

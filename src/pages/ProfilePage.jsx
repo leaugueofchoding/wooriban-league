@@ -220,10 +220,35 @@ const TitleCard = styled.div`
   background: white; padding: 1rem; border-radius: 12px; border: 2px solid ${props => props.$isSelected ? '#339af0' : 'transparent'};
   box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; cursor: ${props => props.$isOwned ? 'pointer' : 'default'};
   opacity: ${props => props.$isOwned ? 1 : 0.6}; transition: all 0.2s;
+  position: relative; /* 툴팁 기준점 */
+  
   &:hover { transform: ${props => props.$isOwned ? 'translateY(-2px)' : 'none'}; box-shadow: ${props => props.$isOwned ? '0 4px 8px rgba(0,0,0,0.1)' : 'none'}; }
   .icon { font-size: 1.5rem; margin-bottom: 0.3rem; }
   .name { font-weight: 700; font-size: 0.95rem; color: ${props => props.color || '#343a40'}; }
-  .desc { font-size: 0.8rem; color: #868e96; margin-top: 0.3rem; }
+  .desc { font-size: 0.8rem; color: #868e96; margin-top: 0.3rem; line-height: 1.3; word-break: keep-all; }
+  
+  /* 툴팁 말풍선 디자인 */
+  .tooltip {
+    visibility: hidden; width: 180px; background-color: #343a40; color: #fff; text-align: center;
+    border-radius: 8px; padding: 8px 12px; position: absolute; z-index: 20;
+    bottom: 110%; left: 50%; transform: translateX(-50%); opacity: 0;
+    transition: opacity 0.2s, bottom 0.2s; font-size: 0.8rem; font-weight: bold; pointer-events: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2); word-break: keep-all; line-height: 1.4;
+  }
+  .tooltip::after {
+    content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px;
+    border-width: 6px; border-style: solid; border-color: #343a40 transparent transparent transparent;
+  }
+  
+  /* 호버 시 툴팁 등장 */
+  &:hover .tooltip { visibility: visible; opacity: 1; bottom: 120%; }
+  
+  /* 배틀 효과 유무 표시 뱃지 */
+  .buff-badge {
+    display: inline-block; margin-top: 0.6rem; background: #fff5f5; color: #fa5252;
+    border: 1px solid #ffc9c9; font-size: 0.7rem; font-weight: 800; padding: 3px 8px;
+    border-radius: 12px;
+  }
 `;
 const SectionTitle = styled.h4` margin: 1.5rem 0 0.8rem; font-size: 1rem; color: #495057; font-weight: 700; &:first-child { margin-top: 0; } `;
 const PrimaryBtn = styled.button`
@@ -345,8 +370,17 @@ function ProfilePage() {
   // Helper Memo functions
   const equippedTitle = useMemo(() => (playerData?.equippedTitle && titles.length ? titles.find(t => t.id === playerData.equippedTitle) : null), [playerData, titles]);
   const partnerPet = useMemo(() => (playerData?.pets?.find(p => p.id === playerData.partnerPetId) || playerData?.pets?.[0]), [playerData]);
-  const ownedTitles = useMemo(() => (playerData?.ownedTitles || []).map(id => titles.find(t => t.id === id)).filter(Boolean), [playerData, titles]);
-  const unownedTitles = useMemo(() => titles.filter(t => !(playerData?.ownedTitles || []).includes(t.id)), [playerData, titles]);
+  const ownedTitles = useMemo(() => {
+    // 관리자 계정이면 시스템상의 모든 칭호를 '획득'한 것으로 간주합니다.
+    if (isAdmin) return titles;
+    return (playerData?.ownedTitles || []).map(id => titles.find(t => t.id === id)).filter(Boolean);
+  }, [playerData, titles, isAdmin]);
+
+  const unownedTitles = useMemo(() => {
+    // 관리자 계정이면 '미획득' 칭호 목록을 비웁니다.
+    if (isAdmin) return [];
+    return titles.filter(t => !(playerData?.ownedTitles || []).includes(t.id));
+  }, [playerData, titles, isAdmin]);
   const myTeam = useMemo(() => (playerData && currentSeason ? teams.find(t => t.seasonId === currentSeason.id && t.members.includes(playerData.id)) : null), [teams, playerData, currentSeason]);
 
   const { selectedPartUrls, equippedItems } = useMemo(() => {
@@ -495,24 +529,51 @@ function ProfilePage() {
             <AccordionContent $isOpen={isTitleAccordionOpen}>
               <SectionTitle>✨ 획득한 칭호</SectionTitle>
               <TitleGrid>
-                {ownedTitles.length > 0 ? ownedTitles.map(title => (
-                  <TitleCard key={title.id} $isSelected={selectedTitleId === title.id} $isOwned={true} onClick={() => setSelectedTitleId(prev => prev === title.id ? null : title.id)}>
-                    <div className="icon">{title.icon}</div>
-                    <div className="name" color={title.color}>{title.name}</div>
-                    <div className="desc">{title.description}</div>
-                  </TitleCard>
-                )) : <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#adb5bd' }}>아직 획득한 칭호가 없습니다.</p>}
+                {ownedTitles.length > 0 ? ownedTitles.map(title => {
+                  // 1. '(⚔️' 기준으로 문자열을 쪼개어 기본 설명과 배틀 효과를 분리합니다.
+                  const parts = title.description.split(' (⚔️');
+                  const baseDesc = parts[0];
+                  const buffDesc = parts[1] ? '⚔️' + parts[1].replace(')', '') : null;
+
+                  return (
+                    <TitleCard key={title.id} $isSelected={selectedTitleId === title.id} $isOwned={true} onClick={() => setSelectedTitleId(prev => prev === title.id ? null : title.id)}>
+                      <div className="icon">{title.icon}</div>
+                      <div className="name" style={{ color: title.color }}>{title.name}</div>
+                      <div className="desc">{baseDesc}</div>
+                      {/* 배틀 효과가 있는 칭호만 뱃지와 툴팁을 렌더링합니다 */}
+                      {buffDesc && (
+                        <>
+                          <div className="tooltip">{buffDesc}</div>
+                        </>
+                      )}
+                    </TitleCard>
+                  );
+                }) : <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#adb5bd' }}>아직 획득한 칭호가 없습니다.</p>}
               </TitleGrid>
+
               <PrimaryBtn onClick={handleSaveEquippedTitle}>선택한 칭호 장착하기</PrimaryBtn>
+
               <SectionTitle>🔒 미획득 칭호</SectionTitle>
               <TitleGrid>
-                {unownedTitles.map(title => (
-                  <TitleCard key={title.id} $isOwned={false}>
-                    <div className="icon">{title.icon}</div>
-                    <div className="name" color={title.color}>{title.name}</div>
-                    <div className="desc">{title.description}</div>
-                  </TitleCard>
-                ))}
+                {unownedTitles.map(title => {
+                  const parts = title.description.split(' (⚔️');
+                  const baseDesc = parts[0];
+                  const buffDesc = parts[1] ? '⚔️' + parts[1].replace(')', '') : null;
+
+                  return (
+                    <TitleCard key={title.id} $isOwned={false}>
+                      <div className="icon">{title.icon}</div>
+                      <div className="name" style={{ color: title.color }}>{title.name}</div>
+                      <div className="desc">{baseDesc}</div>
+                      {buffDesc && (
+                        <>
+                          <div className="buff-badge">배틀 효과 보기</div>
+                          <div className="tooltip">{buffDesc}</div>
+                        </>
+                      )}
+                    </TitleCard>
+                  );
+                })}
               </TitleGrid>
             </AccordionContent>
           </AccordionWrapper>

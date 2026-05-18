@@ -820,7 +820,7 @@ function PetPage() {
         </ModalBackground>
       )}
 
-      {/* [추가] 비타민 젤리 팝업 모달 */}
+      {/* ▼ [수정 완료] 비타민 젤리 팝업 모달: 상점 리디렉션을 펫센터로 수정했습니다 */}
       {vitaminJellyPopup.show && (
         <ModalBackground onClick={() => setVitaminJellyPopup({ show: false, pendingOpponent: null })}>
           <ModalContent onClick={e => e.stopPropagation()} style={{ textAlign: 'center', maxWidth: '360px' }}>
@@ -856,13 +856,14 @@ function PetPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 <p style={{ color: '#868e96', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>
-                  비타민 젤리가 없어요. 상점에서 구매하거나 내일 다시 도전해보세요!
+                  비타민 젤리가 없어요. 펫센터 상점에서 구매하거나 내일 다시 도전해보세요!
                 </p>
+                {/* 🛒 상점 가기 버튼 클릭 시 /pet-center 로 이동하도록 경로 변경 */}
                 <button
-                  onClick={() => navigate('/shop')}
+                  onClick={() => navigate('/pet-center')}
                   style={{ padding: '0.9rem', background: 'linear-gradient(135deg, #339af0, #1c7ed6)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer' }}
                 >
-                  🛒 상점 가기
+                  🏪 펫센터 상점 가기
                 </button>
                 <button
                   onClick={() => setVitaminJellyPopup({ show: false, pendingOpponent: null })}
