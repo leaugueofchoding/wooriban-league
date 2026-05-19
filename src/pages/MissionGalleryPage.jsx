@@ -513,16 +513,15 @@ function MissionGalleryPage() {
     const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
 
     useEffect(() => {
-        // [수정 이슈 2] 일회성 fetch → onSnapshot 실시간 구독으로 전환
-        // Firestore 쿼리 레벨에서 isPublic != false 조건 추가 (비공개 제출 즉시 제외)
+        // [수정 이슈 1] isPublic != false 쿼리 조건 제거
+        // Firestore != 연산자는 해당 필드가 없는(undefined) document를 결과에서 제외함.
+        // 모든 approved 항목을 가져온 뒤 클라이언트의 publiclyVisibleSubmissions 필터에서 처리.
         if (!classId || allMissionsList.length === 0) return;
         setIsLoading(true);
         const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
         const q = query(
             submissionsRef,
             where("status", "==", "approved"),
-            where("isPublic", "!=", false),
-            orderBy("isPublic"),          // where("isPublic","!=") 사용 시 orderBy 필요
             orderBy("approvedAt", "desc")
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -617,8 +616,15 @@ function MissionGalleryPage() {
         }
     };
 
+    const MIN_COMMENT_LENGTH = 8;
+
     const handleCommentSubmit = async () => {
         if (!classId || !newComment.trim() || !myPlayerData) return;
+        // [이슈 2] 최소 글자 수 제한
+        if (newComment.trim().length < MIN_COMMENT_LENGTH) {
+            alert(`댓글은 ${MIN_COMMENT_LENGTH}자 이상 작성해주세요. (현재 ${newComment.trim().length}자)`);
+            return;
+        }
 
         const filteredText = filterProfanity(newComment);
 
@@ -854,7 +860,11 @@ function MissionGalleryPage() {
                                             onChange={e => setNewComment(e.target.value)}
                                             placeholder="칭찬과 응원의 한마디! (엔터로 줄바꿈)"
                                             rows="2"
+                                            maxLength={200}
                                         />
+                                        <div style={{ fontSize: '0.75rem', color: newComment.trim().length < MIN_COMMENT_LENGTH ? '#fa5252' : '#868e96', textAlign: 'right', marginTop: '0.2rem' }}>
+                                            {newComment.trim().length}/{MIN_COMMENT_LENGTH}자 이상 필요
+                                        </div>
                                         <CommentSubmitButton onClick={handleCommentSubmit}>등록</CommentSubmitButton>
                                     </CommentInputContainer>
                                 )}

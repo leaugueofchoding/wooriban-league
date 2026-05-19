@@ -142,6 +142,8 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editedText, setEditedText] = useState(comment.text);
 
+    const MIN_COMMENT_LENGTH = 8;
+
     useEffect(() => {
         const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", comment.id, "replies");
         const q = query(repliesRef, orderBy("createdAt", "asc"));
@@ -178,6 +180,11 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
 
     const handleReplySubmit = () => {
         if (!replyContent.trim() || !myPlayerData) return;
+        // [이슈 2] 최소 글자 수 제한
+        if (replyContent.trim().length < MIN_COMMENT_LENGTH) {
+            alert(`답글은 ${MIN_COMMENT_LENGTH}자 이상 작성해주세요. (현재 ${replyContent.trim().length}자)`);
+            return;
+        }
 
         // [수정] 필터링 적용
         const cleanText = filterProfanity(replyContent.trim());
@@ -235,7 +242,10 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
                     </CommentActions>
                     {isReplying && (
                         <CommentInputContainer>
-                            <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows="2" placeholder="답글을 입력하세요..." />
+                            <CommentTextarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows="2" placeholder="답글을 입력하세요..." maxLength={200} />
+                            <div style={{ fontSize: '0.75rem', color: replyContent.trim().length < MIN_COMMENT_LENGTH ? '#fa5252' : '#868e96', textAlign: 'right', marginTop: '0.2rem' }}>
+                                {replyContent.trim().length}/{MIN_COMMENT_LENGTH}자 이상 필요
+                            </div>
                             <CommentSubmitButton onClick={handleReplySubmit}>등록</CommentSubmitButton>
                         </CommentInputContainer>
                     )}

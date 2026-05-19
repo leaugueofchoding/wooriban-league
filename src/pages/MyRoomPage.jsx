@@ -775,8 +775,12 @@ function MyRoomPage() {
 
   // --- Handlers (Social) ---
 
+  const MIN_COMMENT_LENGTH = 8;
+
   const handlePostComment = async () => {
     if (!newComment.trim()) return;
+    // [이슈 2] 최소 글자 수 제한
+    if (newComment.trim().length < MIN_COMMENT_LENGTH) return alert(`방명록은 ${MIN_COMMENT_LENGTH}자 이상 작성해주세요. (현재 ${newComment.trim().length}자)`);
     try { await addMyRoomComment(classId, playerId, { commenterId: myPlayerData.id, commenterName: myPlayerData.name, text: filterProfanity(newComment) }); setNewComment(""); fetchRoomSocialData(playerId); } catch (e) { alert(e.message); }
   };
   const handleLikeRoom = async () => {
@@ -1019,6 +1023,9 @@ function MyRoomPage() {
                   onChange={(e) => setNewComment(e.target.value)}
                   maxLength={100}
                 />
+                <div style={{ fontSize: '0.78rem', color: newComment.trim().length < MIN_COMMENT_LENGTH ? '#fa5252' : '#868e96', textAlign: 'right', marginTop: '-0.3rem' }}>
+                  {newComment.trim().length}/{MIN_COMMENT_LENGTH}자 이상 · 최대 100자
+                </div>
                 <SubmitButton onClick={handlePostComment}>등록</SubmitButton>
               </CommentInputSection>
             )}
@@ -1057,7 +1064,10 @@ function MyRoomPage() {
                   {replyingTo === comment.id && (
                     <div style={{ margin: '0.5rem 0 0 1.5rem', display: 'flex', gap: '0.5rem' }}>
                       <CommentTextarea value={replyContent} onChange={e => setReplyContent(e.target.value)} placeholder="답글 입력..." style={{ minHeight: '40px' }} />
-                      <SubmitButton onClick={() => addMyRoomReply(classId, playerId, comment.id, { replierId: myPlayerData.id, replierName: myPlayerData.name, text: filterProfanity(replyContent) }).then(() => { setReplyContent(""); setReplyingTo(null); fetchRoomSocialData(playerId); })}>등록</SubmitButton>
+                      <SubmitButton onClick={() => {
+                        if (replyContent.trim().length < MIN_COMMENT_LENGTH) { alert(`답글은 ${MIN_COMMENT_LENGTH}자 이상 작성해주세요. (현재 ${replyContent.trim().length}자)`); return; }
+                        addMyRoomReply(classId, playerId, comment.id, { replierId: myPlayerData.id, replierName: myPlayerData.name, text: filterProfanity(replyContent) }).then(() => { setReplyContent(""); setReplyingTo(null); fetchRoomSocialData(playerId); });
+                      }}>등록</SubmitButton>
                     </div>
                   )}
 
