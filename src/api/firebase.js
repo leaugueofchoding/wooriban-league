@@ -3211,6 +3211,9 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     if (petIndex === -1) throw new Error("진화할 펫을 찾을 수 없습니다.");
     const pet = pets[petIndex];
 
+    // 알림 메시지용 진화 전 이름 미리 저장
+    const oldPetName = pet.name;
+
     if (!inventory[evolutionStoneId] || inventory[evolutionStoneId] <= 0) throw new Error("진화 아이템이 없습니다.");
 
     const currentStage = parseInt(pet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
@@ -3232,6 +3235,18 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     pet.hp = pet.maxHp;
     pet.sp = pet.maxSp;
 
+    // ▼▼▼ [신규] 진화 시 고유 스킬 자동 습득 로직 추가 ▼▼▼
+    // 펫 데이터 구조상 내부에 스킬 배열(예: skills 또는 learnedSkills)이 관리되고 있다면 거기에 넣어줍니다.
+    if (!pet.skills) pet.skills = [];
+
+    if (evolutionData.newSkill) {
+      // 이미 배우지 않은 스킬인 경우에만 추가 (ID 기준으로 체크)
+      if (!pet.skills.includes(evolutionData.newSkill.id)) {
+        pet.skills.push(evolutionData.newSkill.id);
+      }
+    }
+    // ▲▲▲ [신규 끝] ▲▲▲
+
     const newInventory = { ...inventory };
     newInventory[evolutionStoneId] -= 1;
 
@@ -3241,7 +3256,14 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
       petInventory: newInventory
     });
 
-    createNotification(playerData.authUid, `🎉 펫 진화 성공!`, `${playerData.pets[petIndex].name}(이)가 ${evolutionData.name}(으)로 진화했습니다!`, 'pet_evolution', '/pet');
+    // 알림 메시지 부분도 수정 완료된 pet.name과 oldPetName을 사용하도록 깔끔하게 정돈했습니다.
+    createNotification(
+      playerData.authUid,
+      `🎉 펫 진화 성공!`,
+      `${oldPetName}(이)가 ${pet.name}(으)로 진화했습니다! 신규 스킬을 획득했습니다.`,
+      'pet_evolution',
+      '/pet'
+    );
 
     return { ...playerData, pets, petInventory: newInventory };
   });
@@ -3260,6 +3282,7 @@ export async function hatchPetEgg(classId, playerId) {
     const inventory = playerData.petInventory || {};
     if (!inventory.pet_egg || inventory.pet_egg <= 0) throw new Error("부화할 알이 없습니다.");
 
+    // PET_DATA의 키값인 ['dragon', 'rabbit', 'turtle', 'monkey']를 동적으로 가져옵니다.
     const availableSpecies = Object.keys(PET_DATA);
     const randomSpecies = availableSpecies[Math.floor(Math.random() * availableSpecies.length)];
 
@@ -3276,17 +3299,18 @@ export async function hatchPetEgg(classId, playerId) {
       id: petId,
       name: baseData.name,
       species: randomSpecies,
+      element: baseData.element, // 💡 [중요] 배틀 상성 연동을 위해 속성(Element) 데이터 주입!
       level: 1,
       exp: 0,
-      maxExp: 270, // [수정] 공식: 150 + (50 * 1) = 200
+      maxExp: 270,
       hp: randomizedMaxHp,
       maxHp: randomizedMaxHp,
       sp: randomizedMaxSp,
       maxSp: randomizedMaxSp,
       atk: randomizedAtk,
-      equippedSkills: baseData.initialSkills,
-      skills: baseData.initialSkills,
-      appearanceId: `${randomSpecies}_lv1`
+      equippedSkills: [...baseData.initialSkills], // 주소 복사 방지를 위해 스프레드 연산자 권장
+      skills: [...baseData.initialSkills],
+      appearanceId: `${randomSpecies}_lv1` // monkey_lv1, dragon_lv1 등으로 자동 매핑
     };
     hatchedPetData = newPet;
 
