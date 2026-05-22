@@ -1159,7 +1159,8 @@ export async function batchUpdateTeams(classId, teamUpdates) {
 export async function getMatches(classId, seasonId) {
   if (!classId || !seasonId) return [];
   const matchesRef = collection(db, 'classes', classId, 'matches');
-  const q = query(matchesRef, where("seasonId", "==", seasonId));
+  // [수정] matchOrder로 정렬: 알고리즘이 계산한 경기 순서 유지
+  const q = query(matchesRef, where("seasonId", "==", seasonId), orderBy("matchOrder"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
@@ -1291,9 +1292,11 @@ export async function batchAddMatches(classId, newMatchesData) {
   if (!classId) return;
   const batch = writeBatch(db);
   const matchesRef = collection(db, 'classes', classId, 'matches');
-  newMatchesData.forEach(matchData => {
+  // [수정] matchOrder 필드 추가: 알고리즘이 계산한 경기 순서를 Firestore에 보존
+  // orderBy 없이 조회하면 문서 ID 기준으로 뒤섞이므로 반드시 필요
+  newMatchesData.forEach((matchData, index) => {
     const newMatchRef = doc(matchesRef);
-    batch.set(newMatchRef, matchData);
+    batch.set(newMatchRef, { ...matchData, matchOrder: index });
   });
   await batch.commit();
 }
