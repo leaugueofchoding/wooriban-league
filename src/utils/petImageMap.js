@@ -48,6 +48,22 @@ import bird3_back from '@/assets/pets/bird3_back.png';
 import bird3_crunch from '@/assets/pets/bird3_crunch.png';
 import bird3_crunch_back from '@/assets/pets/bird3_crunch_back.png';
 
+// --- Monkey Assets (신규 추가) ---
+import monkey1_portrait from '@/assets/pets/monkey1_portrait.png';
+import monkey1_back from '@/assets/pets/monkey1_back.png';
+import monkey1_crunch from '@/assets/pets/monkey1_crunch.png';
+import monkey1_crunch_back from '@/assets/pets/monkey1_crunch_back.png';
+
+import monkey2_portrait from '@/assets/pets/monkey2_portrait.png';
+import monkey2_back from '@/assets/pets/monkey2_back.png';
+import monkey2_crunch from '@/assets/pets/monkey2_crunch.png';
+import monkey2_crunch_back from '@/assets/pets/monkey2_crunch_back.png';
+
+import monkey3_portrait from '@/assets/pets/monkey3_portrait.png';
+import monkey3_back from '@/assets/pets/monkey3_back.png';
+import monkey3_crunch from '@/assets/pets/monkey3_crunch.png';
+import monkey3_crunch_back from '@/assets/pets/monkey3_crunch_back.png';
+
 
 export const petImageMap = {
     // === Dragon ===
@@ -89,15 +105,34 @@ export const petImageMap = {
     turtle_lv1_brace: bird1_crunch,
     turtle_lv1_brace_back: bird1_crunch_back,
 
-    // [핵심 수정] Lv2: 꽃잎치 (ID: bird_lv2 -> Bird2 images)
+    // Lv2: 꽃잎치 (ID: bird_lv2 -> Bird2 images)
     bird_lv2_idle: bird2_portrait,
     bird_lv2_battle: bird2_back,
     bird_lv2_brace: bird2_crunch,
     bird_lv2_brace_back: bird2_crunch_back,
 
-    // [핵심 수정] Lv3: 열매치 (ID: bird_lv3 -> Bird3 images)
+    // Lv3: 열매치 (ID: bird_lv3 -> Bird3 images)
     bird_lv3_idle: bird3_portrait,
     bird_lv3_battle: bird3_back,
     bird_lv3_brace: bird3_crunch,
     bird_lv3_brace_back: bird3_crunch_back,
+
+    // === Monkey (신규 추가) ===
+    // Lv1: 찌릿숭이 (ID: monkey_lv1)
+    monkey_lv1_idle: monkey1_portrait,
+    monkey_lv1_battle: monkey1_back,
+    monkey_lv1_brace: monkey1_crunch,
+    monkey_lv1_brace_back: monkey1_crunch_back,
+
+    // Lv2: 지직숭 (ID: monkey_lv2)
+    monkey_lv2_idle: monkey2_portrait,
+    monkey_lv2_battle: monkey2_back,
+    monkey_lv2_brace: monkey2_crunch,
+    monkey_lv2_brace_back: monkey2_crunch_back,
+
+    // Lv3: 콰릉숭 (ID: monkey_lv3)
+    monkey_lv3_idle: monkey3_portrait,
+    monkey_lv3_battle: monkey3_back,
+    monkey_lv3_brace: monkey3_crunch,
+    monkey_lv3_brace_back: monkey3_crunch_back,
 };
