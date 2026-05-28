@@ -1,5 +1,4 @@
 // src/pages/admin/tabs/MissionTab.jsx
-
 import React, { useState, useEffect } from 'react';
 import { useClassStore, useLeagueStore } from '../../../store/leagueStore';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -287,6 +286,26 @@ function MissionManager({ onNavigate }) {
     const [showAdvanced, setShowAdvanced] = useState({ rewards: false, prerequisite: false });
     const [defaultPrivate, setDefaultPrivate] = useState(false);
 
+    // 💡 [무적의 우회 로직 추가] 새 미션이 추가되어 배열 길이가 늘어나는 순간을 감지합니다.
+    const prevMissionsLength = React.useRef(missions.length);
+
+    useEffect(() => {
+        // 활성 미션의 개수가 이전보다 늘어났다면 (즉, 새 미션이 출제되어 맨 아래에 붙었을 때)
+        if (missions.length > prevMissionsLength.current) {
+            // 맨 아래(배열의 맨 끝)에 새로 추가된 미션을 가져옵니다.
+            const latestMission = missions[missions.length - 1];
+
+            // 새 미션을 맨 앞으로 보내고, 나머지 기존 미션들을 뒤로 밀어 새로운 리스트를 만듭니다.
+            const newList = [latestMission, ...missions.slice(0, missions.length - 1)];
+
+            // 이미 잘 작동하고 있는 드래그앤드롭 정렬 함수를 강제로 실행시켜 DB 순서를 최상단으로 엎어버립니다!
+            reorderMissions(newList, 'missions');
+        }
+        // 비교용 기준점을 현재 미션 개수로 최신화합니다.
+        prevMissionsLength.current = missions.length;
+    }, [missions, reorderMissions]);
+
+
     const handleDragEnd = (event) => {
         const { active, over } = event;
         if (active.id !== over.id) {
@@ -340,7 +359,7 @@ function MissionManager({ onNavigate }) {
                 alert('미션이 성공적으로 수정되었습니다!');
             } else {
                 await createMission(missionData);
-                alert('새로운 미션이 등록되었습니다!');
+                alert('새로운 미션이 출제되었습니다!');
             }
             handleCancel();
         } catch (error) { alert('미션 저장 중 오류가 발생했습니다.'); }
@@ -378,6 +397,7 @@ function MissionManager({ onNavigate }) {
                     <InputGroup>
                         <label htmlFor="prerequisite">연계 미션:</label>
                         <select id="prerequisite" value={prerequisiteMissionId} onChange={(e) => setPrerequisiteMissionId(e.target.value)} style={{ flex: 1, padding: '0.5rem' }}>
+                            <option value="">-- 없음 --</option>
                             <option value="">-- 없음 --</option>
                             {missions.map(mission => (<option key={mission.id} value={mission.id}>{mission.title}</option>))}
                         </select>
@@ -440,3 +460,4 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
 }
 
 export default MissionTab;
+

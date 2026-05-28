@@ -541,7 +541,8 @@ export const useLeagueStore = create((set, get) => ({
         const classId = getClassId();
         if (!classId) return;
         const matchesRef = collection(db, 'classes', classId, 'matches');
-        const q = query(matchesRef, where("seasonId", "==", seasonId));
+        // [수정] matchOrder로 정렬: 실시간 구독에서도 경기 순서 유지
+        const q = query(matchesRef, where("seasonId", "==", seasonId), orderBy("matchOrder"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const matchesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             set({ matches: matchesData });
@@ -1320,37 +1321,122 @@ export const useLeagueStore = create((set, get) => ({
         if (!confirm('경기 일정을 새로 생성하시겠습니까? 기존 경기 일정은 모두 삭제됩니다.')) return;
 
         let matchesToCreate = [];
-        const createRoundRobinSchedule = (teamList) => {
-            if (teamList.length < 2) return [];
-            let scheduleTeams = [...teamList];
-            if (scheduleTeams.length % 2 !== 0) scheduleTeams.push({ id: 'BYE' });
+        // ─────────────────────────────────────────────────────────
+        // 경기장 1개 최적 일정 생성 알고리즘 (원형고정 라운드로빈)
+        //
+        // 핵심 원리:
+        //   짝수 팀(6팀 이상): 원형고정 라운드로빈의 라운드 내 경기 순서가
+        //   이미 "경기장 1개 순차 진행 시 연속 출전 없음"을 보장.
+        //   → 라운드를 순서대로 펼치기만 하면 완벽.
+        //
+        //   홀수 팀·소규모 팀: 위 방법 적용 후 남은 충돌을
+        //   탐욕 재배치 알고리즘으로 최솟값까지 감소.
+        // ─────────────────────────────────────────────────────────
 
-            const numTeams = scheduleTeams.length;
+        // 1) 원형고정 라운드로빈으로 라운드별 경기 쌍 생성
+        const buildRRRounds = (teamIds) => {
+            const n = teamIds.length;
+            const useBye = n % 2 !== 0;
+            const size = useBye ? n + 1 : n;
+            // 내부 인덱스(1~n) 사용 후 나중에 실제 id로 매핑
+            const ids = Array.from({ length: size }, (_, i) => i < n ? i : -1); // -1 = BYE
+            const fixed = ids[0];
+            let rotating = ids.slice(1);
             const rounds = [];
-            for (let round = 0; round < numTeams - 1; round++) {
-                const roundMatches = [];
-                for (let i = 0; i < numTeams / 2; i++) {
-                    const teamA = scheduleTeams[i];
-                    const teamB = scheduleTeams[numTeams - 1 - i];
-                    if (teamA.id !== 'BYE' && teamB.id !== 'BYE') {
-                        roundMatches.push({ teamA_id: teamA.id, teamB_id: teamB.id });
-                    }
+            for (let r = 0; r < size - 1; r++) {
+                const circle = [fixed, ...rotating];
+                const roundPairs = [];
+                for (let i = 0; i < size / 2; i++) {
+                    const a = circle[i], b = circle[size - 1 - i];
+                    if (a !== -1 && b !== -1) roundPairs.push([a, b]);
                 }
-                rounds.push(roundMatches);
-                scheduleTeams.splice(1, 0, scheduleTeams.pop());
+                rounds.push(roundPairs);
+                rotating = [...rotating.slice(1), rotating[0]]; // 왼쪽 회전
             }
-            const homeAndAway = [...rounds, ...rounds.map(round => round.map(match => ({ teamA_id: match.teamB_id, teamB_id: match.teamA_id })))];
-            return homeAndAway.flat().map(match => ({
-                ...match, seasonId: currentSeason.id, teamA_score: null, teamB_score: null, status: '예정'
+            return rounds;
+        };
+
+        // 2) LCG 시드 난수 (결정론적 셔플)
+        const makeLCG = (seed) => {
+            let s = seed;
+            return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+        };
+
+        // 3) 탐욕 재배치: 연속 출전 최소화 (소규모 팀 fallback)
+        const reorderGreedy = (pairs, rng) => {
+            const pool = [...pairs];
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(rng() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            const ordered = [];
+            let prev = new Set();
+            let failCount = 0;
+            while (pool.length > 0) {
+                let idx = pool.findIndex(([a, b]) => !prev.has(a) && !prev.has(b));
+                if (idx === -1) {
+                    let minOv = 3, best = 0;
+                    for (let i = 0; i < pool.length; i++) {
+                        const ov = (prev.has(pool[i][0]) ? 1 : 0) + (prev.has(pool[i][1]) ? 1 : 0);
+                        if (ov < minOv) { minOv = ov; best = i; }
+                    }
+                    idx = best; failCount++;
+                }
+                const [a, b] = pool.splice(idx, 1)[0];
+                ordered.push([a, b]);
+                prev = new Set([a, b]);
+            }
+            return { ordered, failCount };
+        };
+
+        // 4) 연속 출전 충돌 수 계산
+        const countConflicts = (matches) => {
+            let c = 0; let prev = new Set();
+            matches.forEach(([a, b], i) => { if (i > 0 && (prev.has(a) || prev.has(b))) c++; prev = new Set([a, b]); });
+            return c;
+        };
+
+        // 5) 팀 목록을 받아 최적 경기 순서 생성
+        const findBestSchedule = (teamList) => {
+            if (teamList.length < 2) return [];
+            const rounds = buildRRRounds(teamList);
+            const single = rounds.flat();
+            // 홈&어웨이: 어웨이는 홈팀/원정팀 역전
+            const away = rounds.map(r => r.map(([a, b]) => [b, a])).flat();
+            const full = [...single, ...away];
+
+            if (countConflicts(full) === 0) {
+                // 원형고정 배치 자체가 완벽 → 바로 사용
+                return full.map(([a, b]) => ({
+                    teamA_id: teamList[a].id,
+                    teamB_id: teamList[b].id,
+                    seasonId: currentSeason.id,
+                    teamA_score: null, teamB_score: null, status: '예정'
+                }));
+            }
+
+            // 충돌 있는 경우(소규모 팀): 탐욕 재배치로 최솟값 탐색
+            let best = null, bestFail = Infinity;
+            for (let attempt = 0; attempt < 500; attempt++) {
+                const rng = makeLCG(attempt * 7919 + 12345);
+                const { ordered, failCount } = reorderGreedy(full, rng);
+                if (failCount < bestFail) { bestFail = failCount; best = ordered; }
+                if (bestFail === 0) break;
+            }
+            return best.map(([a, b]) => ({
+                teamA_id: teamList[a].id,
+                teamB_id: teamList[b].id,
+                seasonId: currentSeason.id,
+                teamA_score: null, teamB_score: null, status: '예정'
             }));
         };
 
         if (leagueType === 'separated') {
             const maleTeams = teams.filter(t => t.gender === '남');
             const femaleTeams = teams.filter(t => t.gender === '여');
-            matchesToCreate = [...createRoundRobinSchedule(maleTeams), ...createRoundRobinSchedule(femaleTeams)];
+            matchesToCreate = [...findBestSchedule(maleTeams), ...findBestSchedule(femaleTeams)];
         } else {
-            matchesToCreate = createRoundRobinSchedule(teams);
+            matchesToCreate = findBestSchedule(teams);
         }
 
         if (matchesToCreate.length === 0) return alert('생성할 경기가 없습니다. 팀 구성을 확인해주세요.');

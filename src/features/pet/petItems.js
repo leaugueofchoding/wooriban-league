@@ -4,7 +4,6 @@ import brainSnackImg from '@/assets/items/item_brain_snack.png';
 import secretNotebookImg from '@/assets/items/item_secret_notebook.png';
 import evolutionStoneImg from '@/assets/items/item_evolution_stone.png';
 import petEggImg from '@/assets/items/item_pet_egg.png';
-// [추가] 비타민 젤리 이미지 불러오기 (이미지 생성 후 폴더에 넣으세요!)
 import vitaminJellyImg from '@/assets/items/item_vitamin_jelly.png';
 
 export const PET_ITEMS = {
@@ -16,12 +15,11 @@ export const PET_ITEMS = {
         image: brainSnackImg,
         icon: brainSnackImg,
     },
-    // ▼▼▼ [신규 추가] 비타민 젤리 (배틀 횟수 초기화) ▼▼▼
     vitamin_jelly: {
         id: 'vitamin_jelly',
         name: '비타민 젤리',
         description: '입맛이 싹 돕니다. 펫이 피로도를 회복하고 다시 배틀할 수 있게 됩니다. (하루 1번만 사용 가능)',
-        price: 500, // 가격은 경제 밸런스에 맞게 수정하세요!
+        price: 500,
         image: vitaminJellyImg,
         icon: vitaminJellyImg,
     },
