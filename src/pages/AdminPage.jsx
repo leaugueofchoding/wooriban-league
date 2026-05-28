@@ -7,6 +7,7 @@ import { auth, db } from '../api/firebase.js';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ImageModal from '../components/ImageModal';
 import QuizManager from '../components/QuizManager';
+import RecorderDashboardPage from './RecorderDashboardPage';
 
 // --- 분리된 탭 컴포넌트 임포트 ---
 import MissionTab from './admin/tabs/MissionTab';
@@ -105,6 +106,9 @@ function AdminPage() {
         if (activeMenu === 'class') {
             return <ClassTab />;
         }
+        if (activeMenu === 'recorder') {
+            return <RecorderDashboardPage />;
+        }
         return null;
     };
 
@@ -133,15 +137,16 @@ function AdminPage() {
                     <BroadcastButton to="/broadcast" target="_blank">📺 방송 송출 화면</BroadcastButton>
                     <NavList>
                         <NavItem>
-                            <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
-                            {activeMenu === 'mission' && (
-                                <SubNavList>
-                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>미션 승인</SubNavButton></SubNavItem>
-                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'creation'} onClick={() => setMissionSubMenu('creation')}>미션 출제</SubNavButton></SubNavItem>
-                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'history'} onClick={() => setMissionSubMenu('history')}>기록 확인</SubNavButton></SubNavItem>
-                                </SubNavList>
-                            )}
+                            <NavButton $active={activeMenu === 'recorder'} onClick={() => handleMenuClick('recorder')}>📝 기록원 화면</NavButton>
                         </NavItem>
+                        <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
+                        {activeMenu === 'mission' && (
+                            <SubNavList>
+                                <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>미션 승인</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={missionSubMenu === 'creation'} onClick={() => setMissionSubMenu('creation')}>미션 출제</SubNavButton></SubNavItem>
+                                <SubNavItem><SubNavButton $active={missionSubMenu === 'history'} onClick={() => setMissionSubMenu('history')}>기록 확인</SubNavButton></SubNavItem>
+                            </SubNavList>
+                        )}
                         <NavItem>
                             <NavButton $active={activeMenu === 'quiz'} onClick={() => handleMenuClick('quiz')}>퀴즈 관리</NavButton>
                         </NavItem>

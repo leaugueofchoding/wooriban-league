@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { css, keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { db } from '../api/firebase';
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc } from "firebase/firestore";
 import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
 import whistleSound from '../assets/whistle.mp3'; // 소리 파일 유지 (TV용)
@@ -206,6 +206,9 @@ function BroadcastPage({ isMiniMode = false }) {
   const confettiCanvasRef = useRef(null);
   const prevMatchesRef = useRef([]);
   const [showWinnerPage, setShowWinnerPage] = useState(false);
+  // [추가] 기록원이 지정한 방송 경기 ID (season.broadcastMatchId)
+  const [broadcastMatchId, setBroadcastMatchId] = useState(null);
+  const allMatchesRef = useRef([]);
 
   // 휘슬 소리 재생 함수
   const playWhistle = () => {
@@ -220,6 +223,41 @@ function BroadcastPage({ isMiniMode = false }) {
       setShowWinnerPage(false);
     }
   }, [currentSeason]);
+
+  // [추가] season.broadcastMatchId 실시간 구독 → 기록원이 다음 경기로 누를 때 방송 화면 동기화
+  useEffect(() => {
+    if (!classId || !currentSeason?.id) return;
+    const seasonRef = doc(db, 'classes', classId, 'seasons', currentSeason.id);
+    const unsubscribe = onSnapshot(seasonRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setBroadcastMatchId(data.broadcastMatchId || null);
+      }
+    });
+    return () => unsubscribe();
+  }, [classId, currentSeason?.id]);
+
+  // [추가] broadcastMatchId 또는 allMatches 변경 시 방송 경기 동기화
+  useEffect(() => {
+    if (allMatchesRef.current.length === 0) return;
+    const matches = allMatchesRef.current;
+
+    // 진행중 경기 최우선
+    const inProgress = matches.find(m => m.status === '진행중');
+    if (inProgress) { setMatchForDisplay(inProgress); return; }
+
+    // 기록원이 지정한 경기
+    if (broadcastMatchId) {
+      const target = matches.find(m => m.id === broadcastMatchId);
+      if (target) { setMatchForDisplay(target); return; }
+    }
+
+    // fallback: matchOrder 기준 첫 번째 예정 경기
+    const upcoming = [...matches]
+      .sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999))
+      .find(m => m.status === '예정');
+    setMatchForDisplay(upcoming || { id: 'end', status: '종료' });
+  }, [broadcastMatchId, allMatches]);
 
   useEffect(() => {
     if (!classId || !currentSeason) return;
@@ -238,11 +276,8 @@ function BroadcastPage({ isMiniMode = false }) {
       });
 
       if (justCompletedMatch) {
+        // 경기 종료 시: 결과 화면 유지 (자동 전환 제거 — 기록원이 "다음 경기로" 눌러야 전환)
         setMatchForDisplay(justCompletedMatch);
-
-        // [수정] 경기 종료 시에는 소리 재생 안 함 (폭죽만)
-        // playWhistle(); <--- 제거됨
-
         const { teamA_score, teamB_score } = justCompletedMatch;
         if (teamA_score !== teamB_score) {
           if (!confettiCanvasRef.current) {
@@ -267,34 +302,14 @@ function BroadcastPage({ isMiniMode = false }) {
           }, 4000);
         }
 
-        // 5초 후 다음 경기로 화면 전환 시 삑 소리 재생
-        setTimeout(() => {
-          const inProgress = matchesData.find(m => m.status === '진행중');
-          const upcoming = matchesData.find(m => m.status === '예정');
-          setMatchForDisplay(inProgress || upcoming || { id: 'end', status: '종료' });
-
-          // [추가] 다음 경기로 화면이 넘어갈 때(준비 알림) 삑 소리 재생
-          if (inProgress || upcoming) {
-            playWhistle();
-          }
-        }, 5000);
-
       } else {
-        // 평소 상태 업데이트 (새로고침 등)
-        const inProgress = matchesData.find(m => m.status === '진행중');
-        const upcoming = matchesData.find(m => m.status === '예정');
-        setMatchForDisplay(inProgress || upcoming || { id: 'end', status: '종료' });
-
-        // 주의: 여기서 매번 소리를 재생하면 데이터가 바뀔 때마다 시끄러우므로,
-        // 상태가 '예정' -> '진행중'으로 바뀔 때(경기 시작)만 소리를 내도록 추가 로직을 넣을 수도 있습니다.
-        // 현재는 경기 종료 후 다음 경기 전환 시에만 확실히 소리가 납니다.
+        // 평소 상태 (새로고침 등) — broadcastMatchId useEffect가 처리하므로 여기서는 allMatches만 갱신
       }
 
-      matchesData.sort((a, b) => {
-        const statusOrder = { '진행중': 1, '예정': 2, '완료': 3 };
-        return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
-      });
-      setAllMatches(matchesData);
+      // [수정] matchOrder 기준으로 정렬 (경기장 1개 운영 순서 보장)
+      const sortedByOrder = [...matchesData].sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999));
+      allMatchesRef.current = sortedByOrder;
+      setAllMatches(sortedByOrder);
       prevMatchesRef.current = matchesData;
     });
     return () => unsubscribe();

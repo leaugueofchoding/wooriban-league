@@ -10,7 +10,8 @@ import {
     rejectMissionSubmission,
     updateMatchStatus,
     updateMatchStartTime,
-    updateMatchScores
+    updateMatchScores,
+    updateSeason
 } from '../api/firebase.js';
 import { updateDoc, doc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
@@ -309,7 +310,7 @@ const SubmissionContent = styled.div`
 
 // --- Components ---
 
-function MatchRow({ match, isOpen, onStart, onComplete, onNext, scoringMethod = 'survival', isAnyMatchInProgress, lastCompletedId }) {
+function MatchRow({ match, isOpen, onStart, onComplete, onNext, scoringMethod = 'survival', isAnyMatchInProgress, lastCompletedId, onCardClick, isAdmin, onEditMatch }) {
     const { classId } = useClassStore();
     const { players, teams } = useLeagueStore();
 
@@ -437,16 +438,25 @@ function MatchRow({ match, isOpen, onStart, onComplete, onNext, scoringMethod = 
 
     return (
         <MatchCard $isActive={isOpen} $isDimmed={!isOpen && match.status !== '진행중' && !isHeldAtTop}>
-            <MatchHeader>
+            {/* [추가] 카드 헤더 클릭으로 확장/축소 (원하는 경기 선택 가능) */}
+            <MatchHeader style={{ cursor: 'pointer' }} onClick={() => onCardClick && onCardClick(match.id)}>
                 <div className="teams">
                     <span>{teamA?.teamName || 'Team A'}</span>
                     <span className="vs">VS</span>
                     <span>{teamB?.teamName || 'Team B'}</span>
                 </div>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {match.matchOrder != null && <span style={{ fontSize: '0.8rem', color: '#adb5bd', fontWeight: 600 }}>#{match.matchOrder + 1}</span>}
                     {match.status === '예정' && <span style={{ color: '#adb5bd', fontWeight: 'bold' }}>경기 전</span>}
                     {match.status === '진행중' && <span style={{ color: '#fa5252', fontWeight: 'bold' }}>LIVE 🔴</span>}
                     {isCompleted && <span style={{ color: '#339af0', fontWeight: 'bold' }}>종료됨</span>}
+                    {/* [추가] 관리자 수정 버튼 */}
+                    {isCompleted && isAdmin && (
+                        <button
+                            onClick={e => { e.stopPropagation(); onEditMatch && onEditMatch(match); }}
+                            style={{ fontSize: '0.78rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid #ced4da', background: '#fff', cursor: 'pointer', color: '#868e96', fontWeight: 700 }}
+                        >🛠 수정</button>
+                    )}
                 </div>
             </MatchHeader>
 
@@ -541,7 +551,7 @@ function MatchRow({ match, isOpen, onStart, onComplete, onNext, scoringMethod = 
 
 function RecorderDashboardPage() {
     const { classId } = useClassStore();
-    const { players, missions, matches, missionSubmissions, seasons } = useLeagueStore();
+    const { players, missions, matches, missionSubmissions, seasons, teams } = useLeagueStore();
     const [processingIds, setProcessingIds] = useState(new Set());
     const [mainTab, setMainTab] = useState('league');
     const currentUser = auth.currentUser;
@@ -549,6 +559,11 @@ function RecorderDashboardPage() {
 
     const [activeMatchId, setActiveMatchId] = useState(null);
     const [lastCompletedMatchId, setLastCompletedMatchId] = useState(null);
+
+    // [추가] 관리자 결과 수정 상태
+    const [editingMatch, setEditingMatch] = useState(null); // { id, teamA_score, teamB_score, scorers }
+    const [editScoreA, setEditScoreA] = useState(0);
+    const [editScoreB, setEditScoreB] = useState(0);
 
     useEffect(() => {
         loadConfetti();
@@ -563,7 +578,54 @@ function RecorderDashboardPage() {
         return players.find(p => p.authUid === currentUser.uid);
     }, [players, currentUser]);
 
-    // 정렬 로직: 진행중(0) -> 완료후 대기중(1) -> 예정(2) -> 완료(3)
+    const isAdmin = myPlayerData?.role === 'admin';
+
+    // [추가] 관리자 결과 수정 핸들러
+    const handleOpenEdit = (match) => {
+        setEditingMatch(match);
+        setEditScoreA(match.teamA_score ?? 0);
+        setEditScoreB(match.teamB_score ?? 0);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingMatch || !classId) return;
+        if (!window.confirm(`점수를 ${editScoreA} : ${editScoreB} 로 수정하시겠습니까?`)) return;
+        try {
+            await updateMatchScores(
+                classId,
+                editingMatch.id,
+                { a: Number(editScoreA), b: Number(editScoreB) },
+                editingMatch.scorers || {},
+                currentUser?.uid
+            );
+            setEditingMatch(null);
+            alert('결과가 수정되었습니다.');
+        } catch (e) {
+            alert(`수정 오류: ${e.message}`);
+        }
+    };
+
+    // [추가] 기록원이 원하는 경기부터 시작 — 경기 점프 핸들러
+    const handleJumpToMatch = async (matchId) => {
+        setActiveMatchId(matchId);
+        setLastCompletedMatchId(null);
+
+        // 방송 화면 동기화
+        const target = matches.find(m => m.id === matchId);
+        if (classId && target?.seasonId) {
+            try {
+                await updateSeason(classId, target.seasonId, { broadcastMatchId: matchId });
+            } catch (e) {
+                console.warn('broadcastMatchId 저장 실패:', e);
+            }
+        }
+
+        setTimeout(() => {
+            document.getElementById(`match-card-${matchId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    };
+
+    // 정렬 로직: 진행중(0) -> 완료후 대기중(1) -> 예정(2, matchOrder 순) -> 완료(3, matchOrder 순)
     const sortedMatches = useMemo(() => {
         return [...matches].sort((a, b) => {
             const getPriority = (m) => {
@@ -577,7 +639,8 @@ function RecorderDashboardPage() {
             const pB = getPriority(b);
 
             if (pA !== pB) return pA - pB;
-            return (a.round || 0) - (b.round || 0);
+            // [수정] round → matchOrder: 실제 저장된 필드명으로 보조 정렬
+            return (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999);
         });
     }, [matches, lastCompletedMatchId]);
 
@@ -585,14 +648,14 @@ function RecorderDashboardPage() {
         return matches.some(m => m.status === '진행중');
     }, [matches]);
 
-    // 자동 포커스
+    // [수정] 자동 포커스: 처음 로드 시 또는 activeMatchId가 없을 때만 최상단 경기 선택
+    // sortedMatches 재정렬 때마다 덮어쓰면 기록원이 선택한 경기가 날아가므로 조건 추가
     useEffect(() => {
-        if (sortedMatches.length > 0) {
+        if (sortedMatches.length > 0 && !activeMatchId) {
             const topMatch = sortedMatches[0];
-            // 상단 경기 자동 선택
             setActiveMatchId(topMatch.id);
         }
-    }, [sortedMatches]);
+    }, [sortedMatches, activeMatchId]);
 
     const activeMatch = useMemo(() => matches.find(m => m.id === activeMatchId), [matches, activeMatchId]);
     const activeSeason = useMemo(() => seasons?.find(s => s.id === activeMatch?.seasonId), [seasons, activeMatch]);
@@ -604,9 +667,15 @@ function RecorderDashboardPage() {
             return;
         }
         if (window.confirm("경기를 시작하시겠습니까?")) {
-            setLastCompletedMatchId(null); // 다른 경기 시작 시 고정 해제
+            setLastCompletedMatchId(null);
             await updateMatchStartTime(classId, matchId);
             await updateMatchStatus(classId, matchId, '진행중');
+            // 경기 시작 시에도 방송 화면 동기화
+            const target = matches.find(m => m.id === matchId);
+            if (classId && target?.seasonId) {
+                try { await updateSeason(classId, target.seasonId, { broadcastMatchId: matchId }); }
+                catch (e) { console.warn('broadcastMatchId 저장 실패:', e); }
+            }
         }
     };
 
@@ -634,8 +703,41 @@ function RecorderDashboardPage() {
         }
     };
 
-    const handleNextMatch = () => {
-        setLastCompletedMatchId(null); // 고정 해제 -> 리스트 재정렬됨
+    const handleNextMatch = async () => {
+        // 현재 완료된 경기의 matchOrder 다음 경기를 찾아 자동 활성화
+        const completedMatch = matches.find(m => m.id === lastCompletedMatchId);
+        const completedOrder = completedMatch?.matchOrder ?? -1;
+
+        // matchOrder 기준으로 완료된 경기 다음 "예정" 경기 탐색
+        const nextMatch = [...matches]
+            .filter(m => m.status === '예정')
+            .sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999))
+            .find(m => (m.matchOrder ?? 9999) > completedOrder);
+
+        const targetMatch = nextMatch || [...matches]
+            .filter(m => m.status === '예정')
+            .sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999))[0];
+
+        setLastCompletedMatchId(null); // 완료 고정 해제
+
+        if (targetMatch) {
+            setActiveMatchId(targetMatch.id); // 자동 활성화 (파란 테두리)
+
+            // [추가] Firestore season.broadcastMatchId 저장 → 방송 화면 동기화
+            if (classId && activeMatch?.seasonId) {
+                try {
+                    await updateSeason(classId, activeMatch.seasonId, { broadcastMatchId: targetMatch.id });
+                } catch (e) {
+                    console.warn('broadcastMatchId 저장 실패:', e);
+                }
+            }
+
+            // 해당 카드로 스크롤
+            setTimeout(() => {
+                document.getElementById(`match-card-${targetMatch.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }
+
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -689,11 +791,36 @@ function RecorderDashboardPage() {
                             <BroadcastPage isMiniMode={true} />
                         </BroadcastFrame>
 
+                        {/* [추가] 원하는 경기로 바로 이동하는 선택기 */}
+                        <div style={{ background: '#e7f5ff', borderRadius: '12px', padding: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, color: '#1971c2', whiteSpace: 'nowrap' }}>⚡ 경기 바로가기</span>
+                            <select
+                                value={activeMatchId || ''}
+                                onChange={e => handleJumpToMatch(e.target.value)}
+                                style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid #a5d8ff', fontSize: '0.95rem', fontWeight: 600, color: '#1c4a7e', background: 'white', cursor: 'pointer' }}
+                            >
+                                <option value="">-- 경기 선택 --</option>
+                                {[...matches]
+                                    .sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999))
+                                    .map(m => {
+                                        const tA = teams.find(t => t.id === m.teamA_id);
+                                        const tB = teams.find(t => t.id === m.teamB_id);
+                                        const statusLabel = m.status === '진행중' ? '🔴 진행중' : m.status === '예정' ? '⏳ 예정' : '✅ 완료';
+                                        const orderLabel = m.matchOrder != null ? `#${m.matchOrder + 1}` : '';
+                                        return (
+                                            <option key={m.id} value={m.id}>
+                                                {orderLabel} {tA?.teamName ?? '?'} vs {tB?.teamName ?? '?'} [{statusLabel}]
+                                            </option>
+                                        );
+                                    })}
+                            </select>
+                        </div>
+
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                             <h3 style={{ margin: 0, color: '#495057' }}>경기 리스트</h3>
                             <span style={{ fontSize: '0.9rem', color: '#868e96' }}>
                                 {activeMatch ?
-                                    `현재 선택됨: ${activeMatch.homeTeamName} vs ${activeMatch.awayTeamName}`
+                                    `현재 선택됨: ${teams.find(t => t.id === activeMatch.teamA_id)?.teamName ?? '?'} vs ${teams.find(t => t.id === activeMatch.teamB_id)?.teamName ?? '?'}`
                                     : '선택된 경기 없음'
                                 }
                             </span>
@@ -701,20 +828,65 @@ function RecorderDashboardPage() {
 
                         {sortedMatches.length > 0 ? (
                             sortedMatches.map(match => (
-                                <MatchRow
-                                    key={match.id}
-                                    match={match}
-                                    isOpen={match.id === activeMatchId}
-                                    onStart={handleMatchStart}
-                                    onComplete={handleMatchComplete}
-                                    onNext={handleNextMatch}
-                                    scoringMethod={scoringMethod}
-                                    isAnyMatchInProgress={isAnyMatchInProgress}
-                                    lastCompletedId={lastCompletedMatchId}
-                                />
+                                <div id={`match-card-${match.id}`} key={match.id}>
+                                    <MatchRow
+                                        match={match}
+                                        isOpen={match.id === activeMatchId}
+                                        onStart={handleMatchStart}
+                                        onComplete={handleMatchComplete}
+                                        onNext={handleNextMatch}
+                                        scoringMethod={scoringMethod}
+                                        isAnyMatchInProgress={isAnyMatchInProgress}
+                                        lastCompletedId={lastCompletedMatchId}
+                                        onCardClick={(matchId) => setActiveMatchId(prev => prev === matchId ? null : matchId)}
+                                        isAdmin={isAdmin}
+                                        onEditMatch={handleOpenEdit}
+                                    />
+                                </div>
                             ))
                         ) : (
                             <div style={{ textAlign: 'center', padding: '3rem', color: '#adb5bd' }}>경기 일정이 없습니다.</div>
+                        )}
+
+                        {/* [추가] 관리자 경기 결과 수정 모달 */}
+                        {editingMatch && isAdmin && (
+                            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                                <div style={{ background: 'white', borderRadius: '20px', padding: '2rem', width: '90%', maxWidth: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+                                    <h3 style={{ margin: '0 0 1.5rem 0', textAlign: 'center', color: '#343a40' }}>🛠 경기 결과 수정 (관리자)</h3>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem' }}>
+                                        <div style={{ flex: 1, textAlign: 'center' }}>
+                                            <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#495057', fontSize: '0.9rem' }}>
+                                                {teams.find(t => t.id === editingMatch.teamA_id)?.teamName ?? 'Team A'}
+                                            </div>
+                                            <input
+                                                type="number" min="0"
+                                                value={editScoreA}
+                                                onChange={e => setEditScoreA(e.target.value)}
+                                                style={{ width: '100%', textAlign: 'center', fontSize: '2rem', fontWeight: 900, padding: '0.5rem', border: '2px solid #dee2e6', borderRadius: '12px' }}
+                                            />
+                                        </div>
+                                        <span style={{ fontWeight: 900, color: '#adb5bd', fontSize: '1.5rem' }}>:</span>
+                                        <div style={{ flex: 1, textAlign: 'center' }}>
+                                            <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#495057', fontSize: '0.9rem' }}>
+                                                {teams.find(t => t.id === editingMatch.teamB_id)?.teamName ?? 'Team B'}
+                                            </div>
+                                            <input
+                                                type="number" min="0"
+                                                value={editScoreB}
+                                                onChange={e => setEditScoreB(e.target.value)}
+                                                style={{ width: '100%', textAlign: 'center', fontSize: '2rem', fontWeight: 900, padding: '0.5rem', border: '2px solid #dee2e6', borderRadius: '12px' }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <p style={{ fontSize: '0.85rem', color: '#868e96', textAlign: 'center', marginBottom: '1.5rem' }}>
+                                        ⚠️ 결과 수정 시 기존 포인트는 재지급되지 않습니다.<br />포인트 조정은 관리자 패널에서 별도로 해주세요.
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '0.8rem' }}>
+                                        <button onClick={() => setEditingMatch(null)} style={{ flex: 1, padding: '0.8rem', borderRadius: '10px', border: '1px solid #dee2e6', background: '#f8f9fa', cursor: 'pointer', fontWeight: 700, color: '#495057' }}>취소</button>
+                                        <button onClick={handleSaveEdit} style={{ flex: 2, padding: '0.8rem', borderRadius: '10px', border: 'none', background: '#339af0', color: 'white', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>💾 저장</button>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </div>
                 )}

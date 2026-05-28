@@ -416,8 +416,10 @@ function Auth({ user }) {
                 <UserProfile>
                     <IconContainer>
                         <IconLink to="/">🏠</IconLink>
+                        {(myPlayerData?.role === 'admin' || myPlayerData?.role === 'recorder') && (
+                            <IconLink to="/recorder-dashboard" title="기록원 대시보드">📝</IconLink>
+                        )}
                         {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
-                        {myPlayerData?.role === 'recorder' && <IconLink to="/recorder-dashboard">📋</IconLink>}
                         <NotificationContainer ref={notificationRef}>
                             <IconButton onClick={handleNotificationClick}>
                                 🔔
