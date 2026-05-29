@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { createQuizSet, getQuizSets, deleteQuizSet, setClassActiveQuizSets, getActiveQuizSets, auth } from '../api/firebase';
 import { useClassStore } from '../store/leagueStore';
+import allQuizzesJson from '../assets/missions.json';  // [추가] JSON 기반 문제집 이관용
 
 // --- 스타일 컴포넌트 ---
 const Wrapper = styled.div`
@@ -290,6 +291,42 @@ function QuizManager({ userRole }) {
         } catch (e) { alert("이관 실패: " + e.message); }
     };
 
+    // ▼▼▼ [추가] missions.json 기반 문제집 선택 추가 ▼▼▼
+    const [showJsonImporter, setShowJsonImporter] = useState(false);
+    const [jsonImportChecked, setJsonImportChecked] = useState({});
+
+    const jsonSetNames = Object.keys(allQuizzesJson);
+
+    const handleJsonImport = async () => {
+        const selected = jsonSetNames.filter(name => jsonImportChecked[name]);
+        if (selected.length === 0) return alert('추가할 문제집을 하나 이상 선택해주세요.');
+        if (!window.confirm(`선택한 ${selected.length}개의 문제집을 DB에 추가하시겠습니까?`)) return;
+        try {
+            for (const name of selected) {
+                const questions = allQuizzesJson[name];
+                if (!Array.isArray(questions) || questions.length === 0) continue;
+                await createQuizSet({
+                    title: name,
+                    grade: 'common', semester: 'common', subject: 'general', isPublic: true,
+                    creatorId: 'system', creatorName: '운영자',
+                    questions: questions.map((q, idx) => ({
+                        id: Date.now() + idx + Math.random(),
+                        question: q.question,
+                        answer: q.answer,
+                        options: q.options || [],
+                    }))
+                });
+            }
+            alert(`✅ ${selected.length}개 문제집 추가 완료!`);
+            setJsonImportChecked({});
+            setShowJsonImporter(false);
+            fetchQuizSets();
+        } catch (e) {
+            alert('추가 실패: ' + e.message);
+        }
+    };
+    // ▲▲▲ [추가 끝] ▲▲▲
+
     const handleCheck = (id) => {
         setCheckedIds(prev => {
             const newSet = new Set(prev);
@@ -514,9 +551,49 @@ function QuizManager({ userRole }) {
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {userRole === 'admin' && <Button color="#17a2b8" onClick={handleMigrateLegacy}>기존 퀴즈 이관 (Admin)</Button>}
+                    {userRole === 'admin' && (
+                        <Button color="#7950f2" onClick={() => setShowJsonImporter(v => !v)}>
+                            📂 JSON 문제집 추가
+                        </Button>
+                    )}
                     <Button onClick={() => setMode('create')}>+ 새 문제집 만들기</Button>
                 </div>
             </div>
+
+            {/* ▼▼▼ [추가] JSON 문제집 선택 패널 ▼▼▼ */}
+            {showJsonImporter && (
+                <div style={{ background: '#f3f0ff', border: '2px solid #9775fa', borderRadius: '12px', padding: '1.2rem', marginBottom: '1.5rem' }}>
+                    <h4 style={{ margin: '0 0 0.8rem', color: '#5f3dc4' }}>📂 missions.json에서 문제집 선택 추가</h4>
+                    <p style={{ margin: '0 0 1rem', color: '#666', fontSize: '0.9rem' }}>
+                        <code>src/assets/missions.json</code>에 새 문제집을 추가한 뒤 아래에서 선택하여 DB에 등록하세요.
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                        {jsonSetNames.map(name => (
+                            <label key={name} style={{
+                                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer',
+                                background: jsonImportChecked[name] ? '#7950f2' : 'white',
+                                color: jsonImportChecked[name] ? 'white' : '#495057',
+                                border: '1px solid #9775fa', fontWeight: 700, fontSize: '0.88rem',
+                                userSelect: 'none',
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={!!jsonImportChecked[name]}
+                                    onChange={e => setJsonImportChecked(prev => ({ ...prev, [name]: e.target.checked }))}
+                                    style={{ display: 'none' }}
+                                />
+                                {jsonImportChecked[name] ? '✅' : '☐'} {name} ({allQuizzesJson[name]?.length || 0}문항)
+                            </label>
+                        ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.6rem' }}>
+                        <Button color="#7950f2" onClick={handleJsonImport}>선택한 문제집 DB에 추가</Button>
+                        <Button color="#868e96" onClick={() => { setShowJsonImporter(false); setJsonImportChecked({}); }}>닫기</Button>
+                    </div>
+                </div>
+            )}
+            {/* ▲▲▲ [추가 끝] ▲▲▲ */}
 
             <SearchBar>
                 <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} style={{ width: '100px' }}>

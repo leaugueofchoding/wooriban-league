@@ -47,6 +47,20 @@ const TitleElement = styled.span`
   gap: 3px;
 `;
 
+// 우측 상단 아이콘 버튼 공통 스타일
+const iconBtnStyle = {
+  width: '40px', height: '40px',
+  background: 'rgba(255,255,255,0.88)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(0,0,0,0.1)',
+  borderRadius: '12px',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: '1.25rem',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+  textDecoration: 'none',
+  transition: 'all 0.2s',
+};
+
 const getWinningStars = (count) => {
   if (!count || count <= 0) return null;
   const purpleStars = Math.floor(count / 5);

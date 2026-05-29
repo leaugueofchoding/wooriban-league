@@ -38,6 +38,7 @@ import PointAdjustmentModal from './components/PointAdjustmentModal';
 import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
 import BattlePage from './features/battle/BattlePage.jsx';
+import NoticePage from './pages/NoticePage.jsx';
 import TermsPage from './pages/TermsPage';
 
 const GlobalBackground = createGlobalStyle`
@@ -236,6 +237,7 @@ function App() {
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
             <Route path="/pet-center" element={<ProtectedRoute><PetCenterPage /></ProtectedRoute>} />
             <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} />
+            <Route path="/notices" element={<ProtectedRoute><NoticePage /></ProtectedRoute>} />
 
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />

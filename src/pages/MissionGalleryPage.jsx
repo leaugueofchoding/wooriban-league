@@ -503,6 +503,7 @@ function MissionGalleryPage() {
 
     const [isLoading, setIsLoading] = useState(true);
     const [selectedMission, setSelectedMission] = useState('all');
+    const [searchName, setSearchName] = useState('');  // [추가] 이름 검색
     const [selectedSubmission, setSelectedSubmission] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null);
     const [comments, setComments] = useState([]);
@@ -586,6 +587,9 @@ function MissionGalleryPage() {
         return allSelectableMissions.slice(0, 8); // 기본 8개만 표시
     }, [allSelectableMissions, isFilterExpanded]);
 
+    const getPlayerName = (studentId) => players.find(p => p.id === studentId)?.name || '알 수 없음';
+    const getMissionTitle = (missionId) => allMissionsList.find(m => m.id === missionId)?.title || '알 수 없음';
+
     const hotSubmissions = useMemo(() => {
         return [...publiclyVisibleSubmissions]
             .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
@@ -593,9 +597,19 @@ function MissionGalleryPage() {
     }, [publiclyVisibleSubmissions]);
 
     const filteredSubmissions = useMemo(() => {
-        if (selectedMission === 'all') return publiclyVisibleSubmissions;
-        return publiclyVisibleSubmissions.filter(sub => sub.missionId === selectedMission);
-    }, [publiclyVisibleSubmissions, selectedMission]);
+        let result = selectedMission === 'all'
+            ? publiclyVisibleSubmissions
+            : publiclyVisibleSubmissions.filter(sub => sub.missionId === selectedMission);
+        // [추가] 이름 검색 필터
+        if (searchName.trim()) {
+            const keyword = searchName.trim().toLowerCase();
+            result = result.filter(sub => {
+                const name = getPlayerName(sub.studentId).toLowerCase();
+                return name.includes(keyword);
+            });
+        }
+        return result;
+    }, [publiclyVisibleSubmissions, selectedMission, searchName]);
 
     const displayedSubmissions = useMemo(() => {
         return filteredSubmissions.slice(0, visibleCount);
@@ -671,9 +685,6 @@ function MissionGalleryPage() {
         }
     };
 
-    const getPlayerName = (studentId) => players.find(p => p.id === studentId)?.name || '알 수 없음';
-    const getMissionTitle = (missionId) => allMissionsList.find(m => m.id === missionId)?.title || '알 수 없음';
-
     // [수정] 카드 이미지 or 텍스트 판별 함수
     const getCardImage = (sub) => {
         if (sub.photoUrls && sub.photoUrls.length > 0) return sub.photoUrls[0];
@@ -723,13 +734,12 @@ function MissionGalleryPage() {
                 )}
 
                 <SectionTitle>✨ 전체 갤러리</SectionTitle>
-                {/* [수정 이슈 7] 미션 필터 버튼 + 더 많은 미션 보기 버튼 → 콤보박스로 교체 */}
-                <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <select
                         value={selectedMission}
                         onChange={(e) => { setSelectedMission(e.target.value); setVisibleCount(9); }}
                         style={{
-                            width: '100%',
+                            flex: '1 1 200px',
                             maxWidth: '400px',
                             padding: '0.7rem 1rem',
                             fontSize: '1rem',
@@ -747,6 +757,35 @@ function MissionGalleryPage() {
                             <option key={mission.id} value={mission.id}>{mission.title}</option>
                         ))}
                     </select>
+                    {/* ▼ [추가] 이름 검색 */}
+                    <div style={{ position: 'relative', flex: '1 1 140px', maxWidth: '220px' }}>
+                        <span style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', fontSize: '1rem', pointerEvents: 'none' }}>🔍</span>
+                        <input
+                            type="text"
+                            placeholder="학생 이름 검색"
+                            value={searchName}
+                            onChange={e => { setSearchName(e.target.value); setVisibleCount(9); }}
+                            style={{
+                                width: '100%',
+                                padding: '0.7rem 1rem 0.7rem 2.4rem',
+                                fontSize: '0.97rem',
+                                fontWeight: '600',
+                                border: '2px solid #dee2e6',
+                                borderRadius: '12px',
+                                backgroundColor: '#f8f9fa',
+                                color: '#495057',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                            }}
+                        />
+                        {searchName && (
+                            <button
+                                onClick={() => setSearchName('')}
+                                style={{ position: 'absolute', right: '0.7rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#adb5bd', fontSize: '1rem' }}
+                            >✕</button>
+                        )}
+                    </div>
+                    {/* ▲ [추가 끝] */}
                 </div>
 
                 <GalleryGrid>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useClassStore, useLeagueStore } from '../../../store/leagueStore';
-import { auth, db, createNewClass } from '../../../api/firebase';
+import { auth, db, createNewClass, getBattleEnabled, setBattleEnabled } from '../../../api/firebase';
 import { collection, query, where, getDocs, collectionGroup, limit, doc, setDoc } from "firebase/firestore";
 import QRCode from 'react-qr-code';
 import { FullWidthSection, Section, SectionTitle, InputGroup, StyledButton } from '../Admin.style';
@@ -46,6 +46,28 @@ function ClassManager() {
     const [newClassName, setNewClassName] = useState('');
     const [selectedClassForQR, setSelectedClassForQR] = useState(null);
     const [manualId, setManualId] = useState('');
+    const [battleEnabled, setBattleEnabledState] = useState(true);
+    const [battleToggleLoading, setBattleToggleLoading] = useState(false);
+
+    // 배틀 ON/OFF 상태 로드
+    useEffect(() => {
+        if (!classId) return;
+        getBattleEnabled(classId).then(v => setBattleEnabledState(v));
+    }, [classId]);
+
+    const handleToggleBattle = async () => {
+        if (!classId) return alert('학급을 먼저 선택해주세요.');
+        setBattleToggleLoading(true);
+        try {
+            const next = !battleEnabled;
+            await setBattleEnabled(classId, next);
+            setBattleEnabledState(next);
+        } catch (e) {
+            alert('배틀 설정 변경 실패: ' + e.message);
+        } finally {
+            setBattleToggleLoading(false);
+        }
+    };
 
     const isSuperAdmin = currentUser?.uid === 'Zz6fKdtg00Yb3ju5dibOgkJkWS52';
 
@@ -192,6 +214,47 @@ function ClassManager() {
                         </InviteCodeWrapper>
                     </QRCodeSection>
                 )}
+
+                {/* ▼▼▼ [추가] 배틀 기능 ON/OFF 토글 ▼▼▼ */}
+                {classId && (
+                    <div style={{ marginTop: '1.5rem', padding: '1.2rem 1.5rem', background: 'white', borderRadius: '12px', border: '1px solid #dee2e6', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                        <h4 style={{ margin: '0 0 0.8rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            ⚔️ 펫 배틀 기능 관리
+                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '0.6rem',
+                                padding: '0.6rem 1rem', borderRadius: '10px',
+                                background: battleEnabled ? '#ebfbee' : '#fff5f5',
+                                border: `1px solid ${battleEnabled ? '#51cf66' : '#ffc9c9'}`,
+                            }}>
+                                <span style={{ fontSize: '1.3rem' }}>{battleEnabled ? '🟢' : '🔴'}</span>
+                                <span style={{ fontWeight: 800, color: battleEnabled ? '#2f9e44' : '#c92a2a', fontSize: '0.95rem' }}>
+                                    배틀 {battleEnabled ? '활성화됨' : '비활성화됨'}
+                                </span>
+                            </div>
+                            <button
+                                onClick={handleToggleBattle}
+                                disabled={battleToggleLoading}
+                                style={{
+                                    padding: '0.6rem 1.4rem', borderRadius: '10px', border: 'none',
+                                    background: battleEnabled ? '#fa5252' : '#20c997',
+                                    color: 'white', fontWeight: 800, fontSize: '0.95rem',
+                                    cursor: battleToggleLoading ? 'not-allowed' : 'pointer',
+                                    opacity: battleToggleLoading ? 0.7 : 1,
+                                }}
+                            >
+                                {battleToggleLoading ? '처리 중...' : battleEnabled ? '⛔ 배틀 중지' : '✅ 배틀 재개'}
+                            </button>
+                            <small style={{ color: '#868e96' }}>
+                                {battleEnabled
+                                    ? '현재 학생들이 배틀 가능 | 주말에는 자동으로 차단됩니다.'
+                                    : '학생들이 배틀을 신청할 수 없습니다.'}
+                            </small>
+                        </div>
+                    </div>
+                )}
+                {/* ▲▲▲ [추가 끝] ▲▲▲ */}
             </Section>
         </FullWidthSection>
     );

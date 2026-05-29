@@ -420,8 +420,9 @@ function Auth({ user }) {
                             <IconLink to="/recorder-dashboard" title="기록원 대시보드">📝</IconLink>
                         )}
                         {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
+                        <IconLink to="/notices" title="공지사항">📢</IconLink>
                         <NotificationContainer ref={notificationRef}>
-                            <IconButton onClick={handleNotificationClick}>
+                            <IconButton data-bell-btn onClick={handleNotificationClick}>
                                 🔔
                                 {unreadNotificationCount > 0 && <NotificationBadge />}
                             </IconButton>
@@ -475,41 +476,53 @@ function Auth({ user }) {
             )}
 
             {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
-            {battleChallenge && (
-                <ModalBackground>
-                    <ModalContent>
-                        <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
+            {battleChallenge && (() => {
+                // [버그 수정] 내 파트너펫 기절 상태 미리 확인
+                const myPetForBattle = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
+                const myPetFainted = !myPetForBattle || myPetForBattle.hp <= 0;
+                return (
+                    <ModalBackground>
+                        <ModalContent>
+                            <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
 
-                        <OpponentItem>
-                            <div className="user-info">
-                                <img
-                                    src={petImageMap[`${battleChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
-                                    alt="도전자 펫"
-                                />
-                                <div>
-                                    <strong>{battleChallenge.challenger?.name}</strong>
-                                    <span>{battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})</span>
+                            <OpponentItem>
+                                <div className="user-info">
+                                    <img
+                                        src={petImageMap[`${battleChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                                        alt="도전자 펫"
+                                    />
+                                    <div>
+                                        <strong>{battleChallenge.challenger?.name}</strong>
+                                        <span>{battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})</span>
+                                    </div>
                                 </div>
-                            </div>
-                        </OpponentItem>
+                            </OpponentItem>
 
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <StyledButton
-                                onClick={handleAcceptBattle}
-                                style={{ flex: 1, backgroundColor: '#20c997', padding: '10px', fontSize: '1.1rem' }}
-                            >
-                                ⚔️ 수락
-                            </StyledButton>
-                            <StyledButton
-                                onClick={handleRejectBattle}
-                                style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1.1rem' }}
-                            >
-                                거절
-                            </StyledButton>
-                        </div>
-                    </ModalContent>
-                </ModalBackground>
-            )}
+                            {myPetFainted && (
+                                <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center' }}>
+                                    ⚠️ 내 펫이 기절 상태입니다. 펫 센터에서 치료 후 수락할 수 있습니다.
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <StyledButton
+                                    onClick={handleAcceptBattle}
+                                    disabled={myPetFainted}
+                                    style={{ flex: 1, backgroundColor: myPetFainted ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1.1rem', cursor: myPetFainted ? 'not-allowed' : 'pointer' }}
+                                >
+                                    ⚔️ 수락
+                                </StyledButton>
+                                <StyledButton
+                                    onClick={handleRejectBattle}
+                                    style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1.1rem' }}
+                                >
+                                    거절
+                                </StyledButton>
+                            </div>
+                        </ModalContent>
+                    </ModalBackground>
+                );
+            })()}
         </AuthWrapper>
     );
 }

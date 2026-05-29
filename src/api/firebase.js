@@ -178,7 +178,8 @@ async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
     else if (title.conditionId === 'point_10000_owned' && playerData.points >= 10000) conditionMet = true;
     else if (title.conditionId === 'donation_5000_points' && totalDonation >= 5000) conditionMet = true;
     else if (title.conditionId === 'myroom_20_likes' && myRoomLikesCount >= 20) conditionMet = true;
-    else if (title.conditionId === 'attendance_30_consecutive' && (playerData.consecutiveAttendanceDays || 0) >= 30) conditionMet = true;
+    // [수정] 성실한 나무: 연속 30일 → 누적 30일 출석으로 조건 완화
+    else if (title.conditionId === 'attendance_30_consecutive' && (playerData.totalAttendanceDays || playerData.consecutiveAttendanceDays || 0) >= 30) conditionMet = true;
 
     if (conditionMet) {
       await grantTitleToPlayer(classId, studentId, title.id);
@@ -1948,6 +1949,7 @@ export async function grantAttendanceReward(classId, playerId, rewardAmount) {
     points: increment(rewardAmount),
     lastAttendance: todayStr,
     consecutiveAttendanceDays: consecutiveDays,
+    totalAttendanceDays: increment(1),  // [추가] 누적 출석일 카운트
   });
 
   await addPointHistory( // ✅ classId 전달
@@ -3897,6 +3899,19 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
   }
 
+  // ▼▼▼ [추가] 주말(토·일) 배틀 차단 ▼▼▼
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=일, 6=토
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    throw new Error("주말에는 배틀을 진행할 수 없습니다. 🗓️\n월요일에 다시 도전해보세요!");
+  }
+
+  // ▼▼▼ [추가] 관리자 배틀 ON/OFF 체크 ▼▼▼
+  const classSnap = await getDoc(doc(db, 'classes', classId));
+  if (classSnap.exists() && classSnap.data().battleEnabled === false) {
+    throw new Error("현재 선생님이 배틀 기능을 일시 중지했습니다. ⚔️\n잠시 후 다시 시도해주세요.");
+  }
+
   const challengerId = challengerObj.id;
   const opponentId = opponentObj.id;
 
@@ -4371,4 +4386,83 @@ export async function getClassInfoByInviteCode(inviteCode) {
     console.error("학급 정보 조회 실패:", error);
     return null;
   }
+}
+// =====================================================
+// ▼▼▼ [공지사항] 게시판 관련 함수 ▼▼▼
+// =====================================================
+
+/**
+ * 공지사항 목록 실시간 구독
+ */
+export function listenNotices(classId, callback) {
+  if (!classId) return () => { };
+  const noticesRef = collection(db, 'classes', classId, 'notices');
+  const q = query(noticesRef, orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snapshot) => {
+    const notices = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(notices);
+  });
+}
+
+/**
+ * 공지사항 작성 (교사만 호출)
+ */
+export async function createNotice(classId, authorName, title, content, imageUrls = []) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  const noticesRef = collection(db, 'classes', classId, 'notices');
+  await addDoc(noticesRef, {
+    title,
+    content,
+    imageUrls,   // 이미지 URL 배열
+    authorName,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * 공지사항 삭제 (교사만 호출)
+ */
+export async function deleteNotice(classId, noticeId) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  await deleteDoc(doc(db, 'classes', classId, 'notices', noticeId));
+}
+
+/**
+ * 공지사항에 이미지 업로드 (Firebase Storage)
+ */
+export async function uploadNoticeImage(classId, file) {
+  const storageRef = ref(storage, `classes/${classId}/notices/${Date.now()}_${file.name}`);
+  const options = { maxSizeMB: 2, maxWidthOrHeight: 1920, useWebWorker: true };
+  let fileToUpload = file;
+  try {
+    fileToUpload = await imageCompression(file, options);
+  } catch (_) { /* 압축 실패 시 원본 사용 */ }
+  const snapshot = await uploadBytes(storageRef, fileToUpload);
+  return await getDownloadURL(snapshot.ref);
+}
+
+// =====================================================
+// ▼▼▼ [배틀 설정] 관리자 ON/OFF + 주말 차단 ▼▼▼
+// =====================================================
+
+/**
+ * 배틀 활성화 여부 조회
+ */
+export async function getBattleEnabled(classId) {
+  if (!classId) return true;
+  const classRef = doc(db, 'classes', classId);
+  const snap = await getDoc(classRef);
+  if (!snap.exists()) return true;
+  const data = snap.data();
+  // battleEnabled 필드가 없으면 기본값 true
+  return data.battleEnabled !== false;
+}
+
+/**
+ * 배틀 활성화 여부 설정 (관리자 전용)
+ */
+export async function setBattleEnabled(classId, enabled) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  await updateDoc(doc(db, 'classes', classId), { battleEnabled: enabled });
 }

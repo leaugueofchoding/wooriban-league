@@ -48,6 +48,34 @@ const MainGrid = styled.div` display: grid; grid-template-columns: repeat(2, 1fr
 const WidgetCard = styled(CommonCardStyle)` display: flex; flex-direction: column; height: 100%; min-height: 180px; border: 2px solid transparent; &:hover { border-color: ${props => props.$color || 'transparent'}; } `;
 const WidgetHeader = styled.div` display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; z-index: 2; h3 { margin: 0; font-size: 1.3rem; font-weight: 800; color: #343a40; display: flex; align-items: center; gap: 0.5rem; } h3::before { content: '${props => props.$icon || ''}'; font-size: 1.4rem; } `;
 const FriendSection = styled(WidgetCard)` background: linear-gradient(135deg, rgba(212, 252, 121, 0.85) 0%, rgba(150, 230, 161, 0.85) 100%); border: 2px solid white; &:hover { border-color: #51cf66; } `;
+
+// ▼ 우측 상단 아이콘 버튼
+const TopIconBtn = styled(Link)`
+  width: 40px; height: 40px;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  text-decoration: none;
+  transition: all 0.2s;
+  &:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.18); background: white; }
+`;
+const TopIconBtnPlain = styled.button`
+  width: 40px; height: 40px;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.18); background: white; }
+`;
 const FriendCardContent = styled.div` display: flex; align-items: center; justify-content: center; gap: 1rem; height: 100%; padding-bottom: 0.5rem; position: relative; z-index: 1; `;
 const SpotLight = styled.div` position: absolute; top: 50%; left: 30%; transform: translate(-50%, -50%); width: 140px; height: 140px; background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 0%, rgba(255,255,255,0) 70%); z-index: 0; animation: ${float} 4s ease-in-out infinite alternate; `;
 const FriendAvatarGroup = styled.div` position: relative; width: 130px; height: 130px; animation: ${float} 3s ease-in-out infinite; flex-shrink: 0; z-index: 1; `;
