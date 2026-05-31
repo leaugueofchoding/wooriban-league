@@ -1308,19 +1308,36 @@ function BattlePage() {
                     </>
                 )}
             </Arena>
-            {battleState?.status === 'finished' && (
-                <ModalBackground>
-                    <ModalContent $color={!battleState.winner ? '#6c757d' : (battleState.winner === myPlayerData.id ? '#007bff' : '#dc3545')}>
-                        <h2>
-                            {!battleState.winner
-                                ? "무승부"
-                                : (battleState.winner === myPlayerData.id ? "승리!" : "패배...")}
-                        </h2>
-                        <p>{battleState.log}</p>
-                        <button onClick={() => navigate('/pet')}>확인</button>
-                    </ModalContent>
-                </ModalBackground>
-            )}
+            {battleState?.status === 'finished' && (() => {
+                const isWin = battleState.winner === myPlayerData?.id;
+                const isDraw = !battleState.winner;
+                const myPet = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
+                const color = isDraw ? '#6c757d' : isWin ? '#007bff' : '#dc3545';
+                return (
+                    <ModalBackground>
+                        <ModalContent $color={color}>
+                            <h2>
+                                {isDraw ? '무승부' : isWin ? '🏆 승리!' : '💀 패배...'}
+                            </h2>
+                            <p>{battleState.log}</p>
+                            {/* ▼ [추가] 전적 요약 */}
+                            {myPet && (
+                                <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '10px', padding: '0.7rem 1rem', margin: '0.5rem 0 1rem', fontSize: '0.88rem' }}>
+                                    <div style={{ fontWeight: 800, marginBottom: '0.3rem', opacity: 0.85 }}>
+                                        {myPet.name} 누적 전적
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                                        <span>🏆 {myPet.battleWins || 0}승</span>
+                                        <span>💀 {myPet.battleLosses || 0}패</span>
+                                    </div>
+                                </div>
+                            )}
+                            {/* ▲ [추가 끝] */}
+                            <button onClick={() => navigate('/pet')}>확인</button>
+                        </ModalContent>
+                    </ModalBackground>
+                );
+            })()}
         </>
     );
 }

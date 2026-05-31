@@ -398,7 +398,8 @@ function LeagueManager() {
                                                     return (
                                                         <MemberListItem key={memberId}>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                                <CaptainButton onClick={() => setTeamCaptain(team.id, memberId)} disabled={isNotPreparing || isCaptain} $isCaptain={isCaptain}>Ⓒ</CaptainButton>
+                                                                {/* ▼▼▼ [수정] 팀장 변경은 시즌 진행 중에도 허용 (캡틴 버튼만 제한 해제) ▼▼▼ */}
+                                                                <CaptainButton onClick={() => setTeamCaptain(team.id, memberId)} disabled={isCaptain} $isCaptain={isCaptain} title={isCaptain ? '현재 팀장' : '팀장으로 지정'}>Ⓒ</CaptainButton>
                                                                 <PlayerProfile player={member} />
                                                             </div>
                                                             <StyledButton onClick={() => unassignPlayerFromTeam(team.id, memberId)} disabled={isNotPreparing}>제외</StyledButton>

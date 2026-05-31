@@ -52,17 +52,19 @@ const ModalCancelBtn = styled.button`
 // 토글 버튼 위치: Auth 헤더 아래 왼쪽
 const ViewModeToggle = styled.div`
   position: fixed;
-  top: 68px;
-  left: 12px;
-  z-index: 9000;
+  top: 0;
+  left: 0;
+  z-index: 9050;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 6px;
+  height: 60px;
+  align-items: center;
+  padding: 0 12px;
 
   @media (max-width: 768px) {
-    top: 68px;
-    left: 8px;
-    gap: 5px;
+    height: 56px;
+    padding: 0 8px;
   }
 `;
 
@@ -120,7 +122,7 @@ const getAvatarUrls = (config, avatarParts) => {
 function DashboardPage() {
     const { classId } = useClassStore();
     // ★ [핵심] currentUser를 store에서 가져와 React 상태 변화와 동기화시킵니다.
-    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, isLoading, currentUser } = useLeagueStore();
+    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, teams, isLoading, currentUser } = useLeagueStore();
     const navigate = useNavigate();
     const [activeGoal, setActiveGoal] = useState(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
@@ -211,10 +213,23 @@ function DashboardPage() {
     }, [todaysFriend, titles]);
 
     const friendTeamName = useMemo(() => {
-        if (!todaysFriend?.teamId) return "무소속";
-        const team = standingsData().find(t => t.id === todaysFriend.teamId);
+        if (!todaysFriend?.id) return "무소속";
+        const team = teams.find(t => Array.isArray(t.members) && t.members.includes(todaysFriend.id));
         return team ? team.teamName : "무소속";
-    }, [todaysFriend, standingsData]);
+    }, [todaysFriend, teams]);
+
+    // ▼▼▼ [수정] 내 팀 정보 — player.teamId가 없으므로 team.members로 역방향 조회
+    const myTeam = useMemo(() => {
+        if (!myPlayerData?.id) return null;
+        return teams.find(t => Array.isArray(t.members) && t.members.includes(myPlayerData.id)) || null;
+    }, [myPlayerData, teams]);
+
+    // friendTeam도 동일 방식으로 수정
+    const friendTeam = useMemo(() => {
+        if (!todaysFriend?.id) return null;
+        return teams.find(t => Array.isArray(t.members) && t.members.includes(todaysFriend.id)) || null;
+    }, [todaysFriend, teams]);
+    // ▲▲▲ [수정 끝]
 
     const myAvatarUrls = useMemo(() => getAvatarUrls(myPlayerData?.avatarConfig, avatarParts), [myPlayerData, avatarParts]);
     const friendAvatarUrls = useMemo(() => getAvatarUrls(todaysFriend?.avatarConfig, avatarParts), [todaysFriend, avatarParts]);
@@ -396,6 +411,7 @@ function DashboardPage() {
                     friendPartnerPet={friendPartnerPet}
                     friendTitle={friendTitle}
                     friendTeamName={friendTeamName}
+                    myTeam={myTeam}
                     activeGoal={activeGoal}
                     activeMissions={activeMissions}
                     recentMissions={recentMissions}

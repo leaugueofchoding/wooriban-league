@@ -212,8 +212,10 @@ const ActionButton = styled.button`
 const AccordionWrapper = styled.div` margin-top: 2rem; width: 100%; `;
 const AccordionContent = styled.div`
   background: #f8f9fa; border-radius: 16px; padding: ${props => props.$isOpen ? '1.5rem' : '0'};
-  max-height: ${props => props.$isOpen ? '1000px' : '0'}; opacity: ${props => props.$isOpen ? 1 : 0}; overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); border: ${props => props.$isOpen ? '1px solid #dee2e6' : 'none'};
+  max-height: ${props => props.$isOpen ? '2000px' : '0'}; opacity: ${props => props.$isOpen ? 1 : 0};
+  overflow: ${props => props.$isOpen ? 'visible' : 'hidden'};
+  transition: max-height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, padding 0.3s ease;
+  border: ${props => props.$isOpen ? '1px solid #dee2e6' : 'none'};
 `;
 const TitleGrid = styled.div` display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem; `;
 const TitleCard = styled.div`

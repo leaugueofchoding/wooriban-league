@@ -1,9 +1,9 @@
 // src/components/Auth.jsx
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { auth, updateUserProfile, db, rejectBattleChallenge } from '../api/firebase.js';
+import { auth, updateUserProfile, db, rejectBattleChallenge, listenNotices } from '../api/firebase.js';
 import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import styled from 'styled-components';
@@ -161,30 +161,40 @@ const ClearButton = styled.button`
 `;
 
 const NotificationItem = styled.div`
-    padding: 1rem;
+    padding: 0.85rem 1rem;
     border-bottom: 1px solid #f1f3f5;
     text-align: left;
-    
     cursor: ${props => (props.$hasLink ? 'pointer' : 'default')};
-    
+    display: flex; align-items: flex-start; gap: 0.5rem;
+    transition: background 0.15s;
+
     &:hover {
-        background-color: ${props => (props.$hasLink ? '#f8f9fa' : 'white')};
+        background-color: ${props => (props.$hasLink ? '#f0f8ff' : 'white')};
     }
 
     &:last-child {
         border-bottom: none;
     }
 
+    .notif-body { flex: 1; min-width: 0; }
+
     h5 {
-        margin: 0 0 0.25rem 0;
-        font-size: 0.9rem;
-        font-weight: bold;
+        margin: 0 0 0.2rem 0;
+        font-size: 0.88rem;
+        font-weight: 800;
+        color: #212529;
     }
 
     p {
         margin: 0;
-        font-size: 0.85rem;
-        color: #495057;
+        font-size: 0.82rem;
+        color: #868e96;
+        line-height: 1.4;
+    }
+
+    .arrow {
+        font-size: 0.8rem; color: #adb5bd; flex-shrink: 0; margin-top: 2px;
+        opacity: ${props => props.$hasLink ? 1 : 0};
     }
 `;
 
@@ -257,6 +267,32 @@ function Auth({ user }) {
     const [battleChallenge, setBattleChallenge] = useState(null);
     const notificationRef = useRef(null);
 
+    // ▼▼▼ [추가] 공지사항 미열람 배지 ▼▼▼
+    const [hasUnreadNotice, setHasUnreadNotice] = useState(false);
+    const currentLocation = useLocation();
+    useEffect(() => {
+        if (!classId) return;
+        const STORAGE_KEY = `lastSeenNotice_${classId}`;
+        const unsub = listenNotices(classId, (notices) => {
+            if (!notices || notices.length === 0) { setHasUnreadNotice(false); return; }
+            const latest = notices[0];
+            if (!latest.createdAt) { setHasUnreadNotice(false); return; }
+            const latestMs = latest.createdAt.toMillis ? latest.createdAt.toMillis() : new Date(latest.createdAt).getTime();
+            const lastSeen = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+            setHasUnreadNotice(latestMs > lastSeen);
+        });
+        return () => unsub();
+    }, [classId]);
+
+    // 공지사항 페이지 진입 시 열람 시각 기록 → 배지 제거
+    useEffect(() => {
+        if (currentLocation.pathname === '/notices' && classId) {
+            localStorage.setItem(`lastSeenNotice_${classId}`, Date.now().toString());
+            setHasUnreadNotice(false);
+        }
+    }, [currentLocation.pathname, classId]);
+    // ▲▲▲ [추가 끝] ▲▲▲
+
     const myPlayerData = useMemo(() => {
         if (!user) return null;
         return players.find(p => p.authUid === user.uid);
@@ -306,19 +342,40 @@ function Auth({ user }) {
         const missionRequests = {};
         const otherNotifications = [];
 
+        // ▼▼▼ [추가] 알림 타입별 기본 이동 경로 ▼▼▼
+        const DEFAULT_LINKS = {
+            'mission_request': '/admin/mission',
+            'mission_approved': '/missions',
+            'mission_rejected': '/missions',
+            'battle_request': null,
+            'pet_levelup': '/pet',
+            'pet_evolve': '/pet',
+            'point': '/profile',
+            'quiz': '/quiz',
+            'social': '/gallery',
+            'heart': '/gallery',
+            'notice': '/notices',
+            'suggestion_admin': '/admin?tab=messages',
+            'suggestion_reply': '/suggestions',        // ▼ 학생: 건의함 답장 → 소셜 건의함 페이지
+        };
+        // ▲▲▲ [추가 끝] ▲▲▲
+
         notifications.forEach(notif => {
+            // link가 null이면 타입 기반 기본 경로 보정
+            const resolvedLink = notif.link || DEFAULT_LINKS[notif.type] || null;
+            const notifWithLink = { ...notif, link: resolvedLink };
+
             if (notif.type === 'mission_request') {
                 const missionTitle = notif.body.split(']')[0] + ']';
                 if (!missionRequests.hasOwnProperty(missionTitle)) {
-                    missionRequests[missionTitle] = { count: 0, link: notif.link, latestCreatedAt: notif.createdAt };
+                    missionRequests[missionTitle] = { count: 0, link: resolvedLink, latestCreatedAt: notif.createdAt };
                 }
                 missionRequests[missionTitle].count += 1;
                 missionRequests[missionTitle].latestCreatedAt = notif.createdAt > missionRequests[missionTitle].latestCreatedAt ? notif.createdAt : missionRequests[missionTitle].latestCreatedAt;
             } else if (notif.type === 'mission_reward' && isRecorderOrAdmin) {
                 // 기록원의 보상 알림은 별도 처리하므로 목록에서 제외
-            }
-            else {
-                otherNotifications.push(notif);
+            } else {
+                otherNotifications.push(notifWithLink);
             }
         });
 
@@ -420,7 +477,17 @@ function Auth({ user }) {
                             <IconLink to="/recorder-dashboard" title="기록원 대시보드">📝</IconLink>
                         )}
                         {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
-                        <IconLink to="/notices" title="공지사항">📢</IconLink>
+                        <div style={{ position: 'relative', display: 'inline-flex' }}>
+                            <IconLink to="/notices" title="공지사항">📢</IconLink>
+                            {hasUnreadNotice && (
+                                <span style={{
+                                    position: 'absolute', top: '2px', right: '2px',
+                                    width: '8px', height: '8px', borderRadius: '50%',
+                                    background: '#fa5252', border: '1.5px solid white',
+                                    pointerEvents: 'none',
+                                }} />
+                            )}
+                        </div>
                         <NotificationContainer ref={notificationRef}>
                             <IconButton data-bell-btn onClick={handleNotificationClick}>
                                 🔔
@@ -452,13 +519,16 @@ function Auth({ user }) {
                                                     }
                                                 }}
                                             >
-                                                <h5>{notif.title}</h5>
-                                                <p>{notif.body}</p>
+                                                <div className="notif-body">
+                                                    <h5>{notif.title}</h5>
+                                                    <p>{notif.body}</p>
+                                                </div>
+                                                <span className="arrow">›</span>
                                             </NotificationItem>
                                         ))
                                     ) : (
                                         <NotificationItem>
-                                            <p>새로운 알림이 없습니다.</p>
+                                            <div className="notif-body"><p>새로운 알림이 없습니다.</p></div>
                                         </NotificationItem>
                                     )}
                                 </NotificationList>

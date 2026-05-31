@@ -94,7 +94,7 @@ export const SKILLS = {
             switch (defenderAction) {
                 case 'BRACE': damage *= 0.7; log += ` (상대는 웅크려 피해를 줄였다!)`; break;
                 case 'EVADE':
-                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.4 : 0.3;
                     if (Math.random() < evadeChance) { damage = 0; log += ` (상대방이 날렵하게 회피했다!)`; }
                     else { damage *= 1.5; log += ` (회피 실패! 치명적인 피해!)`; }
                     break;
@@ -174,7 +174,7 @@ export const SKILLS = {
             switch (defenderAction) {
                 case 'BRACE': damage *= 0.7; log += ` (상대는 막아냈다!)`; break;
                 case 'EVADE':
-                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.4 : 0.3;
                     if (Math.random() < evadeChance) { damage = 0; log += ` (상대가 피했다!)`; }
                     else { damage *= 1.5; log += ` (피하지 못하고 직격!)`; }
                     break;
@@ -221,7 +221,7 @@ export const SKILLS = {
             switch (defenderAction) {
                 case 'BRACE': damage *= 0.7; log += ` (상대는 방어했다!)`; break;
                 case 'EVADE':
-                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.4 : 0.3;
                     if (Math.random() < evadeChance) { damage = 0; log += ` (상대도 피했다!)`; }
                     else { damage *= 1.5; log += ` (너무 빨라 치명상!)`; }
                     break;
@@ -268,7 +268,7 @@ export const SKILLS = {
             switch (defenderAction) {
                 case 'BRACE': damage *= 0.7; log += ` (상대는 피해를 줄였다!)`; break;
                 case 'EVADE':
-                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.5 : 0.3;
+                    const evadeChance = defenderPlayer.equippedTitle === 'class_dj' ? 0.4 : 0.3;
                     if (Math.random() < evadeChance) { damage = 0; log += ` (상대가 피했다!)`; }
                     else { damage *= 1.5; log += ` (씨앗이 몸에 깊게 붙었다!)`; }
                     break;

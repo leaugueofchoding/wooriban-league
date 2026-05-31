@@ -188,14 +188,14 @@ const RoomCanvasWrapper = styled(GlassCard)`
 
 const RoomContainer = styled.div`
   width: 100%;
-  padding-top: 75%; /* 4:3 비율 */
+  padding-top: ${props => props.$padding || '75%'};
   position: relative;
   border-radius: 16px;
   overflow: hidden;
   user-select: none;
-  background-color: #e9ecef;
+  background-color: transparent;
   box-shadow: inset 0 0 20px rgba(0,0,0,0.05);
-  touch-action: none; /* 드래그 시 스크롤 방지 */
+  touch-action: none;
 `;
 
 /* 룸 내부 요소 */
@@ -384,7 +384,9 @@ function MyRoomPage() {
     houseId: null,
     backgroundId: null,
     playerAvatar: { left: 50, top: 60, zIndex: 100, isFlipped: false },
-    playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false }
+    playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false },
+    // ▼ [추가] 여러 펫 위치를 petId → position 맵으로 저장
+    playerPets: {}  // { [petId]: { left, top, zIndex, isFlipped } }
   };
   const [roomConfig, setRoomConfig] = useState(initialRoomConfig);
 
@@ -464,6 +466,20 @@ function MyRoomPage() {
   const appliedHouse = useMemo(() => roomConfig.houseId ? myRoomItems.find(item => item.id === roomConfig.houseId) : null, [roomConfig.houseId, myRoomItems]);
   const appliedBackground = useMemo(() => roomConfig.backgroundId ? myRoomItems.find(item => item.id === roomConfig.backgroundId) : null, [roomConfig.backgroundId, myRoomItems]);
 
+  // ▼▼▼ [추가] 집 이미지 실제 비율로 컨테이너 패딩 동적 조정 ▼▼▼
+  const [houseAspectPadding, setHouseAspectPadding] = useState('75%'); // 기본 4:3
+  useEffect(() => {
+    if (!appliedHouse?.src) { setHouseAspectPadding('75%'); return; }
+    const img = new window.Image();
+    img.onload = () => {
+      const ratio = img.naturalHeight / img.naturalWidth;
+      setHouseAspectPadding(`${(ratio * 100).toFixed(2)}%`);
+    };
+    img.onerror = () => setHouseAspectPadding('75%');
+    img.src = appliedHouse.src;
+  }, [appliedHouse?.src]);
+  // ▲▲▲ [추가 끝] ▲▲▲
+
   const hasLikedThisMonth = useMemo(() => {
     const currentMonth = new Date().toISOString().slice(0, 7);
     return likes.some(like => like.id === myPlayerData?.id && like.lastLikedMonth === currentMonth);
@@ -515,7 +531,8 @@ function MyRoomPage() {
           houseId: configData.houseId || null,
           backgroundId: configData.backgroundId || null,
           playerAvatar: configData.playerAvatar || initialRoomConfig.playerAvatar,
-          playerPet: configData.playerPet || initialRoomConfig.playerPet
+          playerPet: configData.playerPet || initialRoomConfig.playerPet,
+          playerPets: configData.playerPets || {}  // ▼ [추가] 여러 펫 위치 로드
         });
 
         fetchRoomSocialData(playerId);
@@ -540,6 +557,9 @@ function MyRoomPage() {
 
   const handleSelect = (e, instanceId) => { e.stopPropagation(); if (isMyRoom && isEditing) setSelectedItemId(instanceId); };
 
+  // ▼ [수정] selectedItemId가 숫자(instanceId)일 수도 있어서 String() 변환 후 비교
+  const isPetKey = (id) => typeof id === 'string' && id.startsWith('pet:');
+
   const moveItem = (direction) => {
     if (!selectedItemId) return;
     setRoomConfig(prev => {
@@ -548,6 +568,10 @@ function MyRoomPage() {
       let target;
       if (selectedItemId === 'playerAvatar') target = newConfig.playerAvatar;
       else if (selectedItemId === 'playerPet') target = newConfig.playerPet;
+      else if (isPetKey(selectedItemId)) {
+        const petId = selectedItemId.slice(4);
+        target = newConfig.playerPets[petId];
+      }
       else target = newConfig.items.find(i => i.instanceId === selectedItemId);
       if (target) {
         if (direction === 'up') target.top -= moveAmount;
@@ -566,6 +590,10 @@ function MyRoomPage() {
     setRoomConfig(prev => {
       if (selectedItemId === 'playerAvatar') return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
       if (selectedItemId === 'playerPet') return { ...prev, playerPet: { ...prev.playerPet, isFlipped: !prev.playerPet.isFlipped } };
+      if (isPetKey(selectedItemId)) {
+        const petId = selectedItemId.slice(4);
+        return { ...prev, playerPets: { ...prev.playerPets, [petId]: { ...prev.playerPets[petId], isFlipped: !prev.playerPets[petId].isFlipped } } };
+      }
       return { ...prev, items: prev.items.map(item => item.instanceId === selectedItemId ? { ...item, isFlipped: !item.isFlipped } : item) };
     });
   };
@@ -573,11 +601,13 @@ function MyRoomPage() {
     if (!selectedItemId) return;
     setRoomConfig(prev => {
       const newConfig = JSON.parse(JSON.stringify(prev));
-      const allZIndexes = [...newConfig.items.map(i => i.zIndex), newConfig.playerAvatar?.zIndex || 100, newConfig.playerPet?.zIndex || 101];
+      const petPositions = Object.values(newConfig.playerPets || {}).map(p => p.zIndex).filter(Boolean);
+      const allZIndexes = [...newConfig.items.map(i => i.zIndex), newConfig.playerAvatar?.zIndex || 100, newConfig.playerPet?.zIndex || 101, ...petPositions];
       const maxZ = Math.max(...allZIndexes); const minZ = Math.min(...allZIndexes);
       let target;
       if (selectedItemId === 'playerAvatar') target = newConfig.playerAvatar;
       else if (selectedItemId === 'playerPet') target = newConfig.playerPet;
+      else if (isPetKey(selectedItemId)) target = newConfig.playerPets[selectedItemId.slice(4)];
       else target = newConfig.items.find(i => i.instanceId === selectedItemId);
       if (target) target.zIndex = direction === 'forward' ? maxZ + 1 : minZ - 1;
       return newConfig;
@@ -586,6 +616,7 @@ function MyRoomPage() {
   const handleDeleteSelectedItem = () => {
     if (!isMyRoom || !isEditing || !selectedItemId) return;
     if (selectedItemId === 'playerAvatar' || selectedItemId === 'playerPet') return alert("캐릭터와 펫은 삭제할 수 없습니다.");
+    if (isPetKey(selectedItemId)) return alert("펫은 삭제할 수 없습니다.");
     setRoomConfig(prev => ({ ...prev, items: prev.items.filter(item => item.instanceId !== selectedItemId) }));
     setSelectedItemId(null);
   };
@@ -629,7 +660,6 @@ function MyRoomPage() {
           img.src = src;
           return;
         }
-
         fetch(src, { mode: 'cors', cache: 'no-cache' })
           .then(r => r.blob())
           .then(blob => {
@@ -648,27 +678,42 @@ function MyRoomPage() {
           });
       });
 
-      // 1. 배경
-      const bgImg = await loadImage(myRoomBg);
-      if (bgImg) ctx.drawImage(bgImg, 0, 0, W, H);
+      // ▼▼▼ [수정] CSS object-fit을 캔버스에서 정확히 재현하는 헬퍼 ▼▼▼
+      // object-fit: contain — 비율 유지, 영역 안에 맞춤, 중앙 배치
+      const drawContain = (ctx, img, cW, cH) => {
+        const scale = Math.min(cW / img.naturalWidth, cH / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        ctx.drawImage(img, (cW - dw) / 2, (cH - dh) / 2, dw, dh);
+      };
+      // object-fit: cover — 비율 유지, 영역 채움, 중앙 크롭
+      const drawCover = (ctx, img, cW, cH) => {
+        const scale = Math.max(cW / img.naturalWidth, cH / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        ctx.drawImage(img, (cW - dw) / 2, (cH - dh) / 2, dw, dh);
+      };
+      // ▲▲▲ [수정 끝] ▲▲▲
 
-      // 2. 하우스
+      // 1. 배경 (RoomBackgroundImg: object-fit: contain)
+      const bgImg = await loadImage(myRoomBg);
+      if (bgImg) drawContain(ctx, bgImg, W, H);
+
+      // 2. 하우스 (AppliedHouse: object-fit: contain) ← 버그 원인: 이전엔 강제 풀사이즈로 그렸음
       if (appliedHouse?.src) {
         const houseImg = await loadImage(appliedHouse.src);
-        if (houseImg) ctx.drawImage(houseImg, 0, 0, W, H);
+        if (houseImg) drawContain(ctx, houseImg, W, H);
       }
 
-      // 3. 배경 오버레이
+      // 3. 배경 오버레이 (AppliedBackground: object-fit: cover)
       if (appliedBackground?.src) {
         const bgOverImg = await loadImage(appliedBackground.src);
-        if (bgOverImg) ctx.drawImage(bgOverImg, 0, 0, W, H);
+        if (bgOverImg) drawCover(ctx, bgOverImg, W, H);
       }
 
-      // ★수정됨: 아바타와 펫은 스냅샷에서 완전히 제외합니다.
-      // 이렇게 하면 가구들만 캡처되어 저장되고, 캐릭터/펫은 마이룸 접속 시 그 위에 "항상 최신 상태로" 동적 렌더링 됩니다.
+      // ★ 아바타와 펫은 스냅샷에서 제외 (접속 시 동적 렌더링)
       const allRenderItems = [];
 
-      // 4. 아이템(가구/소품)만 추가
       roomConfig.items.forEach(item => {
         const info = myRoomItems.find(i => i.id === item.itemId);
         if (info?.src) {
@@ -683,18 +728,14 @@ function MyRoomPage() {
         }
       });
 
-      // zIndex 오름차순 정렬
       allRenderItems.sort((a, b) => a.zIndex - b.zIndex);
 
-      // 5. 통합 렌더링 루프
       for (const renderItem of allRenderItems) {
         const img = await loadImage(renderItem.src);
         if (!img) continue;
 
         const itemW = (renderItem.width / 100) * W;
-        const aspectRatio = img.naturalHeight / img.naturalWidth;
-        const itemH = itemW * aspectRatio;
-
+        const itemH = itemW * (img.naturalHeight / img.naturalWidth);
         const itemX = (renderItem.left / 100) * W - itemW / 2;
         const itemY = (renderItem.top / 100) * H - itemH / 2;
 
@@ -709,14 +750,28 @@ function MyRoomPage() {
         ctx.restore();
       }
 
-      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      // JPEG 품질 0.9로 저장
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
       const storageRef = ref(storage, `classes/${classId}/players/${playerId}/myRoomSnapshot.jpg`);
       await uploadString(storageRef, imageDataUrl, 'data_url');
       const downloadUrl = await getDownloadURL(storageRef);
       const downloadUrlWithCache = `${downloadUrl}?t=${Date.now()}`;
 
+      // 현재 펫 위치 수집 후 playerPets 맵 업데이트
+      const ownerAllPets = myPlayerData?.pets || [];
+      const defaultPositions = [
+        { left: 60, top: 65 }, { left: 70, top: 60 }, { left: 50, top: 70 },
+        { left: 75, top: 70 }, { left: 65, top: 75 }
+      ];
+      const updatedPlayerPets = {};
+      ownerAllPets.forEach((pet, idx) => {
+        updatedPlayerPets[pet.id] = roomConfig.playerPets?.[pet.id] || {
+          ...defaultPositions[idx % defaultPositions.length], zIndex: 101 + idx, isFlipped: false
+        };
+      });
+
       await updateDoc(doc(db, 'classes', classId, 'players', playerId), {
-        myRoomConfig: roomConfig,
+        myRoomConfig: { ...roomConfig, playerPets: updatedPlayerPets },
         myRoomSnapshotUrl: downloadUrlWithCache
       });
 
@@ -856,9 +911,9 @@ function MyRoomPage() {
       <LayoutGrid>
         <LeftSection>
           <RoomCanvasWrapper>
-            <RoomContainer ref={roomContainerRef} onClick={(e) => { if (e.target === e.currentTarget && isEditing) setSelectedItemId(null); }}>
+            <RoomContainer ref={roomContainerRef} $padding={houseAspectPadding} onClick={(e) => { if (e.target === e.currentTarget && isEditing) setSelectedItemId(null); }}>
               {!isEditing && snapshotUrl ? (
-                <img src={snapshotUrl} alt="snapshot" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, objectFit: 'fill', pointerEvents: 'none' }} />
+                <img src={snapshotUrl} alt="snapshot" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, objectFit: 'contain', pointerEvents: 'none' }} />
               ) : (
                 <>
                   <RoomBackgroundImg src={myRoomBg} alt="bg" />
@@ -883,7 +938,7 @@ function MyRoomPage() {
                 </>
               )}
 
-              {/* 방 주인 아바타 & 펫 (항상 표시) */}
+              {/* 방 주인 아바타 (항상 표시) */}
               {roomConfig.playerAvatar && (
                 <InteractiveItem
                   className="player-avatar"
@@ -896,18 +951,50 @@ function MyRoomPage() {
                   {ownerAvatarUrls.map(url => <AvatarPartImage key={url} src={url} />)}
                 </InteractiveItem>
               )}
-              {roomConfig.playerPet && ownerPartnerPet && (
-                <InteractiveItem
-                  className="player-pet"
-                  $width={12} $height={12}
-                  $left={roomConfig.playerPet.left} $top={roomConfig.playerPet.top}
-                  $zIndex={roomConfig.playerPet.zIndex} $isFlipped={roomConfig.playerPet.isFlipped}
-                  $isEditing={isEditing} $isSelected={selectedItemId === 'playerPet'}
-                  onClick={(e) => handleSelect(e, 'playerPet')}
-                >
-                  <img src={petImageMap[`${ownerPartnerPet.appearanceId}_idle`] || baseAvatar} alt="pet" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                </InteractiveItem>
-              )}
+
+              {/* ▼▼▼ [수정] 보유 펫 전체 배치 ▼▼▼ */}
+              {(() => {
+                const ownerAllPets = roomOwnerData?.pets || [];
+                if (ownerAllPets.length === 0) return null;
+
+                // playerPets 맵에 없는 펫은 기본 위치 자동 배정
+                const defaultPositions = [
+                  { left: 60, top: 65 }, { left: 70, top: 60 }, { left: 50, top: 70 },
+                  { left: 75, top: 70 }, { left: 65, top: 75 }
+                ];
+
+                return ownerAllPets.map((pet, idx) => {
+                  const petKey = `pet:${pet.id}`;
+                  const savedPos = roomConfig.playerPets?.[pet.id];
+                  const pos = savedPos || { ...defaultPositions[idx % defaultPositions.length], zIndex: 101 + idx, isFlipped: false };
+                  return (
+                    <InteractiveItem
+                      key={petKey}
+                      className="player-pet"
+                      $width={12} $height={12}
+                      $left={pos.left} $top={pos.top}
+                      $zIndex={pos.zIndex || 101 + idx}
+                      $isFlipped={pos.isFlipped || false}
+                      $isEditing={isEditing}
+                      $isSelected={selectedItemId === petKey}
+                      onClick={(e) => handleSelect(e, petKey)}
+                    >
+                      <img src={petImageMap[`${pet.appearanceId}_idle`] || baseAvatar} alt={pet.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      {isEditing && selectedItemId === petKey && (
+                        <div style={{
+                          position: 'absolute', bottom: '-18px', left: '50%', transform: 'translateX(-50%)',
+                          background: 'rgba(0,0,0,0.65)', color: 'white', fontSize: '0.65rem',
+                          borderRadius: '4px', padding: '1px 5px', whiteSpace: 'nowrap', pointerEvents: 'none'
+                        }}>
+                          {pet.name}
+                        </div>
+                      )}
+                    </InteractiveItem>
+                  );
+                });
+              })()}
+              {/* ▲▲▲ [수정 끝] ▲▲▲ */}
 
               {!isMyRoom && myPlayerData && (
                 <VisitorWrapper

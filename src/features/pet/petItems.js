@@ -5,6 +5,7 @@ import secretNotebookImg from '@/assets/items/item_secret_notebook.png';
 import evolutionStoneImg from '@/assets/items/item_evolution_stone.png';
 import petEggImg from '@/assets/items/item_pet_egg.png';
 import vitaminJellyImg from '@/assets/items/item_vitamin_jelly.png';
+import firstAidKitImg from '@/assets/items/item_first_aid_kit.png'; // 임시 이미지
 
 export const PET_ITEMS = {
     brain_snack: {
@@ -22,6 +23,14 @@ export const PET_ITEMS = {
         price: 500,
         image: vitaminJellyImg,
         icon: vitaminJellyImg,
+    },
+    pet_rename: {
+        id: 'pet_rename',
+        name: '이름 변경권',
+        description: '펫의 이름을 원하는 이름으로 한 번 바꿀 수 있습니다.',
+        price: 1000,
+        image: firstAidKitImg,   // 추후 전용 이미지로 교체
+        icon: firstAidKitImg,
     },
     secret_notebook: {
         id: 'secret_notebook',

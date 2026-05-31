@@ -190,7 +190,7 @@ async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
         "title_acquired",
         "/profile"
       );
-      await adjustPlayerPoints(classId, studentId, 500, `칭호 [${title.name}] 획득 보상`);
+      await adjustPlayerPoints(classId, studentId, 2000, `칭호 [${title.name}] 획득 보상`);
     }
   }
 }
@@ -902,7 +902,7 @@ export async function submitSuggestion(classId, suggestionData) {
         '💌 새로운 메시지',
         `${studentName} 학생에게서 새로운 메시지가 도착했습니다.`,
         'suggestion_admin',
-        '/admin'
+        '/admin?tab=messages'
       );
     }
   });
@@ -2854,7 +2854,7 @@ export async function grantTitleToPlayerManually(classId, playerId, titleId) {
     ownedTitles: arrayUnion(titleId)
   });
 
-  await adjustPlayerPoints(classId, playerId, 500, `칭호 [${title.name}] 획득 보상`);
+  await adjustPlayerPoints(classId, playerId, 2000, `칭호 [${title.name}] 획득 보상`);
 }
 
 export async function grantTitleToPlayersBatch(classId, playerIds, titleId) {
@@ -2876,7 +2876,7 @@ export async function grantTitleToPlayersBatch(classId, playerIds, titleId) {
         await updateDoc(playerRef, {
           ownedTitles: arrayUnion(titleId)
         });
-        await adjustPlayerPoints(classId, playerId, 500, `칭호 [${title.name}] 획득 보상`);
+        await adjustPlayerPoints(classId, playerId, 2000, `칭호 [${title.name}] 획득 보상`);
       }
     }
   }
@@ -3155,8 +3155,12 @@ export async function usePetItem(classId, playerId, itemId, petId) {
       }
       // ▼▼▼ [신규 추가] 비타민 젤리 (배틀 횟수 초기화) ▼▼▼
       case 'vitamin_jelly':
-        pet.dailyBattleCount = 0; // 오늘의 배틀 횟수를 0으로 리셋!
-        pet.lastBattleDate = new Date().toLocaleDateString(); // 날짜 동기화
+        pet.dailyBattleCount = 0;
+        pet.lastBattleDate = new Date().toLocaleDateString();
+        break;
+      // ▼▼▼ [추가] 이름 변경권 — 인벤토리 차감만, 실제 이름 변경은 consumeRenameItem 사용
+      case 'pet_rename':
+        // 인벤토리 차감은 공통 로직에서 처리됨. 여기서는 아무 효과 없음 (이름 변경은 별도 함수)
         break;
       default:
         throw new Error("알 수 없는 아이템입니다.");
@@ -3287,9 +3291,13 @@ export async function hatchPetEgg(classId, playerId) {
     const inventory = playerData.petInventory || {};
     if (!inventory.pet_egg || inventory.pet_egg <= 0) throw new Error("부화할 알이 없습니다.");
 
-    // PET_DATA의 키값인 ['dragon', 'rabbit', 'turtle', 'monkey']를 동적으로 가져옵니다.
+    // ▼▼▼ [수정] 이미 보유한 종은 제외하고 부화 (모두 보유 시 전체 허용) ▼▼▼
     const availableSpecies = Object.keys(PET_DATA);
-    const randomSpecies = availableSpecies[Math.floor(Math.random() * availableSpecies.length)];
+    const ownedSpecies = new Set((playerData.pets || []).map(p => p.species));
+    const unownedSpecies = availableSpecies.filter(s => !ownedSpecies.has(s));
+    const hatchPool = unownedSpecies.length > 0 ? unownedSpecies : availableSpecies;
+    const randomSpecies = hatchPool[Math.floor(Math.random() * hatchPool.length)];
+    // ▲▲▲ [수정 끝] ▲▲▲
 
     const petId = Date.now().toString();
     const baseData = PET_DATA[randomSpecies];
@@ -3455,6 +3463,36 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     }
     // ▲▲▲ [버프 적용 끝] ▲▲▲
 
+    // ▼▼▼ [추가] 레벨 차 보상/패널티 스케일링 (쩔·패작 어뷰징 방지) ▼▼▼
+    const winnerPetLevel = finalWinnerPet?.level || 1;
+    const loserPetLevel = finalLoserPet?.level || 1;
+    const levelGap = winnerPetLevel - loserPetLevel; // 양수 = 승자가 레벨 높음, 음수 = 승자가 레벨 낮음
+
+    let winExpMultiplier = 1.0;  // 승자 펫 경험치 배율
+    let loseExpMultiplier = 1.0;  // 패자 펫 경험치 배율
+
+    if (levelGap >= 10) {
+      // 10레벨 이상 높은 펫이 이긴 경우 → 사실상 쩔 행위
+      victoryReward = 0;                          // 승리 포인트 없음
+      winExpMultiplier = 0.1;                      // 경험치 10%만
+    } else if (levelGap >= 5) {
+      // 5~9레벨 차이
+      victoryReward = Math.floor(victoryReward * 0.5);
+      winExpMultiplier = 0.25;
+    } else if (levelGap <= -10) {
+      // 10레벨 이상 낮은 펫이 이긴 경우 → 대역전! 3배 보상
+      victoryReward = Math.floor(victoryReward * 3);  // 150 * 3 = 450P
+      defeatPenalty = defeatPenalty + Math.floor(victoryReward - 150); // 기존 -50 + 추가 -300 = -350P
+      winExpMultiplier = 2.0;
+      loseExpMultiplier = 1.2; // 패자도 선전 보너스
+    } else if (levelGap <= -5) {
+      // 5~9레벨 낮은 펫이 이긴 경우 → 2배 보상
+      victoryReward = Math.floor(victoryReward * 2);  // 150 * 2 = 300P
+      defeatPenalty = defeatPenalty + Math.floor(victoryReward - 150); // 기존 -50 + 추가 -150 = -200P
+      winExpMultiplier = 1.5;
+    }
+    // ▲▲▲ [레벨 차 스케일링 끝] ▲▲▲
+
     let winnerPets = winnerData.pets || [];
     let loserPets = loserData.pets || [];
 
@@ -3464,12 +3502,16 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
       if (idx !== -1) {
         winnerPets[idx] = {
           ...winnerPets[idx],
-          hp: Math.min(winnerPets[idx].maxHp, finalWinnerPet.hp), // 👈 쉴드 초과분 컷!
+          hp: Math.min(winnerPets[idx].maxHp, finalWinnerPet.hp),
           sp: finalWinnerPet.sp,
-          status: {}
+          status: {},
+          // ▼ [추가] 전적 카운터
+          battleWins: (winnerPets[idx].battleWins || 0) + 1,
+          battleLosses: winnerPets[idx].battleLosses || 0,
+          battleFlees: winnerPets[idx].battleFlees || 0,
         };
         if (winnerPets[idx].hp > 0) {
-          winnerPets[idx].exp += 100; // 승리 경험치
+          winnerPets[idx].exp += Math.round(100 * winExpMultiplier);
           const { leveledUpPet } = calculateLevelUp(winnerPets[idx]);
           winnerPets[idx] = leveledUpPet;
         }
@@ -3482,16 +3524,21 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
       if (idx !== -1) {
         loserPets[idx] = {
           ...loserPets[idx],
-          hp: Math.min(loserPets[idx].maxHp, finalLoserPet.hp), // 👈 쉴드 초과분 컷!
+          hp: Math.min(loserPets[idx].maxHp, finalLoserPet.hp),
           sp: finalLoserPet.sp,
-          status: {}
+          status: {},
+          // ▼ [추가] 전적 카운터
+          battleWins: loserPets[idx].battleWins || 0,
+          battleLosses: (loserPets[idx].battleLosses || 0) + (fled ? 0 : 1),
+          battleFlees: (loserPets[idx].battleFlees || 0) + (fled ? 1 : 0),
         };
         if (loserPets[idx].hp > 0) {
-          loserPets[idx].exp += fled ? 10 : 30; // 패배/도망 경험치
+          const baseExp = fled ? 10 : 30;
+          loserPets[idx].exp += Math.round(baseExp * loseExpMultiplier);
           const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
           loserPets[idx] = leveledUpPet;
         } else {
-          loserPets[idx].hp = 0; // 확실하게 기절 처리
+          loserPets[idx].hp = 0;
         }
       }
     }
@@ -3500,7 +3547,8 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
-    await addPointHistory(classId, winnerData.authUid, winnerData.name, victoryReward, "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : ''));
+    const levelScaleNote = levelGap >= 10 ? ' (레벨 차 패널티)' : levelGap <= -10 ? ' (대역전 보너스🎉)' : levelGap <= -5 ? ' (역전 보너스⬆️)' : '';
+    await addPointHistory(classId, winnerData.authUid, winnerData.name, victoryReward, "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote);
     if (defeatPenalty > 0) {
       await addPointHistory(classId, loserData.authUid, loserData.name, -defeatPenalty, "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : ''));
     }
@@ -4407,13 +4455,11 @@ export function listenNotices(classId, callback) {
 /**
  * 공지사항 작성 (교사만 호출)
  */
-export async function createNotice(classId, authorName, title, content, imageUrls = []) {
+export async function createNotice(classId, authorName, title, content, imageUrls = [], tab = '') {
   if (!classId) throw new Error('학급 정보가 없습니다.');
   const noticesRef = collection(db, 'classes', classId, 'notices');
   await addDoc(noticesRef, {
-    title,
-    content,
-    imageUrls,   // 이미지 URL 배열
+    title, content, imageUrls, tab,
     authorName,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -4465,4 +4511,120 @@ export async function getBattleEnabled(classId) {
 export async function setBattleEnabled(classId, enabled) {
   if (!classId) throw new Error('학급 정보가 없습니다.');
   await updateDoc(doc(db, 'classes', classId), { battleEnabled: enabled });
+}
+
+// =====================================================
+// ▼▼▼ [추가] 펫 이름 변경권 소모 + 이름 변경 ▼▼▼
+// =====================================================
+export async function renamePetWithItem(classId, playerId, petId, newName) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error('플레이어 정보를 찾을 수 없습니다.');
+    const data = playerDoc.data();
+    const inventory = data.petInventory || {};
+    if (!inventory.pet_rename || inventory.pet_rename <= 0) {
+      throw new Error('이름 변경권이 없습니다. 펫센터 상점에서 구매하세요!');
+    }
+    const pets = [...(data.pets || [])];
+    const idx = pets.findIndex(p => p.id === petId);
+    if (idx === -1) throw new Error('펫을 찾을 수 없습니다.');
+    pets[idx] = { ...pets[idx], name: newName };
+    transaction.update(playerRef, {
+      pets,
+      'petInventory.pet_rename': inventory.pet_rename - 1,
+    });
+    return { pets, remainingRenames: inventory.pet_rename - 1 };
+  });
+}
+
+// =====================================================
+// ▼▼▼ [추가] 펫 분양하기 (삭제 + 포인트 환급) ▼▼▼
+// =====================================================
+export async function releasePet(classId, playerId, petId) {
+  if (!classId) throw new Error('학급 정보가 없습니다.');
+  const RELEASE_REWARD = 5000;
+  const playerRef = doc(db, 'classes', classId, 'players', playerId);
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error('플레이어 정보를 찾을 수 없습니다.');
+    const data = playerDoc.data();
+    const pets = data.pets || [];
+    if (pets.length <= 1) throw new Error('마지막 남은 펫은 분양할 수 없습니다.');
+    const pet = pets.find(p => p.id === petId);
+    if (!pet) throw new Error('펫을 찾을 수 없습니다.');
+    const newPets = pets.filter(p => p.id !== petId);
+    // 파트너 펫이 분양된 경우 첫 번째 남은 펫으로 자동 변경
+    const newPartnerPetId = data.partnerPetId === petId
+      ? (newPets[0]?.id || null)
+      : data.partnerPetId;
+    transaction.update(playerRef, {
+      pets: newPets,
+      partnerPetId: newPartnerPetId,
+      points: increment(RELEASE_REWARD),
+    });
+    await addPointHistory(classId, data.authUid, data.name, RELEASE_REWARD, `펫 [${pet.name}] 분양`);
+    return { releasedPetName: pet.name, reward: RELEASE_REWARD };
+  });
+}
+
+// =====================================================
+// ▼▼▼ [추가] 공지사항 읽음 처리 ▼▼▼
+// =====================================================
+export async function markNoticeRead(classId, noticeId, playerId, playerName) {
+  if (!classId || !noticeId || !playerId) return;
+  const readerRef = doc(db, 'classes', classId, 'notices', noticeId, 'readers', playerId);
+  await setDoc(readerRef, { playerId, playerName, readAt: serverTimestamp() }, { merge: true });
+}
+
+export function listenNoticeReaders(classId, noticeId, callback) {
+  if (!classId || !noticeId) return () => { };
+  const q = collection(db, 'classes', classId, 'notices', noticeId, 'readers');
+  return onSnapshot(q, snap => callback(snap.docs.map(d => d.data())));
+}
+
+// =====================================================
+// ▼▼▼ [추가] 공지사항 댓글 ▼▼▼
+// =====================================================
+export async function addNoticeComment(classId, noticeId, playerId, playerName, text) {
+  if (!classId || !noticeId || !text?.trim()) return;
+  await addDoc(collection(db, 'classes', classId, 'notices', noticeId, 'comments'), {
+    playerId, playerName, text: text.trim(), createdAt: serverTimestamp(),
+  });
+}
+
+export async function deleteNoticeComment(classId, noticeId, commentId) {
+  await deleteDoc(doc(db, 'classes', classId, 'notices', noticeId, 'comments', commentId));
+}
+
+export function listenNoticeComments(classId, noticeId, callback) {
+  if (!classId || !noticeId) return () => { };
+  const q = query(
+    collection(db, 'classes', classId, 'notices', noticeId, 'comments'),
+    orderBy('createdAt', 'asc')
+  );
+  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+
+// =====================================================
+// ▼▼▼ [추가] 공지사항 하트(좋아요) ▼▼▼
+// =====================================================
+export async function toggleNoticeHeart(classId, noticeId, playerId) {
+  if (!classId || !noticeId || !playerId) return;
+  const heartRef = doc(db, 'classes', classId, 'notices', noticeId, 'hearts', playerId);
+  const snap = await getDoc(heartRef);
+  if (snap.exists()) {
+    await deleteDoc(heartRef);
+    return false; // 취소
+  } else {
+    await setDoc(heartRef, { playerId, heartedAt: serverTimestamp() });
+    return true; // 추가
+  }
+}
+
+export function listenNoticeHearts(classId, noticeId, callback) {
+  if (!classId || !noticeId) return () => { };
+  const q = collection(db, 'classes', classId, 'notices', noticeId, 'hearts');
+  return onSnapshot(q, snap => callback(snap.docs.map(d => d.data().playerId)));
 }

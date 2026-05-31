@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, createBattleChallenge } from '../../api/firebase';
+import { auth, db, createBattleChallenge, renamePetWithItem, releasePet } from '../../api/firebase';
 import { doc, onSnapshot } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '../../utils/petImageMap';
@@ -462,18 +462,30 @@ function PetPage() {
     const filteredName = filterProfanity(newName);
     if (filteredName.includes('*')) return alert("부적절한 단어가 포함되어 있어 사용할 수 없습니다.");
     if (!filteredName.trim()) return alert("이름을 입력해주세요.");
+    const renameCount = myPlayerData?.petInventory?.pet_rename || 0;
+    if (renameCount <= 0) {
+      setIsEditingName(false);
+      return alert("이름 변경권이 없습니다. 펫센터 상점에서 구매하세요!");
+    }
     try {
-      const updatedPets = [...myPlayerData.pets];
-      const petIndex = updatedPets.findIndex(p => p.id === selectedPet.id);
-      if (petIndex !== -1) {
-        updatedPets[petIndex] = { ...updatedPets[petIndex], name: filteredName };
-        // ★ store.updatePlayerProfile은 인자가 1개(profileData)임
-        await updatePlayerProfile({ pets: updatedPets });
-        setIsEditingName(false);
-        setNewName(filteredName);
-        alert(`이름이 '${filteredName}'(으)로 변경되었습니다!`);
+      await renamePetWithItem(classId, myPlayerData.id, selectedPet.id, filteredName);
+      setIsEditingName(false);
+      setNewName(filteredName);
+      const remaining = renameCount - 1;
+      alert(`이름이 '${filteredName}'(으)로 변경되었습니다!\n(남은 이름 변경권: ${remaining}개)`);
+    } catch (error) { alert("이름 저장 중 오류가 발생했습니다: " + error.message); }
+  };
+
+  // ▼ [추가] 이름 편집 버튼 클릭 시 변경권 보유 여부 선제 확인
+  const handleEditNameClick = () => {
+    const renameCount = myPlayerData?.petInventory?.pet_rename || 0;
+    if (renameCount <= 0) {
+      if (window.confirm('이름 변경권이 없습니다.\n펫센터 상점에서 1,000P에 구매할 수 있습니다.\n펫센터로 이동하시겠습니까?')) {
+        navigate('/pet-center');
       }
-    } catch (error) { alert("이름 저장 중 오류가 발생했습니다."); }
+      return;
+    }
+    setIsEditingName(true);
   };
 
   const handleUseItem = async (itemId) => {
@@ -636,7 +648,7 @@ function PetPage() {
                 <button onClick={() => { setIsEditingName(false); setNewName(selectedPet.name) }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>✖</button>
               </>) : (<>
                 <PetName>{selectedPet.name}</PetName>
-                <button onClick={() => setIsEditingName(true)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>✏️</button>
+                <button onClick={handleEditNameClick} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem' }} title={`이름 변경 (변경권 ${myPlayerData?.petInventory?.pet_rename || 0}개)`}>✏️</button>
               </>)}
             </PetNameContainer>
             <PetLevel>Lv. {selectedPet.level} {PET_DATA[selectedPet.species].name}</PetLevel>
@@ -656,6 +668,30 @@ function PetPage() {
                         <p>{PET_DATA[selectedPet.species].description}</p>
                       </InfoCard>
                       <StatItem><p>공격력</p><p>{selectedPet.atk || 0}</p></StatItem>
+                      {/* ▼ [추가] 배틀 전적 */}
+                      <StatItem style={{ gridColumn: '1 / -1', background: 'linear-gradient(135deg,#f8f9fa,#e9ecef)', borderRadius: '10px', padding: '0.7rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <p style={{ fontWeight: 800, color: '#495057', marginBottom: '0.2rem' }}>⚔️ 배틀 전적</p>
+                        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          <span style={{ background: '#d0ebff', color: '#1971c2', borderRadius: '8px', padding: '0.25rem 0.7rem', fontWeight: 800, fontSize: '0.88rem' }}>
+                            🏆 {selectedPet.battleWins || 0}승
+                          </span>
+                          <span style={{ background: '#ffe3e3', color: '#c92a2a', borderRadius: '8px', padding: '0.25rem 0.7rem', fontWeight: 800, fontSize: '0.88rem' }}>
+                            💀 {selectedPet.battleLosses || 0}패
+                          </span>
+                        </div>
+                        {(() => {
+                          const total = (selectedPet.battleWins || 0) + (selectedPet.battleLosses || 0);
+                          const rate = total > 0 ? Math.round((selectedPet.battleWins || 0) / total * 100) : null;
+                          return total > 0 ? (
+                            <p style={{ fontSize: '0.82rem', color: '#868e96', margin: 0 }}>
+                              총 {total}전 · 승률 {rate}%
+                            </p>
+                          ) : (
+                            <p style={{ fontSize: '0.82rem', color: '#adb5bd', margin: 0 }}>아직 배틀 기록이 없습니다.</p>
+                          );
+                        })()}
+                      </StatItem>
+                      {/* ▲ [추가 끝] */}
                     </StatGrid>
                   )}
                   {activeAccordion === 'skills' && (
@@ -781,6 +817,32 @@ function PetPage() {
                 <h2 style={{ color: 'white' }}>와!</h2>
                 <img src={petImageMap[`${hatchState.hatchedPet.appearanceId}_idle`]} alt="부화한 펫" className="pet" />
                 <h3 style={{ color: 'white' }}>{hatchState.hatchedPet.name}이(가) 태어났습니다!</h3>
+                {/* ▼ [추가] 새 종류 발견 메시지 */}
+                {(() => {
+                  const beforeHatch = myPlayerData?.pets?.filter(p => p.id !== hatchState.hatchedPet.id) || [];
+                  const isNew = !beforeHatch.some(p => p.species === hatchState.hatchedPet.species);
+                  const allSpecies = Object.keys(PET_DATA);
+                  const ownedAfter = new Set([...beforeHatch.map(p => p.species), hatchState.hatchedPet.species]);
+                  const isComplete = allSpecies.every(s => ownedAfter.has(s));
+                  return (
+                    <div style={{ marginBottom: '0.8rem' }}>
+                      {isComplete ? (
+                        <p style={{ color: '#ffd43b', fontWeight: 800, fontSize: '1.05rem' }}>
+                          🎉 모든 종류의 펫을 수집했습니다! 완전 컬렉션 달성!
+                        </p>
+                      ) : isNew ? (
+                        <p style={{ color: '#a9e34b', fontWeight: 700 }}>
+                          ✨ 새로운 종류의 펫 발견! ({ownedAfter.size}/{allSpecies.length} 종 수집)
+                        </p>
+                      ) : (
+                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
+                          ({ownedAfter.size}/{allSpecies.length} 종 수집)
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* ▲ [추가 끝] */}
                 <button onClick={() => setIsHatching(false)} style={{ padding: '0.8rem 2rem', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>확인</button>
               </div>
             )}

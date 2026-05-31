@@ -527,6 +527,8 @@ function ShopPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [previewConfig, setPreviewConfig] = useState(null);
   const [justPurchased, setJustPurchased] = useState(false);
+  // ▼ [추가] 정렬
+  const [sortOrder, setSortOrder] = useState('newest');
   const isInitialLoad = useRef(true);
   // [이슈 4] 마이룸 아이템 카트
   const [myRoomCart, setMyRoomCart] = useState([]);
@@ -590,8 +592,27 @@ function ShopPage() {
       items = myRoomItems.filter(item => item.price > 0 && item.status !== 'hidden');
       if (activeTab) items = items.filter(item => item.category === activeTab);
     }
+
+    // ▼ [수정] 정렬 - Number() 강제 변환 + 2차 정렬(id)로 안정성 확보
+    items = [...items].sort((a, b) => {
+      const priceA = Number(a.salePrice != null ? a.salePrice : a.price ?? 0);
+      const priceB = Number(b.salePrice != null ? b.salePrice : b.price ?? 0);
+      const createdA = a.createdAt?.toMillis?.() ?? (typeof a.createdAt === 'number' ? a.createdAt : 0);
+      const createdB = b.createdAt?.toMillis?.() ?? (typeof b.createdAt === 'number' ? b.createdAt : 0);
+      // 2차 정렬: 같은 값일 때 id로 안정적 정렬
+      const idCmp = (a.id || '').localeCompare(b.id || '');
+      switch (sortOrder) {
+        case 'price_asc': return priceA !== priceB ? priceA - priceB : idCmp;
+        case 'price_desc': return priceA !== priceB ? priceB - priceA : idCmp;
+        case 'oldest': return createdA !== createdB ? createdA - createdB : idCmp;
+        case 'newest':
+        default: return createdA !== createdB ? createdB - createdA : idCmp;
+      }
+    });
+    // ▲ [수정 끝]
+
     return items;
-  }, [avatarParts, myRoomItems, mainTab, activeTab]);
+  }, [avatarParts, myRoomItems, mainTab, activeTab, sortOrder]);
 
   const totalPages = Math.ceil(itemsForSale.length / ITEMS_PER_PAGE);
   const paginatedItems = useMemo(() => {
@@ -738,6 +759,34 @@ function ShopPage() {
       {mainTab !== 'petitem' && (
         <ContentLayout>
           <ItemSection>
+            {/* ▼▼▼ [수정] 정렬 토글 버튼 — 클릭할 때마다 방향 전환 ▼▼▼ */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.8rem' }}>
+              <span style={{ fontSize: '0.82rem', color: '#adb5bd', fontWeight: 700 }}>정렬</span>
+              {[
+                { key: 'date', labels: ['최신순', '오래된순'], vals: ['newest', 'oldest'] },
+                { key: 'price', labels: ['가격 ▲', '가격 ▼'], vals: ['price_desc', 'price_asc'] },
+              ].map(({ key, labels, vals }) => {
+                const activeIdx = vals.indexOf(sortOrder);
+                const isActive = activeIdx !== -1;
+                const label = isActive ? labels[activeIdx] : labels[0];
+                return (
+                  <button key={key}
+                    onClick={() => {
+                      if (!isActive) { setSortOrder(vals[0]); }
+                      else { setSortOrder(vals[(activeIdx + 1) % vals.length]); }
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      padding: '0.32rem 0.85rem', fontSize: '0.82rem', fontWeight: 800,
+                      border: isActive ? '1.5px solid #1971c2' : '1.5px solid #dee2e6',
+                      background: isActive ? '#e7f5ff' : 'white',
+                      color: isActive ? '#1971c2' : '#868e96',
+                      borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s',
+                    }}>{label}</button>
+                );
+              })}
+            </div>
+            {/* ▲▲▲ [수정 끝] ▲▲▲ */}
             <CategoryScroll>
               {partCategories.map(cat => (
                 <CategoryButton key={cat} $active={activeTab === cat} onClick={() => setActiveTab(cat)}>

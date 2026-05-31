@@ -66,7 +66,7 @@ function QuizWidget() {
 
     const todayStr = new Date().toLocaleDateString();
     const dailyQuizCount = myPlayerData?.lastQuizDate === todayStr ? (myPlayerData?.dailyQuizCount || 0) : 0;
-    const isLimitReached = dailyQuizCount >= 5;
+    const isLimitReached = dailyQuizCount >= 10;
 
     useEffect(() => {
         const loadQuizzes = async () => {
@@ -93,7 +93,7 @@ function QuizWidget() {
     const handleSubmit = async (submittedAnswer) => {
         if (!currentQuiz || !myPlayerData || isProcessing || status === 'correct' || status === 'wrong') return;
         if (isLimitReached) {
-            alert("오늘의 퀴즈 도전 횟수(5회)를 모두 사용했습니다!");
+            alert("오늘의 퀴즈 도전 횟수(10회)를 모두 사용했습니다!");
             return;
         }
 
@@ -102,7 +102,7 @@ function QuizWidget() {
 
         try {
             const playerRef = doc(db, 'classes', classId, 'players', myPlayerData.id);
-            const rewardPoints = 50;
+            const rewardPoints = 30;
 
             // ▼ 정답/오답 상관없이 횟수는 무조건 차감(증가)하도록 트랜잭션 하나로 묶었습니다.
             await runTransaction(db, async (transaction) => {
@@ -172,7 +172,7 @@ function QuizWidget() {
             <WidgetContainer>
                 <ResultText $isCorrect={true}>
                     🎉 오늘의 퀴즈 완료!<br />
-                    <span style={{ fontSize: '0.9rem', color: '#495057' }}>내일 다시 도전해주세요. (5/5)</span>
+                    <span style={{ fontSize: '0.9rem', color: '#495057' }}>내일 다시 도전해주세요. (10/10)</span>
                 </ResultText>
             </WidgetContainer>
         );
@@ -185,13 +185,13 @@ function QuizWidget() {
         <WidgetContainer>
             <QuizHeader>
                 <span>📝 오늘의 퀴즈 도전</span>
-                <span style={{ color: '#20c997' }}>{dailyQuizCount} / 5</span>
+                <span style={{ color: '#20c997' }}>{dailyQuizCount} / 10</span>
             </QuizHeader>
 
             <QuestionText>Q. {currentQuiz.question}</QuestionText>
 
             {status === 'correct' ? (
-                <ResultText $isCorrect={true}>🎉 정답입니다!<br /><span style={{ fontSize: '0.9rem', color: '#495057' }}>50P 획득! 다음 문제 준비 중...</span></ResultText>
+                <ResultText $isCorrect={true}>🎉 정답입니다!<br /><span style={{ fontSize: '0.9rem', color: '#495057' }}>30P 획득! 다음 문제 준비 중...</span></ResultText>
             ) : status === 'wrong' ? (
                 <ResultText $isCorrect={false}>
                     앗, 틀렸어요!<br />

@@ -129,7 +129,7 @@ const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 
 // --- Main Component ---
 function DashboardSimpleMode({
-  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName,
+  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName, myTeam,
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
 }) {
   const [donationAmount, setDonationAmount] = useState('');
@@ -263,6 +263,16 @@ function DashboardSimpleMode({
                   <FriendName>{todaysFriend.name}{getWinningStars(todaysFriend.win_count || 0)}</FriendName>
                   {friendPartnerPet && <InfoBadge><span style={{ fontSize: '0.9rem' }}>🐾</span>{friendPartnerPet.name}</InfoBadge>}
                   <InfoBadge><span style={{ fontSize: '0.9rem' }}>🛡️</span>{friendTeamName}</InfoBadge>
+                  {myTeam && (
+                    <InfoBadge style={{ marginTop: '0.3rem', background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.06)' }}>
+                      <img
+                        src={emblemMap[myTeam.emblemId] || myTeam.emblemUrl || defaultEmblem}
+                        alt="팀 엠블렘"
+                        style={{ width: '1.1rem', height: '1.1rem', objectFit: 'contain', flexShrink: 0 }}
+                      />
+                      <span style={{ fontWeight: 900 }}>내 팀: {myTeam.teamName}</span>
+                    </InfoBadge>
+                  )}
                 </FriendInfo>
               </FriendCardContent>
             </FriendSection>
