@@ -5,7 +5,7 @@ import styled from 'styled-components';
 import { useClassStore, useLeagueStore } from '../../../store/leagueStore';
 import {
     auth, db, replyToSuggestion, adminInitiateConversation, sendBulkMessageToAllStudents,
-    getAllMyRoomComments, deleteMyRoomComment, deleteMyRoomReply, getAllMissionComments
+    getAllMyRoomComments, deleteMyRoomComment, deleteMyRoomReply, getAllMissionComments, deleteMissionComment
 } from '../../../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
@@ -64,6 +64,7 @@ const MonitorCommentCard = styled.div`
 const MissionCommentCard = styled(MonitorCommentCard)``;
 const MonitorHeader = styled.div`
     font-size: 0.9rem; color: #6c757d; margin-bottom: 0.5rem;
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
     & > strong { color: #007bff; }
     & > span { cursor: pointer; text-decoration: underline; }
 `;
@@ -306,11 +307,23 @@ function MyRoomCommentMonitor() {
 function MissionCommentMonitor() {
     const { classId } = useClassStore();
     const { players, missions, archivedMissions, missionSubmissions } = useLeagueStore();
+    const navigate = useNavigate();
     const [allComments, setAllComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
 
     const allMissionsList = useMemo(() => [...missions, ...archivedMissions], [missions, archivedMissions]);
+
+    // ▼▼▼ [추가] 댓글 삭제 핸들러
+    const handleDeleteComment = async (submissionId, commentId) => {
+        if (!window.confirm('이 댓글을 삭제하시겠습니까?')) return;
+        try {
+            await deleteMissionComment(classId, submissionId, commentId);
+            setAllComments(prev => prev.filter(c => c.id !== commentId));
+            alert('댓글이 삭제되었습니다.');
+        } catch (e) { alert('삭제 실패: ' + e.message); }
+    };
+    // ▲▲▲ [추가 끝]
 
     useEffect(() => {
         const fetchComments = async () => {
@@ -345,6 +358,18 @@ function MissionCommentMonitor() {
                             <MissionCommentCard key={comment.id}>
                                 <MonitorHeader>
                                     <strong>{comment.commenterName}</strong> → <span>{studentName}</span>님의 게시물
+                                    {/* ▼▼▼ [추가] 삭제 버튼 + 게시물 이동 버튼 */}
+                                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                        <StyledButton
+                                            onClick={() => navigate(`/gallery?submissionId=${comment.submissionId}`)}
+                                            style={{ padding: '0.2rem 0.6rem', fontSize: '0.78rem', backgroundColor: '#228be6' }}
+                                        >🔍 게시물 보기</StyledButton>
+                                        <StyledButton
+                                            onClick={() => handleDeleteComment(comment.submissionId, comment.id)}
+                                            style={{ padding: '0.2rem 0.6rem', fontSize: '0.78rem', backgroundColor: '#dc3545' }}
+                                        >🗑️ 삭제</StyledButton>
+                                    </div>
+                                    {/* ▲▲▲ [추가 끝] */}
                                 </MonitorHeader>
                                 <MonitorContent>"{comment.text}"</MonitorContent>
                                 <small style={{ color: '#6c757d' }}>미션: {missionTitle}</small>

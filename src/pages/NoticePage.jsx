@@ -11,6 +11,7 @@ import {
 } from '../api/firebase';
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
+import { filterProfanity } from '../utils/profanityFilter';
 
 const DEFAULT_TABS = ['주간학습 안내', '공지사항', '식단표'];
 const DEFAULT_TAB_CONFIG = { comment: true, heart: true }; // 기본: 댓글·하트 모두 ON
@@ -98,7 +99,7 @@ const TabNameInput = styled.input`flex:1;padding:0.4rem 0.7rem;border:1.5px soli
 const ToggleSwitch = styled.button`padding:0.25rem 0.55rem;font-size:0.75rem;font-weight:800;border-radius:6px;border:none;cursor:pointer;background:${p => p.$on ? '#d3f9d8' : '#ffe3e3'};color:${p => p.$on ? '#2b8a3e' : '#c92a2a'};`;
 
 /* ─── 인라인 소셜 서브컴포넌트 ──────────────────────────── */
-function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeacher }) {
+function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeacher, players }) {
   const [hearts, setHearts] = useState([]);
   const [comments, setComments] = useState([]);
   const [readers, setReaders] = useState([]);
@@ -133,9 +134,11 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
   const handleSendComment = async (e) => {
     e.stopPropagation();
     if (!commentInput.trim() || isSendingComment) return;
+    const filtered = filterProfanity(commentInput.trim());
+    if (filtered.includes('*')) return alert('부적절한 단어가 포함된 댓글은 등록할 수 없습니다.');
     setIsSendingComment(true);
     try {
-      await addNoticeComment(classId, notice.id, myId, myPlayerData.name, commentInput);
+      await addNoticeComment(classId, notice.id, myId, myPlayerData.name, filtered);
       setCommentInput('');
     } finally { setIsSendingComment(false); }
   };
@@ -147,9 +150,21 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
     <>
       <ActionBar onClick={e => e.stopPropagation()}>
         {heartOn && (
-          <HeartBtn $active={iHearted} onClick={handleHeart}>
-            {iHearted ? '❤️' : '🤍'} {hearts.length > 0 ? hearts.length : ''}
-          </HeartBtn>
+          <>
+            <HeartBtn $active={iHearted} onClick={handleHeart}>
+              {iHearted ? '❤️' : '🤍'} {hearts.length > 0 ? hearts.length : ''}
+            </HeartBtn>
+            {hearts.length > 0 && isTeacher && (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  const names = hearts.map(id => players?.find(p => p.id === id)?.name || id).join('\n');
+                  alert(`❤️ 하트를 눌러준 친구들 (${hearts.length}명):\n\n${names}`);
+                }}
+                style={{ background: 'none', border: '1px solid #ffc9c9', borderRadius: '7px', padding: '0.2rem 0.5rem', fontSize: '0.78rem', color: '#fa5252', cursor: 'pointer', fontWeight: 700 }}
+              >👁️</button>
+            )}
+          </>
         )}
         <ReadBadge onClick={() => setShowReaders(true)}>
           👁️ {readers.length}명 읽음
@@ -414,7 +429,7 @@ function NoticePage() {
                   )}
                   <NoticeInlineFeatures
                     classId={classId} notice={notice} myPlayerData={myPlayerData}
-                    tabConfig={cfg} isTeacher={isTeacher}
+                    tabConfig={cfg} isTeacher={isTeacher} players={players}
                   />
                 </CardBody>
               )}

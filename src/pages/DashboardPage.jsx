@@ -218,6 +218,16 @@ function DashboardPage() {
         return team ? team.teamName : "무소속";
     }, [todaysFriend, teams]);
 
+    // ▼▼▼ [추가] 친구 팀 객체 + 순위
+    const friendTeamInfo = useMemo(() => {
+        if (!todaysFriend?.id) return null;
+        const team = teams.find(t => Array.isArray(t.members) && t.members.includes(todaysFriend.id));
+        if (!team) return null;
+        const sorted = standingsData();
+        const rank = sorted.findIndex(t => t.id === team.id) + 1;
+        return { ...team, rank };
+    }, [todaysFriend, teams, standingsData]);
+
     // ▼▼▼ [수정] 내 팀 정보 — player.teamId가 없으므로 team.members로 역방향 조회
     const myTeam = useMemo(() => {
         if (!myPlayerData?.id) return null;
@@ -411,6 +421,7 @@ function DashboardPage() {
                     friendPartnerPet={friendPartnerPet}
                     friendTitle={friendTitle}
                     friendTeamName={friendTeamName}
+                    friendTeamInfo={friendTeamInfo}
                     myTeam={myTeam}
                     activeGoal={activeGoal}
                     activeMissions={activeMissions}

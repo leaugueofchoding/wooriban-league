@@ -355,8 +355,8 @@ function Auth({ user }) {
             'social': '/gallery',
             'heart': '/gallery',
             'notice': '/notices',
-            'suggestion_admin': '/admin?tab=messages',
-            'suggestion_reply': '/suggestions',        // ▼ 학생: 건의함 답장 → 소셜 건의함 페이지
+            'suggestion_admin': null,  // state로 전달 (아래 클릭 핸들러에서 처리)
+            'suggestion_reply': '/suggestions',
         };
         // ▲▲▲ [추가 끝] ▲▲▲
 
@@ -513,6 +513,12 @@ function Auth({ user }) {
                                                 key={notif.id}
                                                 $hasLink={!!notif.link}
                                                 onClick={() => {
+                                                    if (notif.type === 'suggestion_admin') {
+                                                        // state로 전달해야 재마운트 없이 탭이 바뀜
+                                                        navigate('/admin', { state: { forceTab: 'messages' } });
+                                                        setShowNotifications(false);
+                                                        return;
+                                                    }
                                                     if (notif.link) {
                                                         navigate(notif.link);
                                                         setShowNotifications(false);

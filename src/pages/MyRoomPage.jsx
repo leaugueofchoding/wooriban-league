@@ -875,7 +875,22 @@ function MyRoomPage() {
               <ActionButton onClick={handleRandomVisit}>🚀 랜덤 방문</ActionButton>
             </>
           )}
-          {isMyRoom && <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fa5252' }}>❤️ {likes.length}</span>}
+          {isMyRoom && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fa5252' }}>❤️ {likes.length}</span>
+              {/* ▼▼▼ [추가] 방 주인: 누가 좋아요 눌렀는지 확인 */}
+              {likes.length > 0 && (
+                <button
+                  onClick={() => {
+                    const names = likes.map(l => l.likerName || l.name || l.id).join('\n');
+                    alert(`❤️ 좋아요를 눌러준 친구들 (${likes.length}명):\n\n${names}`);
+                  }}
+                  style={{ background: 'none', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: '#fa5252', cursor: 'pointer', fontWeight: 700 }}
+                >👁️ 누가 눌렀나</button>
+              )}
+              {/* ▲▲▲ [추가 끝] */}
+            </div>
+          )}
 
           <div style={{ position: 'relative' }}>
             <ActionButton onClick={() => setShowFriendList(!showFriendList)}>

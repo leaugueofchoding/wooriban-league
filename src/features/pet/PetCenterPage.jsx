@@ -207,11 +207,10 @@ const BuyButton = styled.button`
 
 // 치료소 (Heal/Pet) 관련 스타일
 const ClinicHeader = styled.div`
-  text-align: center;
-  margin-bottom: 2rem;
-  
+  display: flex; align-items: flex-start; gap: 1rem;
+  margin-bottom: 1.5rem;
   h2 { margin-top: 0; color: #343a40; }
-  p { color: #868e96; }
+  p { color: #868e96; margin: 0; }
 `;
 
 const HealAllButton = styled.button`
@@ -367,15 +366,33 @@ function PetCenterPage() {
   const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
   const navigate = useNavigate();
 
-  const handleReleasePet = async (pet) => {
+  // ▼▼▼ [수정] 분양 선택 모드 state
+  const [releaseMode, setReleaseMode] = useState(false);
+  const [selectedForRelease, setSelectedForRelease] = useState(null);
+
+  const handleStartRelease = () => {
+    setReleaseMode(true);
+    setSelectedForRelease(null);
+  };
+
+  const handleCancelRelease = () => {
+    setReleaseMode(false);
+    setSelectedForRelease(null);
+  };
+
+  const handleConfirmRelease = async () => {
+    if (!selectedForRelease) return alert('분양할 펫을 선택해주세요.');
     const petCount = myPlayerData?.pets?.length || 0;
     if (petCount <= 1) return alert('마지막 남은 펫은 분양할 수 없습니다. 🐾');
-    if (!window.confirm(`정말로 [${pet.name}]을(를) 분양하시겠습니까?\n분양 시 5,000P를 돌려받을 수 있습니다.\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`정말로 [${selectedForRelease.name}]을(를) 분양하시겠습니까?\n분양 시 5,000P를 돌려받을 수 있습니다.\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
     try {
-      const result = await releasePet(classId, myPlayerData.id, pet.id);
+      const result = await releasePet(classId, myPlayerData.id, selectedForRelease.id);
       alert(`${result.releasedPetName}이(가) 좋은 곳으로 떠났습니다. 🌈\n${result.reward.toLocaleString()}P를 돌려받았습니다!`);
+      setReleaseMode(false);
+      setSelectedForRelease(null);
     } catch (e) { alert('분양 실패: ' + e.message); }
   };
+  // ▲▲▲ [수정 끝]
 
   const handleQuantityChange = (itemId, value) => {
     const quantity = Math.max(1, Number(value));
@@ -500,9 +517,42 @@ function PetCenterPage() {
         {activeTab === 'clinic' && (
           <>
             <ClinicHeader>
-              <h2>펫 회복실</h2>
-              <p>이곳에서 펫의 HP와 SP를 회복하거나 전투 불능 상태를 치료할 수 있습니다.</p>
+              <div style={{ flex: 1 }}>
+                <h2>펫 회복실</h2>
+                <p>이곳에서 펫의 HP와 SP를 회복하거나 전투 불능 상태를 치료할 수 있습니다.</p>
+              </div>
+              {/* ▼▼▼ [수정] 분양 모드 버튼 — 치료 버튼과 완전 분리 ▼▼▼ */}
+              {!releaseMode ? (
+                (myPlayerData?.pets?.length || 0) > 1 && (
+                  <button onClick={handleStartRelease} style={{
+                    background: '#fa5252', color: 'white', border: 'none',
+                    borderRadius: '10px', padding: '0.5rem 1rem', fontSize: '0.85rem',
+                    fontWeight: 800, cursor: 'pointer', flexShrink: 0, alignSelf: 'flex-start',
+                  }}>🏠 펫 분양하기</button>
+                )
+              ) : (
+                <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-start' }}>
+                  <button onClick={handleConfirmRelease} disabled={!selectedForRelease} style={{
+                    background: selectedForRelease ? '#fa5252' : '#adb5bd',
+                    color: 'white', border: 'none', borderRadius: '10px',
+                    padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 800,
+                    cursor: selectedForRelease ? 'pointer' : 'not-allowed',
+                  }}>✅ 분양 확정</button>
+                  <button onClick={handleCancelRelease} style={{
+                    background: '#dee2e6', color: '#495057', border: 'none',
+                    borderRadius: '10px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer',
+                  }}>✕ 취소</button>
+                </div>
+              )}
+              {/* ▲▲▲ [수정 끝] ▲▲▲ */}
             </ClinicHeader>
+
+            {releaseMode && (
+              <div style={{ background: '#fff5f5', border: '1.5px solid #ffc9c9', borderRadius: '10px', padding: '0.7rem 1rem', marginBottom: '0.8rem', fontSize: '0.88rem', color: '#c92a2a', fontWeight: 700 }}>
+                🏠 분양할 펫을 클릭하여 선택하세요. 선택 후 "분양 확정" 버튼을 눌러주세요.
+              </div>
+            )}
+
             <HealAllButton onClick={handleHealAll} disabled={isAllPetsHealthy}>
               {isAllPetsHealthy ? "모든 펫이 건강합니다 ✨" : "모든 펫 치료하기 (400P)"}
             </HealAllButton>
@@ -510,8 +560,18 @@ function PetCenterPage() {
               {myPlayerData?.pets?.map(pet => {
                 const isHealthy = pet.hp === pet.maxHp && pet.sp === pet.maxSp;
                 const isFainted = pet.hp <= 0;
+                const isSelectedForRelease = selectedForRelease?.id === pet.id;
                 return (
-                  <PetCard key={pet.id}>
+                  <PetCard key={pet.id}
+                    onClick={releaseMode ? () => setSelectedForRelease(pet) : undefined}
+                    style={releaseMode ? {
+                      cursor: 'pointer',
+                      border: isSelectedForRelease ? '2.5px solid #fa5252' : '2px dashed #ffc9c9',
+                      background: isSelectedForRelease ? '#fff5f5' : 'white',
+                      transform: isSelectedForRelease ? 'scale(1.03)' : 'none',
+                      transition: 'all 0.15s',
+                    } : undefined}
+                  >
                     <div>
                       <PetImage
                         src={petImageMap[`${pet.appearanceId}_idle`]}
@@ -529,29 +589,23 @@ function PetCenterPage() {
                           </>
                         )}
                       </PetStatus>
-                      {/* ▼ 전적 미니 표시 */}
                       {((pet.battleWins || 0) + (pet.battleLosses || 0)) > 0 && (
                         <div style={{ fontSize: '0.75rem', color: '#868e96', marginTop: '0.3rem', display: 'flex', gap: '0.3rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                           <span>🏆{pet.battleWins || 0}</span>
                           <span>💀{pet.battleLosses || 0}</span>
                         </div>
                       )}
-                      {/* ▼▼▼ [추가] 펫 분양 버튼 ▼▼▼ */}
-                      {(myPlayerData?.pets?.length || 0) > 1 && (
-                        <button
-                          onClick={() => handleReleasePet(pet)}
-                          style={{
-                            marginTop: '0.5rem', width: '100%',
-                            padding: '0.35rem 0', fontSize: '0.75rem', fontWeight: 700,
-                            background: 'none', border: '1.5px solid #ffc9c9',
-                            color: '#fa5252', borderRadius: '8px', cursor: 'pointer',
-                          }}
-                        >🏠 분양하기 (+5,000P)</button>
+                      {releaseMode && isSelectedForRelease && (
+                        <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#fa5252', fontWeight: 800, textAlign: 'center' }}>
+                          선택됨 ✓
+                        </div>
                       )}
                     </div>
-                    <HealButton onClick={() => handleHeal(pet.id)} disabled={isHealthy}>
-                      {isHealthy ? "건강함" : "치료하기 (250P)"}
-                    </HealButton>
+                    {!releaseMode && (
+                      <HealButton onClick={() => handleHeal(pet.id)} disabled={isHealthy}>
+                        {isHealthy ? "건강함" : "치료하기 (250P)"}
+                      </HealButton>
+                    )}
                   </PetCard>
                 );
               })}

@@ -51,7 +51,14 @@ function AdminPage() {
     const { tab } = useParams();
     const location = useLocation();
     const navigate = useNavigate();
-    const [activeMenu, setActiveMenu] = useState(tab || 'mission');
+
+    // ▼▼▼ [수정] 초기값을 쿼리파라미터에서 바로 읽어 미션 탭으로 잘못 시작되는 문제 방지
+    const getInitialMenu = () => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('tab') === 'messages') return 'social';
+        return tab || 'mission';
+    };
+    const [activeMenu, setActiveMenu] = useState(getInitialMenu);
     const [activeSubMenu, setActiveSubMenu] = useState('messages');
     const [studentSubMenu, setStudentSubMenu] = useState('point');
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
@@ -66,9 +73,26 @@ function AdminPage() {
             setActiveMenu('social');
             setActiveSubMenu('messages');
             setPreselectedStudentId(studentIdFromState);
-            window.history.replaceState({}, document.title)
+            window.history.replaceState({}, document.title);
+        }
+        // ▼▼▼ [수정] forceTab state로 탭 강제 전환 (알림 클릭 시)
+        if (location.state?.forceTab === 'messages') {
+            setActiveMenu('social');
+            setActiveSubMenu('messages');
+            window.history.replaceState({}, document.title);
         }
     }, [location.state]);
+
+    // ▼▼▼ [추가] ?tab=messages URL 파라미터로 직접 탭 진입 (건의함 알림 클릭 시)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tabParam = params.get('tab');
+        if (tabParam === 'messages') {
+            setActiveMenu('social');
+            setActiveSubMenu('messages');
+        }
+    }, [location.search]);
+    // ▲▲▲ [추가 끝] ▲▲▲
 
     const handleSendMessageClick = (studentId) => {
         navigate('/admin', { state: { preselectedStudentId: studentId } });

@@ -5,7 +5,7 @@ import styled, { keyframes, css } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, db, getApprovedSubmissions, addMissionComment, toggleSubmissionAdminVisibility, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot, where } from "firebase/firestore";
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import CommentThread from '../components/CommentThread';
 import ImageModal from '../components/ImageModal';
 import { filterProfanity } from '../utils/profanityFilter';
@@ -504,8 +504,19 @@ function MissionGalleryPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [selectedMission, setSelectedMission] = useState('all');
     const [searchName, setSearchName] = useState('');  // [추가] 이름 검색
+    const location = useLocation();
     const [selectedSubmission, setSelectedSubmission] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null);
+
+    // ▼▼▼ [추가] ?submissionId= 파라미터로 직접 게시물 열기 (관리자 댓글 모니터에서 이동 시)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const targetId = params.get('submissionId');
+        if (!targetId || !publiclyVisibleSubmissions.length) return;
+        const target = publiclyVisibleSubmissions.find(s => s.id === targetId);
+        if (target) setSelectedSubmission(target);
+    }, [location.search, publiclyVisibleSubmissions]);
+    // ▲▲▲ [추가 끝]
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState("");
     const [rotations, setRotations] = useState({});
@@ -834,6 +845,19 @@ function MissionGalleryPage() {
                                     {selectedSubmission.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'}
                                     <span>{selectedSubmission.likes?.length || 0}</span>
                                 </LikeButton>
+                                {/* ▼▼▼ [추가] 하트 누른 사람 확인 버튼 */}
+                                {(selectedSubmission.likes?.length || 0) > 0 && selectedSubmission.studentId === myPlayerData?.id && (
+                                    <button
+                                        onClick={() => {
+                                            const names = (selectedSubmission.likes || [])
+                                                .map(id => players.find(p => p.id === id)?.name || '알 수 없음')
+                                                .join('\n');
+                                            alert(`❤️ 하트를 누른 친구들 (${selectedSubmission.likes.length}명):\n\n${names}`);
+                                        }}
+                                        style={{ background: 'none', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.3rem 0.7rem', fontSize: '0.82rem', color: '#fa5252', cursor: 'pointer', fontWeight: 700 }}
+                                    >👁️ 누가 눌렀나</button>
+                                )}
+                                {/* ▲▲▲ [추가 끝] */}
                                 {myPlayerData?.role === 'admin' && (
                                     <AdminButton onClick={() => handleAdminToggleVisibility(selectedSubmission)} $isHidden={selectedSubmission.adminHidden}>
                                         {selectedSubmission.adminHidden ? '표시하기' : '숨기기'}

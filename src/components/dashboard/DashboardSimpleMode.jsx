@@ -129,7 +129,7 @@ const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 
 // --- Main Component ---
 function DashboardSimpleMode({
-  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName, myTeam,
+  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName, friendTeamInfo, myTeam,
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
 }) {
   const [donationAmount, setDonationAmount] = useState('');
@@ -261,14 +261,44 @@ function DashboardSimpleMode({
                 <FriendInfo>
                   <FriendRoleBadge>{friendTitle ? friendTitle.name : (todaysFriend.role === 'admin' ? 'TEACHER' : 'PLAYER')}</FriendRoleBadge>
                   <FriendName>{todaysFriend.name}{getWinningStars(todaysFriend.win_count || 0)}</FriendName>
-                  {friendPartnerPet && <InfoBadge><span style={{ fontSize: '0.9rem' }}>🐾</span>{friendPartnerPet.name}</InfoBadge>}
-                  <InfoBadge><span style={{ fontSize: '0.9rem' }}>🛡️</span>{friendTeamName}</InfoBadge>
+                  {friendPartnerPet && (
+                    <InfoBadge>
+                      <span style={{ fontSize: '0.9rem' }}>🐾</span>
+                      {friendPartnerPet.name}
+                      {/* ▼ 펫 전적 */}
+                      {((friendPartnerPet.battleWins || 0) + (friendPartnerPet.battleLosses || 0)) > 0 && (
+                        <span style={{ marginLeft: '0.35rem', fontSize: '0.72rem', color: '#adb5bd', fontWeight: 700 }}>
+                          🏆{friendPartnerPet.battleWins || 0} 💀{friendPartnerPet.battleLosses || 0}
+                        </span>
+                      )}
+                    </InfoBadge>
+                  )}
+                  {/* ▼ 팀 + 순위 */}
+                  <InfoBadge>
+                    <span style={{ fontSize: '0.9rem' }}>🛡️</span>
+                    {friendTeamInfo ? (
+                      <span>
+                        {friendTeamInfo.teamName}
+                        <span style={{ marginLeft: '0.3rem', fontSize: '0.75rem', fontWeight: 800, color: '#1971c2' }}>
+                          {friendTeamInfo.rank}위
+                          {friendTeamInfo.win !== undefined && ` · ${friendTeamInfo.win}승 ${friendTeamInfo.lose}패`}
+                        </span>
+                      </span>
+                    ) : (
+                      <span>{friendTeamName}</span>
+                    )}
+                  </InfoBadge>
                   {myTeam && (
-                    <InfoBadge style={{ marginTop: '0.3rem', background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.06)' }}>
+                    <InfoBadge style={{ marginTop: '0.3rem', background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                       <img
-                        src={emblemMap[myTeam.emblemId] || myTeam.emblemUrl || defaultEmblem}
+                        src={
+                          myTeam.emblemId && emblemMap[myTeam.emblemId]
+                            ? emblemMap[myTeam.emblemId]
+                            : myTeam.emblemUrl || defaultEmblem
+                        }
                         alt="팀 엠블렘"
-                        style={{ width: '1.1rem', height: '1.1rem', objectFit: 'contain', flexShrink: 0 }}
+                        style={{ width: '18px', height: '18px', objectFit: 'contain', flexShrink: 0, display: 'block' }}
+                        onError={e => { e.target.src = defaultEmblem; }}
                       />
                       <span style={{ fontWeight: 900 }}>내 팀: {myTeam.teamName}</span>
                     </InfoBadge>
