@@ -1,9 +1,9 @@
 // src/components/ApprovalModal.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore'; // useClassStore import
-import { approveMissionsInBatch, rejectMissionSubmission, addMissionComment, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
+import { approveMissionsInBatch, rejectMissionSubmission, cancelMissionApproval, addMissionComment, toggleSubmissionLike, toggleSubmissionImageRotation } from '../api/firebase';
 import { auth, db } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import CommentThread from './CommentThread';
@@ -254,21 +254,33 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
     const mission = useMemo(() => missions.find(m => m.id === submission.missionId), [missions, submission]);
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
 
+    // submission.id가 바뀔 때만 status 리셋 (같은 id면 이미 처리한 상태 유지 → 번쩍 방지)
+    const prevSubmissionIdRef = useRef(null);
     useEffect(() => {
-        setStatus(submission.status);
+        if (prevSubmissionIdRef.current !== submission.id) {
+            prevSubmissionIdRef.current = submission.id;
+            setStatus(submission.status);
+            setLikes(submission.likes || []);
+            setRotations(submission.rotations || {});
+        }
+    }, [submission.id]);
+
+    // submission 데이터 변경 시 likes/rotations만 동기화 (status는 건드리지 않음)
+    useEffect(() => {
         setLikes(submission.likes || []);
         setRotations(submission.rotations || {});
+    }, [submission.likes, submission.rotations]);
 
-        if (!classId) return; // classId가 없으면 실행하지 않음
-
+    // 댓글 구독 (submission.id 기준)
+    useEffect(() => {
+        if (!classId) return;
         const commentsRef = collection(db, "classes", classId, "missionSubmissions", submission.id, "comments");
         const q = query(commentsRef, orderBy("createdAt", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         return () => unsubscribe();
-
-    }, [submission, classId]);
+    }, [submission.id, classId]);
 
     const handleAction = async (action, reward) => {
         if (!classId) return alert('학급 정보가 없습니다.');
@@ -276,12 +288,12 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
             if (action === 'approve') {
                 await approveMissionsInBatch(classId, mission.id, [student.id], myPlayerData.authUid, reward);
                 setStatus('approved');
+                onAction(submission.id, 'approved');
             } else if (action === 'reject') {
                 await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
                 setStatus('rejected');
+                onAction(submission.id, 'rejected');
             }
-            // [수정 이슈 4] submission.id를 전달하여 목록에서 제거하되, 모달은 닫지 않음
-            onAction(submission.id);
         } catch (error) {
             alert(`처리 중 오류 발생: ${error.message}`);
         }
@@ -411,9 +423,36 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
                             )}
                         </ButtonGroup>
                     ) : (
-                        <StatusMessage status={status}>
-                            {status === 'approved' ? '✅ 승인 처리되었습니다.' : '↩️ 반려 처리되었습니다.'}
-                        </StatusMessage>
+                        <ButtonGroup>
+                            {status === 'approved' ? (
+                                <ApproveButton
+                                    onClick={async () => {
+                                        if (!window.confirm('승인을 취소하고 포인트를 회수하시겠습니까?')) return;
+                                        try {
+                                            await cancelMissionApproval(classId, submission.id, mission.reward || mission.rewards?.[0]);
+                                            setStatus('pending');
+                                            onAction(submission.id, 'pending');
+                                        } catch (e) {
+                                            alert(`승인 취소 오류: ${e.message}`);
+                                        }
+                                    }}
+                                    style={{ backgroundColor: '#6c757d', fontSize: '0.85rem' }}
+                                >
+                                    ✅ 승인됨 (클릭 시 취소)
+                                </ApproveButton>
+                            ) : (
+                                <div style={{ padding: '0.6rem 1rem', borderRadius: '8px', background: '#fff3cd', color: '#856404', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                    ↩️ 반려됨
+                                </div>
+                            )}
+                            <ApproveButton
+                                onClick={onNext}
+                                style={{ backgroundColor: '#339af0', whiteSpace: 'nowrap' }}
+                                disabled={totalCount <= 0}
+                            >
+                                다음 과제로 ▶ {totalCount > 0 ? `(${totalCount}건 대기)` : ''}
+                            </ApproveButton>
+                        </ButtonGroup>
                     )}
                 </ContentArea>
                 <PrevButton onClick={onPrev} disabled={currentIndex === 0}>◀</PrevButton>

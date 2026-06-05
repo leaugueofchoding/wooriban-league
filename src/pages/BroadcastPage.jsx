@@ -4,25 +4,18 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { css, keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { db } from '../api/firebase';
-import { collection, query, where, onSnapshot, doc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import defaultEmblem from '../assets/default-emblem.png';
 import confetti from 'canvas-confetti';
-import whistleSound from '../assets/whistle.mp3'; // 소리 파일 유지 (TV용)
+import whistleSound from '../assets/whistle.mp3';
 import { emblemMap } from '../utils/emblemMap';
 import WinnerPage from './WinnerPage';
 
 // --- Styled Components ---
 
 const highlight = keyframes`
-  0%, 100% {
-    transform: scale(1);
-    color: #000;
-  }
-  50% {
-    transform: scale(1.1);
-    color: #fff;
-    text-shadow: 0 0 10px #ffc107;
-  }
+  0%, 100% { transform: scale(1); color: #000; }
+  50% { transform: scale(1.1); color: #fff; text-shadow: 0 0 10px #ffc107; }
 `;
 
 const BroadcastWrapper = styled.div`
@@ -38,7 +31,7 @@ const BroadcastWrapper = styled.div`
 `;
 
 const Header = styled.header`
-  grid-column: 1 / ${props => props.$isMiniMode ? '2' : '2'};
+  grid-column: 1 / 2;
   grid-row: 1 / 2;
   display: flex;
   justify-content: center;
@@ -58,8 +51,8 @@ const MatchStatus = styled.div`
 `;
 
 const MainContent = styled.main`
-  grid-column: 1 / ${props => props.$isMiniMode ? '2' : '2'};
-  grid-row: 2 / 2;
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
   display: flex;
   width: 100%;
   height: 100%;
@@ -74,14 +67,8 @@ const TeamSection = styled.section`
   padding: ${props => props.$isMiniMode ? '1rem' : '3rem 2rem'};
   color: #000;
   gap: ${props => props.$isMiniMode ? '1rem' : '2.5rem'};
-  
-  ${props => props.$side === 'left' && css`
-    background-color: #ccff00;
-  `}
-
-  ${props => props.$side === 'right' && css`
-    background-color: #ff9933;
-  `}
+  ${props => props.$side === 'left' && css`background-color: #ccff00;`}
+  ${props => props.$side === 'right' && css`background-color: #ff9933;`}
 `;
 
 const Scoreboard = styled.div`
@@ -92,10 +79,10 @@ const Scoreboard = styled.div`
 `;
 
 const TeamInfoContainer = styled.div`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: ${props => props.$isMiniMode ? '0.5rem' : '1.5rem'};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: ${props => props.$isMiniMode ? '0.5rem' : '1.5rem'};
 `;
 
 const TeamEmblem = styled.img`
@@ -176,11 +163,7 @@ const MatchListItem = styled.div`
   padding: 1rem;
   border-bottom: 1px solid #444;
   font-size: 1.2rem;
-
-  &.current {
-    background-color: rgba(255, 255, 255, 0.1);
-    font-weight: bold;
-  }
+  &.current { background-color: rgba(255, 255, 255, 0.1); font-weight: bold; }
 `;
 
 function PlayerNameplate({ player, isCaptain, goals, isHighlight }) {
@@ -195,170 +178,131 @@ function PlayerNameplate({ player, isCaptain, goals, isHighlight }) {
 
 function BroadcastPage({ isMiniMode = false }) {
   const { classId } = useClassStore();
-  const { players, teams, currentSeason } = useLeagueStore();
-  const [matchForDisplay, setMatchForDisplay] = useState(null);
-  const [allMatches, setAllMatches] = useState([]);
+  // store에서 matches를 직접 가져옴 (중복 Firestore 구독 제거)
+  const { players, teams, currentSeason, matches: storeMatches } = useLeagueStore();
+
+  const [broadcastMatchId, setBroadcastMatchId] = useState(null);
+  const broadcastMatchIdRef = useRef(null);
+
   const [lastScorerId, setLastScorerId] = useState(null);
   const prevScorersRef = useRef({});
+  const prevMatchesRef = useRef([]);
+
   const [timeLeft, setTimeLeft] = useState(150);
   const timerIntervalRef = useRef(null);
   const audioRef = useRef(new Audio(whistleSound));
   const confettiCanvasRef = useRef(null);
-  const prevMatchesRef = useRef([]);
   const [showWinnerPage, setShowWinnerPage] = useState(false);
-  // [추가] 기록원이 지정한 방송 경기 ID (season.broadcastMatchId)
-  const [broadcastMatchId, setBroadcastMatchId] = useState(null);
-  const allMatchesRef = useRef([]);
 
-  // 휘슬 소리 재생 함수
-  const playWhistle = () => {
-    audioRef.current.volume = 1.0; // 볼륨 확보
-    audioRef.current.play().catch(error => console.error("오디오 재생 오류:", error));
-  };
-
+  // season 완료 감지
   useEffect(() => {
-    if (currentSeason?.status === 'completed') {
-      setShowWinnerPage(true);
-    } else {
-      setShowWinnerPage(false);
-    }
+    if (currentSeason?.status === 'completed') setShowWinnerPage(true);
+    else setShowWinnerPage(false);
   }, [currentSeason]);
 
-  // [추가] season.broadcastMatchId 실시간 구독 → 기록원이 다음 경기로 누를 때 방송 화면 동기화
+  // season.broadcastMatchId 실시간 구독 (이것만 직접 구독)
   useEffect(() => {
     if (!classId || !currentSeason?.id) return;
     const seasonRef = doc(db, 'classes', classId, 'seasons', currentSeason.id);
     const unsubscribe = onSnapshot(seasonRef, (snap) => {
       if (snap.exists()) {
-        const data = snap.data();
-        setBroadcastMatchId(data.broadcastMatchId || null);
+        const newBId = snap.data().broadcastMatchId || null;
+        broadcastMatchIdRef.current = newBId;
+        setBroadcastMatchId(newBId);
       }
     });
     return () => unsubscribe();
   }, [classId, currentSeason?.id]);
 
-  // [추가] broadcastMatchId 또는 allMatches 변경 시 방송 경기 동기화
-  useEffect(() => {
-    if (allMatchesRef.current.length === 0) return;
-    const matches = allMatchesRef.current;
+  // store matches 기반 정렬
+  const allMatches = useMemo(() => {
+    if (!storeMatches) return [];
+    return [...storeMatches].sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999));
+  }, [storeMatches]);
 
-    // 진행중 경기 최우선
-    const inProgress = matches.find(m => m.status === '진행중');
-    if (inProgress) { setMatchForDisplay(inProgress); return; }
-
-    // 기록원이 지정한 경기
+  // matchForDisplay 결정 (broadcastMatchId 최우선)
+  const matchForDisplay = useMemo(() => {
+    if (allMatches.length === 0) return null;
     if (broadcastMatchId) {
-      const target = matches.find(m => m.id === broadcastMatchId);
-      if (target) { setMatchForDisplay(target); return; }
+      const target = allMatches.find(m => m.id === broadcastMatchId);
+      if (target) return target;
     }
+    const inProgress = allMatches.find(m => m.status === '진행중');
+    if (inProgress) return inProgress;
+    const upcoming = allMatches.find(m => m.status === '예정');
+    if (upcoming) return upcoming;
+    return { id: 'end', status: '종료' };
+  }, [allMatches, broadcastMatchId]);
 
-    // fallback: matchOrder 기준 첫 번째 예정 경기
-    const upcoming = [...matches]
-      .sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999))
-      .find(m => m.status === '예정');
-    setMatchForDisplay(upcoming || { id: 'end', status: '종료' });
-  }, [broadcastMatchId, allMatches]);
-
+  // 득점 하이라이트
   useEffect(() => {
-    if (!classId || !currentSeason) return;
-
-    const matchesRef = collection(db, 'classes', classId, 'matches');
-    const q = query(matchesRef, where("seasonId", "==", currentSeason.id));
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const matchesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const prevMatches = prevMatchesRef.current;
-
-      // 1. 방금 종료된 경기 감지
-      const justCompletedMatch = matchesData.find(match => {
-        const prevMatch = prevMatches.find(p => p.id === match.id);
-        return prevMatch && prevMatch.status !== '완료' && match.status === '완료';
-      });
-
-      if (justCompletedMatch) {
-        // 경기 종료 시: 결과 화면 유지 (자동 전환 제거 — 기록원이 "다음 경기로" 눌러야 전환)
-        setMatchForDisplay(justCompletedMatch);
-        const { teamA_score, teamB_score } = justCompletedMatch;
-        if (teamA_score !== teamB_score) {
-          if (!confettiCanvasRef.current) {
-            const canvas = document.createElement('canvas');
-            canvas.style.position = 'fixed';
-            canvas.style.top = 0; canvas.style.left = 0;
-            canvas.style.width = '100vw'; canvas.style.height = '100vh';
-            canvas.style.pointerEvents = 'none'; canvas.style.zIndex = 9999;
-            document.body.appendChild(canvas);
-            confettiCanvasRef.current = canvas;
-          }
-          const myConfetti = confetti.create(confettiCanvasRef.current, { resize: true, useWorker: true });
-          const winningSide = teamA_score > teamB_score ? 'left' : 'right';
-          const fire = (particleRatio, opts) => myConfetti({ ...opts, origin: { x: winningSide === 'left' ? 0.25 : 0.75, y: 0.6 }, particleCount: Math.floor(200 * particleRatio) });
-          fire(0.25, { spread: 26, startVelocity: 55 }); fire(0.2, { spread: 60 }); fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 }); fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 }); fire(0.1, { spread: 120, startVelocity: 45 });
-
-          setTimeout(() => {
-            if (confettiCanvasRef.current) {
-              document.body.removeChild(confettiCanvasRef.current);
-              confettiCanvasRef.current = null;
-            }
-          }, 4000);
-        }
-
-      } else {
-        // 평소 상태 (새로고침 등) — broadcastMatchId useEffect가 처리하므로 여기서는 allMatches만 갱신
-      }
-
-      // [수정] matchOrder 기준으로 정렬 (경기장 1개 운영 순서 보장)
-      const sortedByOrder = [...matchesData].sort((a, b) => (a.matchOrder ?? 9999) - (b.matchOrder ?? 9999));
-      allMatchesRef.current = sortedByOrder;
-      setAllMatches(sortedByOrder);
-      prevMatchesRef.current = matchesData;
-    });
-    return () => unsubscribe();
-  }, [currentSeason, classId]);
-
-  useEffect(() => {
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-
-    if (matchForDisplay?.status === '진행중' && matchForDisplay.startTime) {
-      const startTime = matchForDisplay.startTime.toMillis();
-      const gameDuration = 150 * 1000;
-
-      timerIntervalRef.current = setInterval(() => {
-        const now = Date.now();
-        const elapsed = now - startTime;
-        const remaining = Math.max(0, gameDuration - elapsed);
-        setTimeLeft(Math.round(remaining / 1000));
-
-        if (remaining === 0) {
-          clearInterval(timerIntervalRef.current);
-          playWhistle(); // 타임아웃 시 소리 재생 (경기 종료 알림)
-        }
-      }, 1000);
-    } else if (matchForDisplay?.status === '예정') {
-      setTimeLeft(150);
-    }
-
-    return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    };
-  }, [matchForDisplay]);
-
-  useEffect(() => {
-    if (matchForDisplay && matchForDisplay.scorers) {
-      const currentScorers = matchForDisplay.scorers;
-      const prevScorers = prevScorersRef.current;
+    if (matchForDisplay?.scorers) {
+      const current = matchForDisplay.scorers;
+      const prev = prevScorersRef.current;
       let scorerId = null;
-      for (const id in currentScorers) {
-        if (currentScorers[id] > (prevScorers[id] || 0)) {
-          scorerId = id;
-          break;
-        }
+      for (const id in current) {
+        if (current[id] > (prev[id] || 0)) { scorerId = id; break; }
       }
       if (scorerId) {
         setLastScorerId(scorerId);
         setTimeout(() => setLastScorerId(null), 500);
       }
-      prevScorersRef.current = currentScorers;
+      prevScorersRef.current = current;
     }
+  }, [matchForDisplay]);
+
+  // 경기 종료 폭죽 (store matches 변화 감지)
+  useEffect(() => {
+    const prevMatches = prevMatchesRef.current;
+    if (prevMatches.length === 0) { prevMatchesRef.current = allMatches; return; }
+
+    const justCompleted = allMatches.find(m => {
+      const prev = prevMatches.find(p => p.id === m.id);
+      return prev && prev.status !== '완료' && m.status === '완료';
+    });
+
+    if (justCompleted) {
+      const { teamA_score, teamB_score } = justCompleted;
+      if (teamA_score !== teamB_score) {
+        if (!confettiCanvasRef.current) {
+          const canvas = document.createElement('canvas');
+          canvas.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
+          document.body.appendChild(canvas);
+          confettiCanvasRef.current = canvas;
+        }
+        const myConfetti = confetti.create(confettiCanvasRef.current, { resize: true, useWorker: true });
+        const side = teamA_score > teamB_score ? 0.25 : 0.75;
+        const fire = (r, o) => myConfetti({ ...o, origin: { x: side, y: 0.6 }, particleCount: Math.floor(200 * r) });
+        fire(0.25, { spread: 26, startVelocity: 55 }); fire(0.2, { spread: 60 });
+        fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 }); fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
+        fire(0.1, { spread: 120, startVelocity: 45 });
+        setTimeout(() => {
+          if (confettiCanvasRef.current) { document.body.removeChild(confettiCanvasRef.current); confettiCanvasRef.current = null; }
+        }, 4000);
+      }
+    }
+    prevMatchesRef.current = allMatches;
+  }, [allMatches]);
+
+  // 타이머
+  useEffect(() => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (matchForDisplay?.status === '진행중' && matchForDisplay.startTime) {
+      const startTime = matchForDisplay.startTime.toMillis();
+      const gameDuration = 150 * 1000;
+      timerIntervalRef.current = setInterval(() => {
+        const remaining = Math.max(0, gameDuration - (Date.now() - startTime));
+        setTimeLeft(Math.round(remaining / 1000));
+        if (remaining === 0) {
+          clearInterval(timerIntervalRef.current);
+          audioRef.current.volume = 1.0;
+          audioRef.current.play().catch(() => { });
+        }
+      }, 1000);
+    } else if (matchForDisplay?.status === '예정') {
+      setTimeLeft(150);
+    }
+    return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
   }, [matchForDisplay]);
 
   const teamA = useMemo(() => teams.find(t => t.id === matchForDisplay?.teamA_id), [teams, matchForDisplay]);
@@ -367,32 +311,32 @@ function BroadcastPage({ isMiniMode = false }) {
   const teamBMembers = useMemo(() => teamB?.members.map(id => players.find(p => p.id === id)).filter(Boolean) || [], [teamB, players]);
   const scorers = useMemo(() => matchForDisplay?.scorers || {}, [matchForDisplay]);
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   const matchStatusText = useMemo(() => {
-    if (!matchForDisplay) return "로딩 중...";
-    if (timeLeft === 0 && matchForDisplay.status !== '완료') return "경기 종료";
-
+    if (!matchForDisplay) return '로딩 중...';
+    if (timeLeft === 0 && matchForDisplay.status !== '완료') return '경기 종료';
     switch (matchForDisplay.status) {
-      case '진행중':
-        return formatTime(timeLeft);
-      case '예정': return "경기 준비중";
-      case '완료': return "경기 종료";
-      case '종료': return "모든 경기 종료";
-      default: return "대기 중";
+      case '진행중': return formatTime(timeLeft);
+      case '예정': return '경기 준비중';
+      case '완료': return '경기 종료';
+      case '종료': return '모든 경기 종료';
+      default: return '대기 중';
     }
   }, [matchForDisplay, timeLeft]);
 
-  if (showWinnerPage) {
-    return <WinnerPage />;
-  }
+  if (showWinnerPage) return <WinnerPage />;
 
-  if (!currentSeason && !isMiniMode) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>시즌 정보를 불러오는 중입니다...</BroadcastWrapper>;
-  if (!matchForDisplay) return <BroadcastWrapper style={{ fontSize: '3rem', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>경기를 불러오는 중...</BroadcastWrapper>;
+  if (!currentSeason || !matchForDisplay) {
+    const msg = !currentSeason
+      ? (isMiniMode ? '시즌 준비중...' : '시즌 정보를 불러오는 중입니다...')
+      : (isMiniMode ? '경기 준비중...' : '경기를 불러오는 중...');
+    return (
+      <BroadcastWrapper style={{ justifyContent: 'center', alignItems: 'center', color: '#fff', fontSize: isMiniMode ? '1.2rem' : '3rem' }}>
+        <div>{msg}</div>
+      </BroadcastWrapper>
+    );
+  }
 
   return (
     <BroadcastWrapper $isMiniMode={isMiniMode}>
@@ -441,16 +385,16 @@ function BroadcastPage({ isMiniMode = false }) {
         <MatchListSection>
           <MatchListTitle>오늘의 경기</MatchListTitle>
           {allMatches.map(match => {
-            const teamAInfo = teams.find(t => t.id === match.teamA_id);
-            const teamBInfo = teams.find(t => t.id === match.teamB_id);
-            if (!teamAInfo || !teamBInfo) return null;
+            const tA = teams.find(t => t.id === match.teamA_id);
+            const tB = teams.find(t => t.id === match.teamB_id);
+            if (!tA || !tB) return null;
             return (
               <MatchListItem key={match.id} className={match.id === matchForDisplay.id ? 'current' : ''}>
-                <span>{teamAInfo.teamName}</span>
+                <span>{tA.teamName}</span>
                 <strong>{match.status === '완료' ? `${match.teamA_score} : ${match.teamB_score}` : 'VS'}</strong>
-                <span>{teamBInfo.teamName}</span>
+                <span>{tB.teamName}</span>
               </MatchListItem>
-            )
+            );
           })}
         </MatchListSection>
       )}

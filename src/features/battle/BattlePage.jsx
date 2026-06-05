@@ -9,7 +9,7 @@ import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
-import BattleSkillEffect from './BattleSkillEffect';
+import BattleSkillEffect, { DotDamageEffect } from './BattleSkillEffect';
 
 // --- Styled Components & Keyframes ---
 
@@ -346,6 +346,7 @@ function BattlePage() {
     const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
+    const [dotEffect, setDotEffect] = useState(null); // { target: 'my'|'opponent', type: 'burn'|'poison' }
 
     const [actionSubMenu, setActionSubMenu] = useState(null);
     const [quizPool, setQuizPool] = useState([]);
@@ -483,18 +484,14 @@ function BattlePage() {
                 const isAttackerMe = battleState.turn === myPlayerData.id;
                 const actionType = battleState.attackerAction ? battleState.attackerAction.toUpperCase() : '';
 
-                if (actionType === 'TACKLE' || actionType === 'QUICK_DISTURBANCE') {
-                    const animType = actionType === 'TACKLE' ? 'TACKLE' : 'ZIGZAG';
-
-                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: animType }));
-                    else setAnimState(prev => ({ ...prev, opponent: animType }));
-
-                    const hitTiming = animType === 'TACKLE' ? 200 : 350;
+                if (actionType === 'TACKLE') {
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'TACKLE' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'TACKLE' }));
 
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
-                    }, hitTiming);
+                    }, 200);
 
                     setTimeout(() => {
                         setAnimState({ my: null, opponent: null });
@@ -927,16 +924,29 @@ function BattlePage() {
 
         try {
             if (isMyTurn) {
-                const updates = { attackerAction: actionId };
                 const myRole = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
                 const opponentRole = myRole === 'challenger' ? 'opponent' : 'challenger';
-                const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
-
                 const myPet = battleState[myRole].pet;
+
+                // recharging(용의 숨결 반동) 중이면 자동으로 TACKLE 강제 (휴식 턴)
+                let resolvedActionId = actionId;
+                if (myPet.status?.recharging) {
+                    resolvedActionId = 'TACKLE'; // 실질적으로 아무것도 못 함
+                    delete myPet.status.recharging;
+                }
+
+                const updates = { attackerAction: resolvedActionId };
+                const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
 
                 if (opponentIsStunned) {
                     updates.defenderAction = 'STUNNED';
                     updates.log = `${myPet.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
+                }
+
+                // recharging이었다면 log에 휴식 표시
+                if (myPet.status?.recharging === false && resolvedActionId === 'TACKLE') {
+                    updates.log = `💤 ${myPet.name}은(는) 반동으로 지쳐 쉬었습니다!`;
+                    updates.defenderAction = updates.defenderAction || 'BRACE';
                 }
 
                 await updateDoc(battleRef, updates);
@@ -1034,6 +1044,63 @@ function BattlePage() {
                     attacker.pet.sp = Math.max(0, attacker.pet.sp - actualCost);
                 }
 
+                // ─────────────────────────────────────────────────────────
+                // 📌 상태이상 도트딜 & 턴 종료 처리 (스킬 발동 후, 승패 판정 전)
+                // ─────────────────────────────────────────────────────────
+
+                // 1. focusCharge 일괄 소비 (스킬별 개별 처리 제거 → 여기서 통일)
+                //    calculateDamage 내부에서 이미 2배 적용됨. 이 턴에 소비.
+                if (attacker.pet.status?.focusCharge) {
+                    attacker.pet.status.focusCharge = 0;
+                }
+
+                // 2. 화상(burned) 도트딜 — 방어자에게 적용
+                //    최대 체력의 8%. UPHWA 소비 후 이미 burned가 false로 바뀌었으면 스킵.
+                if (defender.pet.status?.burned) {
+                    const burnDmg = Math.round(defender.pet.maxHp * 0.08);
+                    defender.pet.hp = Math.max(0, defender.pet.hp - burnDmg);
+                    log += ` 🔥 [화상 도트] ${burnDmg}의 화상 피해!`;
+                    // UI 이펙트 트리거 (배틀 결과 수신 후)
+                    const defenderIsMe = isChallengerAttacker
+                        ? (myPlayerData?.id === (isChallengerAttacker ? data.opponent?.id : data.challenger?.id))
+                        : true;
+                    setTimeout(() => {
+                        setDotEffect({ target: isChallengerAttacker ? 'opponent' : 'my', type: 'burn' });
+                        setTimeout(() => setDotEffect(null), 900);
+                    }, 300);
+                }
+
+                // 3. 중독(poisoned) 도트딜 — 방어자에게 적용
+                //    최대 체력의 6%. 3턴 후 자동 만료.
+                if (defender.pet.status?.poisoned) {
+                    const poisonDmg = Math.round(defender.pet.maxHp * 0.06);
+                    defender.pet.hp = Math.max(0, defender.pet.hp - poisonDmg);
+                    log += ` ☠️ [중독 도트] ${poisonDmg}의 독 피해!`;
+                    setTimeout(() => {
+                        setDotEffect({ target: isChallengerAttacker ? 'opponent' : 'my', type: 'poison' });
+                        setTimeout(() => setDotEffect(null), 900);
+                    }, 600);
+
+                    // 중독 지속 턴 관리
+                    defender.pet.status.poisonTurns = (defender.pet.status.poisonTurns ?? 3) - 1;
+                    if (defender.pet.status.poisonTurns <= 0) {
+                        delete defender.pet.status.poisoned;
+                        delete defender.pet.status.poisonTurns;
+                        log += ` (중독이 풀렸습니다.)`;
+                    }
+                }
+
+                // 4. defenseUp 지속 턴 관리 — 공격자(행동한 쪽) 기준 소모
+                //    2턴 지속. 매 자신의 행동 턴마다 1씩 감소.
+                if (attacker.pet.status?.defenseUp) {
+                    attacker.pet.status.defenseUpTurns = (attacker.pet.status.defenseUpTurns ?? 2) - 1;
+                    if (attacker.pet.status.defenseUpTurns <= 0) {
+                        delete attacker.pet.status.defenseUp;
+                        delete attacker.pet.status.defenseUpTurns;
+                        log += ` (${attacker.pet.name}의 방어력 강화가 풀렸습니다.)`;
+                    }
+                }
+
                 // [성실한 나무 칭호 효과 버프] 턴 종료 시 행동한 펫 최대체력의 5% 자가 회복 발동
                 if (attacker.equippedTitle === 'diligent_tree') {
                     const heal = Math.floor(attacker.pet.maxHp * 0.05);
@@ -1041,6 +1108,9 @@ function BattlePage() {
                     log += ` 🌳 [성실한 나무 효과로 HP +${heal} 회복]`;
                 }
 
+                // ─────────────────────────────────────────────────────────
+                // 승패 판정 (도트딜 포함 최종 HP 기준)
+                // ─────────────────────────────────────────────────────────
                 const isFinished = defender.pet.hp <= 0;
                 let winnerId = null;
                 if (isFinished) {
@@ -1188,6 +1258,15 @@ function BattlePage() {
                                 <PetContainer $isHit={hitState.opponent} $animType={animState.opponent} $isMine={false}>
                                     {opponentInfo.pet.status?.stunned && <StunEffect />}
                                     {opponentInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
+                                    {opponentInfo.pet.status?.burned && <RechargeEffect style={{ color: '#ff6b35' }}>🔥 화상</RechargeEffect>}
+                                    {opponentInfo.pet.status?.poisoned && <RechargeEffect style={{ color: '#9775fa', top: 'auto', bottom: '36px' }}>☠️ 중독</RechargeEffect>}
+                                    {opponentInfo.pet.status?.defenseUp && <RechargeEffect style={{ color: '#339af0', top: 'auto', bottom: '60px' }}>🛡️ 방어↑</RechargeEffect>}
+                                    {opponentInfo.pet.status?.blind && <RechargeEffect style={{ color: '#868e96', top: 'auto', bottom: '84px' }}>🙈 실명</RechargeEffect>}
+                                    {dotEffect?.target === 'opponent' && (
+                                        <DotDamageEffect $type={dotEffect.type} $top="15%" $left="55%">
+                                            {dotEffect.type === 'burn' ? '🔥' : '☠️'}
+                                        </DotDamageEffect>
+                                    )}
                                     {battleState.chat?.[opponentInfo.id] && <ChatBubble $isMine={false} $isCorrect={battleState.chat[opponentInfo.id].isCorrect}>{battleState.chat[opponentInfo.id].text}</ChatBubble>}
                                     <PetImage src={getPetImageSrc(opponentInfo, false)} alt="상대 펫" $isFainted={opponentInfo.pet.hp <= 0} />
                                 </PetContainer>
@@ -1197,6 +1276,15 @@ function BattlePage() {
                                 <PetContainer $isHit={hitState.my} $animType={animState.my} $isMine={true}>
                                     {myInfo.pet.status?.stunned && <StunEffect />}
                                     {myInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
+                                    {myInfo.pet.status?.burned && <RechargeEffect style={{ color: '#ff6b35' }}>🔥 화상</RechargeEffect>}
+                                    {myInfo.pet.status?.poisoned && <RechargeEffect style={{ color: '#9775fa', top: 'auto', bottom: '36px' }}>☠️ 중독</RechargeEffect>}
+                                    {myInfo.pet.status?.defenseUp && <RechargeEffect style={{ color: '#339af0', top: 'auto', bottom: '60px' }}>🛡️ 방어↑</RechargeEffect>}
+                                    {myInfo.pet.status?.blind && <RechargeEffect style={{ color: '#868e96', top: 'auto', bottom: '84px' }}>🙈 실명</RechargeEffect>}
+                                    {dotEffect?.target === 'my' && (
+                                        <DotDamageEffect $type={dotEffect.type} $top="15%" $left="45%">
+                                            {dotEffect.type === 'burn' ? '🔥' : '☠️'}
+                                        </DotDamageEffect>
+                                    )}
                                     {battleState.chat?.[myInfo.id] && <ChatBubble $isMine={true} $isCorrect={battleState.chat[myInfo.id].isCorrect}>{battleState.chat[myInfo.id].text}</ChatBubble>}
                                     <PetImage src={getPetImageSrc(myInfo, true)} alt="나의 펫" $isFainted={myInfo.pet.hp <= 0} />
                                 </PetContainer>

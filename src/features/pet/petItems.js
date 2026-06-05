@@ -52,7 +52,7 @@ export const PET_ITEMS = {
         id: 'pet_egg',
         name: '펫 알',
         description: '어떤 펫이 부화할지 모르는 신비한 알입니다. 새로운 파트너를 만나보세요!',
-        price: 10000,
+        price: 5000,
         image: petEggImg,
         icon: petEggImg,
     },

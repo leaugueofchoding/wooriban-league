@@ -1259,6 +1259,96 @@ export async function updateMatchStatus(classId, matchId, newStatus) {
   await updateDoc(matchRef, { status: newStatus });
 }
 
+/**
+ * 경기 결과 수정 + 포인트 재정산
+ * 기존 승/패 포인트를 회수하고 새 결과에 따라 재지급합니다.
+ */
+export async function updateMatchScoresWithPointAdjust(classId, matchId, newScores, newScorers) {
+  if (!classId) return;
+
+  const VICTORY_REWARD = 50;
+  const DEFEAT_REWARD = 15;
+  const DRAW_REWARD = 0;
+
+  const matchRef = doc(db, 'classes', classId, 'matches', matchId);
+  const matchSnap = await getDoc(matchRef);
+  if (!matchSnap.exists()) throw new Error('경기를 찾을 수 없습니다.');
+  const matchData = matchSnap.data();
+
+  const batch = writeBatch(db);
+
+  // 1. 점수 및 scorers 업데이트
+  batch.update(matchRef, {
+    teamA_score: newScores.a,
+    teamB_score: newScores.b,
+    scorers: newScorers || {},
+  });
+
+  // 2. 기존 결과 기반 포인트 회수
+  const prevA = matchData.teamA_score ?? 0;
+  const prevB = matchData.teamB_score ?? 0;
+  let prevWinnerId = null, prevLoserId = null, prevDraw = false;
+  if (prevA > prevB) { prevWinnerId = matchData.teamA_id; prevLoserId = matchData.teamB_id; }
+  else if (prevB > prevA) { prevWinnerId = matchData.teamB_id; prevLoserId = matchData.teamA_id; }
+  else prevDraw = true;
+
+  const getTeamMembers = async (teamId) => {
+    if (!teamId) return [];
+    const tSnap = await getDoc(doc(db, 'classes', classId, 'teams', teamId));
+    if (!tSnap.exists()) return [];
+    return tSnap.data().members || [];
+  };
+
+  const adjustPoints = async (teamId, deductAmount, addAmount, deductReason, addReason) => {
+    const members = await getTeamMembers(teamId);
+    for (const memberId of members) {
+      const pRef = doc(db, 'classes', classId, 'players', memberId);
+      const pSnap = await getDoc(pRef);
+      if (!pSnap.exists()) continue;
+      const pData = pSnap.data();
+      const netDiff = addAmount - deductAmount;
+      if (netDiff === 0) continue;
+      batch.update(pRef, { points: increment(netDiff) });
+      const reason = netDiff > 0
+        ? `경기 결과 수정 (추가 +${addAmount}P${deductAmount ? ` / 회수 -${deductAmount}P` : ''})`
+        : `경기 결과 수정 (회수 -${deductAmount}P${addAmount ? ` / 추가 +${addAmount}P` : ''})`;
+      addPointHistory(classId, pData.authUid, pData.name, netDiff, reason);
+      createNotification(pData.authUid, `${netDiff > 0 ? '+' : ''}${netDiff}P 경기 결과 수정`, reason, 'point');
+    }
+  };
+
+  // 새 결과 기반 승/패 팀 결정
+  let newWinnerId = null, newLoserId = null, newDraw = false;
+  if (newScores.a > newScores.b) { newWinnerId = matchData.teamA_id; newLoserId = matchData.teamB_id; }
+  else if (newScores.b > newScores.a) { newWinnerId = matchData.teamB_id; newLoserId = matchData.teamA_id; }
+  else newDraw = true;
+
+  // 팀별 예전 지급액 vs 새 지급액 계산
+  const getOldReward = (teamId) => {
+    if (prevDraw) return 0; // 무승부 시 수당 없음(원래 로직)
+    if (teamId === prevWinnerId) return VICTORY_REWARD;
+    if (teamId === prevLoserId) return DEFEAT_REWARD;
+    return 0;
+  };
+  const getNewReward = (teamId) => {
+    if (newDraw) return DRAW_REWARD;
+    if (teamId === newWinnerId) return VICTORY_REWARD;
+    if (teamId === newLoserId) return DEFEAT_REWARD;
+    return 0;
+  };
+
+  const allTeamIds = [...new Set([matchData.teamA_id, matchData.teamB_id].filter(Boolean))];
+  for (const teamId of allTeamIds) {
+    const oldR = getOldReward(teamId);
+    const newR = getNewReward(teamId);
+    if (oldR !== newR) {
+      await adjustPoints(teamId, oldR, newR, `이전 수당 회수`, `새 결과 수당`);
+    }
+  }
+
+  await batch.commit();
+}
+
 export async function deleteNotification(notificationId) {
   const notificationRef = doc(db, 'notifications', notificationId);
   await deleteDoc(notificationRef);
@@ -3947,10 +4037,11 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
   }
 
-  // ▼▼▼ [추가] 주말(토·일) 배틀 차단 ▼▼▼
+  // ▼▼▼ [추가] 주말(토·일) 배틀 차단 (관리자는 제외) ▼▼▼
+  const isAdminChallenger = challengerObj?.role === 'admin';
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=일, 6=토
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
+  if (!isAdminChallenger && (dayOfWeek === 0 || dayOfWeek === 6)) {
     throw new Error("주말에는 배틀을 진행할 수 없습니다. 🗓️\n월요일에 다시 도전해보세요!");
   }
 
@@ -4118,7 +4209,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
   if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
   if (opponentPet.hp <= 0) throw new Error("상대방의 펫이 기절 상태라 대결을 신청할 수 없습니다.");
 
-  // ▼▼▼ 하루 배틀 횟수 제한 로직 (펫별 10회) ▼▼▼
+  // ▼▼▼ 하루 배틀 횟수 제한 로직 (펫별 10회, 관리자 제외) ▼▼▼
   const todayStr = new Date().toLocaleDateString();
   let dailyCount = challengerPet.dailyBattleCount || 0;
 
@@ -4127,8 +4218,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     dailyCount = 0;
   }
 
-  // 10회 이상이면 차단 (안내 문구 출력)
-  if (dailyCount >= 10) {
+  // 10회 이상이면 차단 (관리자는 무제한)
+  if (!isAdminChallenger && dailyCount >= 10) {
     throw new Error(`'${challengerPet.name}'(은)는 오늘 너무 지쳤어요! 🛌\n파트너펫을 교체하여 배틀을 진행해주세요.`);
   }
 
@@ -4544,7 +4635,7 @@ export async function renamePetWithItem(classId, playerId, petId, newName) {
 // =====================================================
 export async function releasePet(classId, playerId, petId) {
   if (!classId) throw new Error('학급 정보가 없습니다.');
-  const RELEASE_REWARD = 5000;
+  const RELEASE_REWARD = 2500;
   const playerRef = doc(db, 'classes', classId, 'players', playerId);
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);

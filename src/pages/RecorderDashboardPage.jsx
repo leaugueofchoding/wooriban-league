@@ -11,6 +11,7 @@ import {
     updateMatchStatus,
     updateMatchStartTime,
     updateMatchScores,
+    updateMatchScoresWithPointAdjust,
     updateSeason
 } from '../api/firebase.js';
 import { updateDoc, doc } from "firebase/firestore";
@@ -564,6 +565,7 @@ function RecorderDashboardPage() {
     const [editingMatch, setEditingMatch] = useState(null); // { id, teamA_score, teamB_score, scorers }
     const [editScoreA, setEditScoreA] = useState(0);
     const [editScoreB, setEditScoreB] = useState(0);
+    const [editScorers, setEditScorers] = useState({}); // { playerId: goals }
 
     useEffect(() => {
         loadConfetti();
@@ -585,19 +587,32 @@ function RecorderDashboardPage() {
         setEditingMatch(match);
         setEditScoreA(match.teamA_score ?? 0);
         setEditScoreB(match.teamB_score ?? 0);
+        setEditScorers({ ...(match.scorers || {}) });
     };
 
-    const handleSaveEdit = async () => {
+    const handleSaveEdit = async (withPointAdjust) => {
         if (!editingMatch || !classId) return;
-        if (!window.confirm(`점수를 ${editScoreA} : ${editScoreB} 로 수정하시겠습니까?`)) return;
+        const confirmMsg = withPointAdjust
+            ? `점수를 ${editScoreA} : ${editScoreB} 로 수정하고 포인트를 재정산하시겠습니까?\n\n기존 승/패 수당이 회수되고, 새 결과에 따라 재지급됩니다.`
+            : `점수를 ${editScoreA} : ${editScoreB} 로 수정하시겠습니까? (포인트 변동 없음)`;
+        if (!window.confirm(confirmMsg)) return;
         try {
-            await updateMatchScores(
-                classId,
-                editingMatch.id,
-                { a: Number(editScoreA), b: Number(editScoreB) },
-                editingMatch.scorers || {},
-                currentUser?.uid
-            );
+            if (withPointAdjust) {
+                await updateMatchScoresWithPointAdjust(
+                    classId,
+                    editingMatch.id,
+                    { a: Number(editScoreA), b: Number(editScoreB) },
+                    editScorers
+                );
+            } else {
+                await updateMatchScores(
+                    classId,
+                    editingMatch.id,
+                    { a: Number(editScoreA), b: Number(editScoreB) },
+                    editScorers,
+                    null // recorder incentive 없음
+                );
+            }
             setEditingMatch(null);
             alert('결과가 수정되었습니다.');
         } catch (e) {
@@ -648,12 +663,16 @@ function RecorderDashboardPage() {
         return matches.some(m => m.status === '진행중');
     }, [matches]);
 
-    // [수정] 자동 포커스: 처음 로드 시 또는 activeMatchId가 없을 때만 최상단 경기 선택
-    // sortedMatches 재정렬 때마다 덮어쓰면 기록원이 선택한 경기가 날아가므로 조건 추가
+    // 자동 포커스: 처음 로드 시 또는 activeMatchId가 없을 때 최상단 경기 선택 + 방송화면 동기화
     useEffect(() => {
         if (sortedMatches.length > 0 && !activeMatchId) {
             const topMatch = sortedMatches[0];
             setActiveMatchId(topMatch.id);
+            // 방송화면도 즉시 동기화
+            if (classId && topMatch.seasonId) {
+                updateSeason(classId, topMatch.seasonId, { broadcastMatchId: topMatch.id })
+                    .catch(e => console.warn('broadcastMatchId 초기화 실패:', e));
+            }
         }
     }, [sortedMatches, activeMatchId]);
 
@@ -707,6 +726,7 @@ function RecorderDashboardPage() {
         // 현재 완료된 경기의 matchOrder 다음 경기를 찾아 자동 활성화
         const completedMatch = matches.find(m => m.id === lastCompletedMatchId);
         const completedOrder = completedMatch?.matchOrder ?? -1;
+        const seasonId = completedMatch?.seasonId || activeMatch?.seasonId;
 
         // matchOrder 기준으로 완료된 경기 다음 "예정" 경기 탐색
         const nextMatch = [...matches]
@@ -723,10 +743,10 @@ function RecorderDashboardPage() {
         if (targetMatch) {
             setActiveMatchId(targetMatch.id); // 자동 활성화 (파란 테두리)
 
-            // [추가] Firestore season.broadcastMatchId 저장 → 방송 화면 동기화
-            if (classId && activeMatch?.seasonId) {
+            // Firestore season.broadcastMatchId 저장 → 방송 화면 즉시 동기화
+            if (classId && (targetMatch.seasonId || seasonId)) {
                 try {
-                    await updateSeason(classId, activeMatch.seasonId, { broadcastMatchId: targetMatch.id });
+                    await updateSeason(classId, targetMatch.seasonId || seasonId, { broadcastMatchId: targetMatch.id });
                 } catch (e) {
                     console.warn('broadcastMatchId 저장 실패:', e);
                 }
@@ -838,7 +858,7 @@ function RecorderDashboardPage() {
                                         scoringMethod={scoringMethod}
                                         isAnyMatchInProgress={isAnyMatchInProgress}
                                         lastCompletedId={lastCompletedMatchId}
-                                        onCardClick={(matchId) => setActiveMatchId(prev => prev === matchId ? null : matchId)}
+                                        onCardClick={(matchId) => handleJumpToMatch(matchId)}
                                         isAdmin={isAdmin}
                                         onEditMatch={handleOpenEdit}
                                     />
@@ -849,45 +869,84 @@ function RecorderDashboardPage() {
                         )}
 
                         {/* [추가] 관리자 경기 결과 수정 모달 */}
-                        {editingMatch && isAdmin && (
-                            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                                <div style={{ background: 'white', borderRadius: '20px', padding: '2rem', width: '90%', maxWidth: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-                                    <h3 style={{ margin: '0 0 1.5rem 0', textAlign: 'center', color: '#343a40' }}>🛠 경기 결과 수정 (관리자)</h3>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem' }}>
-                                        <div style={{ flex: 1, textAlign: 'center' }}>
-                                            <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#495057', fontSize: '0.9rem' }}>
-                                                {teams.find(t => t.id === editingMatch.teamA_id)?.teamName ?? 'Team A'}
+                        {editingMatch && isAdmin && (() => {
+                            const eTeamA = teams.find(t => t.id === editingMatch.teamA_id);
+                            const eTeamB = teams.find(t => t.id === editingMatch.teamB_id);
+                            const eTeamAMembers = eTeamA?.members?.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+                            const eTeamBMembers = eTeamB?.members?.map(id => players.find(p => p.id === id)).filter(Boolean) || [];
+                            return (
+                                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                                    <div style={{ background: 'white', borderRadius: '20px', padding: '2rem', width: '90%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+                                        <h3 style={{ margin: '0 0 1.5rem 0', textAlign: 'center', color: '#343a40' }}>🛠 경기 결과 수정 (관리자)</h3>
+
+                                        {/* 스코어 입력 */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem' }}>
+                                            <div style={{ flex: 1, textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#495057', fontSize: '0.9rem' }}>{eTeamA?.teamName ?? 'Team A'}</div>
+                                                <input type="number" min="0" value={editScoreA} onChange={e => setEditScoreA(e.target.value)}
+                                                    style={{ width: '100%', textAlign: 'center', fontSize: '2rem', fontWeight: 900, padding: '0.5rem', border: '2px solid #dee2e6', borderRadius: '12px' }} />
                                             </div>
-                                            <input
-                                                type="number" min="0"
-                                                value={editScoreA}
-                                                onChange={e => setEditScoreA(e.target.value)}
-                                                style={{ width: '100%', textAlign: 'center', fontSize: '2rem', fontWeight: 900, padding: '0.5rem', border: '2px solid #dee2e6', borderRadius: '12px' }}
-                                            />
-                                        </div>
-                                        <span style={{ fontWeight: 900, color: '#adb5bd', fontSize: '1.5rem' }}>:</span>
-                                        <div style={{ flex: 1, textAlign: 'center' }}>
-                                            <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#495057', fontSize: '0.9rem' }}>
-                                                {teams.find(t => t.id === editingMatch.teamB_id)?.teamName ?? 'Team B'}
+                                            <span style={{ fontWeight: 900, color: '#adb5bd', fontSize: '1.5rem' }}>:</span>
+                                            <div style={{ flex: 1, textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#495057', fontSize: '0.9rem' }}>{eTeamB?.teamName ?? 'Team B'}</div>
+                                                <input type="number" min="0" value={editScoreB} onChange={e => setEditScoreB(e.target.value)}
+                                                    style={{ width: '100%', textAlign: 'center', fontSize: '2rem', fontWeight: 900, padding: '0.5rem', border: '2px solid #dee2e6', borderRadius: '12px' }} />
                                             </div>
-                                            <input
-                                                type="number" min="0"
-                                                value={editScoreB}
-                                                onChange={e => setEditScoreB(e.target.value)}
-                                                style={{ width: '100%', textAlign: 'center', fontSize: '2rem', fontWeight: 900, padding: '0.5rem', border: '2px solid #dee2e6', borderRadius: '12px' }}
-                                            />
                                         </div>
-                                    </div>
-                                    <p style={{ fontSize: '0.85rem', color: '#868e96', textAlign: 'center', marginBottom: '1.5rem' }}>
-                                        ⚠️ 결과 수정 시 기존 포인트는 재지급되지 않습니다.<br />포인트 조정은 관리자 패널에서 별도로 해주세요.
-                                    </p>
-                                    <div style={{ display: 'flex', gap: '0.8rem' }}>
-                                        <button onClick={() => setEditingMatch(null)} style={{ flex: 1, padding: '0.8rem', borderRadius: '10px', border: '1px solid #dee2e6', background: '#f8f9fa', cursor: 'pointer', fontWeight: 700, color: '#495057' }}>취소</button>
-                                        <button onClick={handleSaveEdit} style={{ flex: 2, padding: '0.8rem', borderRadius: '10px', border: 'none', background: '#339af0', color: 'white', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>💾 저장</button>
+
+                                        {/* 득점자 편집 */}
+                                        <div style={{ marginBottom: '1.5rem' }}>
+                                            <div style={{ fontWeight: 700, color: '#495057', marginBottom: '0.8rem', fontSize: '0.95rem', borderBottom: '2px solid #e9ecef', paddingBottom: '0.4rem' }}>⚽ 득점자 수정</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#868e96', marginBottom: '0.5rem' }}>{eTeamA?.teamName}</div>
+                                                    {eTeamAMembers.map(p => (
+                                                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.6rem', background: '#f8f9fa', borderRadius: '8px', marginBottom: '0.4rem' }}>
+                                                            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{p.name}</span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <button onClick={() => setEditScorers(prev => { const v = Math.max(0, (prev[p.id] || 0) - 1); const n = { ...prev }; if (v === 0) delete n[p.id]; else n[p.id] = v; return n; })}
+                                                                    style={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #dee2e6', background: '#fff', cursor: 'pointer', fontWeight: 900, fontSize: '1rem', lineHeight: 1 }}>-</button>
+                                                                <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 800 }}>{editScorers[p.id] || 0}</span>
+                                                                <button onClick={() => setEditScorers(prev => ({ ...prev, [p.id]: (prev[p.id] || 0) + 1 }))}
+                                                                    style={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #dee2e6', background: '#dbe4ff', cursor: 'pointer', fontWeight: 900, fontSize: '1rem', lineHeight: 1, color: '#364fc7' }}>+</button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#868e96', marginBottom: '0.5rem' }}>{eTeamB?.teamName}</div>
+                                                    {eTeamBMembers.map(p => (
+                                                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.6rem', background: '#f8f9fa', borderRadius: '8px', marginBottom: '0.4rem' }}>
+                                                            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{p.name}</span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <button onClick={() => setEditScorers(prev => { const v = Math.max(0, (prev[p.id] || 0) - 1); const n = { ...prev }; if (v === 0) delete n[p.id]; else n[p.id] = v; return n; })}
+                                                                    style={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #dee2e6', background: '#fff', cursor: 'pointer', fontWeight: 900, fontSize: '1rem', lineHeight: 1 }}>-</button>
+                                                                <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 800 }}>{editScorers[p.id] || 0}</span>
+                                                                <button onClick={() => setEditScorers(prev => ({ ...prev, [p.id]: (prev[p.id] || 0) + 1 }))}
+                                                                    style={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #dee2e6', background: '#dbe4ff', cursor: 'pointer', fontWeight: 900, fontSize: '1rem', lineHeight: 1, color: '#364fc7' }}>+</button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: '0.8rem', flexDirection: 'column' }}>
+                                            <div style={{ display: 'flex', gap: '0.8rem' }}>
+                                                <button onClick={() => setEditingMatch(null)} style={{ flex: 1, padding: '0.8rem', borderRadius: '10px', border: '1px solid #dee2e6', background: '#f8f9fa', cursor: 'pointer', fontWeight: 700, color: '#495057' }}>취소</button>
+                                                <button onClick={() => handleSaveEdit(false)} style={{ flex: 2, padding: '0.8rem', borderRadius: '10px', border: 'none', background: '#868e96', color: 'white', cursor: 'pointer', fontWeight: 800, fontSize: '0.95rem' }}>💾 저장 (포인트 유지)</button>
+                                            </div>
+                                            <button onClick={() => handleSaveEdit(true)} style={{ width: '100%', padding: '0.9rem', borderRadius: '10px', border: 'none', background: '#339af0', color: 'white', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>
+                                                💰 저장 + 포인트 재정산
+                                            </button>
+                                            <p style={{ fontSize: '0.8rem', color: '#868e96', textAlign: 'center', margin: 0 }}>
+                                                포인트 재정산: 기존 승/패 수당을 회수하고 새 결과로 재지급합니다.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </div>
                 )}
 

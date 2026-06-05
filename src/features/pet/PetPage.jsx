@@ -334,11 +334,44 @@ const SkillSlot = styled.div`
   background-color: ${props => props.$isSignature ? '#fff9db' : '#fff'};
   cursor: ${props => props.$isSignature ? 'not-allowed' : 'pointer'};
   transition: all 0.2s;
+  position: relative;
   
   &:hover { border-color: ${props => !props.$isSignature && '#339af0'}; transform: ${props => !props.$isSignature && 'translateY(-2px)'}; }
+  &:hover .skill-tooltip { display: block; }
   
   p { font-weight: 800; margin: 0 0 0.4rem 0; font-size: 0.95rem; }
   small { font-size: 0.8rem; color: #868e96; font-weight: 600; }
+
+  .skill-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #212529;
+    color: #fff;
+    padding: 0.6rem 0.8rem;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    pointer-events: none;
+    line-height: 1.5;
+    min-width: 160px;
+    white-space: normal;
+    text-align: center;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%; left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #212529;
+    }
+  }
 `;
 
 const SkillList = styled.div`
@@ -404,6 +437,7 @@ function PetPage() {
   const { classId } = useClassStore();
 
   const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
+  const isAdmin = myPlayerData?.role === 'admin';
 
   const [selectedPetId, setSelectedPetId] = useState(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -702,7 +736,17 @@ function PetPage() {
                           const skill = skillId ? SKILLS[skillId.toUpperCase()] : null;
                           return (
                             <SkillSlot key={index} $isSignature={skill?.id === signatureSkillId} $isSelected={selectedSkillSlot === index} onClick={() => handleSkillSlotClick(index)}>
-                              {skill ? (<><p>{skill.name}</p><small>SP {skill.cost}</small></>) : <p style={{ color: '#adb5bd' }}>비어있음</p>}
+                              {skill ? (
+                                <>
+                                  <p>{skill.name}</p>
+                                  <small>SP {skill.cost}</small>
+                                  <div className="skill-tooltip">
+                                    <strong>{skill.name}</strong> {skill.$isSignature ? '⭐ 고유스킬' : ''}<br />
+                                    {skill.description}<br />
+                                    <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span>
+                                  </div>
+                                </>
+                              ) : <p style={{ color: '#adb5bd' }}>비어있음</p>}
                             </SkillSlot>
                           );
                         })}
@@ -718,7 +762,13 @@ function PetPage() {
                             if (!skill) return null;
                             return (
                               <SkillSlot key={skillId} onClick={() => handleLearnedSkillClick(skillId)}>
-                                <p>{skill.name}</p><small>SP {skill.cost}</small>
+                                <p>{skill.name}</p>
+                                <small>SP {skill.cost}</small>
+                                <div className="skill-tooltip">
+                                  <strong>{skill.name}</strong><br />
+                                  {skill.description}<br />
+                                  <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span>
+                                </div>
                               </SkillSlot>
                             );
                           })}
@@ -746,6 +796,11 @@ function PetPage() {
                 const todayStr = new Date().toLocaleDateString();
                 const dailyCount = selectedPet.lastBattleDate === todayStr ? (selectedPet.dailyBattleCount || 0) : 0;
                 const vitaminCount = petInventory?.vitamin_jelly || 0;
+                if (isAdmin) return (
+                  <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.8rem', background: '#ebfbee', borderRadius: '10px', fontSize: '0.85rem', color: '#2f9e44', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>⚔️ 오늘 배틀: {dailyCount}회 <span style={{ color: '#868e96', fontWeight: 500 }}>(관리자 무제한)</span></span>
+                  </div>
+                );
                 return (
                   <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.8rem', background: dailyCount >= 10 ? '#fff5f5' : '#f8f9fa', borderRadius: '10px', fontSize: '0.85rem', color: dailyCount >= 10 ? '#e03131' : '#495057', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>⚔️ 오늘 배틀: {dailyCount} / 10회</span>

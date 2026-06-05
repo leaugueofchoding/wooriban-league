@@ -64,6 +64,20 @@ import monkey3_back from '@/assets/pets/monkey3_back.png';
 import monkey3_crunch from '@/assets/pets/monkey3_crunch.png';
 import monkey3_crunch_back from '@/assets/pets/monkey3_crunch_back.png';
 
+import fox1_portrait from '@/assets/pets/fox1_portrait.png';
+import fox1_back from '@/assets/pets/fox1_back.png';
+import fox1_crunch from '@/assets/pets/fox1_crunch.png';
+import fox1_crunch_back from '@/assets/pets/fox1_crunch_back.png';
+
+import fox2_portrait from '@/assets/pets/fox2_portrait.png';
+import fox2_back from '@/assets/pets/fox2_back.png';
+import fox2_crunch from '@/assets/pets/fox2_crunch.png';
+import fox2_crunch_back from '@/assets/pets/fox2_crunch_back.png';
+
+import fox3_portrait from '@/assets/pets/fox3_portrait.png';
+import fox3_back from '@/assets/pets/fox3_back.png';
+import fox3_crunch from '@/assets/pets/fox3_crunch.png';
+import fox3_crunch_back from '@/assets/pets/fox3_crunch_back.png';
 
 export const petImageMap = {
     // === Dragon ===
@@ -135,4 +149,22 @@ export const petImageMap = {
     monkey_lv3_battle: monkey3_back,
     monkey_lv3_brace: monkey3_crunch,
     monkey_lv3_brace_back: monkey3_crunch_back,
+    // === Fox (신규 추가: 모롱이 계열) ===
+    // Lv1: 모롱이 (ID: fox_lv1)
+    fox_lv1_idle: fox1_portrait,
+    fox_lv1_battle: fox1_back,
+    fox_lv1_brace: fox1_crunch,
+    fox_lv1_brace_back: fox1_crunch_back,
+
+    // Lv2: 불비비 (ID: fox_lv2)
+    fox_lv2_idle: fox2_portrait,
+    fox_lv2_battle: fox2_back,
+    fox_lv2_brace: fox2_crunch,
+    fox_lv2_brace_back: fox2_crunch_back,
+
+    // Lv3: 인페르노 (ID: fox_lv3)
+    fox_lv3_idle: fox3_portrait,
+    fox_lv3_battle: fox3_back,
+    fox_lv3_brace: fox3_crunch,
+    fox_lv3_brace_back: fox3_crunch_back,
 };

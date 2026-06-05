@@ -508,15 +508,6 @@ function MissionGalleryPage() {
     const [selectedSubmission, setSelectedSubmission] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null);
 
-    // ▼▼▼ [추가] ?submissionId= 파라미터로 직접 게시물 열기 (관리자 댓글 모니터에서 이동 시)
-    useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        const targetId = params.get('submissionId');
-        if (!targetId || !publiclyVisibleSubmissions.length) return;
-        const target = publiclyVisibleSubmissions.find(s => s.id === targetId);
-        if (target) setSelectedSubmission(target);
-    }, [location.search, publiclyVisibleSubmissions]);
-    // ▲▲▲ [추가 끝]
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState("");
     const [rotations, setRotations] = useState({});
@@ -583,6 +574,16 @@ function MissionGalleryPage() {
             // ▲▲▲ [수정 끝] ▲▲▲
         });
     }, [allSubmissions, allMissionsList]);
+
+
+    // ?submissionId= 파라미터로 직접 게시물 열기 (publiclyVisibleSubmissions 정의 후 배치)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const targetId = params.get('submissionId');
+        if (!targetId || !publiclyVisibleSubmissions.length) return;
+        const target = publiclyVisibleSubmissions.find(s => s.id === targetId);
+        if (target) setSelectedSubmission(target);
+    }, [location.search, publiclyVisibleSubmissions]);
 
     const allSelectableMissions = useMemo(() => {
         if (publiclyVisibleSubmissions.length === 0) return [];

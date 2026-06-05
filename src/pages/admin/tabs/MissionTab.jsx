@@ -24,7 +24,8 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [selectedSubmissionIndex, setSelectedSubmissionIndex] = useState(null);
+    const [selectedSubmissionId, setSelectedSubmissionId] = useState(null); // id 기반으로 변경
+    const [frozenSubmission, setFrozenSubmission] = useState(null); // 승인/반려 후 모달 고정용
     const currentUser = auth.currentUser;
 
     useEffect(() => {
@@ -45,17 +46,56 @@ function PendingMissionWidget({ setModalImageSrc }) {
         return () => unsubscribe();
     }, [classId, missions]);
 
-    const handleModalOpen = (index) => setSelectedSubmissionIndex(index);
-    const handleModalClose = () => setSelectedSubmissionIndex(null);
-    const handleNext = () => setSelectedSubmissionIndex(prev => (prev < pendingSubmissions.length - 1 ? prev + 1 : prev));
-    const handlePrev = () => setSelectedSubmissionIndex(prev => (prev > 0 ? prev - 1 : prev));
+    const handleModalOpen = (id) => {
+        setSelectedSubmissionId(id);
+        setFrozenSubmission(null); // 새로 열 때는 고정 해제
+    };
+    const handleModalClose = () => {
+        setSelectedSubmissionId(null);
+        setFrozenSubmission(null);
+    };
 
-    const handleActionInModal = (actedSubmissionId) => {
-        // [수정 이슈 4] 승인/반려 후 자동으로 다음 미션으로 이동하지 않음.
-        // 모달 내 StatusMessage가 표시되고, 사용자가 직접 ◀▶ 화살표로 이동.
-        // 처리된 항목은 목록에서 제거하되 현재 인덱스를 유지(다음 항목이 같은 자리로 올라옴).
-        setPendingSubmissions(prev => prev.filter(sub => sub.id !== actedSubmissionId));
-        // 인덱스는 그대로 유지 (목록이 줄어들면 자연스럽게 다음 항목이 보임)
+    // 현재 모달에 표시 중인 submission (고정됐으면 frozen, 아니면 live 목록에서 찾기)
+    const activeSubmission = frozenSubmission || pendingSubmissions.find(s => s.id === selectedSubmissionId) || null;
+    const currentIndex = activeSubmission ? pendingSubmissions.findIndex(s => s.id === activeSubmission.id) : -1;
+
+    const handleNext = () => {
+        if (pendingSubmissions.length === 0) return;
+        // frozen 상태라면 현재 submission은 이미 처리됨 → 목록의 첫 번째로 이동
+        // 아직 pending 상태라면 현재 다음 항목으로 이동
+        if (frozenSubmission) {
+            const nextSub = pendingSubmissions[0];
+            if (nextSub) {
+                setSelectedSubmissionId(nextSub.id);
+                setFrozenSubmission(null);
+            }
+        } else {
+            const liveIndex = pendingSubmissions.findIndex(s => s.id === selectedSubmissionId);
+            const nextIndex = liveIndex >= 0 && liveIndex < pendingSubmissions.length - 1 ? liveIndex + 1 : 0;
+            const nextSub = pendingSubmissions[nextIndex];
+            if (nextSub) {
+                setSelectedSubmissionId(nextSub.id);
+                setFrozenSubmission(null);
+            }
+        }
+    };
+    const handlePrev = () => {
+        const liveIndex = pendingSubmissions.findIndex(s => s.id === selectedSubmissionId);
+        const prevIndex = liveIndex > 0 ? liveIndex - 1 : 0;
+        const prevSub = pendingSubmissions[prevIndex];
+        if (prevSub) {
+            setSelectedSubmissionId(prevSub.id);
+            setFrozenSubmission(null);
+        }
+    };
+
+    const handleActionInModal = (actedSubmissionId, actionStatus) => {
+        // 승인/반려 후 현재 submission을 frozen 상태로 고정 (자동 이동 없음)
+        const sub = pendingSubmissions.find(s => s.id === actedSubmissionId);
+        if (sub) {
+            setFrozenSubmission({ ...sub, status: actionStatus }); // status를 처리된 값으로 변경
+        }
+        // pendingSubmissions는 Firestore onSnapshot이 자동 업데이트하므로 로컬 필터 제거
     };
 
     const handleAction = async (action, submission, reward) => {
@@ -86,8 +126,6 @@ function PendingMissionWidget({ setModalImageSrc }) {
         }
     };
 
-    const submissionToShow = selectedSubmissionIndex !== null ? pendingSubmissions[selectedSubmissionIndex] : null;
-
     return (
         <Section>
             <SectionTitle>승인 대기중인 미션 ✅ ({pendingSubmissions.length}건)</SectionTitle>
@@ -104,7 +142,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
                         if (!mission) return null;
 
                         return (
-                            <PendingListItem key={sub.id} onClick={() => handleModalOpen(index)}>
+                            <PendingListItem key={sub.id} onClick={() => handleModalOpen(sub.id)}>
                                 <div>
                                     {student?.name} - [{mission?.title}]
                                     {sub.text && <span style={{ color: '#28a745', fontWeight: 'bold', marginLeft: '0.5rem' }}>[글]</span>}
@@ -129,11 +167,16 @@ function PendingMissionWidget({ setModalImageSrc }) {
                     })}
                 </List>
             )}
-            {submissionToShow && (
+            {activeSubmission && (
                 <ApprovalModal
-                    submission={submissionToShow} onClose={handleModalClose} onNext={handleNext} onPrev={handlePrev}
-                    currentIndex={selectedSubmissionIndex} totalCount={pendingSubmissions.length}
-                    onAction={() => handleActionInModal(submissionToShow.id)} onImageClick={(imageData) => setModalImageSrc(imageData)}
+                    submission={activeSubmission}
+                    onClose={handleModalClose}
+                    onNext={handleNext}
+                    onPrev={handlePrev}
+                    currentIndex={currentIndex >= 0 ? currentIndex : 0}
+                    totalCount={pendingSubmissions.length}
+                    onAction={(id, actionStatus) => handleActionInModal(id, actionStatus)}
+                    onImageClick={(imageData) => setModalImageSrc(imageData)}
                 />
             )}
         </Section>

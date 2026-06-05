@@ -384,7 +384,7 @@ function PetCenterPage() {
     if (!selectedForRelease) return alert('분양할 펫을 선택해주세요.');
     const petCount = myPlayerData?.pets?.length || 0;
     if (petCount <= 1) return alert('마지막 남은 펫은 분양할 수 없습니다. 🐾');
-    if (!window.confirm(`정말로 [${selectedForRelease.name}]을(를) 분양하시겠습니까?\n분양 시 5,000P를 돌려받을 수 있습니다.\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`정말로 [${selectedForRelease.name}]을(를) 분양하시겠습니까?\n분양 시 2,500P를 돌려받을 수 있습니다.\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
     try {
       const result = await releasePet(classId, myPlayerData.id, selectedForRelease.id);
       alert(`${result.releasedPetName}이(가) 좋은 곳으로 떠났습니다. 🌈\n${result.reward.toLocaleString()}P를 돌려받았습니다!`);
