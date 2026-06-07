@@ -361,7 +361,7 @@ const ActionButton = styled.button`
 function PetCenterPage() {
   const [activeTab, setActiveTab] = useState('clinic');
   const [itemQuantities, setItemQuantities] = useState({});
-  const { players, buyPetItem, healPet, healAllPets, updatePetSkills } = useLeagueStore();
+  const { players, buyPetItem, healPet, healPetHp, healPetSp, healAllPets, healAllPetsHp, updatePetSkills } = useLeagueStore();
   const { classId } = useClassStore();
   const myPlayerData = players.find(p => p.authUid === auth.currentUser?.uid);
   const navigate = useNavigate();
@@ -384,7 +384,7 @@ function PetCenterPage() {
     if (!selectedForRelease) return alert('분양할 펫을 선택해주세요.');
     const petCount = myPlayerData?.pets?.length || 0;
     if (petCount <= 1) return alert('마지막 남은 펫은 분양할 수 없습니다. 🐾');
-    if (!window.confirm(`정말로 [${selectedForRelease.name}]을(를) 분양하시겠습니까?\n분양 시 2,500P를 돌려받을 수 있습니다.\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`정말로 [${selectedForRelease.name}]을(를) 분양하시겠습니까?\n분양 시 5,000P를 돌려받을 수 있습니다.\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
     try {
       const result = await releasePet(classId, myPlayerData.id, selectedForRelease.id);
       alert(`${result.releasedPetName}이(가) 좋은 곳으로 떠났습니다. 🌈\n${result.reward.toLocaleString()}P를 돌려받았습니다!`);
@@ -419,25 +419,35 @@ function PetCenterPage() {
     if (!myPlayerData || !myPlayerData.pets) return true;
     return myPlayerData.pets.every(p => p.hp === p.maxHp && p.sp === p.maxSp);
   }, [myPlayerData]);
+  const isAllHpFull = useMemo(() => {
+    if (!myPlayerData || !myPlayerData.pets) return true;
+    return myPlayerData.pets.every(p => p.hp === p.maxHp);
+  }, [myPlayerData]);
 
-  const handleHeal = async (petId) => {
-    if (!window.confirm("선택한 펫을 치료하시겠습니까? (250P 소모)")) return;
-    try {
-      await healPet(petId);
-      alert("치료가 완료되었습니다!");
-    } catch (error) {
-      alert(`치료 실패: ${error.message}`);
-    }
+  const handleHealHp = async (petId) => {
+    if (!window.confirm("HP를 회복하시겠습니까? (150P 소모)")) return;
+    try { await healPetHp(petId); alert("HP 회복 완료!"); }
+    catch (error) { alert(`치료 실패: ${error.message}`); }
   };
-
+  const handleHealSp = async (petId) => {
+    if (!window.confirm("SP를 회복하시겠습니까? (100P 소모)")) return;
+    try { await healPetSp(petId); alert("SP 회복 완료!"); }
+    catch (error) { alert(`치료 실패: ${error.message}`); }
+  };
+  const handleHealFull = async (petId) => {
+    if (!window.confirm("HP+SP를 모두 회복하시겠습니까? (250P 소모)")) return;
+    try { await healPet(petId); alert("HP+SP 회복 완료!"); }
+    catch (error) { alert(`치료 실패: ${error.message}`); }
+  };
+  const handleHealAllHp = async () => {
+    if (!window.confirm("모든 펫의 HP를 회복하시겠습니까? (350P 소모)")) return;
+    try { await healAllPetsHp(); alert("모든 펫의 HP 회복 완료!"); }
+    catch (error) { alert(`치료 실패: ${error.message}`); }
+  };
   const handleHealAll = async () => {
-    if (!window.confirm("모든 펫을 치료하시겠습니까? (400P 소모)")) return;
-    try {
-      await healAllPets();
-      alert("모든 펫의 치료가 완료되었습니다!");
-    } catch (error) {
-      alert(`치료 실패: ${error.message}`);
-    }
+    if (!window.confirm("모든 펫의 HP+SP를 모두 회복하시겠습니까? (600P 소모)")) return;
+    try { await healAllPets(); alert("모든 펫의 HP+SP 회복 완료!"); }
+    catch (error) { alert(`치료 실패: ${error.message}`); }
   };
 
   const handleToggleSkill = async (pet, skillId, isEquipped, maxSlots) => {
@@ -553,9 +563,22 @@ function PetCenterPage() {
               </div>
             )}
 
-            <HealAllButton onClick={handleHealAll} disabled={isAllPetsHealthy}>
-              {isAllPetsHealthy ? "모든 펫이 건강합니다 ✨" : "모든 펫 치료하기 (400P)"}
-            </HealAllButton>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.8rem' }}>
+              <HealAllButton
+                onClick={handleHealAllHp}
+                disabled={isAllHpFull}
+                style={{ flex: 1, background: isAllHpFull ? '#adb5bd' : '#f03e3e' }}
+              >
+                {isAllHpFull ? "모든 HP 가득 참 ✨" : "전체 HP 회복 (350P)"}
+              </HealAllButton>
+              <HealAllButton
+                onClick={handleHealAll}
+                disabled={isAllPetsHealthy}
+                style={{ flex: 1, background: isAllPetsHealthy ? '#adb5bd' : '#7048e8' }}
+              >
+                {isAllPetsHealthy ? "모든 펫 건강함 ✨" : "전체 HP+SP (600P)"}
+              </HealAllButton>
+            </div>
             <PetGrid>
               {myPlayerData?.pets?.map(pet => {
                 const isHealthy = pet.hp === pet.maxHp && pet.sp === pet.maxSp;
@@ -602,9 +625,40 @@ function PetCenterPage() {
                       )}
                     </div>
                     {!releaseMode && (
-                      <HealButton onClick={() => handleHeal(pet.id)} disabled={isHealthy}>
-                        {isHealthy ? "건강함" : "치료하기 (250P)"}
-                      </HealButton>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.4rem' }}>
+                        <div style={{ display: 'flex', gap: '0.3rem' }}>
+                          <HealButton
+                            onClick={() => handleHealHp(pet.id)}
+                            disabled={pet.hp === pet.maxHp}
+                            style={{
+                              flex: 1, fontSize: '0.75rem', padding: '0.35rem 0.2rem',
+                              background: pet.hp === pet.maxHp ? '#adb5bd' : '#f03e3e'
+                            }}
+                          >
+                            {pet.hp === pet.maxHp ? "HP 최대" : "HP 회복 (150P)"}
+                          </HealButton>
+                          <HealButton
+                            onClick={() => handleHealSp(pet.id)}
+                            disabled={pet.sp === pet.maxSp}
+                            style={{
+                              flex: 1, fontSize: '0.75rem', padding: '0.35rem 0.2rem',
+                              background: pet.sp === pet.maxSp ? '#adb5bd' : '#1971c2'
+                            }}
+                          >
+                            {pet.sp === pet.maxSp ? "SP 최대" : "SP 회복 (100P)"}
+                          </HealButton>
+                        </div>
+                        <HealButton
+                          onClick={() => handleHealFull(pet.id)}
+                          disabled={isHealthy}
+                          style={{
+                            fontSize: '0.75rem', padding: '0.35rem',
+                            background: isHealthy ? '#adb5bd' : '#7048e8'
+                          }}
+                        >
+                          {isHealthy ? "건강함 ✨" : "HP+SP 전체 (250P)"}
+                        </HealButton>
+                      </div>
                     )}
                   </PetCard>
                 );

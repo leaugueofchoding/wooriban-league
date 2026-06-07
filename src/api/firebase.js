@@ -3334,14 +3334,18 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     pet.hp = pet.maxHp;
     pet.sp = pet.maxSp;
 
+    // [밸런스] 진화 전까지 누적된 경험치로 즉시 레벨업 처리
+    // (진화 상한 중 쌓인 exp가 있으면 진화 직후 한꺼번에 반영)
+    const { leveledUpPet, levelUps } = calculateLevelUp(pet);
+    pets[petIndex] = leveledUpPet;
+    const finalPet = leveledUpPet;
+
     // ▼▼▼ [신규] 진화 시 고유 스킬 자동 습득 로직 추가 ▼▼▼
-    // 펫 데이터 구조상 내부에 스킬 배열(예: skills 또는 learnedSkills)이 관리되고 있다면 거기에 넣어줍니다.
-    if (!pet.skills) pet.skills = [];
+    if (!finalPet.skills) finalPet.skills = [];
 
     if (evolutionData.newSkill) {
-      // 이미 배우지 않은 스킬인 경우에만 추가 (ID 기준으로 체크)
-      if (!pet.skills.includes(evolutionData.newSkill.id)) {
-        pet.skills.push(evolutionData.newSkill.id);
+      if (!finalPet.skills.includes(evolutionData.newSkill.id)) {
+        finalPet.skills.push(evolutionData.newSkill.id);
       }
     }
     // ▲▲▲ [신규 끝] ▲▲▲
@@ -3349,17 +3353,17 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     const newInventory = { ...inventory };
     newInventory[evolutionStoneId] -= 1;
 
-    pets[petIndex] = pet;
+    pets[petIndex] = finalPet;
     transaction.update(playerRef, {
       pets: pets,
       petInventory: newInventory
     });
 
-    // 알림 메시지 부분도 수정 완료된 pet.name과 oldPetName을 사용하도록 깔끔하게 정돈했습니다.
+    const levelUpMsg = levelUps > 0 ? ` 누적 경험치로 ${levelUps}레벨 상승!` : '';
     createNotification(
       playerData.authUid,
       `🎉 펫 진화 성공!`,
-      `${oldPetName}(이)가 ${pet.name}(으)로 진화했습니다! 신규 스킬을 획득했습니다.`,
+      `${oldPetName}(이)가 ${finalPet.name}(으)로 진화했습니다! 신규 스킬을 획득했습니다.${levelUpMsg}`,
       'pet_evolution',
       '/pet'
     );
@@ -3714,90 +3718,127 @@ export async function revivePet(classId, playerId, petId) {
   });
 }
 
-export async function healPet(classId, playerId, petId) {
+// HP 치료 (150P)
+export async function healPetHp(classId, playerId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
-  const HEAL_COST = 250;
-
-  // [수정] 트랜잭션에서 배열 직접 변이(mutation) 대신 새 배열 생성 방식으로 변경
-  // 또한 addPointHistory를 트랜잭션 성공 후 실행하여 포인트 내역 불일치 방지
+  const HEAL_HP_COST = 150;
   let savedPlayerData = null;
 
   await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
-
     const playerData = playerDoc.data();
-    if (playerData.points < HEAL_COST) {
-      throw new Error(`포인트가 부족합니다. (필요: ${HEAL_COST}P)`);
-    }
-
+    if (playerData.points < HEAL_HP_COST) throw new Error(`포인트가 부족합니다. (필요: ${HEAL_HP_COST}P)`);
     const pets = playerData.pets || [];
     const petIndex = pets.findIndex(p => p.id === petId);
     if (petIndex === -1) throw new Error("치료할 펫을 찾을 수 없습니다.");
-
     const pet = pets[petIndex];
-    if (pet.hp === pet.maxHp && pet.sp === pet.maxSp) {
-      throw new Error("이미 건강한 펫입니다.");
-    }
-
-    // [수정] 배열 직접 변이 대신 새 배열을 생성하여 Firestore에 저장
-    const updatedPets = pets.map((p, i) =>
-      i === petIndex ? { ...p, hp: p.maxHp, sp: p.maxSp } : p
-    );
-
-    transaction.update(playerRef, {
-      pets: updatedPets,
-      points: increment(-HEAL_COST)
-    });
-
+    if (pet.hp === pet.maxHp) throw new Error("이미 HP가 가득 찬 펫입니다.");
+    const updatedPets = pets.map((p, i) => i === petIndex ? { ...p, hp: p.maxHp } : p);
+    transaction.update(playerRef, { pets: updatedPets, points: increment(-HEAL_HP_COST) });
     savedPlayerData = playerData;
   });
-
-  // [수정] 트랜잭션 성공 후 포인트 내역 기록 (실패 시 포인트 차감도 롤백됨)
   if (savedPlayerData) {
-    await addPointHistory(classId, savedPlayerData.authUid, savedPlayerData.name, -HEAL_COST, "펫 센터 개별 치료");
+    await addPointHistory(classId, savedPlayerData.authUid, savedPlayerData.name, -HEAL_HP_COST, "펫 센터 HP 치료");
   }
-
-  const updatedDoc = await getDoc(playerRef);
-  return updatedDoc.data();
+  return (await getDoc(playerRef)).data();
 }
 
-export async function healAllPets(classId, playerId) {
+// SP 치료 (100P)
+export async function healPetSp(classId, playerId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const playerRef = doc(db, "classes", classId, "players", playerId);
-  const HEAL_ALL_COST = 400;
+  const HEAL_SP_COST = 100;
+  let savedPlayerData = null;
 
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+    const playerData = playerDoc.data();
+    if (playerData.points < HEAL_SP_COST) throw new Error(`포인트가 부족합니다. (필요: ${HEAL_SP_COST}P)`);
+    const pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+    if (petIndex === -1) throw new Error("치료할 펫을 찾을 수 없습니다.");
+    const pet = pets[petIndex];
+    if (pet.sp === pet.maxSp) throw new Error("이미 SP가 가득 찬 펫입니다.");
+    const updatedPets = pets.map((p, i) => i === petIndex ? { ...p, sp: p.maxSp } : p);
+    transaction.update(playerRef, { pets: updatedPets, points: increment(-HEAL_SP_COST) });
+    savedPlayerData = playerData;
+  });
+  if (savedPlayerData) {
+    await addPointHistory(classId, savedPlayerData.authUid, savedPlayerData.name, -HEAL_SP_COST, "펫 센터 SP 치료");
+  }
+  return (await getDoc(playerRef)).data();
+}
+
+// 하위호환: 기존 healPet = HP+SP 동시 치료 (250P)
+export async function healPet(classId, playerId, petId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const HEAL_COST = 250;
+  let savedPlayerData = null;
+  await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
+    const playerData = playerDoc.data();
+    if (playerData.points < HEAL_COST) throw new Error(`포인트가 부족합니다. (필요: ${HEAL_COST}P)`);
+    const pets = playerData.pets || [];
+    const petIndex = pets.findIndex(p => p.id === petId);
+    if (petIndex === -1) throw new Error("치료할 펫을 찾을 수 없습니다.");
+    const pet = pets[petIndex];
+    if (pet.hp === pet.maxHp && pet.sp === pet.maxSp) throw new Error("이미 건강한 펫입니다.");
+    const updatedPets = pets.map((p, i) => i === petIndex ? { ...p, hp: p.maxHp, sp: p.maxSp } : p);
+    transaction.update(playerRef, { pets: updatedPets, points: increment(-HEAL_COST) });
+    savedPlayerData = playerData;
+  });
+  if (savedPlayerData) {
+    await addPointHistory(classId, savedPlayerData.authUid, savedPlayerData.name, -HEAL_COST, "펫 센터 HP+SP 전체 치료");
+  }
+  return (await getDoc(playerRef)).data();
+}
+
+// 전체 HP 치료 (350P)
+export async function healAllPetsHp(classId, playerId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const COST = 350;
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
     if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
-
     const playerData = playerDoc.data();
-    if (playerData.points < HEAL_ALL_COST) {
-      throw new Error(`포인트가 부족합니다. (필요: ${HEAL_ALL_COST}P)`);
-    }
-
-    let pets = playerData.pets || [];
-    if (pets.every(p => p.hp === p.maxHp && p.sp === p.maxSp)) {
-      throw new Error("모든 펫이 이미 건강합니다.");
-    }
-
-    const healedPets = pets.map(pet => ({
-      ...pet,
-      hp: pet.maxHp,
-      sp: pet.maxSp
-    }));
-
-    transaction.update(playerRef, {
-      pets: healedPets,
-      points: increment(-HEAL_ALL_COST)
-    });
-
+    if (playerData.points < COST) throw new Error(`포인트가 부족합니다. (필요: ${COST}P)`);
+    const pets = playerData.pets || [];
+    if (pets.every(p => p.hp === p.maxHp)) throw new Error("모든 펫의 HP가 이미 가득 찼습니다.");
+    const healedPets = pets.map(pet => ({ ...pet, hp: pet.maxHp }));
+    transaction.update(playerRef, { pets: healedPets, points: increment(-COST) });
   }).then(async () => {
-    const playerDoc = await getDoc(playerRef);
+    const d = await getDoc(playerRef);
+    const pd = d.data();
+    await addPointHistory(classId, pd.authUid, pd.name, -COST, "펫 센터 전체 HP 치료");
+    return d.data();
+  });
+}
+
+// 전체 HP+SP 치료 (600P)
+export async function healAllPets(classId, playerId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+  const playerRef = doc(db, "classes", classId, "players", playerId);
+  const HEAL_ALL_COST = 600;
+  return await runTransaction(db, async (transaction) => {
+    const playerDoc = await transaction.get(playerRef);
+    if (!playerDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
     const playerData = playerDoc.data();
-    await addPointHistory(classId, playerData.authUid, playerData.name, -HEAL_ALL_COST, "펫 센터 전체 치료");
-    return playerDoc.data();
+    if (playerData.points < HEAL_ALL_COST) throw new Error(`포인트가 부족합니다. (필요: ${HEAL_ALL_COST}P)`);
+    const pets = playerData.pets || [];
+    if (pets.every(p => p.hp === p.maxHp && p.sp === p.maxSp)) throw new Error("모든 펫이 이미 건강합니다.");
+    const healedPets = pets.map(pet => ({ ...pet, hp: pet.maxHp, sp: pet.maxSp }));
+    transaction.update(playerRef, { pets: healedPets, points: increment(-HEAL_ALL_COST) });
+  }).then(async () => {
+    const d = await getDoc(playerRef);
+    const pd = d.data();
+    await addPointHistory(classId, pd.authUid, pd.name, -HEAL_ALL_COST, "펫 센터 전체 HP+SP 치료");
+    return d.data();
   });
 }
 // =================================================================
@@ -4369,12 +4410,41 @@ export async function updateBattleChat(classId, battleId, playerId, message, isC
   }, 2000);
 }
 
+/**
+ * [밸런스] 레벨에 따라 스킬 SP 소모량을 스케일링합니다.
+ * - Lv 1~14:  기본 비용 × 1.0
+ * - Lv 15~29: 기본 비용 × 1.5
+ * - Lv 30+:   기본 비용 × 2.0
+ * 이렇게 하면 고레벨에서도 SP 관리의 의미가 유지되면서,
+ * 쪼렙 때보다 여유롭게 스킬을 쓰는 느낌은 살아있습니다.
+ */
+export function getScaledSkillCost(baseCost, petLevel) {
+  if (baseCost === 0) return 0; // 기본기(몸통박치기)는 항상 무료
+  const scale = 1 + Math.floor((petLevel || 1) / 15) * 0.5;
+  return Math.round(baseCost * scale);
+}
+
 function calculateLevelUp(pet) {
   let leveledUpPet = { ...pet };
   let levelUps = 0;
   const growth = PET_DATA[pet.species] ? PET_DATA[pet.species].growth : { hp: 10, sp: 5, atk: 2 };
 
+  // [밸런스] 진화 레벨 상한 체크: 진화 가능 레벨 달성 후 미진화 시 레벨업 중단
+  // 1단계(Lv1) → 진화 필요 레벨: 10, 2단계(Lv10 진화 후) → 진화 필요 레벨: 20
+  const getEvoCap = (p) => {
+    if (!PET_DATA[p.species]?.evolution) return Infinity;
+    const stage = parseInt(p.appearanceId?.match(/_lv(\d)/)?.[1] || '1');
+    if (stage === 1) return 10;  // 1차 진화 미완료
+    if (stage === 2) return 20;  // 2차 진화 미완료
+    return Infinity;             // 최종 진화 완료, 무제한
+  };
+
   while (leveledUpPet.exp >= leveledUpPet.maxExp) {
+    // [밸런스] 진화 미완료 레벨 상한 도달 시 레벨업만 중단, 경험치는 계속 누적
+    // → 진화 후 calculateLevelUp 재호출 시 누적 경험치로 한꺼번에 레벨업 처리됨
+    const evoCap = getEvoCap(leveledUpPet);
+    if (leveledUpPet.level >= evoCap) break;
+
     leveledUpPet.level++;
     leveledUpPet.exp -= leveledUpPet.maxExp;
 
@@ -4635,7 +4705,7 @@ export async function renamePetWithItem(classId, playerId, petId, newName) {
 // =====================================================
 export async function releasePet(classId, playerId, petId) {
   if (!classId) throw new Error('학급 정보가 없습니다.');
-  const RELEASE_REWARD = 2500;
+  const RELEASE_REWARD = 5000;
   const playerRef = doc(db, 'classes', classId, 'players', playerId);
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);

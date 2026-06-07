@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, cancelBattleChallenge, getActiveQuizSets } from '../../api/firebase';
+import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost } from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS } from '../pet/petData';
@@ -33,35 +33,201 @@ const shakeDamage = keyframes`
 `;
 
 const tackleRight = keyframes`
-  0% { transform: translateX(0); }
-  20% { transform: translateX(-20px); }
-  50% { transform: translateX(150px); }
-  100% { transform: translateX(0); }
+  0%   { transform: translateX(0) scale(1); }
+  15%  { transform: translateX(-25px) scale(0.9); }
+  50%  { transform: translateX(180px) scale(1.15); }
+  65%  { transform: translateX(160px) scale(1.3) rotate(5deg); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); }
 `;
 
 const tackleLeft = keyframes`
-  0% { transform: translateX(0); }
-  20% { transform: translateX(20px); }
-  50% { transform: translateX(-150px); }
-  100% { transform: translateX(0); }
+  0%   { transform: translateX(0) scale(1); }
+  15%  { transform: translateX(25px) scale(0.9); }
+  50%  { transform: translateX(-180px) scale(1.15); }
+  65%  { transform: translateX(-160px) scale(1.3) rotate(-5deg); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); }
 `;
 
+// 재빠른 교란: 토끼가 상대에게 달려가 이리저리 부딪히고 돌아옴
 const zigzagRight = keyframes`
-  0% { transform: translate(0, 0); }
-  15% { transform: translate(30px, -30px); }
-  30% { transform: translate(60px, 30px); }
-  45% { transform: translate(90px, -30px); }
-  60% { transform: translate(150px, 0) scale(1.1); }
-  100% { transform: translate(0, 0); }
+  0%   { transform: translate(0, 0) scale(1); filter: brightness(1); }
+  10%  { transform: translate(-20px, 0) scale(0.85); }
+  22%  { transform: translate(100px, -55px) scale(1.2); filter: brightness(1.4) drop-shadow(0 0 8px #74c0fc); }
+  32%  { transform: translate(155px, 20px) scale(1.1) rotate(12deg); filter: brightness(1.6) drop-shadow(0 0 12px #74c0fc); }
+  44%  { transform: translate(115px, -40px) scale(1.25) rotate(-8deg); filter: brightness(1.8) drop-shadow(0 0 15px #339af0); }
+  56%  { transform: translate(170px, 10px) scale(1.15) rotate(6deg); filter: brightness(1.5); }
+  68%  { transform: translate(140px, -25px) scale(1.3); filter: brightness(2); }
+  80%  { transform: translate(60px, 0) scale(1.1); filter: brightness(1.3); }
+  100% { transform: translate(0, 0) scale(1); filter: brightness(1); }
 `;
 
 const zigzagLeft = keyframes`
-  0% { transform: translate(0, 0); }
-  15% { transform: translate(-30px, -30px); }
-  30% { transform: translate(-60px, 30px); }
-  45% { transform: translate(-90px, -30px); }
-  60% { transform: translate(-150px, 0) scale(1.1); }
-  100% { transform: translate(0, 0); }
+  0%   { transform: translate(0, 0) scale(1); filter: brightness(1); }
+  10%  { transform: translate(20px, 0) scale(0.85); }
+  22%  { transform: translate(-100px, -55px) scale(1.2); filter: brightness(1.4) drop-shadow(0 0 8px #74c0fc); }
+  32%  { transform: translate(-155px, 20px) scale(1.1) rotate(-12deg); filter: brightness(1.6) drop-shadow(0 0 12px #74c0fc); }
+  44%  { transform: translate(-115px, -40px) scale(1.25) rotate(8deg); filter: brightness(1.8) drop-shadow(0 0 15px #339af0); }
+  56%  { transform: translate(-170px, 10px) scale(1.15) rotate(-6deg); filter: brightness(1.5); }
+  68%  { transform: translate(-140px, -25px) scale(1.3); filter: brightness(2); }
+  80%  { transform: translate(-60px, 0) scale(1.1); filter: brightness(1.3); }
+  100% { transform: translate(0, 0) scale(1); filter: brightness(1); }
+`;
+
+// 불꽃 질주: 불비비가 빛을 내며 상대에게 직선 돌진
+const flameDashRight = keyframes`
+  0%   { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
+  8%   { transform: translateX(-30px) scaleX(0.7) scaleY(1.1); filter: brightness(1.2); }
+  20%  { transform: translateX(80px) scaleX(1.4) scaleY(0.85); filter: brightness(2) drop-shadow(0 0 12px #ff6b35); }
+  38%  { transform: translateX(190px) scaleX(1.6) scaleY(0.75); filter: brightness(3) drop-shadow(0 0 22px #ff4500); }
+  52%  { transform: translateX(210px) scaleX(1.3) scaleY(0.9); filter: brightness(4) drop-shadow(0 0 30px #ff6b35); }
+  65%  { transform: translateX(185px) scaleX(1.0) scaleY(1.2); filter: brightness(3) drop-shadow(0 0 18px #ffa94d); }
+  82%  { transform: translateX(50px) scaleX(1) scaleY(1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
+`;
+
+// ⚡ 찌릿펀치: 전방으로 빠르게 돌진 후 복귀
+const thunderPunchRight = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  10%  { transform: translateX(-18px) scale(0.92); }
+  35%  { transform: translateX(170px) scale(1.18); filter: brightness(2.2) drop-shadow(0 0 18px #ffd43b); }
+  55%  { transform: translateX(190px) scale(1.1) rotate(8deg); filter: brightness(2.8) drop-shadow(0 0 25px #ffd43b); }
+  75%  { transform: translateX(80px) scale(1.05); filter: brightness(1.4); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+const thunderPunchLeft = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  10%  { transform: translateX(18px) scale(0.92); }
+  35%  { transform: translateX(-170px) scale(1.18); filter: brightness(2.2) drop-shadow(0 0 18px #ffd43b); }
+  55%  { transform: translateX(-190px) scale(1.1) rotate(-8deg); filter: brightness(2.8) drop-shadow(0 0 25px #ffd43b); }
+  75%  { transform: translateX(-80px) scale(1.05); filter: brightness(1.4); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+// 🌩️ 뇌우: 전기를 모아 돌진 + 화면 진동
+const thunderstormRight = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  8%   { transform: translateX(-22px) scale(0.88); }
+  25%  { transform: translateX(80px) scale(1.12); filter: brightness(2) drop-shadow(0 0 20px #ffd43b); }
+  42%  { transform: translateX(160px) scale(1.2); filter: brightness(3.5) drop-shadow(0 0 35px #ffd43b); }
+  55%  { transform: translateX(175px) scale(1.25) rotate(5deg); filter: brightness(5) drop-shadow(0 0 50px #fff176); }
+  70%  { transform: translateX(90px) scale(1.1); filter: brightness(2.5); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+const thunderstormLeft = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  8%   { transform: translateX(22px) scale(0.88); }
+  25%  { transform: translateX(-80px) scale(1.12); filter: brightness(2) drop-shadow(0 0 20px #ffd43b); }
+  42%  { transform: translateX(-160px) scale(1.2); filter: brightness(3.5) drop-shadow(0 0 35px #ffd43b); }
+  55%  { transform: translateX(-175px) scale(1.25) rotate(-5deg); filter: brightness(5) drop-shadow(0 0 50px #fff176); }
+  70%  { transform: translateX(-90px) scale(1.1); filter: brightness(2.5); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+// 🌋 업화: 아래서 솟구치며 돌진
+const uphwaChargeRight = keyframes`
+  0%   { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
+  15%  { transform: translateX(-20px) translateY(10px) scale(0.9); filter: brightness(1.2); }
+  30%  { transform: translateX(60px) translateY(-20px) scale(1.15); filter: brightness(2.5) drop-shadow(0 0 20px #ff4500); }
+  50%  { transform: translateX(150px) translateY(-40px) scale(1.3); filter: brightness(4) drop-shadow(0 0 40px #ff4500); }
+  65%  { transform: translateX(170px) translateY(-15px) scale(1.35) rotate(8deg); filter: brightness(5) drop-shadow(0 0 55px #ff6b35); }
+  80%  { transform: translateX(70px) translateY(0) scale(1.1); filter: brightness(2.5); }
+  100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+const uphwaChargeLeft = keyframes`
+  0%   { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
+  15%  { transform: translateX(20px) translateY(10px) scale(0.9); filter: brightness(1.2); }
+  30%  { transform: translateX(-60px) translateY(-20px) scale(1.15); filter: brightness(2.5) drop-shadow(0 0 20px #ff4500); }
+  50%  { transform: translateX(-150px) translateY(-40px) scale(1.3); filter: brightness(4) drop-shadow(0 0 40px #ff4500); }
+  65%  { transform: translateX(-170px) translateY(-15px) scale(1.35) rotate(-8deg); filter: brightness(5) drop-shadow(0 0 55px #ff6b35); }
+  80%  { transform: translateX(-70px) translateY(0) scale(1.1); filter: brightness(2.5); }
+  100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+// ☀️ 솔라빔: 빛을 모아 전진
+const solarBeamRight = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  20%  { transform: translateX(-15px) scale(0.9); filter: brightness(1.5) drop-shadow(0 0 12px #fff176); }
+  40%  { transform: translateX(50px) scale(1.1); filter: brightness(3) drop-shadow(0 0 25px #ffd43b); }
+  60%  { transform: translateX(120px) scale(1.15); filter: brightness(4.5) drop-shadow(0 0 45px #fff176); }
+  75%  { transform: translateX(110px) scale(1.2); filter: brightness(6) drop-shadow(0 0 60px #fff176); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+const solarBeamLeft = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  20%  { transform: translateX(15px) scale(0.9); filter: brightness(1.5) drop-shadow(0 0 12px #fff176); }
+  40%  { transform: translateX(-50px) scale(1.1); filter: brightness(3) drop-shadow(0 0 25px #ffd43b); }
+  60%  { transform: translateX(-120px) scale(1.15); filter: brightness(4.5) drop-shadow(0 0 45px #fff176); }
+  75%  { transform: translateX(-110px) scale(1.2); filter: brightness(6) drop-shadow(0 0 60px #fff176); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+// 🌟 스텔라 블라스트: 솟구치며 별폭발
+const stellarBlastRight = keyframes`
+  0%   { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
+  15%  { transform: translateX(-15px) translateY(5px) scale(0.9); }
+  35%  { transform: translateX(70px) translateY(-30px) scale(1.2); filter: brightness(2.5) drop-shadow(0 0 20px #ffd43b); }
+  55%  { transform: translateX(145px) translateY(-50px) scale(1.3); filter: brightness(4.5) drop-shadow(0 0 45px #fff176); }
+  70%  { transform: translateX(160px) translateY(-35px) scale(1.35); filter: brightness(6) drop-shadow(0 0 65px #fff176); }
+  85%  { transform: translateX(60px) translateY(-10px) scale(1.1); filter: brightness(3); }
+  100% { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
+`;
+const stellarBlastLeft = keyframes`
+  0%   { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
+  15%  { transform: translateX(15px) translateY(5px) scale(0.9); }
+  35%  { transform: translateX(-70px) translateY(-30px) scale(1.2); filter: brightness(2.5) drop-shadow(0 0 20px #ffd43b); }
+  55%  { transform: translateX(-145px) translateY(-50px) scale(1.3); filter: brightness(4.5) drop-shadow(0 0 45px #fff176); }
+  70%  { transform: translateX(-160px) translateY(-35px) scale(1.35); filter: brightness(6) drop-shadow(0 0 65px #fff176); }
+  85%  { transform: translateX(-60px) translateY(-10px) scale(1.1); filter: brightness(3); }
+  100% { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
+`;
+// 💨 바람의 칼날: 짧게 세 번 빠르게 슬쩍 전진
+const windBladeRight = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  12%  { transform: translateX(60px) scale(1.08); filter: brightness(1.5) drop-shadow(0 0 8px #74c0fc); }
+  22%  { transform: translateX(20px) scale(0.96); }
+  34%  { transform: translateX(90px) scale(1.12); filter: brightness(2) drop-shadow(0 0 14px #74c0fc); }
+  44%  { transform: translateX(30px) scale(0.98); }
+  56%  { transform: translateX(110px) scale(1.15); filter: brightness(2.5) drop-shadow(0 0 18px #339af0); }
+  70%  { transform: translateX(50px) scale(1.05); filter: brightness(1.5); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+const windBladeLeft = keyframes`
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  12%  { transform: translateX(-60px) scale(1.08); filter: brightness(1.5) drop-shadow(0 0 8px #74c0fc); }
+  22%  { transform: translateX(-20px) scale(0.96); }
+  34%  { transform: translateX(-90px) scale(1.12); filter: brightness(2) drop-shadow(0 0 14px #74c0fc); }
+  44%  { transform: translateX(-30px) scale(0.98); }
+  56%  { transform: translateX(-110px) scale(1.15); filter: brightness(2.5) drop-shadow(0 0 18px #339af0); }
+  70%  { transform: translateX(-50px) scale(1.05); filter: brightness(1.5); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+// 🌪️ 토네이도: 작게 웅크렸다가 회전하며 전방으로 크게 솟구침
+const tornadoSweepRight = keyframes`
+  0%   { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+  10%  { transform: translateX(-15px) scale(0.85) rotate(-10deg); }
+  25%  { transform: translateX(40px) scale(1.1) rotate(60deg); filter: brightness(1.5) drop-shadow(0 0 12px #74c0fc); }
+  40%  { transform: translateX(110px) scale(1.25) rotate(180deg); filter: brightness(2.5) drop-shadow(0 0 22px #74c0fc); }
+  58%  { transform: translateX(155px) scale(1.3) rotate(330deg); filter: brightness(3.5) drop-shadow(0 0 35px #339af0); }
+  72%  { transform: translateX(130px) scale(1.2) rotate(420deg); filter: brightness(2.5); }
+  88%  { transform: translateX(40px) scale(1.05) rotate(460deg); filter: brightness(1.3); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+const tornadoSweepLeft = keyframes`
+  0%   { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+  10%  { transform: translateX(15px) scale(0.85) rotate(10deg); }
+  25%  { transform: translateX(-40px) scale(1.1) rotate(-60deg); filter: brightness(1.5) drop-shadow(0 0 12px #74c0fc); }
+  40%  { transform: translateX(-110px) scale(1.25) rotate(-180deg); filter: brightness(2.5) drop-shadow(0 0 22px #74c0fc); }
+  58%  { transform: translateX(-155px) scale(1.3) rotate(-330deg); filter: brightness(3.5) drop-shadow(0 0 35px #339af0); }
+  72%  { transform: translateX(-130px) scale(1.2) rotate(-420deg); filter: brightness(2.5); }
+  88%  { transform: translateX(-40px) scale(1.05) rotate(-460deg); filter: brightness(1.3); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+
+const flameDashLeft = keyframes`
+  0%   { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
+  8%   { transform: translateX(30px) scaleX(0.7) scaleY(1.1); filter: brightness(1.2); }
+  20%  { transform: translateX(-80px) scaleX(1.4) scaleY(0.85); filter: brightness(2) drop-shadow(0 0 12px #ff6b35); }
+  38%  { transform: translateX(-190px) scaleX(1.6) scaleY(0.75); filter: brightness(3) drop-shadow(0 0 22px #ff4500); }
+  52%  { transform: translateX(-210px) scaleX(1.3) scaleY(0.9); filter: brightness(4) drop-shadow(0 0 30px #ff6b35); }
+  65%  { transform: translateX(-185px) scaleX(1.0) scaleY(1.2); filter: brightness(3) drop-shadow(0 0 18px #ffa94d); }
+  82%  { transform: translateX(-50px) scaleX(1) scaleY(1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
 `;
 
 const StunEffect = styled.div`
@@ -94,6 +260,22 @@ const Arena = styled.div`
   max-width: 1200px; margin: 2rem auto; padding: 2rem; background-color: #f0f8ff;
   border-radius: 24px; border: 5px solid #a5d8ff; overflow: hidden;
   box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+  transform-origin: top center;
+  transform: scale(${props => props.$scale || 1});
+  transition: transform 0.2s ease;
+  /* scale 후 부모가 잘리지 않도록 마진 보정 */
+  margin-bottom: ${props => props.$scale ? `calc(2rem - (1 - ${props.$scale}) * 800px)` : '2rem'};
+`;
+
+const ScaleControlBar = styled.div`
+  max-width: 1200px; margin: 0 auto 0.5rem; padding: 0.5rem 1.5rem;
+  display: flex; align-items: center; gap: 1rem;
+  background: rgba(255,255,255,0.8); border-radius: 12px;
+  border: 1px solid #d0ebff; font-size: 0.85rem; font-weight: 700; color: #495057;
+`;
+
+const ScaleSlider = styled.input`
+  flex: 1; accent-color: #339af0; cursor: pointer;
 `;
 
 const BattleField = styled.div`
@@ -114,9 +296,17 @@ const PetContainer = styled.div`
   position: relative; width: 100%; height: 100%;
   animation: ${props =>
         props.$isHit ? css`${shakeDamage} 0.5s` :
-            props.$animType === 'TACKLE' ? css`${props.$isMine ? tackleRight : tackleLeft} 0.5s ease-in-out` :
-                props.$animType === 'ZIGZAG' ? css`${props.$isMine ? zigzagRight : zigzagLeft} 0.6s ease-in-out` :
-                    'none'};
+            props.$animType === 'TACKLE' ? css`${props.$isMine ? tackleRight : tackleLeft}       0.5s ease-in-out` :
+                props.$animType === 'ZIGZAG' ? css`${props.$isMine ? zigzagRight : zigzagLeft}       1.4s ease-in-out` :
+                    props.$animType === 'FLAME_DASH' ? css`${props.$isMine ? flameDashRight : flameDashLeft}    1.1s ease-in-out` :
+                        props.$animType === 'THUNDER_PUNCH' ? css`${props.$isMine ? thunderPunchRight : thunderPunchLeft} 0.7s ease-in-out` :
+                            props.$animType === 'THUNDERSTORM' ? css`${props.$isMine ? thunderstormRight : thunderstormLeft} 1.4s ease-in-out` :
+                                props.$animType === 'UPHWA' ? css`${props.$isMine ? uphwaChargeRight : uphwaChargeLeft}  1.5s ease-in-out` :
+                                    props.$animType === 'SOLAR_BEAM' ? css`${props.$isMine ? solarBeamRight : solarBeamLeft}    1.5s ease-in-out` :
+                                        props.$animType === 'STELLAR_BLAST' ? css`${props.$isMine ? stellarBlastRight : stellarBlastLeft}  1.6s ease-in-out` :
+                                            props.$animType === 'WIND_BLADE' ? css`${props.$isMine ? windBladeRight : windBladeLeft}     1.1s ease-in-out` :
+                                                props.$animType === 'TORNADO_SWEEP' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft}  2.0s ease-in-out` :
+                                                    'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -293,6 +483,34 @@ const OptionGrid = styled.div`
     margin-top: 1rem;
 `;
 
+const OXGrid = styled.div`
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 1rem;
+`;
+
+const OXButton = styled.button`
+    padding: 1.4rem;
+    font-size: 3rem;
+    font-weight: 900;
+    border: 3px solid ${props => props.$ox === 'O' ? '#ff6b6b' : '#339af0'};
+    border-radius: 16px;
+    background: ${props => props.$ox === 'O' ? '#fff5f5' : '#e7f5ff'};
+    color: ${props => props.$ox === 'O' ? '#e03131' : '#1864ab'};
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+
+    &:hover:not(:disabled) {
+        background: ${props => props.$ox === 'O' ? '#ffe3e3' : '#d0ebff'};
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 6px 20px ${props => props.$ox === 'O' ? 'rgba(224,49,49,0.3)' : 'rgba(24,100,171,0.3)'};
+    }
+    &:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+    &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
 const OptionButton = styled.button`
     padding: 1.2rem;
     font-size: 1.1rem;
@@ -347,6 +565,25 @@ function BattlePage() {
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null); // { target: 'my'|'opponent', type: 'burn'|'poison' }
+
+    // 선택지 셔플 — 문제가 바뀔 때마다 새로 섞음
+    const [shuffledOptions, setShuffledOptions] = useState([]);
+    // 화면 크기 조절 (태블릿 대응) — localStorage로 기기별 저장
+    const [battleScale, setBattleScale] = useState(() => {
+        const saved = typeof window !== 'undefined' && localStorage.getItem('battleScale');
+        return saved ? parseFloat(saved) : 1.0;
+    });
+    useEffect(() => {
+        const opts = battleState?.question?.options;
+        if (!opts || opts.length === 0) { setShuffledOptions([]); return; }
+        // OX 퀴즈는 순서 고정 (O 먼저)
+        const isOX = opts.length === 2 && opts.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
+        if (isOX) {
+            setShuffledOptions(['O', 'X']);
+        } else {
+            setShuffledOptions([...opts].sort(() => Math.random() - 0.5));
+        }
+    }, [battleState?.question?.question]); // 문제 텍스트 기준으로 재셔플
 
     const [actionSubMenu, setActionSubMenu] = useState(null);
     const [quizPool, setQuizPool] = useState([]);
@@ -500,12 +737,193 @@ function BattlePage() {
                         handleResolution(battleRef);
                     }, 600);
 
+                } else if (actionType === 'WIND_BLADE') {
+                    // 바람의 칼날: 펫 3연 슬래시 전진 + 슬래시 이펙트 3연타
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'WIND_BLADE' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'WIND_BLADE' }));
+                    setCurrentEffect({ type: 'WIND_BLADE', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 350);
+                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 500);
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 600);
+                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 750);
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 850);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1400);
+
+                } else if (actionType === 'TORNADO_SWEEP') {
+                    // 토네이도: 펫 회전 돌진 + 회오리 멀티 이펙트 + 화면 흔들기
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'TORNADO_SWEEP' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'TORNADO_SWEEP' }));
+                    setCurrentEffect({ type: 'TORNADO_SWEEP', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 600);
+                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 800);
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 1100);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 2200);
+
+                } else if (actionType === 'QUICK_DISTURBANCE') {
+                    // 토끼가 직접 지그재그 질주 — 이펙트 + 펫 이동 동시
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'ZIGZAG' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'ZIGZAG' }));
+                    setCurrentEffect({ type: 'QUICK_DISTURBANCE', isMine: isAttackerMe });
+
+                    // 충돌 히트: 지그재그 중반부(500ms)에 맞춤
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 500);
+                    setTimeout(() => {
+                        setHitState({ my: false, opponent: false });
+                    }, 700);
+                    // 두 번째 충돌(800ms)
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 800);
+
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1600);
+
+                } else if (actionType === 'FLAME_DASH') {
+                    // 불비비가 빛을 내며 직선 돌진 — 이펙트 + 펫 이동
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'FLAME_DASH' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'FLAME_DASH' }));
+                    setCurrentEffect({ type: 'FLAME_DASH', isMine: isAttackerMe });
+
+                    // 돌진 최고속도 시점에 히트
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 420);
+
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1300);
+
+                } else if (actionType === 'THUNDER_PUNCH') {
+                    // 찌릿펀치: 펫이 전방 돌진 + 주먹+번개 아이콘 동시 발사
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'THUNDER_PUNCH' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'THUNDER_PUNCH' }));
+                    setCurrentEffect({ type: 'THUNDER_PUNCH', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 350);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 900);
+
+                } else if (actionType === 'THUNDERSTORM') {
+                    // 뇌우: 펫 돌진 + 화면 전체 번개 이펙트
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'THUNDERSTORM' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'THUNDERSTORM' }));
+                    setCurrentEffect({ type: 'THUNDERSTORM', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 500);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1800);
+
+                } else if (actionType === 'UPHWA') {
+                    // 업화: 펫이 솟구치며 돌진 + 화염 이펙트
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'UPHWA' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'UPHWA' }));
+                    setCurrentEffect({ type: 'UPHWA', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 600);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1900);
+
+                } else if (actionType === 'SOLAR_BEAM') {
+                    // 솔라빔: 펫이 빛을 모아 전진
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'SOLAR_BEAM' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'SOLAR_BEAM' }));
+                    setCurrentEffect({ type: 'SOLAR_BEAM', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 650);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1900);
+
+                } else if (actionType === 'STELLAR_BLAST') {
+                    // 스텔라 블라스트: 별폭발 + 펫 솟구침
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'STELLAR_BLAST' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'STELLAR_BLAST' }));
+                    setCurrentEffect({ type: 'STELLAR_BLAST', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 600);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 2000);
+
                 } else {
                     setCurrentEffect({
                         type: actionType,
                         isMine: isAttackerMe
                     });
-
                     setTimeout(() => {
                         setCurrentEffect(null);
                         setIsProcessing(false);
@@ -670,8 +1088,11 @@ function BattlePage() {
     const processQuizAnswer = async (submittedAnswer) => {
         if (!battleState.question || !submittedAnswer || isProcessing) return;
 
-        const isObjective = battleState.question.options && battleState.question.options.length > 0;
-        const isCorrect = submittedAnswer.toLowerCase() === battleState.question.answer.toLowerCase();
+        const isObjective = (battleState.question.options && battleState.question.options.length > 0) || battleState.question.type === 'ox';
+
+        // OX 정규화: ○→O, ×→X
+        const normalizeOX = (s) => s.replace('○', 'O').replace('×', 'X').trim().toLowerCase();
+        const isCorrect = normalizeOX(submittedAnswer) === normalizeOX(battleState.question.answer);
 
         if (isObjective && battleState.chat?.[myPlayerData.id]) return;
 
@@ -698,10 +1119,13 @@ function BattlePage() {
                 const opponentIsStunned = data[opponentRole].pet.status?.stunned;
 
                 const myPet = data[myRole].pet;
-                const myChatEntry = { text: filteredAnswer, isCorrect, timestamp: Date.now() };
+                // OX 정규화 재적용 (트랜잭션 내부)
+                const normalizeAns = (s) => (s || '').replace('○', 'O').replace('×', 'X').trim().toLowerCase();
+                const txIsCorrect = normalizeAns(filteredAnswer) === normalizeAns(data.question.answer);
+                const myChatEntry = { text: filteredAnswer, isCorrect: txIsCorrect, timestamp: Date.now() };
                 const updatedChat = { ...(data.chat || {}), [myId]: myChatEntry };
 
-                if (isCorrect) {
+                if (txIsCorrect) {
                     const winnerId = myPlayerData.id;
                     let newStatus = { ...myPet.status };
 
@@ -1013,7 +1437,8 @@ function BattlePage() {
                 const originalSkillName = skill?.name;
 
                 // [지식인 칭호 효과 버프] 스킬 코스트 계산 전 20% 할인
-                let actualCost = skill ? skill.cost : 0;
+                // [밸런스] 레벨에 따른 SP 코스트 스케일링 적용
+                let actualCost = skill ? getScaledSkillCost(skill.cost, attacker.pet.level) : 0;
                 if (skill && attacker.equippedTitle === 'classroom_intellectual') {
                     actualCost = Math.floor(actualCost * 0.8);
                 }
@@ -1156,9 +1581,10 @@ function BattlePage() {
         }
     };
 
-    // ▼▼▼ [수정완료] 지식인 버프 연동 헬퍼 함수 (메뉴 UI 표시용) ▼▼▼
+    // ▼▼▼ [수정완료] 지식인 버프 + 레벨 SP 스케일링 연동 헬퍼 함수 (메뉴 UI 표시용) ▼▼▼
     const getSkillCost = (skill) => {
-        return myInfo.equippedTitle === 'classroom_intellectual' ? Math.floor(skill.cost * 0.8) : skill.cost;
+        const scaled = getScaledSkillCost(skill.cost, myInfo?.pet?.level);
+        return myInfo.equippedTitle === 'classroom_intellectual' ? Math.floor(scaled * 0.8) : scaled;
     };
 
     const renderHpBar = (hp, maxHp) => {
@@ -1228,7 +1654,24 @@ function BattlePage() {
 
     return (
         <>
-            <Arena>
+            <ScaleControlBar>
+                <span>🔍 화면 크기</span>
+                <ScaleSlider
+                    type="range" min="0.5" max="1.0" step="0.05"
+                    value={battleScale}
+                    onChange={e => {
+                        const v = parseFloat(e.target.value);
+                        setBattleScale(v);
+                        localStorage.setItem('battleScale', v);
+                    }}
+                />
+                <span style={{ minWidth: 40 }}>{Math.round(battleScale * 100)}%</span>
+                <button
+                    onClick={() => { setBattleScale(1.0); localStorage.removeItem('battleScale'); }}
+                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #dee2e6', background: '#f8f9fa', cursor: 'pointer' }}
+                >초기화</button>
+            </ScaleControlBar>
+            <Arena $scale={battleScale}>
                 {battleState.status === 'pending' || battleState.status === 'starting' ? (
                     <WaitingText>{battleState.log}</WaitingText>
                 ) : (
@@ -1304,31 +1747,61 @@ function BattlePage() {
                                             </div>
                                         ) : (
                                             <>
-                                                {battleState.question.options && battleState.question.options.length > 0 ? (
-                                                    <OptionGrid>
-                                                        {battleState.question.options.map((opt, idx) => (
-                                                            <OptionButton
-                                                                key={idx}
-                                                                onClick={() => handleOptionClick(opt)}
-                                                                disabled={isProcessing || hasSubmitted}
-                                                                style={{ opacity: hasSubmitted ? 0.5 : 1, cursor: hasSubmitted ? 'not-allowed' : 'pointer' }}
-                                                            >
-                                                                {opt}
-                                                            </OptionButton>
-                                                        ))}
-                                                    </OptionGrid>
-                                                ) : (
-                                                    <form onSubmit={handleQuizSubmit}>
-                                                        <AnswerInput
-                                                            name="answer"
-                                                            value={answer}
-                                                            onChange={(e) => setAnswer(e.target.value)}
-                                                            placeholder={"정답을 입력하세요"}
-                                                            autoFocus
-                                                            disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
-                                                        />
-                                                    </form>
-                                                )}
+                                                {(() => {
+                                                    // OX 타입: options 유무 관계없이 버튼 표시
+                                                    const isOXType = battleState.question.type === 'ox';
+                                                    const isOXOptions = shuffledOptions.length === 2 &&
+                                                        shuffledOptions.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
+                                                    const isOX = isOXType || isOXOptions;
+
+                                                    if (isOX) {
+                                                        return (
+                                                            <OXGrid>
+                                                                {['O', 'X'].map(ox => (
+                                                                    <OXButton
+                                                                        key={ox}
+                                                                        $ox={ox}
+                                                                        onClick={() => handleOptionClick(ox)}
+                                                                        disabled={isProcessing || hasSubmitted}
+                                                                    >
+                                                                        {ox === 'O' ? '⭕' : '❌'}
+                                                                    </OXButton>
+                                                                ))}
+                                                            </OXGrid>
+                                                        );
+                                                    }
+
+                                                    if (battleState.question.options && battleState.question.options.length > 0) {
+                                                        return (
+                                                            <OptionGrid>
+                                                                {shuffledOptions.map((opt, idx) => (
+                                                                    <OptionButton
+                                                                        key={idx}
+                                                                        onClick={() => handleOptionClick(opt)}
+                                                                        disabled={isProcessing || hasSubmitted}
+                                                                        style={{ opacity: hasSubmitted ? 0.5 : 1, cursor: hasSubmitted ? 'not-allowed' : 'pointer' }}
+                                                                    >
+                                                                        {opt}
+                                                                    </OptionButton>
+                                                                ))}
+                                                            </OptionGrid>
+                                                        );
+                                                    }
+
+                                                    // 주관식
+                                                    return (
+                                                        <form onSubmit={handleQuizSubmit}>
+                                                            <AnswerInput
+                                                                name="answer"
+                                                                value={answer}
+                                                                onChange={(e) => setAnswer(e.target.value)}
+                                                                placeholder="정답을 입력하세요"
+                                                                autoFocus
+                                                                disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
+                                                            />
+                                                        </form>
+                                                    );
+                                                })()}
                                                 {hasSubmitted && battleState.question.options && (
                                                     <div style={{ textAlign: 'center', marginTop: '15px', color: '#666', fontWeight: 'bold' }}>
                                                         {battleState.chat?.[myPlayerData.id]?.isCorrect

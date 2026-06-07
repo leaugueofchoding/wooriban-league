@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, createBattleChallenge, renamePetWithItem, releasePet } from '../../api/firebase';
+import { auth, db, createBattleChallenge, renamePetWithItem, releasePet, getScaledSkillCost } from '../../api/firebase';
 import { doc, onSnapshot } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '../../utils/petImageMap';
@@ -662,6 +662,10 @@ function PetPage() {
   const spPercent = Math.min(100, Math.max(0, (selectedPet.sp / selectedPet.maxSp) * 100));
   const expPercent = (selectedPet.exp / selectedPet.maxExp) * 100;
 
+  // [밸런스] 진화 레벨 상한 도달 여부 표시
+  const evoCapLevel = currentStage === 1 ? 10 : currentStage === 2 ? 20 : Infinity;
+  const isLevelCapped = currentStage < 3 && selectedPet.level >= evoCapLevel && PET_DATA[selectedPet.species]?.evolution;
+
   const isFainted = selectedPet.hp <= 0;
   const evolutionStoneCount = petInventory?.evolution_stone || 0;
   const isEvolvable = canEvolve(evolutionStoneCount);
@@ -734,16 +738,18 @@ function PetPage() {
                         {Array.from({ length: skillSlotsCount }).map((_, index) => {
                           const skillId = equippedSkills[index];
                           const skill = skillId ? SKILLS[skillId.toUpperCase()] : null;
+                          const scaledCost = skill ? getScaledSkillCost(skill.cost, selectedPet.level) : 0;
                           return (
                             <SkillSlot key={index} $isSignature={skill?.id === signatureSkillId} $isSelected={selectedSkillSlot === index} onClick={() => handleSkillSlotClick(index)}>
                               {skill ? (
                                 <>
                                   <p>{skill.name}</p>
-                                  <small>SP {skill.cost}</small>
+                                  <small>SP {scaledCost}{skill.cost > 0 && scaledCost !== skill.cost ? ` (기본 ${skill.cost})` : ''}</small>
                                   <div className="skill-tooltip">
                                     <strong>{skill.name}</strong> {skill.$isSignature ? '⭐ 고유스킬' : ''}<br />
                                     {skill.description}<br />
-                                    <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span>
+                                    <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span><br />
+                                    <span style={{ color: '#ffd43b' }}>SP 소모: {scaledCost} (Lv.{selectedPet.level} 기준)</span>
                                   </div>
                                 </>
                               ) : <p style={{ color: '#adb5bd' }}>비어있음</p>}
@@ -760,14 +766,16 @@ function PetPage() {
                           {unequippedSkills.map(skillId => {
                             const skill = SKILLS[skillId.toUpperCase()];
                             if (!skill) return null;
+                            const scaledCostUnequipped = getScaledSkillCost(skill.cost, selectedPet.level);
                             return (
                               <SkillSlot key={skillId} onClick={() => handleLearnedSkillClick(skillId)}>
                                 <p>{skill.name}</p>
-                                <small>SP {skill.cost}</small>
+                                <small>SP {scaledCostUnequipped}{skill.cost > 0 && scaledCostUnequipped !== skill.cost ? ` (기본 ${skill.cost})` : ''}</small>
                                 <div className="skill-tooltip">
                                   <strong>{skill.name}</strong><br />
                                   {skill.description}<br />
-                                  <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span>
+                                  <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span><br />
+                                  <span style={{ color: '#ffd43b' }}>SP 소모: {scaledCostUnequipped} (Lv.{selectedPet.level} 기준)</span>
                                 </div>
                               </SkillSlot>
                             );
@@ -785,6 +793,11 @@ function PetPage() {
             <StatBarContainer><StatBar $percent={hpPercent} $barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
             <StatBarContainer><StatBar $percent={spPercent} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
             <StatBarContainer><StatBar $percent={expPercent} $barColor="linear-gradient(90deg, #ffc107, #ff9800)" /><StatText>EXP: {selectedPet.exp} / {selectedPet.maxExp}</StatText></StatBarContainer>
+            {isLevelCapped && (
+              <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#856404', marginTop: '4px' }}>
+                ⚠️ <strong>Lv.{evoCapLevel} 상한 도달!</strong> 진화하지 않으면 레벨업할 수 없습니다. 경험치는 누적되고 있으니 진화 후 한꺼번에 반영됩니다.
+              </div>
+            )}
 
             <InfoCard>
               <h4>🎒 인벤토리</h4>

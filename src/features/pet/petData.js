@@ -35,20 +35,30 @@ const getPetElement = (appearanceId = '') => {
     return null;
 };
 
-const calculateDamage = (basePower, attackerPlayer, defenderPlayer, skillElement = null) => {
+const calculateDamage = (basePower, attackerPlayer, defenderPlayer, skillElement = null, skillMult = 1.0, atkMult = 1.5) => {
     const attacker = attackerPlayer.pet;
     const defender = defenderPlayer.pet;
 
-    let damage = basePower + (attacker.atk * 1.5);
+    // [v14] skillMult: 스킬 고유 배율, atkMult: 컨셉별 ATK 계수
+    let damage = (basePower * skillMult) + (attacker.atk * atkMult);
     let multiplier = 1.0;
     let isEffective = false;
+    let isCritical = false;
 
+    // 상성 판정 (1.3배, 로그용 플래그 반환)
     if (skillElement) {
         const defenderElement = defender.element || getPetElement(defender.appearanceId);
         if (defenderElement && ELEMENT_CHART[skillElement]?.strongAgainst.includes(defenderElement)) {
-            multiplier *= 1.2;
+            multiplier *= 1.3;
             isEffective = true;
         }
+    }
+
+    // 치명타: 기본 10% 확률 × 1.5배 (타이틀 ruler_of_the_league는 +5% 추가)
+    const critChance = (attackerPlayer.equippedTitle === 'ruler_of_the_league') ? 0.15 : 0.10;
+    if (Math.random() < critChance) {
+        multiplier *= 1.5;
+        isCritical = true;
     }
 
     if (attacker.status?.focusCharge) multiplier *= 2.0;
@@ -57,7 +67,7 @@ const calculateDamage = (basePower, attackerPlayer, defenderPlayer, skillElement
     if (defenderPlayer.equippedTitle === 'icon_of_diligence') multiplier *= 0.95;
     if (defenderPlayer.equippedTitle === 'star_of_compliments') multiplier *= 0.97;
 
-    return { damage: damage * multiplier, isEffective };
+    return { damage: damage * multiplier, isEffective, isCritical };
 };
 
 const checkBlindMiss = (attacker) => {
@@ -78,13 +88,12 @@ export const SKILLS = {
 
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 몸통박치기! ...하지만 도발에 넘어가 빗나갔습니다! 💨`;
 
-            let { damage } = calculateDamage(SKILLS.TACKLE.basePower, attackerPlayer, defenderPlayer, SKILLS.TACKLE.element);
+            let { damage, isCritical } = calculateDamage(SKILLS.TACKLE.basePower, attackerPlayer, defenderPlayer, SKILLS.TACKLE.element);
+            if (isCritical) log = `💥 [치명타!] ` + log;
             let log = `'${attacker.name}'의 몸통박치기!`;
 
             if (attacker.status?.focusCharge) log += ` ⚡️ 강력한 한방!`;
-            if (attackerPlayer.equippedTitle === 'ruler_of_the_league' && Math.random() < 0.15) {
-                damage *= 1.5; log = `💥 [치명타!] ` + log;
-            }
+            // [v14] 치명타는 calculateDamage 내부에서 처리됨
 
             switch (defenderAction) {
                 case 'BRACE': damage *= 0.7; log += ` (상대는 웅크려 피해를 줄였다!)`; break;
@@ -128,7 +137,7 @@ export const SKILLS = {
     },
 
     HEALING_PRAYER: {
-        id: 'healing_prayer', name: '회복의 기도', cost: 25, type: 'common', element: null,
+        id: 'healing_prayer', name: '회복의 기도', cost: 35, type: 'common', element: null, // [밸런스] 25→35 (최대HP 30% 회복 고효율)
         description: '따뜻한 빛의 기운으로 자신의 최대 체력의 30%를 즉시 회복합니다.',
         basePower: 0,
         effect: (attackerPlayer) => {
@@ -152,13 +161,14 @@ export const SKILLS = {
     },
 
     MIND_FOCUS: {
-        id: 'mind_focus', name: '정신집중', cost: 10, type: 'common', element: null,
-        description: '기를 모아 다음 턴의 공격 데미지를 2배로 강화합니다.',
+        id: 'mind_focus', name: '정신집중', cost: 15, type: 'common', element: null,
+        // [v13] focusCharge(×2) 효과는 BattlePage handleResolution에서 모든 공격(기본기+스킬)에 일괄 적용됨
+        description: '기를 모아 다음 턴의 모든 공격(기본기 및 스킬 포함) 데미지를 2배로 강화합니다.',
         basePower: 0,
         effect: (attackerPlayer) => {
             const attacker = attackerPlayer.pet; if (!attacker.status) attacker.status = {};
             attacker.status.focusCharge = 1;
-            return `'${attacker.name}'이(가) 정신을 집중합니다! 다음 공격 강도가 배로 강해집니다! ⚡️`;
+            return `'${attacker.name}'이(가) 정신을 집중합니다! 다음 턴 모든 공격이 2배로 강해집니다! ⚡️`;
         }
     },
 
@@ -182,7 +192,7 @@ export const SKILLS = {
     },
 
     ENERGY_SIPHON: {
-        id: 'energy_siphon', name: '에너지 사이펀', cost: 15, type: 'common', element: null,
+        id: 'energy_siphon', name: '에너지 사이펀', cost: 20, type: 'common', element: null, // [밸런스] 15→20 (피해+SP흡수 복합효과)
         description: '적에게 약간의 피해를 입히고, 상대 최대 SP의 20%를 흡수하여 내 SP를 채웁니다.',
         basePower: 10,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
@@ -270,14 +280,14 @@ export const SKILLS = {
 
     // --- 🐲 드래곤 (불) 스킬 ---
     FIERY_BREATH: {
-        id: 'fiery_breath', name: '용의 숨결', cost: 30, type: 'signature', element: '불', basePower: 55,
+        id: 'fiery_breath', name: '용의 숨결', cost: 40, type: 'signature', element: '불', basePower: 55,
+        // [공격형 1차 고유기] skillMult 1.8 — 반동 페널티를 감수한 강타. 다음 턴 행동 불가.
         description: '맹렬한 화염을 뿜어 엄청난 피해를 주지만, 반동으로 다음 턴 행동 불가 상태가 됩니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 용의 숨결! ...하지만 엉뚱한 방향으로 뿜었습니다! 💨`;
-            let { damage, isEffective } = calculateDamage(SKILLS.FIERY_BREATH.basePower, attackerPlayer, defenderPlayer, SKILLS.FIERY_BREATH.element);
-            damage *= 1.2;
+            let { damage, isEffective, isCritical: breathCrit } = calculateDamage(SKILLS.FIERY_BREATH.basePower, attackerPlayer, defenderPlayer, SKILLS.FIERY_BREATH.element, 5.5, 1.5);
             let log = `'${attacker.name}'의 용의 숨결! 🔥`;
             if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
             switch (defenderAction) {
@@ -285,32 +295,33 @@ export const SKILLS = {
                 case 'EVADE': if (Math.random() < 0.3) damage = 0; break;
             }
             damage = Math.round(damage);
+            if (breathCrit) log = `💥 [치명타!] ` + log;
             if (damage > 0) { defender.hp = Math.max(0, defender.hp - damage); log += ` ${damage}의 피해!`; }
             attacker.status.recharging = true;
-            // focusCharge 소비는 BattlePage에서 일괄 처리
             return log;
         },
     },
     DRAGON_CLAW: {
-        id: 'dragon_claw', name: '용의 발톱', cost: 20, type: 'signature', element: '불', basePower: 35,
+        id: 'dragon_claw', name: '용의 발톱', cost: 25, type: 'signature', element: '불', basePower: 35,
+        // [공격형 1차 스킬] skillMult 1.4 — 방어 무시 효과 보정
         description: '불꽃을 두른 예리한 발톱으로 할퀴어 상대의 방어를 일부 무시합니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(35, attackerPlayer, defenderPlayer, '불');
-            if (defenderAction === 'BRACE') damage *= 0.85;
+            let { damage, isEffective, isCritical: clawCrit } = calculateDamage(35, attackerPlayer, defenderPlayer, '불', 6.0, 1.5);
+            if (defenderAction === 'BRACE') damage *= 0.85; // 방어 일부 무시
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            return `'${attacker.name}'의 용의 발톱! ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 피해!`;
+            return `${clawCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 용의 발톱! ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 피해!`;
         }
     },
     STELLAR_BLAST: {
-        id: 'stellar_blast', name: '스텔라 블라스트', cost: 40, type: 'signature', element: '불', basePower: 60,
+        id: 'stellar_blast', name: '스텔라 블라스트', cost: 65, type: 'signature', element: '불', basePower: 60, // [v13] 최종기 SP65, skillMult 3.5
         description: '초고열의 항성 에너지를 폭발시킵니다. 30% 확률로 상대를 매 턴 최대 체력의 8%씩 화상 도트 피해 상태로 만듭니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(60, attackerPlayer, defenderPlayer, '불');
+            let { damage, isEffective, isCritical: stelCrit } = calculateDamage(60, attackerPlayer, defenderPlayer, '불', 11.0, 1.5);
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            let log = `'${attacker.name}'의 스텔라 블라스트! 🌟 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 엄청난 피해!`;
+            let log = `${stelCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 스텔라 블라스트! 🌟 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 엄청난 피해!`;
 
             if (Math.random() < 0.3) {
                 if (!defender.status) defender.status = {};
@@ -323,46 +334,48 @@ export const SKILLS = {
 
     // --- 🐰 토끼 (바람) 스킬 ---
     QUICK_DISTURBANCE: {
-        id: 'quick_disturbance', name: '재빠른 교란', cost: 15, type: 'signature', element: '바람', basePower: 20,
+        id: 'quick_disturbance', name: '재빠른 교란', cost: 12, type: 'signature', element: '바람', basePower: 20, // [밸런스] 15→12 (CC위주, 낮은 데미지)
         description: '눈에 보이지 않는 빠른 속도로 맴돌아 상대를 50% 확률로 1턴 혼란시킵니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!defender.status) defender.status = {};
-            let { damage, isEffective } = calculateDamage(SKILLS.QUICK_DISTURBANCE.basePower, attackerPlayer, defenderPlayer, SKILLS.QUICK_DISTURBANCE.element);
+            let { damage, isEffective, isCritical: qdCrit } = calculateDamage(SKILLS.QUICK_DISTURBANCE.basePower, attackerPlayer, defenderPlayer, SKILLS.QUICK_DISTURBANCE.element, 2.5, 1.3);
             if (defenderAction === 'BRACE') damage *= 0.7;
             let log = `'${attacker.name}'의 재빠른 교란! 💨`;
             if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
             if (Math.random() < 0.5) { defender.status.stunned = true; log += ` 💫 상대가 혼란에 빠졌다!`; }
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
+            if (qdCrit) log = `💥 [치명타!] ` + log;
             log += ` ${Math.round(damage)}의 피해!`;
             return log;
         },
     },
     WIND_BLADE: {
-        id: 'wind_blade', name: '바람의 칼날', cost: 20, type: 'signature', element: '바람', basePower: 30,
+        id: 'wind_blade', name: '바람의 칼날', cost: 28, type: 'signature', element: '바람', basePower: 30, // [v13] 기교형 중간기 SP28, skillMult 1.6
         description: '날카롭게 압축된 바람을 날립니다. 30% 확률로 치명타가 터져 피해가 1.5배가 됩니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(30, attackerPlayer, defenderPlayer, '바람');
+            let { damage, isEffective, isCritical: wbCrit } = calculateDamage(30, attackerPlayer, defenderPlayer, '바람', 7.5, 1.3);
             let log = `'${attacker.name}'의 바람의 칼날! 🌪️`;
             if (Math.random() < 0.3) {
                 damage *= 1.5;
                 log += ` 💥 [급소 강타!]`;
             }
+            if (wbCrit) log = `💥 [치명타!] ` + log;
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
             return `${log} ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 예리한 피해!`;
         }
     },
     TORNADO_SWEEP: {
-        id: 'tornado_sweep', name: '토네이도 휩쓸기', cost: 40, type: 'signature', element: '바람', basePower: 60,
+        id: 'tornado_sweep', name: '토네이도 휩쓸기', cost: 65, type: 'signature', element: '바람', basePower: 60, // [v13] 최종기 SP65, skillMult 3.2
         description: '거대한 회오리바람을 일으켜 전장을 휩씁니다. 20% 확률로 적을 1턴 스턴시킵니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(60, attackerPlayer, defenderPlayer, '바람');
+            let { damage, isEffective, isCritical: tornadoCrit } = calculateDamage(60, attackerPlayer, defenderPlayer, '바람', 11.0, 1.3);
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            let log = `'${attacker.name}'의 토네이도 휩쓸기! 🌪️ ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 광역 피해!`;
+            let log = `${tornadoCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 토네이도 휩쓸기! 🌪️ ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 광역 피해!`;
             if (Math.random() < 0.2) {
                 if (!defender.status) defender.status = {};
                 defender.status.stunned = true;
@@ -378,73 +391,73 @@ export const SKILLS = {
         description: '상대의 몸에 씨앗을 뿌려 준 피해의 60%만큼 자신의 체력을 회복합니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(SKILLS.LEECH_SEED.basePower, attackerPlayer, defenderPlayer, SKILLS.LEECH_SEED.element);
+            let { damage, isEffective, isCritical: seedCrit } = calculateDamage(SKILLS.LEECH_SEED.basePower, attackerPlayer, defenderPlayer, SKILLS.LEECH_SEED.element, 3.5, 1.2);
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
             const heal = Math.round(damage * 0.6);
             attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
-            return `'${attacker.name}'의 씨뿌리기! ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}적에게 ${Math.round(damage)}의 피해를 주고 ${heal}만큼 체력을 흡수했다! 🌱`;
+            return `${seedCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 씨뿌리기! ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}적에게 ${Math.round(damage)}의 피해를 주고 ${heal}만큼 체력을 흡수했다! 🌱`;
         },
     },
     VINE_WHIP: {
-        id: 'vine_whip', name: '덩굴 채찍', cost: 20, type: 'signature', element: '풀', basePower: 35,
+        id: 'vine_whip', name: '덩굴 채찍', cost: 28, type: 'signature', element: '풀', basePower: 35, // [v13] 수비형 중간기 SP28, skillMult 1.8
         description: '질기고 억센 덩굴을 휘둘러 상대에게 강력한 찰과상을 입힙니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(35, attackerPlayer, defenderPlayer, '풀');
+            let { damage, isEffective, isCritical: vineCrit } = calculateDamage(35, attackerPlayer, defenderPlayer, '풀', 7.5, 1.2);
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            return `'${attacker.name}'의 덩굴 채찍! 🌿 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 찰진 피해!`;
+            return `${vineCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 덩굴 채찍! 🌿 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 찰진 피해!`;
         }
     },
     SOLAR_BEAM: {
-        id: 'solar_beam', name: '솔라 빔', cost: 40, type: 'signature', element: '풀', basePower: 65,
+        id: 'solar_beam', name: '솔라 빔', cost: 65, type: 'signature', element: '풀', basePower: 65, // [v13] 최종기 SP65, skillMult 3.0
         description: '태양의 에너지를 압축하여 파괴적인 빛의 광선을 발사합니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective } = calculateDamage(65, attackerPlayer, defenderPlayer, '풀');
+            let { damage, isEffective, isCritical: solarCrit } = calculateDamage(65, attackerPlayer, defenderPlayer, '풀', 11.0, 1.2);
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            return `'${attacker.name}'의 솔라 빔! ☀️ ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 엄청난 빛의 일격!`;
+            return `${solarCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 솔라 빔! ☀️ ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 엄청난 빛의 일격!`;
         }
     },
 
     // --- ⚡ 찌릿숭이 (번개) 스킬 ---
     SHOCK_SCRATCH: {
-        id: 'shock_scratch', name: '따끔할퀴기', cost: 10, type: 'signature', element: '번개', basePower: 25,
+        id: 'shock_scratch', name: '따끔할퀴기', cost: 10, type: 'signature', element: '번개', basePower: 25, // [밸런스] 유지 (CC위주, 낮은 비용 정당)
         description: '번개를 두른 손톱으로 할큅니다. 20% 확률로 상대를 1턴 스턴시킵니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!defender.status) defender.status = {};
-            let { damage, isEffective } = calculateDamage(25, attackerPlayer, defenderPlayer, '번개');
+            let { damage, isEffective, isCritical } = calculateDamage(25, attackerPlayer, defenderPlayer, '번개', 3.0, 1.5);
             if (defenderAction === 'BRACE') damage *= 0.7;
             if (Math.random() < 0.2) defender.status.stunned = true;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            return `'${attacker.name}'의 따끔할퀴기! ${Math.round(damage)}의 피해! ${defender.status?.stunned ? '💫 마비되었다!' : ''}`;
+            return `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 따끔할퀴기! ${Math.round(damage)}의 피해! ${defender.status?.stunned ? '💫 마비되었다!' : ''}`;
         }
     },
     THUNDER_PUNCH: {
-        id: 'thunder_punch', name: '찌릿펀치', cost: 20, type: 'signature', element: '번개', basePower: 40,
+        id: 'thunder_punch', name: '찌릿펀치', cost: 30, type: 'signature', element: '번개', basePower: 40, // [v13] 공격형 중간기 SP30, skillMult 1.8
         description: '주먹에 고압 전류를 모아 묵직한 번개 타격을 날립니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage } = calculateDamage(40, attackerPlayer, defenderPlayer, '번개');
+            let { damage, isCritical: punchCrit } = calculateDamage(40, attackerPlayer, defenderPlayer, '번개', 8.5, 1.5);
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            return `'${attacker.name}'의 찌릿펀치! ${Math.round(damage)}의 피해!`;
+            return `${punchCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 찌릿펀치! ⚡ ${Math.round(damage)}의 피해!`;
         }
     },
     THUNDERSTORM: {
-        id: 'thunderstorm', name: '뇌우', cost: 40, type: 'signature', element: '번개', basePower: 65,
+        id: 'thunderstorm', name: '뇌우', cost: 70, type: 'signature', element: '번개', basePower: 65, // [v13] 공격형 최종기 SP70, skillMult 3.5 (40%스턴 포함)
         description: '천둥구름을 불러내 거대한 번개를 내리칩니다. 40% 확률로 1턴 기절시킵니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!defender.status) defender.status = {};
-            let { damage } = calculateDamage(65, attackerPlayer, defenderPlayer, '번개');
+            let { damage, isCritical: stormCrit } = calculateDamage(65, attackerPlayer, defenderPlayer, '번개', 11.0, 1.5);
             if (defenderAction === 'BRACE') damage *= 0.7;
             if (Math.random() < 0.4) defender.status.stunned = true;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
-            return `'${attacker.name}'의 뇌우! ${Math.round(damage)}의 피해! ${defender.status?.stunned ? '💫 기절했습니다!' : ''}`;
+            return `${stormCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 뇌우! ⚡🌩️ ${Math.round(damage)}의 피해! ${defender.status?.stunned ? '💫 기절했습니다!' : ''}`;
         }
     },
 
@@ -457,11 +470,11 @@ export const SKILLS = {
             if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 잔불! ...불씨가 흐려져 꺼졌습니다! 💨`;
 
-            let { damage, isEffective } = calculateDamage(SKILLS.REM_FIRE.basePower, attackerPlayer, defenderPlayer, SKILLS.REM_FIRE.element);
+            let { damage, isEffective, isCritical: remCrit } = calculateDamage(SKILLS.REM_FIRE.basePower, attackerPlayer, defenderPlayer, SKILLS.REM_FIRE.element, 2.5, 1.3);
             if (defenderAction === 'BRACE') damage *= 0.7;
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
-            let log = `'${attacker.name}'의 잔불 습격! 적에게 ${damage}의 피해!`;
+            let log = `${remCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 잔불 습격! 적에게 ${damage}의 피해!`;
 
             if (Math.random() < 0.3) {
                 const burnDamage = Math.round(defender.maxHp * 0.05);
@@ -481,13 +494,11 @@ export const SKILLS = {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 불꽃 질주! ...타이밍을 놓쳤습니다! 💨`;
 
-            let damage = SKILLS.FLAME_DASH.basePower + (attacker.atk * 1.5);
-            if (attacker.status?.focusCharge) damage *= 2.0;
-
+            let { damage, isCritical: dashCrit } = calculateDamage(SKILLS.FLAME_DASH.basePower, attackerPlayer, defenderPlayer, '불', 7.0, 1.3); // 방어무시
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
-            let log = `🔥 "불비비가 재빨리 달려들어 상대를 제압한다!" '${attacker.name}'의 불꽃 질주! 적에게 ${damage}의 피해!`;
+            let log = `${dashCrit ? '💥 [치명타!] ' : ''}🔥 '${attacker.name}'의 불꽃 질주! 적에게 ${damage}의 피해!`;
             if (defenderAction === 'BRACE' || defenderAction === 'EVADE') {
                 log += ` (상대의 방어 및 회피 전술을 완벽히 무시하고 직격했습니다!)`;
             }
@@ -497,14 +508,14 @@ export const SKILLS = {
     },
 
     UPHWA: {
-        id: 'uphwa', name: '업화', cost: 40, type: 'signature', element: '불', basePower: 65,
+        id: 'uphwa', name: '업화', cost: 70, type: 'signature', element: '불', basePower: 65, // [v13] 기교형 최종기 SP70, skillMult 3.2 (조건부 2배)
         description: '체력 20% 이하 시 위력 2배 + 치명타 70% 확률. 화상 상태 적에게 추가 1.35배 피해를 주고 화상을 소거합니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 업화! ...불꽃이 흩어졌습니다! 💨`;
 
-            let { damage, isEffective } = calculateDamage(SKILLS.UPHWA.basePower, attackerPlayer, defenderPlayer, SKILLS.UPHWA.element);
-            let log = `🌋 "궁지에 몰릴수록 더욱 거세게 타오른다." '${attacker.name}'의 업화 가동!`;
+            let { damage, isEffective, isCritical: uphwaCrit } = calculateDamage(SKILLS.UPHWA.basePower, attackerPlayer, defenderPlayer, SKILLS.UPHWA.element, 11.0, 1.3);
+            let log = `${uphwaCrit ? '💥 [치명타!] ' : ''}🌋 '${attacker.name}'의 업화! 궁지에서 더욱 거세게 타오른다!`;
 
             if (attacker.hp <= attacker.maxHp * 0.2) {
                 damage *= 2.0;
@@ -566,12 +577,12 @@ export const PET_DATA = {
         compatibleElements: ['풀'],
         description: "고요한 숲, 생명의 나무 꼭대기에서 이슬을 머금고 태어난 숲의 수호자입니다. (🌿풀 속성)",
         baseStats: { maxHp: 120, maxSp: 40, atk: 8 },
-        growth: { hp: 25, sp: 4, atk: 3 },
+        growth: { hp: 25, sp: 4, atk: 4 },           // [밸런스] atk 성장치 3→4
         skill: SKILLS.LEECH_SEED,
         initialSkills: [SKILLS.LEECH_SEED.id],
         evolution: {
-            lv10: { appearanceId: 'bird_lv2', name: '꽃잎치', statBoost: { hp: 1.6, sp: 1.2, atk: 1.3 }, newSkill: SKILLS.VINE_WHIP },
-            lv20: { appearanceId: 'bird_lv3', name: '열매치', statBoost: { hp: 2.3, sp: 1.5, atk: 1.7 }, newSkill: SKILLS.SOLAR_BEAM },
+            lv10: { appearanceId: 'bird_lv2', name: '꽃잎치', statBoost: { hp: 1.6, sp: 1.2, atk: 1.35 }, newSkill: SKILLS.VINE_WHIP },  // [밸런스] atk 1.3→1.35
+            lv20: { appearanceId: 'bird_lv3', name: '열매치', statBoost: { hp: 2.3, sp: 1.5, atk: 2.0 }, newSkill: SKILLS.SOLAR_BEAM },   // [밸런스] atk 1.7→2.0
         }
     },
     ['monkey']: {
@@ -580,12 +591,12 @@ export const PET_DATA = {
         compatibleElements: ['번개'],
         description: "전기를 다루는 재주가 많은 원숭이입니다. (⚡번개 속성)",
         baseStats: { maxHp: 85, maxSp: 70, atk: 12 },
-        growth: { hp: 18, sp: 10, atk: 6 },
+        growth: { hp: 18, sp: 10, atk: 4 },           // [밸런스] atk 성장치 6→4 (콰릉숭 너프)
         skill: SKILLS.SHOCK_SCRATCH,
         initialSkills: [SKILLS.SHOCK_SCRATCH.id],
         evolution: {
-            lv10: { appearanceId: 'monkey_lv2', name: '지직숭', statBoost: { hp: 1.5, sp: 1.5, atk: 1.6 }, newSkill: SKILLS.THUNDER_PUNCH },
-            lv20: { appearanceId: 'monkey_lv3', name: '콰릉숭', statBoost: { hp: 2.0, sp: 2.1, atk: 2.3 }, newSkill: SKILLS.THUNDERSTORM },
+            lv10: { appearanceId: 'monkey_lv2', name: '지직숭', statBoost: { hp: 1.5, sp: 1.5, atk: 1.5 }, newSkill: SKILLS.THUNDER_PUNCH },   // [밸런스] atk 1.6→1.5
+            lv20: { appearanceId: 'monkey_lv3', name: '콰릉숭', statBoost: { hp: 2.0, sp: 2.1, atk: 1.9 }, newSkill: SKILLS.THUNDERSTORM },     // [밸런스] atk 2.3→1.9 (너프)
         }
     },
     ['fox']: {

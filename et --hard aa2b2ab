@@ -1,0 +1,183 @@
+[33me2fae88[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: reset: moving to origin/main
+[33maa2b2ab[m HEAD@{1}: commit: 스킬이펙트 점검중
+[33mcd29e44[m HEAD@{2}: reset: moving to origin/main
+[33mf3ff441[m HEAD@{3}: reset: moving to HEAD
+[33mf3ff441[m HEAD@{4}: commit: 공지사항 추가
+[33mff0d399[m HEAD@{5}: commit: 사이트개편(미션갤러리 검색기능 추가, 공지사항 신설)
+[33m33f9f56[m HEAD@{6}: pull origin main: Merge made by the 'ort' strategy.
+[33m5fe532f[m HEAD@{7}: commit: 경기리스트 방송송출 일치화
+[33mf2aad30[m HEAD@{8}: commit: 칭호 배틀 연결
+[33m9958e6f[m HEAD@{9}: commit: 포인트 부정수급 문제 해결과 칭호관리 복구
+[33m0f59149[m HEAD@{10}: reset: moving to origin/main
+[33mde21760[m HEAD@{11}: commit: 전반적으로 안정화 완료, 상점-마이룸-피팅룸 없애기
+[33mc770f6a[m HEAD@{12}: reset: moving to origin/main
+[33m36a236f[m HEAD@{13}: commit: 마이룸하트/펫셀렉션리디렉션버그/아바타에딧/포인트조정팝업중복 오류 개선
+[33m9b53a91[m HEAD@{14}: commit: 클로드 수정중 펫스킬 시스템 되돌림
+[33m1afa2c7[m HEAD@{15}: commit: 클로드 수정중(프로필아바타/경기횟수산정/펫네임/스킬갯수
+[33md1277ff[m HEAD@{16}: reset: moving to origin/main
+[33mb89c440[m HEAD@{17}: commit: 뭐하고있더라 이나 재우러감ㅅㄱ
+[33ma8c1802[m HEAD@{18}: commit: 미션연동 잘됨. 클로드에 리팩토링 의뢰하자
+[33m3cb94c6[m HEAD@{19}: commit: 어드민 컴포넌트 분리작업 완료. 하나씩 기능점검 필요, 일단 현재 미션승인한 것이 기록확인에 연동되지 않는 문제는 발견됨
+[33mf047307[m HEAD@{20}: reset: moving to origin/main
+[33mf047307[m HEAD@{21}: commit: 피로회복제 추가, 차기 작업)어드민페이지 컴포넌트 분리 작업 및 테스트 시작
+[33m2aab797[m HEAD@{22}: commit: 퀴즈관리 개선
+[33m997b71c[m HEAD@{23}: commit: 미션문제 해결완료, 일일퀴즈 해결완료, 어드민페이지 컴포넌트 분리할차례
+[33m5e90c41[m HEAD@{24}: reset: moving to origin/main
+[33mecdf6d2[m HEAD@{25}: commit: 모바일 UI 개선-클로드
+[33m61fd661[m HEAD@{26}: commit: 가입문제 해결된 것으로 보임, 배틀 정상 진행 확인
+[33m7506d37[m HEAD@{27}: commit: 어드민페이지 분리작업 + 클로드이용 가입문제 해결중
+[33maec35ae[m HEAD@{28}: reset: moving to origin/main
+[33m80bdad4[m HEAD@{29}: commit: 이용약관 수정, 어드민페이지 컴포넌트 분리작업 시작하자
+[33mc7253b4[m HEAD@{30}: commit: 펫 관련페이지 디자인 개선
+[33m5f8f17d[m HEAD@{31}: commit: 리그페이지 버튼 디자인 개선
+[33m21607a6[m HEAD@{32}: commit: 상점, 건의함 디자인 개선. 팀디테일페이지 디자인 개선중.
+[33mc8b61c7[m HEAD@{33}: commit: 기록확인페이지 개선
+[33md7a8678[m HEAD@{34}: commit: 아바타스냅샷 및 프로필, 대시보드 참조 수정완료
+[33m91a6b5f[m HEAD@{35}: commit: 디자인 개선중/심플대시보드 아바타 이미지 렌더링문제 해결중
+[33m5757217[m HEAD@{36}: commit: 페이지 디자인 개선, 플레이어스탯페이지 개선할차례
+[33m90ab736[m HEAD@{37}: commit: 팔레트 색상 전역 적용
+[33m2ee9d7d[m HEAD@{38}: commit: mission.json 복구
+[33m587316d[m HEAD@{39}: commit: ✨ Feat: 퀴즈 문제집 시스템 전면 개편 및 DB 마이그레이션
+[33md97e454[m HEAD@{40}: commit: 마이룸 저장시 아바타 제외, 다른 친구에게 보일땐 노출
+[33m6fa432b[m HEAD@{41}: commit: 오늘의 친구 우승횟수 별 기록 완료
+[33m56b60a4[m HEAD@{42}: commit: 대시보드 토글 1차 완성, 마이룸모드 위젯 드래그 기능 완성
+[33m1ef656c[m HEAD@{43}: commit: 주관식 횟수 제한 해제
+[33m0f791f7[m HEAD@{44}: commit: 재빠른 교란 이펙트 추가
+[33m0c6fb00[m HEAD@{45}: commit: 몸통박치기 1회로 수정. 스킬 이펙트 복구
+[33md59e560[m HEAD@{46}: commit: 스킬이펙트 분리
+[33md2a831a[m HEAD@{47}: commit: 용의숨결 이펙트 추가
+[33mdba9363[m HEAD@{48}: commit: 배틀 종료 후 펫페이지 상태 연동
+[33m3fbab77[m HEAD@{49}: commit: 배틀로직 개선, 객관식 추가
+[33me9f74cb[m HEAD@{50}: commit: 진화버튼 설명추가
+[33m2e71187[m HEAD@{51}: commit: 피격시 이펙트 복원
+[33m3b905c6[m HEAD@{52}: commit: 스타룡 용의숨결 버그 해결
+[33mf829146[m HEAD@{53}: reset: moving to origin/main
+[33mef2c791[m HEAD@{54}: reset: moving to origin/main
+[33mef2c791[m HEAD@{55}: commit: 배틀종료결과 반영 성공/도망치기 로직 개선할차례
+[33m0fff9ed[m HEAD@{56}: reset: moving to origin/main
+[33m0fff9ed[m HEAD@{57}: reset: moving to origin/main
+[33m542a7d7[m HEAD@{58}: reset: moving to origin/main
+[33m071fe02[m HEAD@{59}: reset: moving to origin/main
+[33m1ec9463[m HEAD@{60}: commit: 하트 경험치 교환 수정 완료
+[33mb5588c5[m HEAD@{61}: commit: 하트 경험치 교환 수정중
+[33meee1a7f[m HEAD@{62}: commit: 하트 복수 경험치 전환 기능 구현(아직 테스트X)공용스킬 추가할 차례
+[33m0541b21[m HEAD@{63}: reset: moving to origin/main
+[33m9097eef[m HEAD@{64}: reset: moving to origin/main
+[33m5fb45e0[m HEAD@{65}: commit: 다중작업중2
+[33ma136414[m HEAD@{66}: commit: 다중작업중
+[33m270d1fc[m HEAD@{67}: reset: moving to origin/main
+[33m3e37355[m HEAD@{68}: reset: moving to origin/main
+[33m9d86ea1[m HEAD@{69}: commit: 미션 갤러리 완성
+[33mf6b8250[m HEAD@{70}: commit: 미션갤러리 미션 출제시 비공개 버튼 추가
+[33m158357f[m HEAD@{71}: reset: moving to origin/main
+[33m4922e65[m HEAD@{72}: commit: 미션갤러리 시작할 차례
+[33m8f99709[m HEAD@{73}: commit: 고정미션 아니어도 기록보기 나오도록 수정+미션 갤러리 개발할 차례
+[33m79823ff[m HEAD@{74}: commit: 미션갤러리 작업 시작할 차례
+[33mfba4c7f[m HEAD@{75}: commit: 공통댓글 컴포넌트 작업 전
+[33mf315976[m HEAD@{76}: reset: moving to origin/main
+[33mf315976[m HEAD@{77}: commit: 미션승인 마지막 건 처리 버그수정
+[33m26de6a2[m HEAD@{78}: reset: moving to origin/main
+[33mca44c9a[m HEAD@{79}: commit: 일일퀴즈 문제 수정
+[33mf32e54e[m HEAD@{80}: commit: 미션관리 탭 생성
+[33m4b38c1f[m HEAD@{81}: commit: 미션 수정버튼 완료
+[33mc8dcc07[m HEAD@{82}: reset: moving to origin/main
+[33mc8dcc07[m HEAD@{83}: commit: 사진 확대 모달
+[33m6deb18a[m HEAD@{84}: commit: 사진 여러장 첨부
+[33m42897c9[m HEAD@{85}: commit: 리사이징 추가
+[33m2ef2709[m HEAD@{86}: commit: 메모리얼 코딩 수정 완료
+[33me637111[m HEAD@{87}: commit: 시즌종료 데이터 유실 방지 안정화
+[33m1ca2693[m HEAD@{88}: commit: 미션알림 얼추 완성?
+[33m6539167[m HEAD@{89}: commit: 미션 댓글달기 작업중, 미션안뜸
+[33m1856227[m HEAD@{90}: reset: moving to origin/main
+[33m1856227[m HEAD@{91}: reset: moving to origin/main
+[33m1856227[m HEAD@{92}: reset: moving to origin/main
+[33mf7489c2[m HEAD@{93}: commit: 호칭기능 작업 중
+[33m667d961[m HEAD@{94}: commit: 대시보드 프로필카드 디자인 개선
+[33md2469e1[m HEAD@{95}: commit: 칭호 시스템 구현중
+[33md6e92ae[m HEAD@{96}: commit: 관리자 대시보드 최적화
+[33m6b0266f[m HEAD@{97}: commit: 1:1대화,마이룸댓글 타임스탬프 추가/리그배정고고도화/관리자 대시보드 모바일 최적화 차례
+[33m3846c8c[m HEAD@{98}: reset: moving to origin/main
+[33m32c14e8[m HEAD@{99}: commit: 모바일 최적화, 놀러가기 버튼 위치조정
+[33m757a2dc[m HEAD@{100}: commit: 아바타 아이템 업로드 오류 수정
+[33m661706b[m HEAD@{101}: commit: 마이룸 탭 수정
+[33m628557c[m HEAD@{102}: commit: 고정미션 버그 해결중/내일까지 테스트하기
+[33mdcd7a7f[m HEAD@{103}: commit: 고정미션 무한제출 버그 해결중
+[33maaf015b[m HEAD@{104}: commit: 고정미션 문제해결, 기록대시보드 카운팅 개선, 알림삭제기능 추가
+[33m6459627[m HEAD@{105}: reset: moving to 64596272943b53aafa8f9068d42badaa39b944b9
+[33m27b0bad[m HEAD@{106}: reset: moving to 27b0bad29ea1e9262eb0c382802f327892138102
+[33m6459627[m HEAD@{107}: commit: 미션오류 해결됐길 바랍니다
+[33m27b0bad[m HEAD@{108}: commit: 고정미션 문제 해결중
+[33m8c824d9[m HEAD@{109}: commit: 고정미션 해결중(내일 새로운 미션 생기는지 확인)
+[33m3d11186[m HEAD@{110}: commit: 채팅 마지막 마세지로 개선
+[33mca695b5[m HEAD@{111}: commit: 배경크기 롤백
+[33m21e9387[m HEAD@{112}: commit: 배경 원본크기 그대로 삽입
+[33m9f36bf4[m HEAD@{113}: commit: 구매한 옷착용하기 기능 추가
+[33md374225[m HEAD@{114}: commit: 리그순위표 팀정보링크 추가, 팀정보 경기기록 스크롤 추가
+[33m7012cdf[m HEAD@{115}: commit: 리그테이블 엠블럼 출력 오류 해결 완료
+[33mf665afe[m HEAD@{116}: commit: 프리셋 엠블럼 배포버전 출력
+[33mc3b5b95[m HEAD@{117}: commit: 마이룸 레이어편집키 추가
+[33m7b00ac0[m HEAD@{118}: commit: 마이룸 조작방법 변경
+[33m823650e[m HEAD@{119}: commit: 터치환경 마이룸 편집 개선
+[33m2664f7f[m HEAD@{120}: reset: moving to origin/main
+[33m2664f7f[m HEAD@{121}: commit: 차등보상 승인로직 개선
+[33mf463470[m HEAD@{122}: commit: 경기기록원 송출화면 임포트 완료
+[33mbd74e8d[m HEAD@{123}: commit: 미션순서변경기능 구현/미션오류 해결/방송링크 임포트/출석확인 기능 추가
+[33mc096f11[m HEAD@{124}: commit: 마이룸 탭 개선, 리모트컨트롤 완성
+[33m8d099d5[m HEAD@{125}: commit: 득점자 효과
+[33m52c7552[m HEAD@{126}: commit: 하우징 개선
+[33me7472a5[m HEAD@{127}: commit: 포인트조정 모달팝업 수정완료
+[33m851bb1e[m HEAD@{128}: commit: 방송 송출 리모트 컨트롤 일단 구축함
+[33m31c350a[m HEAD@{129}: reset: moving to origin/main
+[33m31c350a[m HEAD@{130}: commit: 송출 디자인 완성
+[33m5f875f8[m HEAD@{131}: commit: 하우징 거진 완성
+[33mdefb513[m HEAD@{132}: commit: 마이룸 관리탭 이미지 크기 개선
+[33m647815e[m HEAD@{133}: commit: 가구 크기 조정, 저장버튼 만들기/크기확인/새로고침 개선 차례
+[33meb3e20b[m HEAD@{134}: commit: git이미지 추가, 대댓글 삭제기능 추가
+[33m51a1e0a[m HEAD@{135}: commit: 배경 추가, 소셜기능 수정 차례
+[33me865ee2[m HEAD@{136}: commit: 마이룸 구축, 진입버튼 완성/좌우배치반전 완성/기타 수정중
+[33m5e704ee[m HEAD@{137}: commit: 마이룸 백엔드 및 상점페이지 구현
+[33m514d829[m HEAD@{138}: reset: moving to origin/main
+[33m514d829[m HEAD@{139}: commit: 팀 프리셋 엠블럼 완료
+[33m3a5ac92[m HEAD@{140}: commit: 소속팀,리그기록 프로필이동기능 및 프로필확대 추가
+[33mf15c08e[m HEAD@{141}: commit: - 연계 미션 기능 추가
+[33mab8f6e7[m HEAD@{142}: commit: 상점 이미지 개선
+[33mcf1a809[m HEAD@{143}: commit: 반려된 경우 데이터 보존/관리자아이콘 디폴트 탭 수정 차례
+[33mcecad07[m HEAD@{144}: commit: 연계미션 구현
+[33m15ce405[m HEAD@{145}: commit: 미션완료 보관 및 열람
+[33m3fe1e73[m HEAD@{146}: commit: 패치노트 추가
+[33m302999c[m HEAD@{147}: commit: 리그기록 아바타 수정/알림창 닫힘 개선
+[33m91025b2[m HEAD@{148}: commit: 기록원 실시간기록 반영 구축 완료
+[33m5b47c7b[m HEAD@{149}: commit: 악세서리 중복기능 구현완료, 기록원 저장 반영 실시간 구현할차례
+[33m86f0645[m HEAD@{150}: reset: moving to 86f0645cafb608bc05c1490c54900966ca7d8704
+[33m86f0645[m HEAD@{151}: reset: moving to 86f0645cafb608bc05c1490c54900966ca7d8704
+[33m09ad38e[m HEAD@{152}: commit: 경기결과입력 실시간반영 오류. 수정중
+[33m86f0645[m HEAD@{153}: commit: 미션고도화, 경기순위/일정 수정
+[33m4fdd217[m HEAD@{154}: commit: 관리자 대화창 구조 변경 성공, 미션(글/사진) 개선차례
+[33m42fd256[m HEAD@{155}: commit: 메세지 수신 관리자 알람 추가 및 관리자 메세지 구조 변경차례
+[33m415b3b9[m HEAD@{156}: commit: 학생관리 롤백 및 메세지 기능 개선
+[33mdf70639[m HEAD@{157}: commit: 리그정보버튼 추가, 메세지 개선 차례
+[33m27cd373[m HEAD@{158}: commit: 메세지 기능 추가
+[33m14dbc6d[m HEAD@{159}: reset: moving to origin/main
+[33m3cf364c[m HEAD@{160}: commit: 기록원 경기체크 보상 알림까지 통합 완료
+[33md01e3b0[m HEAD@{161}: commit: 리그 기록 구현중
+[33ma6630ee[m HEAD@{162}: commit: 팀정보 구현, 남은 기능은 제미나이대화 참조
+[33m627320e[m HEAD@{163}: commit: 가가볼 리그 구현중
+[33mc8627a6[m HEAD@{164}: commit: 알림 통합 수정중
+[33m31ef28e[m HEAD@{165}: commit: 기록원UX개선/자가승인 불가, 대시보드 UI개선, 관리자페이지 UX개선(학급목표 완료/삭제), 기록원인센티브 및 알림중복항목 묶기 구현할 차례
+[33mc23cbac[m HEAD@{166}: reset: moving to origin/main
+[33mf6985bf[m HEAD@{167}: commit: 실시간 알림 구현 완료. 알림 목록 클릭으로 이동기능 추가할 차례
+[33m36b96b3[m HEAD@{168}: reset: moving to origin/main
+[33m227a025[m HEAD@{169}: reset: moving to origin/main
+[33m227a025[m HEAD@{170}: commit: 기록원 체크 개선, 포인트내역 수정차례
+[33m97a9cb7[m HEAD@{171}: reset: moving to origin/main
+[33m97a9cb7[m HEAD@{172}: reset: moving to origin/main
+[33mb64a210[m HEAD@{173}: commit: 아바타 편집 화면에서 소유한 아이템만 보이도록 수정할 차례
+[33m19d8194[m HEAD@{174}: commit: 관리자 가격입력페이지 이미지 크롭작업중
+[33m671bbbf[m HEAD@{175}: commit: 아바타 꾸미기 기초 기능완료, 상점 구현차례
+[33m71fa839[m HEAD@{176}: commit: 파이어베이스 스토리지 설정중, 아직 업로드 구현안되고 오류남.
+[33m0fd2228[m HEAD@{177}: commit: 아바타 편집기능 구현, 이미지 생성해서 저장할차례
+[33m3c1b886[m HEAD@{178}: commit: 구글/순위표 초안 완료, 엠블럼 자리 마련할 차례, 대시보드 형식 만들기
+[33m8d2b2d5[m HEAD@{179}: commit: 새시즌버튼완료 공개용페이지 구축시작할 차례
+[33m6ebf9a8[m HEAD@{180}: reset: moving to origin/main
+[33m8db5460[m HEAD@{181}: Branch: renamed refs/heads/master to refs/heads/main
+[33m8db5460[m HEAD@{183}: commit (initial): Initial commit

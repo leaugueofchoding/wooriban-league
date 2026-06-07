@@ -67,7 +67,10 @@ import {
     hatchPetEgg as firebaseHatchPetEgg,
     revivePet as firebaseRevivePet,
     healPet as firebaseHealPet,
+    healPetHp as firebaseHealPetHp,
+    healPetSp as firebaseHealPetSp,
     healAllPets as firebaseHealAllPets,
+    healAllPetsHp as firebaseHealAllPetsHp,
     convertLikesToExp as apiConvertLikesToExp,
     updatePetSkills as apiUpdatePetSkills,
     createOrJoinBattle,
@@ -286,6 +289,39 @@ export const useLeagueStore = create((set, get) => ({
         }));
     },
 
+    healPetHp: async (petId) => {
+        const classId = getClassId();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+        const updatedPlayerData = await firebaseHealPetHp(classId, myPlayerData.id, petId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+    healPetSp: async (petId) => {
+        const classId = getClassId();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+        const updatedPlayerData = await firebaseHealPetSp(classId, myPlayerData.id, petId);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
+    healAllPetsHp: async () => {
+        const classId = getClassId();
+        const user = auth.currentUser;
+        if (!user) throw new Error("로그인이 필요합니다.");
+        const myPlayerData = get().players.find(p => p.authUid === user.uid);
+        if (!myPlayerData) throw new Error("Player data not found.");
+        const updatedPlayerData = await firebaseHealAllPetsHp(classId, myPlayerData.id);
+        set(state => ({
+            players: state.players.map(p => p.id === myPlayerData.id ? updatedPlayerData : p)
+        }));
+    },
     healAllPets: async () => {
         const classId = getClassId();
         const user = auth.currentUser;
