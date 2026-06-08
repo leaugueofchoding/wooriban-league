@@ -4894,3 +4894,148 @@ export async function applyReportPenalty(classId, playerId, amount, reason) {
   // 차감은 음수 amount로 adjustPlayerPoints 재활용
   await adjustPlayerPoints(classId, playerId, -Math.abs(amount), reason || '댓글 신고 페널티');
 }
+
+// =====================================================
+// ▼▼▼ [추가] 퀘스트 기능 ▼▼▼
+// =====================================================
+
+/**
+ * 퀘스트 생성
+ * questData: { title, description, reward, maxAcceptors, deadline(optional), icon }
+ */
+export async function createQuest(classId, questData) {
+  if (!classId) return;
+  const ref = collection(db, 'classes', classId, 'quests');
+  const docRef = await addDoc(ref, {
+    ...questData,
+    status: 'open',           // open | closed
+    acceptors: [],            // [{ playerId, playerName, acceptedAt, completionStatus }]
+    createdAt: serverTimestamp(),
+    closedAt: null,
+  });
+  // 전체 학생 알림
+  const playersSnap = await getDocs(query(collection(db, 'classes', classId, 'players'), where('role', '!=', 'admin')));
+  playersSnap.forEach(d => {
+    const p = d.data();
+    if (p.authUid) createNotification(p.authUid, `⚔️ 새 퀘스트: ${questData.title}`, questData.description?.slice(0, 60) || '', 'quest', '/missions');
+  });
+  return docRef.id;
+}
+
+/** 퀘스트 수정 */
+export async function updateQuest(classId, questId, updates) {
+  if (!classId || !questId) return;
+  await updateDoc(doc(db, 'classes', classId, 'quests', questId), updates);
+}
+
+/** 퀘스트 삭제 */
+export async function deleteQuest(classId, questId) {
+  if (!classId || !questId) return;
+  await deleteDoc(doc(db, 'classes', classId, 'quests', questId));
+}
+
+/** 퀘스트 실시간 구독 */
+export function listenQuests(classId, callback) {
+  if (!classId) return () => { };
+  const q = query(collection(db, 'classes', classId, 'quests'), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+
+/**
+ * 퀘스트 수락 (선착순 트랜잭션)
+ * 반환값: 'accepted' | 'full' | 'already'
+ */
+export async function acceptQuest(classId, questId, player) {
+  if (!classId || !questId) return;
+  const questRef = doc(db, 'classes', classId, 'quests', questId);
+  let result = 'accepted';
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(questRef);
+    if (!snap.exists()) throw new Error('퀘스트를 찾을 수 없습니다.');
+    const data = snap.data();
+
+    const acceptors = data.acceptors || [];
+    if (acceptors.some(a => a.playerId === player.id)) { result = 'already'; return; }
+    if (acceptors.length >= (data.maxAcceptors || 1)) { result = 'full'; return; }
+
+    transaction.update(questRef, {
+      acceptors: arrayUnion({ playerId: player.id, playerName: player.name, acceptedAt: new Date().toISOString(), completionStatus: 'accepted' })
+    });
+  });
+  return result;
+}
+
+/**
+ * 퀘스트 완료 처리 (관리자) — 포인트 지급 포함
+ */
+export async function completeQuestForPlayer(classId, questId, playerId, playerName, reward) {
+  if (!classId) return;
+  const questRef = doc(db, 'classes', classId, 'quests', questId);
+  const snap = await getDoc(questRef);
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+  const newAcceptors = data.acceptors.map(a =>
+    a.playerId === playerId ? { ...a, completionStatus: 'completed' } : a
+  );
+  await updateDoc(questRef, { acceptors: newAcceptors });
+
+  // 포인트 지급
+  await adjustPlayerPoints(classId, playerId, reward, `퀘스트 완료: ${data.title}`);
+}
+
+/**
+ * 퀘스트 수락 취소 (학생)
+ */
+export async function cancelQuestAcceptance(classId, questId, playerId) {
+  if (!classId) return;
+  const questRef = doc(db, 'classes', classId, 'quests', questId);
+  const snap = await getDoc(questRef);
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const newAcceptors = data.acceptors.filter(a => a.playerId !== playerId);
+  await updateDoc(questRef, { acceptors: newAcceptors });
+}
+
+/**
+ * 특정 댓글의 기존 신고 상태 조회
+ * returns: null | { status: 'pending'|'resolved'|'dismissed' }
+ */
+export async function getCommentReportStatus(classId, commentId) {
+  if (!classId || !commentId) return null;
+  const q = query(
+    collection(db, 'classes', classId, 'commentReports'),
+    where('commentId', '==', commentId),
+    orderBy('createdAt', 'desc'),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { status: snap.docs[0].data().status, id: snap.docs[0].id };
+}
+
+// =====================================================
+// ▼▼▼ [추가] 수업 시간표 설정 ▼▼▼
+// =====================================================
+
+/** 수업 시간표 저장 (schedules: [{label, start, end}, ...]) */
+export async function saveClassSchedules(classId, schedules) {
+  if (!classId) return;
+  await updateDoc(doc(db, 'classes', classId), { schedules });
+}
+
+/** 수업 시간표 불러오기 */
+export async function getClassSchedules(classId) {
+  if (!classId) return [];
+  const snap = await getDoc(doc(db, 'classes', classId));
+  return snap.exists() ? (snap.data().schedules || []) : [];
+}
+
+/** 시간표 실시간 구독 */
+export function listenClassSchedules(classId, callback) {
+  if (!classId) return () => { };
+  return onSnapshot(doc(db, 'classes', classId), snap => {
+    callback(snap.exists() ? (snap.data().schedules || []) : []);
+  });
+}

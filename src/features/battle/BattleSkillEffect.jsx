@@ -230,6 +230,46 @@ const vineWhipToMe = keyframes`
   100% { right: 70%; top: 65%; opacity: 0; transform: scale(3); }
 `;
 
+// 덩굴 채찍 멀티: 메인 덩굴 + 잔가지 2개 (각기 다른 각도)
+const vineWhipLash1ToOpp = keyframes`
+  0%   { left: 15%; bottom: 28%; opacity: 0; transform: scale(0.3) rotate(-45deg); }
+  15%  { opacity: 1; transform: scale(1.4) rotate(-10deg); filter: drop-shadow(0 0 10px #40c057); }
+  55%  { left: 63%; bottom: 58%; transform: scale(2.2) rotate(20deg) scaleX(2.8); filter: brightness(2.2) drop-shadow(0 0 16px #40c057); }
+  80%  { transform: scale(2.8) scaleX(2); }
+  100% { left: 68%; bottom: 63%; opacity: 0; transform: scale(3.5); }
+`;
+const vineWhipLash1ToMe = keyframes`
+  0%   { right: 15%; top: 28%; opacity: 0; transform: scale(0.3) rotate(45deg); }
+  15%  { opacity: 1; transform: scale(1.4) rotate(10deg); filter: drop-shadow(0 0 10px #40c057); }
+  55%  { right: 63%; top: 58%; transform: scale(2.2) rotate(-20deg) scaleX(2.8); filter: brightness(2.2) drop-shadow(0 0 16px #40c057); }
+  80%  { transform: scale(2.8) scaleX(2); }
+  100% { right: 68%; top: 63%; opacity: 0; transform: scale(3.5); }
+`;
+const vineWhipLash2ToOpp = keyframes`
+  0%   { left: 18%; bottom: 22%; opacity: 0; transform: scale(0.2) rotate(-60deg); }
+  20%  { opacity: 0.85; transform: scale(1.1) rotate(5deg); filter: drop-shadow(0 0 8px #69db7c); }
+  60%  { left: 60%; bottom: 55%; transform: scale(1.7) rotate(30deg) scaleX(2.2); filter: brightness(1.8) drop-shadow(0 0 10px #69db7c); }
+  100% { left: 65%; bottom: 60%; opacity: 0; transform: scale(2.5); }
+`;
+const vineWhipLash2ToMe = keyframes`
+  0%   { right: 18%; top: 22%; opacity: 0; transform: scale(0.2) rotate(60deg); }
+  20%  { opacity: 0.85; transform: scale(1.1) rotate(-5deg); filter: drop-shadow(0 0 8px #69db7c); }
+  60%  { right: 60%; top: 55%; transform: scale(1.7) rotate(-30deg) scaleX(2.2); filter: brightness(1.8) drop-shadow(0 0 10px #69db7c); }
+  100% { right: 65%; top: 60%; opacity: 0; transform: scale(2.5); }
+`;
+const vineWhipImpactToOpp = keyframes`
+  0%   { left: 60%; bottom: 55%; opacity: 0; transform: scale(0.5); }
+  30%  { opacity: 1; transform: scale(1.8); filter: drop-shadow(0 0 18px #40c057) brightness(2); }
+  70%  { transform: scale(2.5) rotate(15deg); }
+  100% { left: 66%; bottom: 61%; opacity: 0; transform: scale(3.5) rotate(30deg); }
+`;
+const vineWhipImpactToMe = keyframes`
+  0%   { right: 60%; top: 55%; opacity: 0; transform: scale(0.5); }
+  30%  { opacity: 1; transform: scale(1.8); filter: drop-shadow(0 0 18px #40c057) brightness(2); }
+  70%  { transform: scale(2.5) rotate(-15deg); }
+  100% { right: 66%; top: 61%; opacity: 0; transform: scale(3.5) rotate(-30deg); }
+`;
+
 // 에너지 사이펀: 흡수 소용돌이
 const siphonPull = keyframes`
   0%   { left: 65%; bottom: 60%; opacity: 0; transform: scale(3) rotate(0deg); }
@@ -578,7 +618,7 @@ const SKILL_CONFIG = {
 
   // 풀 계열
   LEECH_SEED: { icon: '🌱', duration: '1.3s', type: 'SEED' },
-  VINE_WHIP: { icon: '🌿', duration: '1.0s', type: 'VINE' },
+  VINE_WHIP: { icon: '🌿', duration: '1.2s', type: 'VINE_WHIP_MULTI' },
   SOLAR_BEAM: { icon: '☀️', duration: '1.5s', type: 'SOLAR' },
 
   // 번개 계열
@@ -619,6 +659,7 @@ const getAnimation = (type, isMine) => {
     case 'SOLAR': return isMine ? solarCharge : solarChargeToMe;
     case 'SEED': return isMine ? seedFly : seedFlyToMe;
     case 'VINE': return isMine ? vineWhip : vineWhipToMe;
+    case 'VINE_WHIP_MULTI': return isMine ? vineWhipLash1ToOpp : vineWhipLash1ToMe;
     case 'SIPHON': return isMine ? siphonPull : siphonPullToMe;
     case 'FLAME_DASH': return isMine ? flameDash : flameDashToMe;
     case 'SCRATCH': return isMine ? scratchStrike : scratchStrikeToMe;
@@ -667,7 +708,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
   const config = SKILL_CONFIG[type] || { icon: '✨', duration: '1s', type: 'PROJECTILE' };
 
   const glowMap = {
-    POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', SOLAR: '#ffd43b',
+    POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', VINE_WHIP_MULTI: '#40c057', SOLAR: '#ffd43b',
     REM_FIRE: '#ff6b35', UPHWA: '#ff4500', UPHWA_FULL: '#ff4500', BREATH: '#ff4500', FLAME_DASH: '#ff6b35', DRAGON_CLAW_MULTI: '#ff4500',
     THUNDER: '#ffd43b', THUNDER_FULL: '#ffd43b', THUNDER_PUNCH_MULTI: '#ffd43b',
     STELLAR: '#ffd43b', SCRATCH: '#ffd43b',
@@ -715,6 +756,17 @@ const BattleSkillEffect = ({ type, isMine }) => {
         <MultiIcon $anim={isMine ? tornadoRise : tornadoRiseToMe} $duration="2.0s" $glow="#74c0fc" $size="6rem">🌪️</MultiIcon>
         <MultiIcon $anim={isMine ? tornadoSub1 : tornadoSub1ToMe} $duration="1.8s" $glow="#339af0" $size="4rem" $delay="0.15s">🌀</MultiIcon>
         <MultiIcon $anim={isMine ? tornadoSub2 : tornadoSub2ToMe} $duration="1.6s" $glow="#74c0fc" $size="3rem" $delay="0.3s">🌪️</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 덩굴 채찍: 메인 덩굴 + 잔가지 + 충격파
+  if (config.type === 'VINE_WHIP_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.2s" $animType="VINE_WHIP_MULTI" $isMine={isMine} $glowColor="#40c057">
+        <MultiIcon $anim={isMine ? vineWhipLash1ToOpp : vineWhipLash1ToMe} $duration="1.2s" $glow="#40c057" $size="4rem">🌿</MultiIcon>
+        <MultiIcon $anim={isMine ? vineWhipLash2ToOpp : vineWhipLash2ToMe} $duration="1.0s" $glow="#69db7c" $size="3.2rem" $delay="0.08s">🍃</MultiIcon>
+        <MultiIcon $anim={isMine ? vineWhipImpactToOpp : vineWhipImpactToMe} $duration="0.6s" $glow="#2f9e44" $size="3.5rem" $delay="0.5s">💥</MultiIcon>
       </EffectContainer>
     );
   }

@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { auth, updateUserProfile, db, rejectBattleChallenge, listenNotices } from '../api/firebase.js';
+import { auth, updateUserProfile, db, rejectBattleChallenge, listenNotices, listenClassSchedules } from '../api/firebase.js';
 import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import styled from 'styled-components';
@@ -151,6 +151,41 @@ const NotificationHeader = styled.div`
     border-bottom: 1px solid #f1f3f5;
 `;
 
+
+// ─── 시계 + 수업 알림 스타일 ─────────────────────────────
+const ClockDisplay = styled.div`
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.9rem; font-weight: 700; color: #495057;
+    background: #f1f3f5; border-radius: 20px;
+    padding: 0.3rem 0.85rem; cursor: default; user-select: none;
+    letter-spacing: 0.03em; flex-shrink: 0;
+
+    @media (max-width: 600px) { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
+`;
+
+const ClassAlertOverlay = styled.div`
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 99999;
+    animation: fadeInBg 0.2s ease;
+    @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+`;
+const ClassAlertBox = styled.div`
+    background: #fff; border-radius: 20px; padding: 2.5rem 2rem;
+    text-align: center; max-width: 340px; width: 90%;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+    animation: popIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    @keyframes popIn { from { opacity:0; transform:scale(0.85); } to { opacity:1; transform:scale(1); } }
+`;
+const ClassAlertEmoji = styled.div`font-size: 3.5rem; margin-bottom: 0.75rem;`;
+const ClassAlertTitle = styled.h3`margin: 0 0 0.5rem; font-size: 1.3rem; font-weight: 900; color: #212529;`;
+const ClassAlertBody = styled.p`margin: 0 0 1.5rem; color: #495057; font-size: 0.97rem; line-height: 1.6;`;
+const ClassAlertBtn = styled.button`
+    padding: 0.7rem 2rem; background: #339af0; color: #fff; border: none;
+    border-radius: 12px; font-size: 1rem; font-weight: 800; cursor: pointer;
+    &:hover { background: #1c7ed6; }
+`;
+
 const ClearButton = styled.button`
     background: none;
     border: none;
@@ -266,6 +301,48 @@ function Auth({ user }) {
     const [showNotifications, setShowNotifications] = useState(false);
     const [battleChallenge, setBattleChallenge] = useState(null);
     const notificationRef = useRef(null);
+
+    // ─── 시계 + 수업시간 알림 ───────────────────────────────
+    const [currentTime, setCurrentTime] = useState(new Date());
+    const [classSchedules, setClassSchedules] = useState([]);
+    const [classAlert, setClassAlert] = useState(null); // { label, minutesLeft, start }
+    const alertedRef = useRef(new Set()); // 이미 알림 보낸 키 (중복 방지)
+
+    // 1분마다 tick
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // 수업 시간표 구독
+    useEffect(() => {
+        if (!classId) return;
+        return listenClassSchedules(classId, setClassSchedules);
+    }, [classId]);
+
+    // 수업 시작 1분 전 감지
+    useEffect(() => {
+        if (!classSchedules.length) return;
+        const now = currentTime;
+        const hhmm = (h, m) => h * 60 + m;
+        const nowMins = hhmm(now.getHours(), now.getMinutes());
+        const nowSec = now.getSeconds();
+
+        classSchedules.forEach(sched => {
+            const [sh, sm] = (sched.start || '').split(':').map(Number);
+            if (isNaN(sh) || isNaN(sm)) return;
+            const startMins = hhmm(sh, sm);
+            const diff = startMins - nowMins; // 양수면 아직 시작 전
+
+            // 정확히 1분 전(초 0~4 구간)에만 알림 (중복 방지용 key)
+            const alertKey = `${sched.label}-${sched.start}-${now.toDateString()}`;
+            if (diff === 1 && nowSec < 5 && !alertedRef.current.has(alertKey)) {
+                alertedRef.current.add(alertKey);
+                setClassAlert({ label: sched.label || '수업', minutesLeft: 1, start: sched.start });
+            }
+        });
+    }, [currentTime, classSchedules]);
+    // ─────────────────────────────────────────────────────────
 
     // ▼▼▼ [추가] 공지사항 미열람 배지 ▼▼▼
     const [hasUnreadNotice, setHasUnreadNotice] = useState(false);
@@ -467,145 +544,166 @@ function Auth({ user }) {
         setBattleChallenge(null);
     };
 
+    // 시계 포맷
+    const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
     return (
-        <AuthWrapper>
-            {user ? (
-                <UserProfile>
-                    <IconContainer>
-                        <IconLink to="/">🏠</IconLink>
-                        {(myPlayerData?.role === 'admin' || myPlayerData?.role === 'recorder') && (
-                            <IconLink to="/recorder-dashboard" title="기록원 대시보드">📝</IconLink>
-                        )}
-                        {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
-                        <div style={{ position: 'relative', display: 'inline-flex' }}>
-                            <IconLink to="/notices" title="공지사항">📢</IconLink>
-                            {hasUnreadNotice && (
-                                <span style={{
-                                    position: 'absolute', top: '2px', right: '2px',
-                                    width: '8px', height: '8px', borderRadius: '50%',
-                                    background: '#fa5252', border: '1.5px solid white',
-                                    pointerEvents: 'none',
-                                }} />
-                            )}
-                        </div>
-                        <NotificationContainer ref={notificationRef}>
-                            <IconButton data-bell-btn onClick={handleNotificationClick}>
-                                🔔
-                                {unreadNotificationCount > 0 && <NotificationBadge />}
-                            </IconButton>
-                            {showNotifications && (
-                                <NotificationList>
-                                    <NotificationHeader>
-                                        <h5 style={{ margin: 0 }}>알림</h5>
-                                        <ClearButton onClick={handleClearAll}>전체 삭제</ClearButton>
-                                    </NotificationHeader>
-
-                                    {isRecorderOrAdmin && approvalBonus > 0 && (
-                                        <BonusNotificationItem>
-                                            <h5>💰 오늘의 기록 보너스</h5>
-                                            <p>미션 승인 및 경기 기록 보너스로 총 {approvalBonus}P를 획득했습니다.</p>
-                                        </BonusNotificationItem>
-                                    )}
-
-                                    {groupedNotifications.length > 0 ? (
-                                        groupedNotifications.map(notif => (
-                                            <NotificationItem
-                                                key={notif.id}
-                                                $hasLink={!!notif.link}
-                                                onClick={() => {
-                                                    if (notif.type === 'suggestion_admin') {
-                                                        // state로 전달해야 재마운트 없이 탭이 바뀜
-                                                        navigate('/admin', { state: { forceTab: 'messages' } });
-                                                        setShowNotifications(false);
-                                                        return;
-                                                    }
-                                                    // [추가] 댓글 신고 알림 → 관리자 신고 탭으로 이동
-                                                    if (notif.type === 'comment_report') {
-                                                        navigate('/admin', { state: { forceTab: 'reports' } });
-                                                        setShowNotifications(false);
-                                                        return;
-                                                    }
-                                                    if (notif.link) {
-                                                        navigate(notif.link);
-                                                        setShowNotifications(false);
-                                                    }
-                                                }}
-                                            >
-                                                <div className="notif-body">
-                                                    <h5>{notif.title}</h5>
-                                                    <p>{notif.body}</p>
-                                                </div>
-                                                <span className="arrow">›</span>
-                                            </NotificationItem>
-                                        ))
-                                    ) : (
-                                        <NotificationItem>
-                                            <div className="notif-body"><p>새로운 알림이 없습니다.</p></div>
-                                        </NotificationItem>
-                                    )}
-                                </NotificationList>
-                            )}
-                        </NotificationContainer>
-                    </IconContainer>
-                    <Link to="/profile">
-                        <img src={user.photoURL} alt="프로필 사진" />
-                        <span>{user.displayName}</span>
-                    </Link>
-                    <Button onClick={handleLogout}>로그아웃</Button>
-                </UserProfile>
-            ) : (
-                <Button onClick={handleGoogleLogin}>Google 로그인</Button>
+        <>
+            {/* 수업 시작 알림 팝업 */}
+            {classAlert && (
+                <ClassAlertOverlay>
+                    <ClassAlertBox>
+                        <ClassAlertEmoji>🔔</ClassAlertEmoji>
+                        <ClassAlertTitle>{classAlert.label} 1분 전!</ClassAlertTitle>
+                        <ClassAlertBody>
+                            <strong>{classAlert.start}</strong>에 {classAlert.label}이(가) 시작됩니다.<br />
+                            지금 바로 수업 준비를 해주세요! 📚
+                        </ClassAlertBody>
+                        <ClassAlertBtn onClick={() => setClassAlert(null)}>알겠어요!</ClassAlertBtn>
+                    </ClassAlertBox>
+                </ClassAlertOverlay>
             )}
-
-            {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
-            {battleChallenge && (() => {
-                // [버그 수정] 내 파트너펫 기절 상태 미리 확인
-                const myPetForBattle = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
-                const myPetFainted = !myPetForBattle || myPetForBattle.hp <= 0;
-                return (
-                    <ModalBackground>
-                        <ModalContent>
-                            <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
-
-                            <OpponentItem>
-                                <div className="user-info">
-                                    <img
-                                        src={petImageMap[`${battleChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
-                                        alt="도전자 펫"
-                                    />
-                                    <div>
-                                        <strong>{battleChallenge.challenger?.name}</strong>
-                                        <span>{battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})</span>
-                                    </div>
-                                </div>
-                            </OpponentItem>
-
-                            {myPetFainted && (
-                                <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center' }}>
-                                    ⚠️ 내 펫이 기절 상태입니다. 펫 센터에서 치료 후 수락할 수 있습니다.
-                                </div>
+            <AuthWrapper>
+                {user ? (
+                    <UserProfile>
+                        {/* 시계 표시 */}
+                        <ClockDisplay>🕐 {timeStr}</ClockDisplay>
+                        <IconContainer>
+                            <IconLink to="/">🏠</IconLink>
+                            {(myPlayerData?.role === 'admin' || myPlayerData?.role === 'recorder') && (
+                                <IconLink to="/recorder-dashboard" title="기록원 대시보드">📝</IconLink>
                             )}
-
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <StyledButton
-                                    onClick={handleAcceptBattle}
-                                    disabled={myPetFainted}
-                                    style={{ flex: 1, backgroundColor: myPetFainted ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1.1rem', cursor: myPetFainted ? 'not-allowed' : 'pointer' }}
-                                >
-                                    ⚔️ 수락
-                                </StyledButton>
-                                <StyledButton
-                                    onClick={handleRejectBattle}
-                                    style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1.1rem' }}
-                                >
-                                    거절
-                                </StyledButton>
+                            {myPlayerData?.role === 'admin' && <IconLink to="/admin">👑</IconLink>}
+                            <div style={{ position: 'relative', display: 'inline-flex' }}>
+                                <IconLink to="/notices" title="공지사항">📢</IconLink>
+                                {hasUnreadNotice && (
+                                    <span style={{
+                                        position: 'absolute', top: '2px', right: '2px',
+                                        width: '8px', height: '8px', borderRadius: '50%',
+                                        background: '#fa5252', border: '1.5px solid white',
+                                        pointerEvents: 'none',
+                                    }} />
+                                )}
                             </div>
-                        </ModalContent>
-                    </ModalBackground>
-                );
-            })()}
-        </AuthWrapper>
+                            <NotificationContainer ref={notificationRef}>
+                                <IconButton data-bell-btn onClick={handleNotificationClick}>
+                                    🔔
+                                    {unreadNotificationCount > 0 && <NotificationBadge />}
+                                </IconButton>
+                                {showNotifications && (
+                                    <NotificationList>
+                                        <NotificationHeader>
+                                            <h5 style={{ margin: 0 }}>알림</h5>
+                                            <ClearButton onClick={handleClearAll}>전체 삭제</ClearButton>
+                                        </NotificationHeader>
+
+                                        {isRecorderOrAdmin && approvalBonus > 0 && (
+                                            <BonusNotificationItem>
+                                                <h5>💰 오늘의 기록 보너스</h5>
+                                                <p>미션 승인 및 경기 기록 보너스로 총 {approvalBonus}P를 획득했습니다.</p>
+                                            </BonusNotificationItem>
+                                        )}
+
+                                        {groupedNotifications.length > 0 ? (
+                                            groupedNotifications.map(notif => (
+                                                <NotificationItem
+                                                    key={notif.id}
+                                                    $hasLink={!!notif.link}
+                                                    onClick={() => {
+                                                        if (notif.type === 'suggestion_admin') {
+                                                            // state로 전달해야 재마운트 없이 탭이 바뀜
+                                                            navigate('/admin', { state: { forceTab: 'messages' } });
+                                                            setShowNotifications(false);
+                                                            return;
+                                                        }
+                                                        // [추가] 댓글 신고 알림 → 관리자 신고 탭으로 이동
+                                                        if (notif.type === 'comment_report') {
+                                                            navigate('/admin', { state: { forceTab: 'reports' } });
+                                                            setShowNotifications(false);
+                                                            return;
+                                                        }
+                                                        if (notif.link) {
+                                                            navigate(notif.link);
+                                                            setShowNotifications(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    <div className="notif-body">
+                                                        <h5>{notif.title}</h5>
+                                                        <p>{notif.body}</p>
+                                                    </div>
+                                                    <span className="arrow">›</span>
+                                                </NotificationItem>
+                                            ))
+                                        ) : (
+                                            <NotificationItem>
+                                                <div className="notif-body"><p>새로운 알림이 없습니다.</p></div>
+                                            </NotificationItem>
+                                        )}
+                                    </NotificationList>
+                                )}
+                            </NotificationContainer>
+                        </IconContainer>
+                        <Link to="/profile">
+                            <img src={user.photoURL} alt="프로필 사진" />
+                            <span>{user.displayName}</span>
+                        </Link>
+                        <Button onClick={handleLogout}>로그아웃</Button>
+                    </UserProfile>
+                ) : (
+                    <Button onClick={handleGoogleLogin}>Google 로그인</Button>
+                )}
+
+                {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
+                {battleChallenge && (() => {
+                    // [버그 수정] 내 파트너펫 기절 상태 미리 확인
+                    const myPetForBattle = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
+                    const myPetFainted = !myPetForBattle || myPetForBattle.hp <= 0;
+                    return (
+                        <ModalBackground>
+                            <ModalContent>
+                                <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
+
+                                <OpponentItem>
+                                    <div className="user-info">
+                                        <img
+                                            src={petImageMap[`${battleChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                                            alt="도전자 펫"
+                                        />
+                                        <div>
+                                            <strong>{battleChallenge.challenger?.name}</strong>
+                                            <span>{battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})</span>
+                                        </div>
+                                    </div>
+                                </OpponentItem>
+
+                                {myPetFainted && (
+                                    <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center' }}>
+                                        ⚠️ 내 펫이 기절 상태입니다. 펫 센터에서 치료 후 수락할 수 있습니다.
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <StyledButton
+                                        onClick={handleAcceptBattle}
+                                        disabled={myPetFainted}
+                                        style={{ flex: 1, backgroundColor: myPetFainted ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1.1rem', cursor: myPetFainted ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        ⚔️ 수락
+                                    </StyledButton>
+                                    <StyledButton
+                                        onClick={handleRejectBattle}
+                                        style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1.1rem' }}
+                                    >
+                                        거절
+                                    </StyledButton>
+                                </div>
+                            </ModalContent>
+                        </ModalBackground>
+                    );
+                })()}
+            </AuthWrapper>
+        </>
     );
 }
 

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useClassStore, useLeagueStore } from '../../../store/leagueStore';
-import { auth, db, createNewClass, getBattleEnabled, setBattleEnabled } from '../../../api/firebase';
+import { auth, db, createNewClass, getBattleEnabled, setBattleEnabled, saveClassSchedules, getClassSchedules } from '../../../api/firebase';
 import { collection, query, where, getDocs, collectionGroup, limit, doc, setDoc } from "firebase/firestore";
 import QRCode from 'react-qr-code';
 import { FullWidthSection, Section, SectionTitle, InputGroup, StyledButton } from '../Admin.style';
@@ -48,12 +48,33 @@ function ClassManager() {
     const [manualId, setManualId] = useState('');
     const [battleEnabled, setBattleEnabledState] = useState(true);
     const [battleToggleLoading, setBattleToggleLoading] = useState(false);
+    // 수업 시간표
+    const [schedules, setSchedules] = useState([]); // [{label, start, end}]
+    const [schedSaving, setSchedSaving] = useState(false);
 
     // 배틀 ON/OFF 상태 로드
     useEffect(() => {
         if (!classId) return;
         getBattleEnabled(classId).then(v => setBattleEnabledState(v));
     }, [classId]);
+
+    // 수업 시간표 로드
+    useEffect(() => {
+        if (!classId) return;
+        getClassSchedules(classId).then(s => setSchedules(s.length ? s : [{ label: '1교시', start: '09:00', end: '09:40' }]));
+    }, [classId]);
+
+    const addScheduleRow = () => setSchedules(prev => [...prev, { label: '', start: '', end: '' }]);
+    const removeScheduleRow = (i) => setSchedules(prev => prev.filter((_, idx) => idx !== i));
+    const updateScheduleRow = (i, field, val) => setSchedules(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
+    const handleSaveSchedules = async () => {
+        setSchedSaving(true);
+        try {
+            await saveClassSchedules(classId, schedules);
+            alert('시간표가 저장되었습니다. 학생들이 접속하면 수업 1분 전 알림을 받습니다.');
+        } catch (e) { alert('저장 실패: ' + e.message); }
+        setSchedSaving(false);
+    };
 
     const handleToggleBattle = async () => {
         if (!classId) return alert('학급을 먼저 선택해주세요.');
@@ -255,6 +276,50 @@ function ClassManager() {
                     </div>
                 )}
                 {/* ▲▲▲ [추가 끝] ▲▲▲ */}
+
+                {/* ─── 수업 시간표 설정 ─── */}
+                {classId && (
+                    <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8f9fa', borderRadius: '12px', border: '1px solid #dee2e6' }}>
+                        <h4 style={{ margin: '0 0 0.3rem', fontSize: '1rem', fontWeight: 800, color: '#212529' }}>🕐 수업 시간표 설정</h4>
+                        <small style={{ color: '#868e96', display: 'block', marginBottom: '1rem' }}>
+                            수업 시작 1분 전에 접속 중인 학생들에게 자동 팝업 알림을 보냅니다.
+                        </small>
+                        {schedules.map((s, i) => (
+                            <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                                <input
+                                    type="text" placeholder="이름(예:1교시)" value={s.label}
+                                    onChange={e => updateScheduleRow(i, 'label', e.target.value)}
+                                    style={{ width: '90px', padding: '0.4rem 0.6rem', border: '1px solid #ced4da', borderRadius: '8px', fontSize: '0.88rem' }}
+                                />
+                                <input
+                                    type="time" value={s.start}
+                                    onChange={e => updateScheduleRow(i, 'start', e.target.value)}
+                                    style={{ padding: '0.4rem 0.6rem', border: '1px solid #ced4da', borderRadius: '8px', fontSize: '0.88rem' }}
+                                />
+                                <span style={{ color: '#868e96', fontSize: '0.85rem' }}>~</span>
+                                <input
+                                    type="time" value={s.end}
+                                    onChange={e => updateScheduleRow(i, 'end', e.target.value)}
+                                    style={{ padding: '0.4rem 0.6rem', border: '1px solid #ced4da', borderRadius: '8px', fontSize: '0.88rem' }}
+                                />
+                                <button onClick={() => removeScheduleRow(i)}
+                                    style={{ background: '#fff5f5', border: '1px solid #ffc9c9', color: '#fa5252', borderRadius: '8px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                    ✕
+                                </button>
+                            </div>
+                        ))}
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                            <button onClick={addScheduleRow}
+                                style={{ padding: '0.5rem 1rem', background: '#e7f5ff', border: '1px solid #74c0fc', color: '#1c7ed6', borderRadius: '8px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700 }}>
+                                + 교시 추가
+                            </button>
+                            <button onClick={handleSaveSchedules} disabled={schedSaving}
+                                style={{ padding: '0.5rem 1.2rem', background: schedSaving ? '#dee2e6' : '#339af0', border: 'none', color: '#fff', borderRadius: '8px', cursor: schedSaving ? 'not-allowed' : 'pointer', fontSize: '0.88rem', fontWeight: 800 }}>
+                                {schedSaving ? '저장 중...' : '💾 저장'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </Section>
         </FullWidthSection>
     );

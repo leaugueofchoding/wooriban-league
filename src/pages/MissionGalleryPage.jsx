@@ -603,7 +603,43 @@ function MissionGalleryPage() {
     const getMissionTitle = (missionId) => allMissionsList.find(m => m.id === missionId)?.title || '알 수 없음';
 
     const hotSubmissions = useMemo(() => {
-        return [...publiclyVisibleSubmissions]
+        // ISO 주차 계산 헬퍼: YYYY-Www 문자열 반환 (예: "2025-W22")
+        const getISOWeekKey = (date) => {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 4 - (d.getDay() || 7)); // 목요일 기준 ISO 주
+            const yearStart = new Date(d.getFullYear(), 0, 1);
+            const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+        };
+
+        const currentWeekKey = getISOWeekKey(new Date());
+
+        // 게시물이 승인된 주차가 현재 주차와 같은 것만 추출
+        const thisWeek = publiclyVisibleSubmissions.filter(sub => {
+            const ts = sub.approvedAt;
+            if (!ts) return false;
+            const date = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+            return getISOWeekKey(date) === currentWeekKey;
+        });
+
+        // 이번 주 게시물이 없으면 직전 주, 그것도 없으면 전체 (항상 뭔가 보여주기)
+        let pool = thisWeek;
+        if (pool.length === 0) {
+            // 직전 주 시도
+            const lastWeekDate = new Date();
+            lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+            const lastWeekKey = getISOWeekKey(lastWeekDate);
+            const lastWeek = publiclyVisibleSubmissions.filter(sub => {
+                const ts = sub.approvedAt;
+                if (!ts) return false;
+                const date = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+                return getISOWeekKey(date) === lastWeekKey;
+            });
+            pool = lastWeek.length > 0 ? lastWeek : publiclyVisibleSubmissions;
+        }
+
+        return [...pool]
             .sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0))
             .slice(0, 3);
     }, [publiclyVisibleSubmissions]);
@@ -721,7 +757,7 @@ function MissionGalleryPage() {
 
                 {hotSubmissions.length > 0 && (
                     <>
-                        <SectionTitle>🔥 주간 인기 포토</SectionTitle>
+                        <SectionTitle>🔥 주간 인기 포토 <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#868e96', marginLeft: '0.5rem' }}>{(() => { const now = new Date(); const d = now.getDay(); const mon = new Date(now); mon.setDate(now.getDate() + (d === 0 ? -6 : 1 - d)); mon.setHours(0, 0, 0, 0); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); return `${mon.getMonth() + 1}/${mon.getDate()} ~ ${sun.getMonth() + 1}/${sun.getDate()}`; })()}</span></SectionTitle>
                         <GalleryGrid>
                             {hotSubmissions.map(sub => (
                                 <SubmissionCard key={sub.id} onClick={() => setSelectedSubmission(sub)}>

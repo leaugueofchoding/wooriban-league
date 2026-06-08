@@ -1,9 +1,8 @@
 // src/components/CommentReportModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { reportComment } from '../api/firebase';
-import { useLeagueStore } from '../store/leagueStore';
-import { useClassStore } from '../store/leagueStore';
+import { reportComment, getCommentReportStatus } from '../api/firebase';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth } from '../api/firebase';
 
 const fadeIn = keyframes`from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); }`;
@@ -61,20 +60,25 @@ const SubmitBtn = styled.button`
   &:hover { background: ${p => p.$disabled ? '#ced4da' : '#c92a2a'}; }
 `;
 
+// 이미 신고된 상태 안내 박스
+const AlreadyReportedBox = styled.div`
+  background: ${p => p.$dismissed ? '#f8f9fa' : '#fff3bf'};
+  border: 1.5px solid ${p => p.$dismissed ? '#dee2e6' : '#f59f00'};
+  border-radius: 10px; padding: 1.2rem; text-align: center;
+  margin-bottom: 1.5rem;
+  p { margin: 0.5rem 0 0; font-size: 0.88rem; color: #495057; }
+`;
+const StatusIcon = styled.div`font-size: 2.5rem; margin-bottom: 0.5rem;`;
+const StatusMsg = styled.div`font-weight: 800; font-size: 1rem;
+  color: ${p => p.$dismissed ? '#868e96' : p.$resolved ? '#37b24d' : '#e67700'};
+`;
+
 const REASONS = [
-  { id: 'spam',  icon: '📢', label: '도배성 댓글', desc: '같은 내용 반복, 하트 구걸 등' },
+  { id: 'spam', icon: '📢', label: '도배성 댓글', desc: '같은 내용 반복, 하트 구걸 등' },
   { id: 'abuse', icon: '😡', label: '모욕성 댓글', desc: '욕설, 비하, 혐오 표현 포함' },
-  { id: 'other', icon: '✏️', label: '기타',         desc: '직접 사유 입력' },
+  { id: 'other', icon: '✏️', label: '기타', desc: '직접 사유 입력' },
 ];
 
-/**
- * props:
- *  comment       - { id, text, commenterName, commenterId }
- *  targetType    - 'myroom' | 'mission'
- *  submissionId  - (미션) 제출 ID
- *  roomId        - (마이룸) 방 주인 ID
- *  onClose       - 닫기 콜백
- */
 function CommentReportModal({ comment, targetType, submissionId, roomId, onClose }) {
   const { players } = useLeagueStore();
   const { classId } = useClassStore();
@@ -82,8 +86,20 @@ function CommentReportModal({ comment, targetType, submissionId, roomId, onClose
   const [customReason, setCustomReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  // 중복 신고 상태: null(로딩중) | false(신고없음) | { status }
+  const [existingReport, setExistingReport] = useState(null);
+  const [checkingReport, setCheckingReport] = useState(true);
 
   const myPlayer = players.find(p => p.authUid === auth.currentUser?.uid);
+
+  // 마운트 시 이미 신고된 댓글인지 확인
+  useEffect(() => {
+    if (!classId || !comment?.id) { setCheckingReport(false); return; }
+    getCommentReportStatus(classId, comment.id)
+      .then(result => { setExistingReport(result); })
+      .catch(() => { setExistingReport(false); })
+      .finally(() => setCheckingReport(false));
+  }, [classId, comment?.id]);
 
   const isValid = reason && (reason !== 'other' || customReason.trim().length > 2);
 
@@ -113,6 +129,49 @@ function CommentReportModal({ comment, targetType, submissionId, roomId, onClose
     }
   };
 
+  // 로딩 중
+  if (checkingReport) {
+    return (
+      <Overlay onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+        <Modal>
+          <ModalTitle>🔔 댓글 신고</ModalTitle>
+          <SubTitle style={{ textAlign: 'center', padding: '1rem 0' }}>신고 상태 확인 중...</SubTitle>
+        </Modal>
+      </Overlay>
+    );
+  }
+
+  // 이미 신고된 댓글 (pending 또는 resolved)
+  if (existingReport && existingReport.status !== 'dismissed') {
+    const isPending = existingReport.status === 'pending';
+    const isResolved = existingReport.status === 'resolved';
+    return (
+      <Overlay onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+        <Modal>
+          <ModalTitle>🔔 댓글 신고</ModalTitle>
+          <CommentPreview>"{comment.text}"</CommentPreview>
+          <AlreadyReportedBox>
+            <StatusIcon>{isPending ? '⏳' : '✅'}</StatusIcon>
+            <StatusMsg $resolved={isResolved}>
+              {isPending ? '이미 신고된 댓글입니다' : '검토가 완료된 댓글입니다'}
+            </StatusMsg>
+            <p>
+              {isPending
+                ? '교사가 검토 중입니다. 처리 결과를 기다려 주세요.'
+                : '교사가 이미 검토를 완료했습니다.'}
+            </p>
+          </AlreadyReportedBox>
+          <ButtonRow>
+            <SubmitBtn onClick={onClose}>확인</SubmitBtn>
+          </ButtonRow>
+        </Modal>
+      </Overlay>
+    );
+  }
+
+  // 무효 판정이 난 경우 → 재신고 허용하되 안내
+  const wasDismissed = existingReport?.status === 'dismissed';
+
   return (
     <Overlay onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <Modal>
@@ -120,14 +179,20 @@ function CommentReportModal({ comment, targetType, submissionId, roomId, onClose
           <>
             <ModalTitle>✅ 신고가 접수되었습니다</ModalTitle>
             <SubTitle>교사가 검토 후 조치합니다. 신고해 주셔서 감사합니다.</SubTitle>
-            <ButtonRow>
-              <SubmitBtn onClick={onClose}>확인</SubmitBtn>
-            </ButtonRow>
+            <ButtonRow><SubmitBtn onClick={onClose}>확인</SubmitBtn></ButtonRow>
           </>
         ) : (
           <>
             <ModalTitle>🔔 댓글 신고</ModalTitle>
-            <SubTitle>신고 사유를 선택해 주세요. 허위 신고는 페널티가 부과될 수 있습니다.</SubTitle>
+            {wasDismissed ? (
+              <AlreadyReportedBox $dismissed>
+                <StatusIcon>🔍</StatusIcon>
+                <StatusMsg $dismissed>이전 신고가 무효 처리된 댓글입니다</StatusMsg>
+                <p>이전 신고가 무효 판정을 받았습니다. 새로운 사유로 재신고할 수 있습니다.</p>
+              </AlreadyReportedBox>
+            ) : (
+              <SubTitle>신고 사유를 선택해 주세요. 허위 신고는 페널티가 부과될 수 있습니다.</SubTitle>
+            )}
 
             <CommentPreview>"{comment.text}"</CommentPreview>
 
