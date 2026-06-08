@@ -6,6 +6,7 @@ import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, getMissionHistory, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import MissionHistoryModal from '../components/MissionHistoryModal';
+import QuestSection from '../components/QuestSection';
 import { useNavigate, useLocation } from 'react-router-dom';
 import imageCompression from 'browser-image-compression';
 
@@ -359,6 +360,34 @@ const ButtonGroup = styled.div`
   justify-content: center;
   gap: 1rem;
   margin-top: 3rem;
+`;
+
+// ── 미션 섹션 구분 헤더 ──
+const MissionSectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+`;
+
+const MissionSectionBadge = styled.span`
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #1c7ed6;
+  background: #e7f5ff;
+  border: 1px solid #a5d8ff;
+  border-radius: 6px;
+  padding: 3px 9px;
+  white-space: nowrap;
+`;
+
+const MissionSectionLine = styled.div`
+  flex: 1;
+  height: 1px;
+  background: #a5d8ff;
+  opacity: 0.5;
 `;
 
 const ActionButton = styled.button`
@@ -799,6 +828,15 @@ function MissionsPage() {
           <Title>🚀 오늘의 미션</Title>
           <SubTitle>오늘 수행해야 할 미션을 확인하고 완료해주세요!</SubTitle>
         </HeaderSection>
+
+        {/* ── 퀘스트 섹션 (선착순 공공 임무) ── */}
+        <QuestSection />
+
+        {/* ── 일반 미션 섹션 구분선 ── */}
+        <MissionSectionHeader>
+          <MissionSectionBadge>📋 Mission</MissionSectionBadge>
+          <MissionSectionLine />
+        </MissionSectionHeader>
 
         <FilterContainer>
           <ToggleButton onClick={() => setHideCompleted(prev => !prev)} $active={!hideCompleted}>

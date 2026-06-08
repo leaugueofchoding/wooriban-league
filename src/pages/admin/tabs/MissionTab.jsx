@@ -7,7 +7,8 @@ import { CSS } from '@dnd-kit/utilities';
 import {
     auth, db, createClassGoal, getActiveGoals,
     deleteClassGoal, completeClassGoal, updateClassGoalStatus,
-    approveMissionsInBatch, rejectMissionSubmission
+    approveMissionsInBatch, rejectMissionSubmission,
+    createQuest, listenQuests, updateQuest, deleteQuest, completeQuestForPlayer,
 } from '../../../api/firebase';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import RecorderPage from '../../RecorderPage';
@@ -483,6 +484,255 @@ function MissionManager({ onNavigate }) {
     );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ▼▼▼ 퀘스트 관리 컴포넌트 (관리자 전용)
+// ─────────────────────────────────────────────────────────────────────────────
+const SUBMISSION_TYPES = [
+    { value: 'simple', label: '단순 완료' },
+    { value: 'text', label: '글 제출' },
+    { value: 'photo', label: '사진 제출' },
+];
+
+function QuestManager() {
+    const { classId } = useClassStore();
+    const { players } = useLeagueStore();
+
+    const [quests, setQuests] = useState([]);
+    const [form, setForm] = useState({
+        title: '', description: '', reward: '', maxAcceptors: 1,
+        submissionType: 'simple', deadline: '',
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [expandedId, setExpandedId] = useState(null);
+
+    useEffect(() => {
+        if (!classId) return;
+        return listenQuests(classId, setQuests);
+    }, [classId]);
+
+    const handleCreate = async () => {
+        if (!form.title.trim() || !form.reward) return alert('퀘스트 이름과 보상을 입력해주세요.');
+        setIsSubmitting(true);
+        try {
+            await createQuest(classId, {
+                title: form.title.trim(),
+                description: form.description.trim(),
+                reward: Number(form.reward),
+                maxAcceptors: Number(form.maxAcceptors) || 1,
+                submissionType: form.submissionType,
+                deadline: form.deadline.trim() || null,
+            });
+            setForm({ title: '', description: '', reward: '', maxAcceptors: 1, submissionType: 'simple', deadline: '' });
+            alert('퀘스트가 출제되었습니다! 전체 학생에게 알림이 전송됩니다.');
+        } catch (e) {
+            alert(`퀘스트 출제 실패: ${e.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleClose = async (quest) => {
+        if (!window.confirm(`"${quest.title}" 퀘스트를 마감할까요?`)) return;
+        await updateQuest(classId, quest.id, { status: 'closed', closedAt: new Date() });
+    };
+
+    const handleDelete = async (quest) => {
+        if (!window.confirm(`"${quest.title}" 퀘스트를 완전히 삭제할까요?`)) return;
+        await deleteQuest(classId, quest.id);
+    };
+
+    const handleComplete = async (quest, acceptor) => {
+        if (!window.confirm(`${acceptor.playerName} 학생의 퀘스트 완료를 승인하고 ${quest.reward}P를 지급할까요?`)) return;
+        try {
+            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward);
+            alert(`${acceptor.playerName}에게 ${quest.reward}P가 지급됐습니다!`);
+        } catch (e) {
+            alert(`완료 처리 실패: ${e.message}`);
+        }
+    };
+
+    const openQuests = quests.filter(q => q.status === 'open');
+    const closedQuests = quests.filter(q => q.status === 'closed');
+
+    const tagStyle = (bg, color) => ({
+        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+        fontSize: '0.72rem', fontWeight: 700, background: bg, color,
+    });
+
+    return (
+        <Section style={{ marginTop: '2rem', borderTop: '2px dashed #ffe066', paddingTop: '1.5rem' }}>
+            <SectionTitle>⚔ 퀘스트 관리</SectionTitle>
+
+            {/* ── 출제 폼 ── */}
+            <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+                <InputGroup>
+                    <input
+                        type="text" value={form.title}
+                        onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                        placeholder="퀘스트 이름 (예: 급식실 쓰레기 수거)"
+                        style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
+                    />
+                    <ScoreInput
+                        type="number" value={form.reward}
+                        onChange={e => setForm(p => ({ ...p, reward: e.target.value }))}
+                        style={{ width: '90px' }} placeholder="보상 P"
+                    />
+                </InputGroup>
+                <InputGroup>
+                    <TextArea
+                        value={form.description}
+                        onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+                        placeholder="퀘스트 설명 (해야 할 일, 완료 기준 등)"
+                        style={{ minHeight: '60px' }}
+                    />
+                </InputGroup>
+                <InputGroup style={{ flexWrap: 'wrap', gap: '0.8rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
+                        최대 인원:
+                        <ScoreInput
+                            type="number" min={1} max={10}
+                            value={form.maxAcceptors}
+                            onChange={e => setForm(p => ({ ...p, maxAcceptors: e.target.value }))}
+                            style={{ width: '60px' }}
+                        />
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
+                        제출 방식:
+                        <select
+                            value={form.submissionType}
+                            onChange={e => setForm(p => ({ ...p, submissionType: e.target.value }))}
+                            style={{ padding: '0.4rem' }}
+                        >
+                            {SUBMISSION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
+                        기한:
+                        <input
+                            type="text" value={form.deadline}
+                            onChange={e => setForm(p => ({ ...p, deadline: e.target.value }))}
+                            placeholder="예: 오늘 하교 전"
+                            style={{ padding: '0.4rem', border: '1px solid #dee2e6', borderRadius: '4px' }}
+                        />
+                    </label>
+                    <SaveButton onClick={handleCreate} disabled={isSubmitting}>
+                        {isSubmitting ? '출제 중...' : '⚔ 퀘스트 출제'}
+                    </SaveButton>
+                </InputGroup>
+            </div>
+
+            {/* ── 진행 중 퀘스트 ── */}
+            <p style={{ fontWeight: 700, marginBottom: '0.8rem' }}>
+                진행 중 ({openQuests.length}개)
+            </p>
+            {openQuests.length === 0 && <p style={{ color: '#adb5bd', fontSize: '0.9rem' }}>진행 중인 퀘스트가 없습니다.</p>}
+            <List>
+                {openQuests.map(quest => {
+                    const acceptors = quest.acceptors || [];
+                    const isExpanded = expandedId === quest.id;
+                    return (
+                        <ListItem key={quest.id}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                                <div style={{ flex: 1 }}>
+                                    <strong>⚔ {quest.title}</strong>
+                                    <span style={{ marginLeft: '8px', ...tagStyle('#fff3bf', '#e67700') }}>💰 {quest.reward}P</span>
+                                    <span style={{ marginLeft: '6px', ...tagStyle('#e7f5ff', '#1c7ed6') }}>
+                                        {acceptors.length}/{quest.maxAcceptors || 1}명 수락
+                                    </span>
+                                    {quest.deadline && (
+                                        <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.78rem' }}>🕐 {quest.deadline}</span>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                    {acceptors.length > 0 && (
+                                        <StyledButton
+                                            onClick={() => setExpandedId(isExpanded ? null : quest.id)}
+                                            style={{ fontSize: '0.8rem', padding: '4px 10px', background: isExpanded ? '#495057' : '#868e96' }}
+                                        >
+                                            {isExpanded ? '접기' : `수락자 보기 (${acceptors.length})`}
+                                        </StyledButton>
+                                    )}
+                                    <StyledButton
+                                        onClick={() => handleClose(quest)}
+                                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#fd7e14' }}
+                                    >
+                                        마감
+                                    </StyledButton>
+                                    <StyledButton
+                                        onClick={() => handleDelete(quest)}
+                                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#fa5252' }}
+                                    >
+                                        삭제
+                                    </StyledButton>
+                                </div>
+                            </div>
+
+                            {/* 수락자 목록 & 완료 승인 */}
+                            {isExpanded && acceptors.length > 0 && (
+                                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f3f5' }}>
+                                    {acceptors.map(a => (
+                                        <div key={a.playerId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f8f9fa' }}>
+                                            <span style={{ fontSize: '0.9rem' }}>
+                                                {a.playerName}
+                                                <span style={{
+                                                    marginLeft: '8px', ...tagStyle(
+                                                        a.completionStatus === 'completed' ? '#d3f9d8' : '#e7f5ff',
+                                                        a.completionStatus === 'completed' ? '#2f9e44' : '#1c7ed6'
+                                                    )
+                                                }}>
+                                                    {a.completionStatus === 'completed' ? '✓ 완료' : '수락됨'}
+                                                </span>
+                                            </span>
+                                            {a.completionStatus !== 'completed' && (
+                                                <StyledButton
+                                                    onClick={() => handleComplete(quest, a)}
+                                                    style={{ fontSize: '0.78rem', padding: '3px 10px', background: '#20c997', color: '#fff' }}
+                                                >
+                                                    완료 승인
+                                                </StyledButton>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </ListItem>
+                    );
+                })}
+            </List>
+
+            {/* ── 마감된 퀘스트 ── */}
+            {closedQuests.length > 0 && (
+                <>
+                    <p style={{ fontWeight: 700, marginTop: '1.5rem', marginBottom: '0.8rem', color: '#adb5bd' }}>
+                        마감됨 ({closedQuests.length}개)
+                    </p>
+                    <List>
+                        {closedQuests.map(quest => (
+                            <ListItem key={quest.id} style={{ opacity: 0.6 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.9rem' }}>
+                                        ⚔ {quest.title}
+                                        <span style={{ marginLeft: '8px', ...tagStyle('#f1f3f5', '#adb5bd') }}>마감</span>
+                                        <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.8rem' }}>
+                                            {(quest.acceptors || []).length}명 수락
+                                        </span>
+                                    </span>
+                                    <StyledButton
+                                        onClick={() => handleDelete(quest)}
+                                        style={{ fontSize: '0.78rem', padding: '3px 10px', background: '#adb5bd' }}
+                                    >
+                                        삭제
+                                    </StyledButton>
+                                </div>
+                            </ListItem>
+                        ))}
+                    </List>
+                </>
+            )}
+        </Section>
+    );
+}
+
 function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, preselectedMissionId }) {
     // AdminPage에서 렌더링하던 로직을 그대로 가져왔습니다.
     switch (missionSubMenu) {
@@ -493,6 +743,7 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
                 <>
                     <MissionManager onNavigate={onNavigateToHistory} />
                     <GoalManager />
+                    <QuestManager />
                 </>
             );
         case 'history':
