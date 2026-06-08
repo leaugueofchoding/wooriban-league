@@ -240,7 +240,7 @@ function QuizWidget() {
                             disabled={isProcessing}
                             style={{ color: choice === 'O' ? '#20c997' : '#fa5252' }}
                         >
-                            {choice === 'O' ? '⭕ O' : '❌ X'}
+                            {choice === 'O' ? 'O' : 'X'}
                         </OXBtn>
                     ))}
                 </OXGrid>
