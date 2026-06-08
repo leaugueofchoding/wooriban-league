@@ -27,6 +27,22 @@ const OptionGrid = styled.div`
   display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
 `;
 
+const OptionGridVertical = styled.div`
+  display: grid; grid-template-columns: 1fr; gap: 0.5rem;
+`;
+
+const OXGrid = styled.div`
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
+`;
+
+const OXBtn = styled.button`
+  padding: 1rem; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 10px;
+  font-weight: 900; cursor: pointer; transition: all 0.2s; font-size: 1.5rem;
+  &:hover:not(:disabled) { background: #e6fcf5; border-color: #20c997; transform: translateY(-2px); }
+  &:active:not(:disabled) { transform: translateY(0); }
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+`;
+
 const OptionBtn = styled.button`
   padding: 0.8rem; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 10px;
   font-weight: 800; cursor: pointer; transition: all 0.2s; color: #495057; font-size: 0.95rem;
@@ -68,6 +84,12 @@ function QuizWidget() {
     const dailyQuizCount = myPlayerData?.lastQuizDate === todayStr ? (myPlayerData?.dailyQuizCount || 0) : 0;
     const isLimitReached = dailyQuizCount >= 10;
 
+    // 퀴즈 타입 판별 (컴포넌트 레벨)
+    const isOX = !!currentQuiz && (
+        currentQuiz.type === 'ox'
+        || ['o', 'x', 'O', 'X', '○', '×'].includes((currentQuiz.answer || '').trim())
+    );
+
     useEffect(() => {
         const loadQuizzes = async () => {
             if (!classId) return;
@@ -98,7 +120,15 @@ function QuizWidget() {
         }
 
         setIsProcessing(true);
-        const isCorrect = submittedAnswer.trim().toLowerCase() === currentQuiz.answer.toLowerCase();
+        const normalizeOX = (val) => {
+            const v = (val || '').trim().toLowerCase();
+            if (v === 'o' || v === '○' || v === '0') return 'o';
+            if (v === 'x' || v === '×') return 'x';
+            return v;
+        };
+        const isCorrect = isOX
+            ? normalizeOX(submittedAnswer) === normalizeOX(currentQuiz.answer)
+            : submittedAnswer.trim().toLowerCase() === currentQuiz.answer.toLowerCase();
 
         try {
             const playerRef = doc(db, 'classes', classId, 'players', myPlayerData.id);
@@ -179,7 +209,9 @@ function QuizWidget() {
     }
 
     if (!currentQuiz) return null;
-    const isObjective = currentQuiz.options && currentQuiz.options.length > 0;
+
+    // 객관식 여부 (OX 제외)
+    const isObjective = !isOX && currentQuiz.options && currentQuiz.options.length > 0;
 
     return (
         <WidgetContainer>
@@ -195,36 +227,53 @@ function QuizWidget() {
             ) : status === 'wrong' ? (
                 <ResultText $isCorrect={false}>
                     앗, 틀렸어요!<br />
-                    {/* ▼ 오답 시 정답을 친절하게 보여줍니다 */}
                     <span style={{ fontSize: '0.95rem', color: '#495057' }}>정답: <strong style={{ color: '#f03e3e' }}>{currentQuiz.answer}</strong></span><br />
                     <span style={{ fontSize: '0.8rem', color: '#868e96' }}>다음 문제 준비 중...</span>
                 </ResultText>
-            ) : (
-                isObjective ? (
-                    <OptionGrid>
-                        {currentQuiz.options.map((opt, idx) => (
-                            <OptionBtn
-                                key={idx}
-                                onClick={() => handleSubmit(opt)}
-                                disabled={isProcessing}
-                            >
-                                {opt}
-                            </OptionBtn>
-                        ))}
-                    </OptionGrid>
-                ) : (
-                    <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
-                        <AnswerInput
-                            value={answer}
-                            onChange={(e) => setAnswer(e.target.value)}
-                            placeholder="정답을 입력하세요"
+            ) : isOX ? (
+                // OX 퀴즈: O / X 버튼 선택지
+                <OXGrid>
+                    {['O', 'X'].map((choice) => (
+                        <OXBtn
+                            key={choice}
+                            onClick={() => handleSubmit(choice)}
                             disabled={isProcessing}
-                        />
-                        <SubmitBtn type="submit" disabled={isProcessing || !answer.trim()}>
-                            제출하기
-                        </SubmitBtn>
-                    </form>
-                )
+                            style={{ color: choice === 'O' ? '#20c997' : '#fa5252' }}
+                        >
+                            {choice === 'O' ? '⭕ O' : '❌ X'}
+                        </OXBtn>
+                    ))}
+                </OXGrid>
+            ) : isObjective ? (
+                // 객관식: 선택지를 세로로 1×4 배치
+                <OptionGridVertical>
+                    {currentQuiz.options.map((opt, idx) => (
+                        <OptionBtn
+                            key={idx}
+                            onClick={() => handleSubmit(opt)}
+                            disabled={isProcessing}
+                            style={{ textAlign: 'left', padding: '0.75rem 1rem' }}
+                        >
+                            <span style={{ fontWeight: 900, color: '#20c997', marginRight: '0.5rem' }}>
+                                {['①', '②', '③', '④'][idx] || `${idx + 1}.`}
+                            </span>
+                            {opt}
+                        </OptionBtn>
+                    ))}
+                </OptionGridVertical>
+            ) : (
+                // 주관식
+                <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
+                    <AnswerInput
+                        value={answer}
+                        onChange={(e) => setAnswer(e.target.value)}
+                        placeholder="정답을 입력하세요"
+                        disabled={isProcessing}
+                    />
+                    <SubmitBtn type="submit" disabled={isProcessing || !answer.trim()}>
+                        제출하기
+                    </SubmitBtn>
+                </form>
             )}
         </WidgetContainer>
     );

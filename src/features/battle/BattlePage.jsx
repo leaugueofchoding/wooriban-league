@@ -230,6 +230,26 @@ const flameDashLeft = keyframes`
   100% { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
 `;
 
+// 🐲 용의 발톱: 불꽃을 두른 발톱으로 빠르게 뛰어들어 할퀴고 복귀
+const dragonClawRight = keyframes`
+  0%   { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
+  10%  { transform: translateX(-20px) translateY(8px) scale(0.88); filter: brightness(1.3); }
+  28%  { transform: translateX(110px) translateY(-30px) scale(1.2) rotate(-12deg); filter: brightness(2.5) drop-shadow(0 0 18px #ff4500); }
+  45%  { transform: translateX(175px) translateY(-15px) scale(1.28) rotate(-6deg); filter: brightness(3.5) drop-shadow(0 0 28px #ff6b35); }
+  58%  { transform: translateX(185px) translateY(5px) scale(1.15) rotate(4deg); filter: brightness(4) drop-shadow(0 0 35px #ff4500); }
+  72%  { transform: translateX(80px) translateY(0) scale(1.05) rotate(1deg); filter: brightness(2); }
+  100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+const dragonClawLeft = keyframes`
+  0%   { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
+  10%  { transform: translateX(20px) translateY(8px) scale(0.88); filter: brightness(1.3); }
+  28%  { transform: translateX(-110px) translateY(-30px) scale(1.2) rotate(12deg); filter: brightness(2.5) drop-shadow(0 0 18px #ff4500); }
+  45%  { transform: translateX(-175px) translateY(-15px) scale(1.28) rotate(6deg); filter: brightness(3.5) drop-shadow(0 0 28px #ff6b35); }
+  58%  { transform: translateX(-185px) translateY(5px) scale(1.15) rotate(-4deg); filter: brightness(4) drop-shadow(0 0 35px #ff4500); }
+  72%  { transform: translateX(-80px) translateY(0) scale(1.05) rotate(-1deg); filter: brightness(2); }
+  100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
+`;
+
 const StunEffect = styled.div`
   position: absolute;
   top: -40px;
@@ -306,7 +326,8 @@ const PetContainer = styled.div`
                                         props.$animType === 'STELLAR_BLAST' ? css`${props.$isMine ? stellarBlastRight : stellarBlastLeft}  1.6s ease-in-out` :
                                             props.$animType === 'WIND_BLADE' ? css`${props.$isMine ? windBladeRight : windBladeLeft}     1.1s ease-in-out` :
                                                 props.$animType === 'TORNADO_SWEEP' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft}  2.0s ease-in-out` :
-                                                    'none'};
+                                                    props.$animType === 'DRAGON_CLAW' ? css`${props.$isMine ? dragonClawRight : dragonClawLeft} 1.0s ease-in-out` :
+                                                        'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -918,6 +939,28 @@ function BattlePage() {
                         setIsProcessing(false);
                         handleResolution(battleRef);
                     }, 2000);
+
+                } else if (actionType === 'DRAGON_CLAW') {
+                    // 🐲 용의 발톱: 불꽃을 두르며 뛰어들어 2연 할퀴기 후 복귀
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'DRAGON_CLAW' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'DRAGON_CLAW' }));
+                    setCurrentEffect({ type: 'DRAGON_CLAW', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 280);
+                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 430);
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 530);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1200);
 
                 } else {
                     setCurrentEffect({

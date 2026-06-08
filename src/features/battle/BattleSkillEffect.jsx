@@ -441,7 +441,35 @@ const MultiIcon = styled.div`
   ${props => props.$delay ? `animation-delay: ${props.$delay};` : ''}
 `;
 
-// ─── 바람의 칼날: 날카로운 바람 슬래시 3연타
+// ─── 용의 발톱: 불꽃 발톱 2연타 슬래시
+const dragonClawSlash1ToOpp = keyframes`
+  0%   { left: 18%; bottom: 22%; opacity: 0; transform: scale(0.4) rotate(-30deg) scaleX(0.6); }
+  12%  { opacity: 1; transform: scale(1.5) rotate(-10deg) scaleX(2.0); filter: brightness(3) drop-shadow(0 0 18px #ff4500); }
+  45%  { left: 64%; bottom: 60%; transform: scale(1.2) rotate(5deg) scaleX(2.5); filter: brightness(4) drop-shadow(0 0 28px #ff6b35); }
+  75%  { left: 72%; bottom: 66%; transform: scale(2.2) rotate(10deg); filter: brightness(5) drop-shadow(0 0 35px #ff4500); }
+  100% { left: 76%; bottom: 70%; opacity: 0; transform: scale(1.2); }
+`;
+const dragonClawSlash2ToOpp = keyframes`
+  0%   { left: 16%; bottom: 18%; opacity: 0; transform: scale(0.3) rotate(-50deg); }
+  22%  { opacity: 0.9; transform: scale(1.3) rotate(-20deg) scaleX(1.8); filter: brightness(2.5) drop-shadow(0 0 14px #ff6b35); }
+  58%  { left: 67%; bottom: 63%; transform: scale(1.0) rotate(0deg) scaleX(2.2); filter: brightness(3.5) drop-shadow(0 0 22px #ff4500); }
+  85%  { left: 73%; bottom: 68%; opacity: 0; transform: scale(2.0); }
+  100% { opacity: 0; }
+`;
+const dragonClawSlash1ToMe = keyframes`
+  0%   { right: 18%; top: 22%; opacity: 0; transform: scale(0.4) rotate(30deg) scaleX(0.6); }
+  12%  { opacity: 1; transform: scale(1.5) rotate(10deg) scaleX(2.0); filter: brightness(3) drop-shadow(0 0 18px #ff4500); }
+  45%  { right: 64%; top: 60%; transform: scale(1.2) rotate(-5deg) scaleX(2.5); filter: brightness(4) drop-shadow(0 0 28px #ff6b35); }
+  75%  { right: 72%; top: 66%; transform: scale(2.2) rotate(-10deg); filter: brightness(5) drop-shadow(0 0 35px #ff4500); }
+  100% { right: 76%; top: 70%; opacity: 0; transform: scale(1.2); }
+`;
+const dragonClawSlash2ToMe = keyframes`
+  0%   { right: 16%; top: 18%; opacity: 0; transform: scale(0.3) rotate(50deg); }
+  22%  { opacity: 0.9; transform: scale(1.3) rotate(20deg) scaleX(1.8); filter: brightness(2.5) drop-shadow(0 0 14px #ff6b35); }
+  58%  { right: 67%; top: 63%; transform: scale(1.0) rotate(0deg) scaleX(2.2); filter: brightness(3.5) drop-shadow(0 0 22px #ff4500); }
+  85%  { right: 73%; top: 68%; opacity: 0; transform: scale(2.0); }
+  100% { opacity: 0; }
+`;
 const windBladeSlash1ToOpp = keyframes`
   0%   { left: 18%; bottom: 25%; opacity: 0; transform: scale(0.4) rotate(-45deg) scaleX(0.5); }
   15%  { opacity: 1; transform: scale(1.6) rotate(-25deg) scaleX(2.5); filter: brightness(2.5) drop-shadow(0 0 14px #74c0fc); }
@@ -537,7 +565,7 @@ const disturbAfterimage2ToMe = keyframes`
 const SKILL_CONFIG = {
   // 불 계열
   FIERY_BREATH: { icon: '🔥', duration: '1.4s', type: 'BREATH' },
-  DRAGON_CLAW: { icon: '🐲', duration: '0.9s', type: 'PROJECTILE' },
+  DRAGON_CLAW: { icon: '🐲', duration: '1.0s', type: 'DRAGON_CLAW_MULTI' },
   STELLAR_BLAST: { icon: '⭐', duration: '1.5s', type: 'STELLAR' },
   REM_FIRE: { icon: '🔥', duration: '1.3s', type: 'REM_FIRE' },
   FLAME_DASH: { icon: '🔥', duration: '0.8s', type: 'FLAME_DASH' },
@@ -640,12 +668,22 @@ const BattleSkillEffect = ({ type, isMine }) => {
 
   const glowMap = {
     POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', SOLAR: '#ffd43b',
-    REM_FIRE: '#ff6b35', UPHWA: '#ff4500', UPHWA_FULL: '#ff4500', BREATH: '#ff4500', FLAME_DASH: '#ff6b35',
+    REM_FIRE: '#ff6b35', UPHWA: '#ff4500', UPHWA_FULL: '#ff4500', BREATH: '#ff4500', FLAME_DASH: '#ff6b35', DRAGON_CLAW_MULTI: '#ff4500',
     THUNDER: '#ffd43b', THUNDER_FULL: '#ffd43b', THUNDER_PUNCH_MULTI: '#ffd43b',
     STELLAR: '#ffd43b', SCRATCH: '#ffd43b',
     TORNADO: '#74c0fc', TORNADO_FULL: '#74c0fc', ZIGZAG: '#74c0fc', DISTURBANCE_MULTI: '#74c0fc', WIND_BLADE_MULTI: '#339af0',
     SIPHON: '#cc5de8',
   };
+
+  // ── 용의 발톱: 불꽃 발톱 2연타 슬래시
+  if (config.type === 'DRAGON_CLAW_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.0s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#ff4500">
+        <MultiIcon $anim={isMine ? dragonClawSlash1ToOpp : dragonClawSlash1ToMe} $duration="0.95s" $glow="#ff4500" $size="3.8rem">🔥</MultiIcon>
+        <MultiIcon $anim={isMine ? dragonClawSlash2ToOpp : dragonClawSlash2ToMe} $duration="0.95s" $glow="#ff6b35" $size="3.2rem" $delay="0.12s">🐲</MultiIcon>
+      </EffectContainer>
+    );
+  }
 
   // ── 재빠른 교란: 메인 이펙트 + 잔상 2개
   if (config.type === 'DISTURBANCE_MULTI') {
