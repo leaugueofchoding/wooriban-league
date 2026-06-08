@@ -913,6 +913,7 @@ function MissionGalleryPage() {
                                             comment={comment}
                                             missionTitle={getMissionTitle(selectedSubmission.missionId)}
                                             permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId }}
+                                            targetType="mission"
                                         />
                                     )) : <div style={{ textAlign: 'center', color: '#adb5bd', marginTop: '2rem' }}>첫 댓글을 남겨보세요!</div>}
                                 </CommentList>

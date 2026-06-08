@@ -519,6 +519,12 @@ function Auth({ user }) {
                                                         setShowNotifications(false);
                                                         return;
                                                     }
+                                                    // [추가] 댓글 신고 알림 → 관리자 신고 탭으로 이동
+                                                    if (notif.type === 'comment_report') {
+                                                        navigate('/admin', { state: { forceTab: 'reports' } });
+                                                        setShowNotifications(false);
+                                                        return;
+                                                    }
                                                     if (notif.link) {
                                                         navigate(notif.link);
                                                         setShowNotifications(false);

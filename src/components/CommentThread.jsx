@@ -6,6 +6,7 @@ import { useLeagueStore } from '../store/leagueStore';
 import { auth, db, addMissionReply, updateMissionComment, deleteMissionComment, toggleCommentLike, toggleReplyLike } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { filterProfanity } from '../utils/profanityFilter'; // [추가] 필터 함수 import
+import CommentReportModal from './CommentReportModal'; // [추가] 신고 모달
 
 // ... (스타일 컴포넌트들은 기존과 동일하므로 생략, 아래 로직이 핵심입니다) ...
 const CommentCard = styled.div`
@@ -76,12 +77,20 @@ const LikeButton = styled.button`
     color: ${props => props.$isLiked ? '#dc3545' : '#6c757d'};
     &:hover { transform: scale(1.1); }
 `;
+const ReportButton = styled.button`
+    background: none; border: none; cursor: pointer;
+    font-size: 1rem; color: #dc3545; padding: 2px 4px;
+    opacity: 0.6; transition: opacity 0.15s, transform 0.15s;
+    &:hover { opacity: 1; transform: scale(1.15); }
+    title { display: none; }
+`;
 
-function ReplyItem({ submissionId, commentId, reply, permissions }) {
+function ReplyItem({ submissionId, commentId, reply, permissions, targetType, roomId }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const [isEditing, setIsEditing] = useState(false);
     const [editedText, setEditedText] = useState(reply.text);
+    const [reportTarget, setReportTarget] = useState(null);
 
     const handleLike = () => {
         if (!myPlayerData || !permissions.canLike) return;
@@ -118,6 +127,13 @@ function ReplyItem({ submissionId, commentId, reply, permissions }) {
                             ♡<span>{reply.likes?.length || 0}</span>
                         </LikeButton>
                     )}
+                    {/* 자기 자신 댓글이 아닐 때만 신고 버튼 표시 */}
+                    {myPlayerData && reply.replierId !== myPlayerData.id && (
+                        <ReportButton
+                            onClick={() => setReportTarget({ id: reply.id, text: reply.text, commenterName: reply.replierName, commenterId: reply.replierId })}
+                            title="신고하기"
+                        >🔔</ReportButton>
+                    )}
                     {permissions.canEdit && isEditing && (<>
                         <button onClick={handleUpdate}>저장</button>
                         <button onClick={() => setIsEditing(false)}>취소</button>
@@ -129,11 +145,20 @@ function ReplyItem({ submissionId, commentId, reply, permissions }) {
                 </CommentActions>
             </CommentHeader>
             {isEditing ? (<CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="2" />) : (<CommentText>{reply.text}</CommentText>)}
+            {reportTarget && (
+                <CommentReportModal
+                    comment={reportTarget}
+                    targetType={targetType || 'mission'}
+                    submissionId={submissionId}
+                    roomId={roomId}
+                    onClose={() => setReportTarget(null)}
+                />
+            )}
         </CommentCard>
     );
 }
 
-function CommentThread({ submissionId, comment, missionTitle, permissions }) {
+function CommentThread({ submissionId, comment, missionTitle, permissions, targetType, roomId }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const [replies, setReplies] = useState([]);
@@ -141,6 +166,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
     const [replyContent, setReplyContent] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [editedText, setEditedText] = useState(comment.text);
+    const [reportTarget, setReportTarget] = useState(null);
 
     const MIN_COMMENT_LENGTH = 8;
 
@@ -212,6 +238,13 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
                                 ♡<span>{comment.likes?.length || 0}</span>
                             </LikeButton>
                         )}
+                        {/* 자기 자신 댓글이 아닐 때만 신고 버튼 표시 */}
+                        {myPlayerData && comment.commenterId !== myPlayerData.id && (
+                            <ReportButton
+                                onClick={() => setReportTarget({ id: comment.id, text: comment.text, commenterName: comment.commenterName, commenterId: comment.commenterId })}
+                                title="신고하기"
+                            >🔔</ReportButton>
+                        )}
                         {permissions.canEdit && isEditing && (<>
                             <button onClick={handleUpdateComment}>저장</button>
                             <button onClick={() => { setIsEditing(false); setEditedText(comment.text); }}>취소</button>
@@ -225,10 +258,21 @@ function CommentThread({ submissionId, comment, missionTitle, permissions }) {
                 {isEditing ? (<CommentTextarea value={editedText} onChange={(e) => setEditedText(e.target.value)} rows="3" />) : (<CommentText>{comment.text}</CommentText>)}
             </CommentCard>
 
+            {/* 신고 모달 */}
+            {reportTarget && (
+                <CommentReportModal
+                    comment={reportTarget}
+                    targetType={targetType || 'mission'}
+                    submissionId={submissionId}
+                    roomId={roomId}
+                    onClose={() => setReportTarget(null)}
+                />
+            )}
+
             {replies.length > 0 && (
                 <ReplyList>
                     {replies.map(reply => (
-                        <ReplyItem key={reply.id} submissionId={submissionId} commentId={comment.id} reply={reply} permissions={permissions} />
+                        <ReplyItem key={reply.id} submissionId={submissionId} commentId={comment.id} reply={reply} permissions={permissions} targetType={targetType} roomId={roomId} />
                     ))}
                 </ReplyList>
             )}

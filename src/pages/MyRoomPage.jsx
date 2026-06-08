@@ -11,6 +11,7 @@ import myRoomBg from '../assets/myroom_bg_base.png';
 import baseAvatar from '../assets/base-avatar.png';
 import { petImageMap } from '../utils/petImageMap';
 import { filterProfanity } from '../utils/profanityFilter';
+import CommentReportModal from '../components/CommentReportModal'; // [추가] 신고 모달
 
 // --- Animations ---
 
@@ -403,6 +404,7 @@ function MyRoomPage() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
   const [visibleCommentsCount, setVisibleCommentsCount] = useState(5);
+  const [reportTarget, setReportTarget] = useState(null); // [추가] 신고 모달
 
   const [activeInventoryTab, setActiveInventoryTab] = useState('가구');
   const [showFriendList, setShowFriendList] = useState(false);
@@ -860,6 +862,15 @@ function MyRoomPage() {
 
   return (
     <PageWrapper>
+      {/* [추가] 댓글 신고 모달 */}
+      {reportTarget && (
+        <CommentReportModal
+          comment={reportTarget.commentData}
+          targetType={reportTarget.targetType}
+          roomId={reportTarget.roomId}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
       <HeaderSection>
         <TitleGroup>
           {equippedTitle && <EquippedTitleBadge color={equippedTitle.color}>{equippedTitle.icon} {equippedTitle.name}</EquippedTitleBadge>}
@@ -1157,6 +1168,14 @@ function MyRoomPage() {
                         {/* ★수정됨: likes 배열이 없을 때 화면이 터지지 않도록 옵셔널 체이닝(?.) 적용 */}
                         {comment.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'} {comment.likes?.length || 0}
                       </button>
+                      {/* [추가] 신고 버튼 - 내 댓글이 아닐 때만 표시 */}
+                      {myPlayerData && myPlayerData.id !== comment.commenterId && (
+                        <button
+                          onClick={() => setReportTarget({ commentData: comment, targetType: 'myroom', roomId: playerId })}
+                          style={{ color: '#fa5252', opacity: 0.7 }}
+                          title="신고하기"
+                        >🔔</button>
+                      )}
                       {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === comment.commenterId) && (
                         <button className="delete" onClick={() => { if (confirm("삭제하시겠습니까?")) deleteMyRoomComment(classId, playerId, comment.id).then(() => fetchRoomSocialData(playerId)); }}>삭제</button>
                       )}
@@ -1193,6 +1212,14 @@ function MyRoomPage() {
                         }} style={{ color: reply.likes?.includes(myPlayerData?.id) ? '#fa5252' : '#868e96' }}>
                           {reply.likes?.includes(myPlayerData?.id) ? '❤️' : '🤍'} {reply.likes?.length || 0}
                         </button>
+                        {/* [추가] 답글 신고 버튼 */}
+                        {myPlayerData && myPlayerData.id !== reply.replierId && (
+                          <button
+                            onClick={() => setReportTarget({ commentData: { id: `${comment.id}_reply_${idx}`, text: reply.text, commenterName: reply.replierName, commenterId: reply.replierId }, targetType: 'myroom', roomId: playerId })}
+                            style={{ color: '#fa5252', opacity: 0.7 }}
+                            title="신고하기"
+                          >🔔</button>
+                        )}
                         {(isMyRoom || myPlayerData?.role === 'admin' || myPlayerData?.id === reply.replierId) && (
                           <button className="delete" onClick={() => { if (confirm("삭제하시겠습니까?")) deleteMyRoomReply(classId, playerId, comment.id, reply).then(() => fetchRoomSocialData(playerId)); }}>삭제</button>
                         )}

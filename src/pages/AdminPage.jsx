@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db } from '../api/firebase.js';
+import { useClassStore } from '../store/leagueStore';
+import { auth, db, listenCommentReports } from '../api/firebase.js';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ImageModal from '../components/ImageModal';
 import QuizManager from '../components/QuizManager';
@@ -17,6 +18,7 @@ import ShopTab from './admin/tabs/ShopTab';
 import LeagueTab from './admin/tabs/LeagueTab';
 import TitleTab from './admin/tabs/TitleTab';
 import ClassTab from './admin/tabs/ClassTab';
+import ReportTab from './admin/tabs/ReportTab'; // [추가] 댓글 신고 탭
 
 // --- Styled Components ---
 const AdminWrapper = styled.div`
@@ -48,6 +50,7 @@ const BroadcastButton = styled(Link)`
 
 function AdminPage() {
     const { players } = useLeagueStore();
+    const { classId } = useClassStore();
     const { tab } = useParams();
     const location = useLocation();
     const navigate = useNavigate();
@@ -56,6 +59,7 @@ function AdminPage() {
     const getInitialMenu = () => {
         const params = new URLSearchParams(location.search);
         if (params.get('tab') === 'messages') return 'social';
+        if (params.get('tab') === 'reports') return 'reports'; // [추가] 신고 탭 직접 진입
         return tab || 'mission';
     };
     const [activeMenu, setActiveMenu] = useState(getInitialMenu);
@@ -66,6 +70,16 @@ function AdminPage() {
     const [modalImageSrc, setModalImageSrc] = useState(null);
     const [missionSubMenu, setMissionSubMenu] = useState('approval');
     const [preselectedMissionId, setPreselectedMissionId] = useState(null);
+    const [pendingReportCount, setPendingReportCount] = useState(0); // [추가] 신고 배지
+
+    // [추가] 신고 수 실시간 구독 (사이드바 배지용)
+    useEffect(() => {
+        if (!classId) return;
+        const unsub = listenCommentReports(classId, (reports) => {
+            setPendingReportCount(reports.filter(r => r.status === 'pending').length);
+        });
+        return () => unsub();
+    }, [classId]);
 
     useEffect(() => {
         const studentIdFromState = location.state?.preselectedStudentId;
@@ -81,6 +95,11 @@ function AdminPage() {
             setActiveSubMenu('messages');
             window.history.replaceState({}, document.title);
         }
+        // [추가] 신고 알림 클릭 시 신고 탭으로 이동
+        if (location.state?.forceTab === 'reports') {
+            setActiveMenu('reports');
+            window.history.replaceState({}, document.title);
+        }
     }, [location.state]);
 
     // ▼▼▼ [추가] ?tab=messages URL 파라미터로 직접 탭 진입 (건의함 알림 클릭 시)
@@ -90,6 +109,10 @@ function AdminPage() {
         if (tabParam === 'messages') {
             setActiveMenu('social');
             setActiveSubMenu('messages');
+        }
+        // [추가] ?tab=reports 직접 진입
+        if (tabParam === 'reports') {
+            setActiveMenu('reports');
         }
     }, [location.search]);
     // ▲▲▲ [추가 끝] ▲▲▲
@@ -132,6 +155,9 @@ function AdminPage() {
         }
         if (activeMenu === 'recorder') {
             return <RecorderDashboardPage />;
+        }
+        if (activeMenu === 'reports') { // [추가] 댓글 신고 탭
+            return <ReportTab />;
         }
         return null;
     };
@@ -216,6 +242,24 @@ function AdminPage() {
                         </NavItem>
                         <NavItem>
                             <NavButton $active={activeMenu === 'class'} onClick={() => handleMenuClick('class')}>학급 관리</NavButton>
+                        </NavItem>
+                        {/* [추가] 댓글 신고 탭 */}
+                        <NavItem>
+                            <NavButton
+                                $active={activeMenu === 'reports'}
+                                onClick={() => handleMenuClick('reports')}
+                                style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                            >
+                                <span>🚨 댓글 신고</span>
+                                {pendingReportCount > 0 && (
+                                    <span style={{
+                                        background: '#e03131', color: '#fff', borderRadius: '50%',
+                                        width: '20px', height: '20px', fontSize: '0.72rem', fontWeight: 700,
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                        flexShrink: 0
+                                    }}>{pendingReportCount}</span>
+                                )}
+                            </NavButton>
                         </NavItem>
                     </NavList>
                 </Sidebar>

@@ -4789,3 +4789,108 @@ export function listenNoticeHearts(classId, noticeId, callback) {
   const q = collection(db, 'classes', classId, 'notices', noticeId, 'hearts');
   return onSnapshot(q, snap => callback(snap.docs.map(d => d.data().playerId)));
 }
+
+// =====================================================
+// ▼▼▼ [추가] 댓글 신고 기능 ▼▼▼
+// =====================================================
+
+/**
+ * 댓글 신고 접수
+ * @param {object} reportData - { classId, reporterId, reporterName, targetType('myroom'|'mission'), commentId, commentText, commenterName, commenterId, reason, customReason, submissionId, roomId }
+ */
+export async function reportComment(reportData) {
+  const {
+    classId, reporterId, reporterName,
+    targetType, commentId, commentText,
+    commenterName, commenterId,
+    reason, customReason,
+    submissionId, roomId,
+  } = reportData;
+  if (!classId || !commentId) throw new Error('필수 정보 누락');
+
+  const reasonLabel = reason === 'abuse' ? '모욕성' : reason === 'spam' ? '도배성' : '기타';
+  const preview = commentText.slice(0, 40) + (commentText.length > 40 ? '...' : '');
+
+  await addDoc(collection(db, 'classes', classId, 'commentReports'), {
+    classId,
+    reporterId,
+    reporterName,
+    targetType,
+    commentId,
+    commentText,
+    commenterName,
+    commenterId,
+    reason,
+    customReason: customReason || '',
+    submissionId: submissionId || null,
+    roomId: roomId || null,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    resolvedAt: null,
+    adminNote: '',
+  });
+
+  // 관리자(admin role)에게 notifications 컬렉션으로 실제 알림 전송
+  const playersRef = collection(db, 'classes', classId, 'players');
+  const adminQuery = query(playersRef, where('role', '==', 'admin'));
+  const adminSnapshot = await getDocs(adminQuery);
+  adminSnapshot.forEach(userDoc => {
+    const adminData = userDoc.data();
+    if (adminData.authUid) {
+      createNotification(
+        adminData.authUid,
+        `🚨 댓글 신고: ${commenterName}`,
+        `"${preview}" — 사유: ${reasonLabel}`,
+        'comment_report',
+        '/admin?tab=reports'
+      );
+    }
+  });
+}
+
+/**
+ * 신고 목록 실시간 구독
+ */
+export function listenCommentReports(classId, callback) {
+  if (!classId) return () => { };
+  const q = query(
+    collection(db, 'classes', classId, 'commentReports'),
+    orderBy('createdAt', 'desc')
+  );
+  return onSnapshot(q, snap => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+}
+
+/**
+ * 신고 상태 업데이트 (resolved | dismissed) + 관리자 메모
+ */
+export async function updateCommentReportStatus(classId, reportId, status, adminNote = '') {
+  if (!classId || !reportId) return;
+  const reportRef = doc(db, 'classes', classId, 'commentReports', reportId);
+  await updateDoc(reportRef, {
+    status,
+    adminNote,
+    resolvedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * 신고된 댓글 삭제 (마이룸 | 미션)
+ */
+export async function deleteReportedComment(classId, report) {
+  if (!classId || !report) return;
+  if (report.targetType === 'myroom' && report.roomId) {
+    await deleteMyRoomComment(classId, report.roomId, report.commentId);
+  } else if (report.targetType === 'mission' && report.submissionId) {
+    await deleteMissionComment(classId, report.submissionId, report.commentId);
+  }
+}
+
+/**
+ * 신고자에게 페널티 포인트 차감
+ */
+export async function applyReportPenalty(classId, playerId, amount, reason) {
+  // 차감은 음수 amount로 adjustPlayerPoints 재활용
+  await adjustPlayerPoints(classId, playerId, -Math.abs(amount), reason || '댓글 신고 페널티');
+}
