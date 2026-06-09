@@ -575,13 +575,13 @@ export const SKILLS = {
     },
 
     ULTIMATE_SECRET: {
-        id: 'ultimate_secret', name: '오의필살', cost: 70, type: 'signature', element: null, basePower: 70,
+        id: 'ultimate_secret', name: '오의필살', cost: 75, type: 'signature', element: null, basePower: 65,  // [밸런스] cost 70→75, basePower 70→65 (SP 소모 증가, 위력 소폭 하향)
         description: '갓을 깊게 눌러쓰고 눈에 보이지 않는 속도로 적의 사각을 베어 가릅니다. 묵직한 검기가 전장을 갈라버리는 무속성의 치명적인 일격입니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
 
-            // 무속성(element: null)이므로 상성을 타지 않음. 높은 스킬 배율(5.5).
-            let { damage, isCritical } = calculateDamage(70, attackerPlayer, defenderPlayer, null, 5.5, 0.8);
+            // 무속성(element: null)이므로 상성을 타지 않음. [밸런스] 스킬 배율 5.5→4.8
+            let { damage, isCritical } = calculateDamage(65, attackerPlayer, defenderPlayer, null, 4.8, 0.8);
             if (defenderAction === 'BRACE') damage *= 0.7;
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
@@ -689,21 +689,21 @@ export const PET_DATA = {
         element: '물',
         compatibleElements: ['물'],
         description: "무과 급제를 위해 수련하는 해맑은 아기 개구리입니다. (💧물 속성)",
-        baseStats: { maxHp: 105, maxSp: 55, atk: 11 },
-        growth: { hp: 20, sp: 6, atk: 5 },
+        baseStats: { maxHp: 105, maxSp: 55, atk: 10 },  // [밸런스] atk 11→10 (초기 ATK 소폭 너프)
+        growth: { hp: 20, sp: 7, atk: 4 },               // [밸런스] atk 성장 5→4, sp 성장 6→7 (공격형→균형형)
         skill: SKILLS.WATER_BALL,
         initialSkills: [SKILLS.WATER_BALL.id],
         evolution: {
             lv10: {
                 appearanceId: 'frog_lv2',
                 name: '부들구리',
-                statBoost: { hp: 1.5, sp: 1.4, atk: 1.5 },
+                statBoost: { hp: 1.5, sp: 1.5, atk: 1.4 },  // [밸런스] atk 1.5→1.4, sp 1.4→1.5 (SP 특화)
                 newSkill: SKILLS.COUNTER_STANCE
             },
             lv20: {
                 appearanceId: 'frog_lv3',
                 name: '별감구리',
-                statBoost: { hp: 2.1, sp: 1.9, atk: 2.2 },
+                statBoost: { hp: 2.1, sp: 2.0, atk: 2.0 },  // [밸런스] atk 2.2→2.0, sp 1.9→2.0
                 newSkills: [SKILLS.ULTIMATE_SECRET.id, SKILLS.REED_BOW.id] // 스킬 2개 동시 획득
             },
         }

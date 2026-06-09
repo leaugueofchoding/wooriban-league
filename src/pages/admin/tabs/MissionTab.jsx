@@ -25,6 +25,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
+    const [doneIds, setDoneIds] = useState(new Map()); // id → 'approved' | 'rejected'
     const [selectedSubmissionId, setSelectedSubmissionId] = useState(null); // id 기반으로 변경
     const [frozenSubmission, setFrozenSubmission] = useState(null); // 승인/반려 후 모달 고정용
     const currentUser = auth.currentUser;
@@ -101,7 +102,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
 
     const handleAction = async (action, submission, reward) => {
         if (!classId) return;
-        setProcessingIds(prev => new Set(prev.add(submission.id)));
+        setProcessingIds(prev => new Set(prev).add(submission.id));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
 
@@ -121,9 +122,17 @@ function PendingMissionWidget({ setModalImageSrc }) {
             } else if (action === 'reject') {
                 await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
             }
+            // 처리 완료 → 목록에서 즉시 제거 대신 완료 표시로 전환 (Firestore 업데이트가 반영될 때까지)
+            setDoneIds(prev => new Map(prev).set(submission.id, action === 'approve' ? 'approved' : 'rejected'));
         } catch (error) {
             console.error(`미션 ${action} 오류:`, error);
             alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
+        } finally {
+            setProcessingIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(submission.id);
+                return newSet;
+            });
         }
     };
 
@@ -138,9 +147,22 @@ function PendingMissionWidget({ setModalImageSrc }) {
                         const student = players.find(p => p.id === sub.studentId);
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
+                        const doneStatus = doneIds.get(sub.id);
                         const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
                         if (!mission) return null;
+
+                        // 처리 완료된 항목은 완료 뱃지로 표시 (Firestore 동기화 전까지 유지)
+                        if (doneStatus) {
+                            return (
+                                <PendingListItem key={sub.id} style={{ opacity: 0.5, pointerEvents: 'none', background: doneStatus === 'approved' ? '#d4edda' : '#f8d7da' }}>
+                                    <div>{student?.name} - [{mission?.title}]</div>
+                                    <div style={{ color: doneStatus === 'approved' ? '#28a745' : '#dc3545', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                        {doneStatus === 'approved' ? '✅ 승인 완료' : '❌ 반려 완료'}
+                                    </div>
+                                </PendingListItem>
+                            );
+                        }
 
                         return (
                             <PendingListItem key={sub.id} onClick={() => handleModalOpen(sub.id)}>
