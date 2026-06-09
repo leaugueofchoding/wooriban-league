@@ -576,14 +576,10 @@ const counterAuraToMe = keyframes`
 `;
 
 // ==========================================
-// 오의필살 전용 애니메이션 (소년만화 궁극기 스타일)
-// Phase 1: 집중 — 강렬한 기 모으기
-// Phase 2: 사라짐 (순간이동 예고)
-// Phase 3: 섬광 베기 폭발
-// Phase 4: 여진 + 화면 흔들림
+// 오의필살 (ULTIMATE_SECRET) 전용 애니메이션 및 스타일
 // ==========================================
 
-// 기 모으기 오라 (공격자 위치)
+// Phase 1: 기 모으기 오라
 const ultChargeAuraToOpp = keyframes`
   0%   { left: 16%; bottom: 16%; opacity: 0; transform: scale(0.3); }
   20%  { opacity: 1; transform: scale(1.5); filter: brightness(2) drop-shadow(0 0 15px #f8f9fa); }
@@ -599,7 +595,7 @@ const ultChargeAuraToMe = keyframes`
   100% { right: 18%; top: 18%; opacity: 0; transform: scale(6.5); }
 `;
 
-// 순간이동 잔상 (여러 개 흐릿하게)
+// Phase 2: 순간이동 잔상
 const ultGhostToOpp = keyframes`
   0%   { left: 18%; bottom: 18%; opacity: 0.6; transform: scale(1.0); filter: brightness(3) blur(1px); }
   40%  { left: 45%; bottom: 45%; opacity: 0.4; transform: scale(1.2); }
@@ -611,73 +607,7 @@ const ultGhostToMe = keyframes`
   100% { right: 65%; top: 65%; opacity: 0; transform: scale(0.8); }
 `;
 
-// 수평 참격 (넓고 빠른 가로 베기)
-const ultSlashHorizToOpp = keyframes`
-  0%   { left: 5%; bottom: 45%; opacity: 0; transform: scale(0.3) scaleX(0.2) rotate(-5deg); }
-  8%   { opacity: 1; transform: scale(1.5) scaleX(4.0) rotate(-5deg); filter: brightness(6) drop-shadow(0 0 30px #ffffff); }
-  20%  { left: 85%; bottom: 55%; opacity: 1; transform: scale(2.0) scaleX(5.5) rotate(-3deg); filter: brightness(8) drop-shadow(0 0 50px #f8f9fa); }
-  35%  { opacity: 0; transform: scale(3.0) scaleX(6.0); }
-  100% { opacity: 0; }
-`;
-const ultSlashHorizToMe = keyframes`
-  0%   { right: 5%; top: 45%; opacity: 0; transform: scale(0.3) scaleX(0.2) rotate(5deg); }
-  8%   { opacity: 1; transform: scale(1.5) scaleX(4.0) rotate(5deg); filter: brightness(6) drop-shadow(0 0 30px #ffffff); }
-  20%  { right: 85%; top: 55%; opacity: 1; transform: scale(2.0) scaleX(5.5) rotate(3deg); filter: brightness(8) drop-shadow(0 0 50px #f8f9fa); }
-  35%  { opacity: 0; transform: scale(3.0) scaleX(6.0); }
-  100% { opacity: 0; }
-`;
-
-// 사선 참격 1 (왼아래→오위)
-const ultSlashDiag1ToOpp = keyframes`
-  0%   { left: 8%; bottom: 20%; opacity: 0; transform: scale(0.4) rotate(50deg) scaleX(0.3); }
-  8%   { opacity: 1; transform: scale(2.0) rotate(50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #ffffff); }
-  22%  { left: 72%; bottom: 75%; opacity: 1; transform: scale(2.5) rotate(50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 55px #f8f9fa); }
-  40%  { opacity: 0; transform: scale(3.0) rotate(50deg) scaleX(5.5); }
-  100% { opacity: 0; }
-`;
-const ultSlashDiag1ToMe = keyframes`
-  0%   { right: 8%; top: 20%; opacity: 0; transform: scale(0.4) rotate(-50deg) scaleX(0.3); }
-  8%   { opacity: 1; transform: scale(2.0) rotate(-50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #ffffff); }
-  22%  { right: 72%; top: 75%; opacity: 1; transform: scale(2.5) rotate(-50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 55px #f8f9fa); }
-  40%  { opacity: 0; transform: scale(3.0) rotate(-50deg) scaleX(5.5); }
-  100% { opacity: 0; }
-`;
-
-// 사선 참격 2 (오아래→왼위)
-const ultSlashDiag2ToOpp = keyframes`
-  0%   { left: 75%; bottom: 20%; opacity: 0; transform: scale(0.4) rotate(-50deg) scaleX(0.3); }
-  10%  { opacity: 1; transform: scale(2.0) rotate(-50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #c5f6fa); }
-  25%  { left: 10%; bottom: 72%; opacity: 1; transform: scale(2.5) rotate(-50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 50px #74c0fc); }
-  45%  { opacity: 0; transform: scale(3.0) rotate(-50deg) scaleX(5.5); }
-  100% { opacity: 0; }
-`;
-const ultSlashDiag2ToMe = keyframes`
-  0%   { right: 75%; top: 20%; opacity: 0; transform: scale(0.4) rotate(50deg) scaleX(0.3); }
-  10%  { opacity: 1; transform: scale(2.0) rotate(50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #c5f6fa); }
-  25%  { right: 10%; top: 72%; opacity: 1; transform: scale(2.5) rotate(50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 50px #74c0fc); }
-  45%  { opacity: 0; transform: scale(3.0) rotate(50deg) scaleX(5.5); }
-  100% { opacity: 0; }
-`;
-
-// 중심 폭발 (모든 참격이 교차하는 지점)
-const ultExplosionToOpp = keyframes`
-  0%   { left: 62%; bottom: 62%; opacity: 0; transform: scale(0.5) rotate(0deg); }
-  15%  { opacity: 1; transform: scale(2.5) rotate(45deg); filter: brightness(6) drop-shadow(0 0 40px #ffffff); }
-  35%  { transform: scale(5.0) rotate(90deg); filter: brightness(9) drop-shadow(0 0 70px #f8f9fa); }
-  60%  { transform: scale(7.0) rotate(135deg); filter: brightness(11); opacity: 0.9; }
-  80%  { transform: scale(9.0) rotate(180deg); filter: brightness(7); opacity: 0.5; }
-  100% { left: 60%; bottom: 60%; opacity: 0; transform: scale(12.0) rotate(225deg); }
-`;
-const ultExplosionToMe = keyframes`
-  0%   { right: 62%; top: 62%; opacity: 0; transform: scale(0.5) rotate(0deg); }
-  15%  { opacity: 1; transform: scale(2.5) rotate(-45deg); filter: brightness(6) drop-shadow(0 0 40px #ffffff); }
-  35%  { transform: scale(5.0) rotate(-90deg); filter: brightness(9) drop-shadow(0 0 70px #f8f9fa); }
-  60%  { transform: scale(7.0) rotate(-135deg); filter: brightness(11); opacity: 0.9; }
-  80%  { transform: scale(9.0) rotate(-180deg); filter: brightness(7); opacity: 0.5; }
-  100% { right: 60%; top: 60%; opacity: 0; transform: scale(12.0) rotate(-225deg); }
-`;
-
-// 여진 충격파 (폭발 후 퍼져나가는 원형 링)
+// Phase 4: 충격파 링
 const ultShockwaveToOpp = keyframes`
   0%   { left: 62%; bottom: 62%; opacity: 0.9; transform: scale(0.3) rotate(0deg); }
   50%  { opacity: 0.6; transform: scale(4.0); filter: brightness(3) drop-shadow(0 0 25px #74c0fc); }
@@ -687,6 +617,68 @@ const ultShockwaveToMe = keyframes`
   0%   { right: 62%; top: 62%; opacity: 0.9; transform: scale(0.3) rotate(0deg); }
   50%  { opacity: 0.6; transform: scale(4.0); filter: brightness(3) drop-shadow(0 0 25px #74c0fc); }
   100% { right: 58%; top: 58%; opacity: 0; transform: scale(8.0); filter: brightness(1); }
+`;
+
+// 화면 암전 플래시
+const darkenFlashAnim = keyframes`
+  0% { background: rgba(0, 0, 0, 0); }
+  10% { background: rgba(0, 0, 0, 0.85); }
+  75% { background: rgba(0, 0, 0, 0.85); }
+  80% { background: rgba(255, 255, 255, 1); } 
+  90% { background: rgba(255, 255, 255, 0.8); }
+  100% { background: rgba(0, 0, 0, 0); }
+`;
+
+// 다중 참격 라인
+const fastSlashLineAnim = keyframes`
+  0% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--angle)) scaleX(0); }
+  50% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--angle)) scaleX(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--angle)) scaleX(1.5); }
+`;
+
+// 거대 폭발
+const giantExplosionBlast = keyframes`
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(40); opacity: 1; filter: brightness(3); }
+  100% { transform: scale(70); opacity: 0; filter: brightness(1); }
+`;
+
+const DarkenOverlay = styled.div`
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 2000;
+  animation: ${darkenFlashAnim} 2.2s forwards;
+`;
+
+const FastSlashLine = styled.div`
+  position: absolute;
+  width: 500px;
+  height: 8px;
+  background: white;
+  box-shadow: 0 0 15px white, 0 0 30px #a8e6cf;
+  opacity: 0;
+  left: ${props => props.$isMine ? '75%' : '25%'};
+  top: ${props => props.$isMine ? '25%' : '65%'};
+  transform-origin: center;
+  animation: ${fastSlashLineAnim} 0.15s ease-out forwards;
+  animation-delay: ${props => props.$delay};
+  z-index: 2001;
+`;
+
+const GiantExplosionCenter = styled.div`
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 20%, #00f0ff 50%, transparent 80%);
+  box-shadow: 0 0 50px #00f0ff, 0 0 100px #ffffff;
+  opacity: 0;
+  left: ${props => props.$isMine ? '75%' : '25%'};
+  top: ${props => props.$isMine ? '25%' : '65%'};
+  z-index: 2002;
+  animation: ${giantExplosionBlast} 0.6s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+  animation-delay: 1.6s;
 `;
 
 // 기존 dragon claw 애니메이션
@@ -970,14 +962,18 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 🐸 오의필살: 소년만화 궁극기 — 기 모으기 → 순간이동 → 다중 참격 폭발 + 강진
+  // ── 🐸 오의필살: 화면 암전 플래시 -> 순간이동 -> 고속 다중 슬래시 -> 진동 및 거대 폭발
   if (config.type === 'ULTIMATE_SECRET_FULL') {
     return (
       <EffectContainer $icon="" $duration="2.2s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#f8f9fa">
-        {/* 강력한 화면 진동 (0.6s 후 발동) */}
-        <ScreenShakeOverlay $heavy $duration="1.0s" style={{ animationDelay: '0.6s' }} />
 
-        {/* Phase 1 (0~0.5s): 기 모으기 오라 */}
+        {/* 전체 화면 암전 및 마지막 흰색 섬광 플래시 */}
+        <DarkenOverlay />
+
+        {/* 강력한 화면 진동 (폭발 타이밍인 1.6초에 맞춰서 강하게 발생) */}
+        <ScreenShakeOverlay $heavy $duration="0.6s" style={{ animationDelay: '1.6s' }} />
+
+        {/* Phase 1: 공격자의 기 모으기 오라 (어둠 속에서 빛남) */}
         <MultiIcon
           $anim={isMine ? ultChargeAuraToOpp : ultChargeAuraToMe}
           $duration="0.55s"
@@ -985,7 +981,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
           $size="5rem"
         >💫</MultiIcon>
 
-        {/* Phase 2 (0.4~0.8s): 순간이동 잔상 */}
+        {/* Phase 2: 적 뒤로 순식간에 이동하는 잔상 */}
         <MultiIcon
           $anim={isMine ? ultGhostToOpp : ultGhostToMe}
           $duration="0.45s"
@@ -994,59 +990,27 @@ const BattleSkillEffect = ({ type, isMine }) => {
           $delay="0.40s"
         >👤</MultiIcon>
 
-        {/* Phase 3a (0.6~0.9s): 수평 참격 */}
-        <MultiIcon
-          $anim={isMine ? ultSlashHorizToOpp : ultSlashHorizToMe}
-          $duration="0.40s"
-          $glow="#ffffff"
-          $size="3rem"
-          $delay="0.60s"
-        >⚡</MultiIcon>
+        {/* Phase 3: 적중 위치에서 뿜어지는 고속 다중 참격 (각도와 딜레이를 다르게 설정) */}
+        <FastSlashLine style={{ '--angle': '45deg' }} $delay="0.6s" $isMine={isMine} />
+        <FastSlashLine style={{ '--angle': '-30deg' }} $delay="0.75s" $isMine={isMine} />
+        <FastSlashLine style={{ '--angle': '80deg' }} $delay="0.9s" $isMine={isMine} />
+        <FastSlashLine style={{ '--angle': '-60deg' }} $delay="1.05s" $isMine={isMine} />
+        <FastSlashLine style={{ '--angle': '15deg' }} $delay="1.2s" $isMine={isMine} />
+        <FastSlashLine style={{ '--angle': '-85deg' }} $delay="1.35s" $isMine={isMine} />
+        <FastSlashLine style={{ '--angle': '0deg' }} $delay="1.5s" $isMine={isMine} />
 
-        {/* Phase 3b (0.7~1.0s): 사선 참격 1 */}
-        <MultiIcon
-          $anim={isMine ? ultSlashDiag1ToOpp : ultSlashDiag1ToMe}
-          $duration="0.40s"
-          $glow="#ffffff"
-          $size="3rem"
-          $delay="0.72s"
-        >⚡</MultiIcon>
+        {/* Phase 4: 모든 참격이 끝난 후 터지는 거대 폭발 */}
+        <GiantExplosionCenter $isMine={isMine} />
 
-        {/* Phase 3c (0.8~1.1s): 사선 참격 2 */}
-        <MultiIcon
-          $anim={isMine ? ultSlashDiag2ToOpp : ultSlashDiag2ToMe}
-          $duration="0.40s"
-          $glow="#74c0fc"
-          $size="3rem"
-          $delay="0.84s"
-        >⚡</MultiIcon>
-
-        {/* Phase 4a (1.0~1.8s): 중심 대폭발 */}
-        <MultiIcon
-          $anim={isMine ? ultExplosionToOpp : ultExplosionToMe}
-          $duration="0.90s"
-          $glow="#ffffff"
-          $size="5rem"
-          $delay="1.00s"
-        >✨</MultiIcon>
-
-        {/* Phase 4b (1.1~2.0s): 충격파 링 */}
+        {/* 폭발과 함께 퍼져나가는 충격파 링 */}
         <MultiIcon
           $anim={isMine ? ultShockwaveToOpp : ultShockwaveToMe}
-          $duration="0.90s"
-          $glow="#74c0fc"
-          $size="4rem"
-          $delay="1.10s"
+          $duration="0.60s"
+          $glow="#00f0ff"
+          $size="6rem"
+          $delay="1.6s"
         >💠</MultiIcon>
 
-        {/* Phase 4c (1.3~2.2s): 여진 별 파티클 */}
-        <MultiIcon
-          $anim={isMine ? ultShockwaveToOpp : ultShockwaveToMe}
-          $duration="0.80s"
-          $glow="#ffd43b"
-          $size="3rem"
-          $delay="1.35s"
-        >⭐</MultiIcon>
       </EffectContainer>
     );
   }
