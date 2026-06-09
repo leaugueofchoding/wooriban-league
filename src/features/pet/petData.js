@@ -288,7 +288,7 @@ export const SKILLS = {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!attacker.status) attacker.status = {}; if (!defender.status) defender.status = {};
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 용의 숨결! ...하지만 엉뚱한 방향으로 뿜었습니다! 💨`;
-            let { damage, isEffective, isCritical: breathCrit } = calculateDamage(SKILLS.FIERY_BREATH.basePower, attackerPlayer, defenderPlayer, SKILLS.FIERY_BREATH.element, 2.5, 0.7);
+            let { damage, isEffective, isCritical: breathCrit } = calculateDamage(SKILLS.FIERY_BREATH.basePower, attackerPlayer, defenderPlayer, SKILLS.FIERY_BREATH.element, 5.5, 1.2); // [밸런스] sm 2.5→5.5, am 0.7→1.2 (반동 페널티 보상, 기본공격 상회)
             let log = `'${attacker.name}'의 용의 숨결! 🔥`;
             if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
             switch (defenderAction) {
@@ -308,18 +308,18 @@ export const SKILLS = {
         description: '불꽃을 두른 예리한 발톱으로 할퀴어 상대의 방어를 일부 무시합니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective, isCritical: clawCrit } = calculateDamage(35, attackerPlayer, defenderPlayer, '불', 2.7, 0.7);
-            if (defenderAction === 'BRACE') damage *= 0.85; // 방어 일부 무시
+            let { damage, isEffective, isCritical: clawCrit } = calculateDamage(35, attackerPlayer, defenderPlayer, '불', 2.7, 1.5); // [밸런스] am 0.7→1.5 (ATK 활용 극대화, 방어무시 실효 강화)
+            if (defenderAction === 'BRACE') damage *= 0.60; // [밸런스] 방어무시 강화 0.85→0.60 (방어 반쯤 꿰뚫는 개념)
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
             return `${clawCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 용의 발톱! ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 피해!`;
         }
     },
     STELLAR_BLAST: {
-        id: 'stellar_blast', name: '스텔라 블라스트', cost: 65, type: 'signature', element: '불', basePower: 60, // [v13] 최종기 SP65, skillMult 3.5
+        id: 'stellar_blast', name: '스텔라 블라스트', cost: 65, type: 'signature', element: '불', basePower: 60, // [밸런스] sm 5.0→5.5, 공격형 궁극기 위상 강화
         description: '초고열의 항성 에너지를 폭발시킵니다. 30% 확률로 상대를 매 턴 최대 체력의 8%씩 화상 도트 피해 상태로 만듭니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
-            let { damage, isEffective, isCritical: stelCrit } = calculateDamage(60, attackerPlayer, defenderPlayer, '불', 5.0, 0.7);
+            let { damage, isEffective, isCritical: stelCrit } = calculateDamage(60, attackerPlayer, defenderPlayer, '불', 7.0, 1.2); // [밸런스] sm 5.5→7.0, am 0.7→1.2 (궁극기 위상, 500+ 보장)
             if (defenderAction === 'BRACE') damage *= 0.7;
             defender.hp = Math.max(0, defender.hp - Math.round(damage));
             let log = `${stelCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 스텔라 블라스트! 🌟 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${Math.round(damage)}의 엄청난 피해!`;
@@ -495,7 +495,7 @@ export const SKILLS = {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 불꽃 질주! ...타이밍을 놓쳤습니다! 💨`;
 
-            let { damage, isCritical: dashCrit } = calculateDamage(SKILLS.FLAME_DASH.basePower, attackerPlayer, defenderPlayer, '불', 3.15, 0.6); // 방어무시
+            let { damage, isCritical: dashCrit } = calculateDamage(SKILLS.FLAME_DASH.basePower, attackerPlayer, defenderPlayer, '불', 2.8, 0.6); // [밸런스] sm 3.15→2.8 (방어완전무시 보정 너프)
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
@@ -575,13 +575,13 @@ export const SKILLS = {
     },
 
     ULTIMATE_SECRET: {
-        id: 'ultimate_secret', name: '오의필살', cost: 75, type: 'signature', element: null, basePower: 65,  // [밸런스] cost 70→75, basePower 70→65 (SP 소모 증가, 위력 소폭 하향)
+        id: 'ultimate_secret', name: '오의필살', cost: 90, type: 'signature', element: null, basePower: 70,  // [밸런스] cost 75→90(SP 대가), bp 65→70, sm 4.8→6.5 (최강 기술 포지션 확정)
         description: '갓을 깊게 눌러쓰고 눈에 보이지 않는 속도로 적의 사각을 베어 가릅니다. 묵직한 검기가 전장을 갈라버리는 무속성의 치명적인 일격입니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
 
-            // 무속성(element: null)이므로 상성을 타지 않음. [밸런스] 스킬 배율 5.5→4.8
-            let { damage, isCritical } = calculateDamage(65, attackerPlayer, defenderPlayer, null, 4.8, 0.8);
+            // 무속성(element: null)이므로 상성을 타지 않음. [밸런스] sm 6.5→9.5 — cost 90, 무CC, 무속성 최강기 포지션 확정 (스텔라블라스트 790 상회)
+            let { damage, isCritical } = calculateDamage(70, attackerPlayer, defenderPlayer, null, 9.5, 0.8);
             if (defenderAction === 'BRACE') damage *= 0.7;
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
@@ -592,7 +592,7 @@ export const SKILLS = {
 
     REED_BOW: {
         id: 'reed_bow', name: '부들화살', cost: 35, type: 'signature', element: '물', basePower: 15,
-        description: '부들 화살을 쏴 약간의 피해를 주고, 상대를 3턴간 속박하여 방어 행동과 도망치기를 봉쇄합니다.',
+        description: '부들 화살을 쏴 약간의 피해를 주고, 상대를 2턴간 속박하여 방어 행동과 도망치기를 봉쇄합니다.', // [밸런스] 3턴→2턴
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
             if (!defender.status) defender.status = {};
@@ -602,11 +602,11 @@ export const SKILLS = {
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
-            // 속박 상태이상 부여
+            // 속박 상태이상 부여 [밸런스] 3턴→2턴
             defender.status.bound = true;
-            defender.status.boundTurns = 3;
+            defender.status.boundTurns = 2;
 
-            return `${isCritical ? '💥 [급소 강타!] ' : ''}'${attacker.name}'의 부들활! 🏹 ${damage}의 피해! 질긴 덩굴이 상대를 꽁꽁 묶어버렸습니다! (3턴간 방어/도망 불가)`;
+            return `${isCritical ? '💥 [급소 강타!] ' : ''}'${attacker.name}'의 부들활! 🏹 ${damage}의 피해! 질긴 덩굴이 상대를 꽁꽁 묶어버렸습니다! (2턴간 방어/도망 불가)`;
         }
     }
 
