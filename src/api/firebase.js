@@ -3343,10 +3343,20 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     // ▼▼▼ [신규] 진화 시 고유 스킬 자동 습득 로직 추가 ▼▼▼
     if (!finalPet.skills) finalPet.skills = [];
 
+    // 기존 1개짜리 스킬 (객체 형태) 처리
     if (evolutionData.newSkill) {
       if (!finalPet.skills.includes(evolutionData.newSkill.id)) {
         finalPet.skills.push(evolutionData.newSkill.id);
       }
+    }
+
+    // 신규 추가: 배열 형태의 복수 스킬 (newSkills) 처리
+    if (evolutionData.newSkills && Array.isArray(evolutionData.newSkills)) {
+      evolutionData.newSkills.forEach(skillId => {
+        if (!finalPet.skills.includes(skillId)) {
+          finalPet.skills.push(skillId);
+        }
+      });
     }
     // ▲▲▲ [신규 끝] ▲▲▲
 
