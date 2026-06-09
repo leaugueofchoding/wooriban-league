@@ -5,7 +5,8 @@ export const PET_SPECIES = {
     RABBIT: 'rabbit',
     TURTLE: 'turtle',
     ELECTRIC_MONKEY: 'monkey',
-    FOX: 'fox'
+    FOX: 'fox',
+    FROG: 'frog',
 };
 
 export const ELEMENTS = {
@@ -539,7 +540,76 @@ export const SKILLS = {
             // focusCharge 소비는 BattlePage에서 일괄 처리
             return log;
         }
+    },
+    // --- 🐸 개구리 (물) 스킬 ---
+    WATER_BALL: {
+        id: 'water_ball', name: '물공 던지기', cost: 15, type: 'signature', element: '물', basePower: 25,
+        description: '응축된 물의 기운을 둥글게 뭉쳐 적에게 던져 물 속성 피해를 줍니다.',
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            let { damage, isEffective, isCritical } = calculateDamage(25, attackerPlayer, defenderPlayer, '물', 1.5, 0.6);
+            if (defenderAction === 'BRACE') damage *= 0.7;
+            damage = Math.round(damage);
+            defender.hp = Math.max(0, defender.hp - damage);
+            return `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 물공 던지기! 💧 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${damage}의 피해!`;
+        }
+    },
+
+    COUNTER_STANCE: {
+        id: 'counter_stance', name: '반격태세', cost: 25, type: 'signature', element: '물', basePower: 30,
+        description: '부들을 휘둘러 피해를 주고, 다음 턴 상대방 공격의 30%를 되돌려주는 반격 자세를 취합니다.',
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            if (!attacker.status) attacker.status = {};
+
+            let { damage, isCritical } = calculateDamage(30, attackerPlayer, defenderPlayer, '물', 1.8, 0.6);
+            if (defenderAction === 'BRACE') damage *= 0.7;
+            damage = Math.round(damage);
+            defender.hp = Math.max(0, defender.hp - damage);
+
+            // 반격 버프 부여 (BattlePage에서 공격 받을 때 이 비율만큼 반사하도록 구현)
+            attacker.status.counterReady = 0.3;
+
+            return `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 반격태세! 적에게 ${damage}의 피해를 주고 ⚔️ 매서운 눈빛으로 적을 노려봅니다! (반격 준비)`;
+        }
+    },
+
+    ULTIMATE_SECRET: {
+        id: 'ultimate_secret', name: '오의필살', cost: 70, type: 'signature', element: null, basePower: 70,
+        description: '갓을 깊게 눌러쓰고 눈에 보이지 않는 속도로 적의 사각을 베어 가릅니다. 묵직한 검기가 전장을 갈라버리는 무속성의 치명적인 일격입니다.',
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+
+            // 무속성(element: null)이므로 상성을 타지 않음. 높은 스킬 배율(5.5).
+            let { damage, isCritical } = calculateDamage(70, attackerPlayer, defenderPlayer, null, 5.5, 0.8);
+            if (defenderAction === 'BRACE') damage *= 0.7;
+            damage = Math.round(damage);
+            defender.hp = Math.max(0, defender.hp - damage);
+
+            return `${isCritical ? '💥 [오의 폭발!!] ' : ''}'${attacker.name}'의 오의필살! ⚔️✨ 전장을 가르는 섬광이 적을 꿰뚫어 ${damage}의 엄청난 피해를 입혔습니다!`;
+        }
+    },
+
+    REED_BOW: {
+        id: 'reed_bow', name: '부들화살', cost: 35, type: 'signature', element: '물', basePower: 15,
+        description: '부들 화살을 쏴 약간의 피해를 주고, 상대를 3턴간 속박하여 방어 행동과 도망치기를 봉쇄합니다.',
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet; const defender = defenderPlayer.pet;
+            if (!defender.status) defender.status = {};
+
+            let { damage, isCritical } = calculateDamage(15, attackerPlayer, defenderPlayer, '물', 1.0, 0.5);
+            if (defenderAction === 'BRACE') damage *= 0.7;
+            damage = Math.round(damage);
+            defender.hp = Math.max(0, defender.hp - damage);
+
+            // 속박 상태이상 부여
+            defender.status.bound = true;
+            defender.status.boundTurns = 3;
+
+            return `${isCritical ? '💥 [급소 강타!] ' : ''}'${attacker.name}'의 부들활! 🏹 ${damage}의 피해! 질긴 덩굴이 상대를 꽁꽁 묶어버렸습니다! (3턴간 방어/도망 불가)`;
+        }
     }
+
 };
 
 export const PET_DATA = {
@@ -613,6 +683,31 @@ export const PET_DATA = {
             lv20: { appearanceId: 'fox_lv3', name: '인페르노', statBoost: { hp: 2.2, sp: 1.8, atk: 2.1 }, newSkill: SKILLS.UPHWA },
         }
     },
+
+    ['frog']: {
+        name: '미소구리',
+        element: '물',
+        compatibleElements: ['물'],
+        description: "무과 급제를 위해 수련하는 해맑은 아기 개구리입니다. (💧물 속성)",
+        baseStats: { maxHp: 105, maxSp: 55, atk: 11 },
+        growth: { hp: 20, sp: 6, atk: 5 },
+        skill: SKILLS.WATER_BALL,
+        initialSkills: [SKILLS.WATER_BALL.id],
+        evolution: {
+            lv10: {
+                appearanceId: 'frog_lv2',
+                name: '부들구리',
+                statBoost: { hp: 1.5, sp: 1.4, atk: 1.5 },
+                newSkill: SKILLS.COUNTER_STANCE
+            },
+            lv20: {
+                appearanceId: 'frog_lv3',
+                name: '별감구리',
+                statBoost: { hp: 2.1, sp: 1.9, atk: 2.2 },
+                newSkills: [SKILLS.ULTIMATE_SECRET.id, SKILLS.REED_BOW.id] // 스킬 2개 동시 획득
+            },
+        }
+    }
 };
 
 export const canLearnSkill = (pet, skill) => {

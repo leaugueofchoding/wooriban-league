@@ -20,6 +20,19 @@ const flyToMe = keyframes`
   100% { right: 78%; top: 78%; opacity: 0; transform: scale(2.2) rotate(-720deg); }
 `;
 
+const arrowFlyToOpponent = keyframes`
+  0%   { left: 18%; bottom: 25%; opacity: 0; transform: scale(0.8) rotate(45deg); }
+  20%  { opacity: 1; transform: scale(1.5) rotate(45deg); filter: drop-shadow(0 0 10px #8ce99a); }
+  85%  { left: 70%; bottom: 65%; opacity: 1; transform: scale(1.5) rotate(45deg); }
+  100% { left: 74%; bottom: 68%; opacity: 0; transform: scale(2.0) rotate(45deg); }
+`;
+const arrowFlyToMe = keyframes`
+  0%   { right: 18%; top: 25%; opacity: 0; transform: scale(0.8) rotate(45deg); }
+  20%  { opacity: 1; transform: scale(1.5) rotate(45deg); filter: drop-shadow(0 0 10px #8ce99a); }
+  85%  { right: 70%; top: 65%; opacity: 1; transform: scale(1.5) rotate(45deg); }
+  100% { right: 74%; top: 68%; opacity: 0; transform: scale(2.0) rotate(45deg); }
+`;
+
 const zigzagToOpponent = keyframes`
   0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.3); filter: brightness(1); }
   12%  { opacity: 1; transform: translate(5%, -15%) scale(1.4); filter: brightness(1.8) drop-shadow(0 0 10px #74c0fc); }
@@ -64,7 +77,6 @@ const buffSelf = (isMine) => keyframes`
 // 2. 특수 이펙트 애니메이션
 // ==========================================
 
-// 독침: 초록 독구슬이 퍼진 후 해골이 나타남
 const poisonFly = keyframes`
   0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.3) rotate(0deg); }
   20%  { opacity: 1; transform: scale(1.4) rotate(-20deg); }
@@ -80,7 +92,6 @@ const poisonFlyToMe = keyframes`
   100% { right: 74%; top: 76%; opacity: 0; transform: scale(0.6); }
 `;
 
-// 잔불: 불꽃이 위로 솟구치며 날아감
 const remFireFly = keyframes`
   0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.4) translateY(0); }
   10%  { opacity: 1; transform: scale(1.2) translateY(-8px); filter: brightness(1.5); }
@@ -98,7 +109,6 @@ const remFireFlyToMe = keyframes`
   100% { right: 74%; top: 74%; opacity: 0; transform: scale(0.5); }
 `;
 
-// 업화: 화염폭풍 — 아래서 위로 거대하게 폭발
 const uphwaExplode = keyframes`
   0%   { left: 50%; bottom: 0%; opacity: 0; transform: scale(0.2) translateX(-50%); }
   15%  { opacity: 1; transform: scale(1.8) translateX(-50%) translateY(-10px); filter: brightness(2); }
@@ -114,7 +124,6 @@ const uphwaExplodeToMe = keyframes`
   100% { left: 50%; top: 15%; opacity: 0; transform: scale(5) translateX(-50%); }
 `;
 
-// 스텔라 블라스트: 하늘에서 별폭발
 const stellarExplode = keyframes`
   0%   { left: 72%; top: -20%; opacity: 0; transform: scale(0.3) rotate(0deg); }
   20%  { opacity: 1; transform: scale(2) rotate(180deg); filter: brightness(3) drop-shadow(0 0 20px #fff176); }
@@ -130,7 +139,6 @@ const stellarExplodeToMe = keyframes`
   100% { left: 25%; top: 65%; opacity: 0; transform: scale(1.5) rotate(540deg); }
 `;
 
-// 용의 숨결: 입에서 화염이 뿜어져 나오며 퍼짐
 const breathSweep = keyframes`
   0%   { left: 20%; bottom: 40%; opacity: 0; transform: scale(0.4) scaleX(0.5); }
   20%  { opacity: 1; transform: scale(1.2) scaleX(1.5); filter: brightness(2); }
@@ -146,7 +154,6 @@ const breathSweepToMe = keyframes`
   100% { right: 80%; top: 70%; opacity: 0; transform: scale(4); }
 `;
 
-// 토네이도: 회오리가 아래서 올라감 (강화)
 const tornadoRise = keyframes`
   0%   { left: 60%; bottom: 0%; opacity: 0; transform: scale(0.2) rotate(0deg); }
   15%  { opacity: 1; transform: scale(1.2) rotate(270deg); filter: drop-shadow(0 0 10px #74c0fc); }
@@ -166,7 +173,6 @@ const tornadoRiseToMe = keyframes`
   100% { left: 24%; top: 20%; opacity: 0; transform: scale(3.0) rotate(-1440deg); }
 `;
 
-// 뇌우: 위에서 쾅
 const thunderBolt = keyframes`
   0%   { left: 72%; top: -10%; opacity: 0; transform: scale(0.6); }
   15%  { opacity: 1; transform: scale(2); filter: brightness(3); }
@@ -182,7 +188,6 @@ const thunderBoltToMe = keyframes`
   100% { left: 25%; top: 65%; opacity: 0; transform: scale(0.8); }
 `;
 
-// 솔라 빔: 빛줄기가 모였다 발사
 const solarCharge = keyframes`
   0%   { left: 18%; bottom: 35%; opacity: 0; transform: scale(0.3); }
   20%  { opacity: 1; transform: scale(2.5); filter: brightness(4) drop-shadow(0 0 30px #fff176); }
@@ -198,7 +203,6 @@ const solarChargeToMe = keyframes`
   100% { right: 76%; top: 64%; opacity: 0; transform: scale(3); }
 `;
 
-// 씨뿌리기: 씨앗이 날아가 초록 파동이 퍼짐
 const seedFly = keyframes`
   0%   { left: 18%; bottom: 20%; opacity: 0; transform: scale(0.5) rotate(0deg); }
   25%  { opacity: 1; transform: scale(1.2) rotate(180deg); }
@@ -214,7 +218,6 @@ const seedFlyToMe = keyframes`
   100% { right: 72%; top: 70%; opacity: 0; transform: scale(4); }
 `;
 
-// 덩굴 채찍: 덩굴이 가로질러 휘어짐
 const vineWhip = keyframes`
   0%   { left: 18%; bottom: 30%; opacity: 0; transform: scale(0.4) rotate(-30deg); }
   20%  { opacity: 1; transform: scale(1.5) rotate(0deg); filter: drop-shadow(0 0 8px #40c057); }
@@ -230,7 +233,6 @@ const vineWhipToMe = keyframes`
   100% { right: 70%; top: 65%; opacity: 0; transform: scale(3); }
 `;
 
-// 덩굴 채찍 멀티: 메인 덩굴 + 잔가지 2개 (각기 다른 각도)
 const vineWhipLash1ToOpp = keyframes`
   0%   { left: 15%; bottom: 28%; opacity: 0; transform: scale(0.3) rotate(-45deg); }
   15%  { opacity: 1; transform: scale(1.4) rotate(-10deg); filter: drop-shadow(0 0 10px #40c057); }
@@ -270,7 +272,6 @@ const vineWhipImpactToMe = keyframes`
   100% { right: 66%; top: 61%; opacity: 0; transform: scale(3.5) rotate(-30deg); }
 `;
 
-// 에너지 사이펀: 흡수 소용돌이
 const siphonPull = keyframes`
   0%   { left: 65%; bottom: 60%; opacity: 0; transform: scale(3) rotate(0deg); }
   30%  { opacity: 1; transform: scale(1.8) rotate(-180deg); filter: drop-shadow(0 0 15px #cc5de8); }
@@ -284,7 +285,6 @@ const siphonPullToMe = keyframes`
   100% { right: 20%; top: 25%; opacity: 0; transform: scale(0.5) rotate(540deg); }
 `;
 
-// 불꽃 질주: 빠르게 가로지름
 const flameDash = keyframes`
   0%   { left: 10%; bottom: 20%; opacity: 0; transform: scale(0.3) scaleX(0.5); }
   10%  { opacity: 1; transform: scale(1.5) scaleX(3); filter: brightness(3) drop-shadow(0 0 20px #ff6b35); }
@@ -300,7 +300,6 @@ const flameDashToMe = keyframes`
   100% { right: 76%; top: 72%; opacity: 0; transform: scale(3) scaleX(1); }
 `;
 
-// 찌릿 할퀴기: 전기 발톱 3회 연타
 const scratchStrike = keyframes`
   0%   { left: 60%; bottom: 55%; opacity: 0; transform: scale(0.5) rotate(-45deg); }
   20%  { opacity: 1; transform: scale(1.5) rotate(0deg); filter: brightness(2); }
@@ -318,7 +317,6 @@ const scratchStrikeToMe = keyframes`
   100% { right: 65%; top: 60%; opacity: 0; transform: scale(0.8); }
 `;
 
-// 도트딜 - 화상 (위로 불꽃 솟구침)
 export const burnDotAnim = keyframes`
   0%   { opacity: 0; transform: translateY(0) scale(0.6); }
   20%  { opacity: 1; transform: translateY(-12px) scale(1.2); filter: brightness(2); }
@@ -326,7 +324,6 @@ export const burnDotAnim = keyframes`
   100% { opacity: 0; transform: translateY(-60px) scale(0.4); filter: brightness(1); }
 `;
 
-// 도트딜 - 중독 (독구슬 퍼짐)
 export const poisonDotAnim = keyframes`
   0%   { opacity: 0; transform: scale(0.4); }
   30%  { opacity: 1; transform: scale(1.3); filter: drop-shadow(0 0 8px #69db7c); }
@@ -334,7 +331,6 @@ export const poisonDotAnim = keyframes`
   100% { opacity: 0; transform: scale(2.8); }
 `;
 
-// 찌릿펀치: 주먹 아이콘 직선 돌진
 const punchFlyToOpponent = keyframes`
   0%   { left: 20%; bottom: 20%; opacity: 0; transform: scale(0.5) rotate(-10deg); }
   12%  { opacity: 1; transform: scale(1.4) rotate(0deg); filter: brightness(2) drop-shadow(0 0 12px #ffd43b); }
@@ -349,7 +345,6 @@ const punchFlyToMe = keyframes`
   80%  { right: 72%; top: 72%; transform: scale(2.5); filter: brightness(3) drop-shadow(0 0 25px #ffd43b); }
   100% { right: 76%; top: 76%; opacity: 0; transform: scale(0.8); }
 `;
-// 찌릿펀치: 번개 보조 아이콘 (약간 뒤따라감)
 const lightningTrailToOpponent = keyframes`
   0%   { left: 15%; bottom: 15%; opacity: 0; transform: scale(0.3); }
   20%  { opacity: 0.9; transform: scale(1.1); filter: brightness(3) drop-shadow(0 0 15px #ffd43b); }
@@ -363,7 +358,6 @@ const lightningTrailToMe = keyframes`
   100% { right: 74%; top: 74%; opacity: 0; transform: scale(2); filter: brightness(4); }
 `;
 
-// 뇌우 전체화면: 번개 세 줄기가 각기 다른 위치에 순차 낙하
 const thunderBolt1 = keyframes`
   0%   { left: 70%; top: -5%; opacity: 0; transform: scale(0.5); }
   10%  { opacity: 1; transform: scale(1.8); filter: brightness(4) drop-shadow(0 0 20px #ffd43b); }
@@ -405,7 +399,6 @@ const thunderBolt3ToMe = keyframes`
   100% { left: 50%; top: 74%; opacity: 0; transform: scale(0.6); }
 `;
 
-// 업화 멀티: 화염 파편이 사방에서 솟구침
 const fireSparkL = keyframes`
   0%   { left: 30%; bottom: 0%; opacity: 0; transform: scale(0.4) rotate(0deg); }
   15%  { opacity: 1; transform: scale(1.5) rotate(-20deg); filter: brightness(2.5) drop-shadow(0 0 15px #ff4500); }
@@ -447,7 +440,6 @@ const fireCenterToMe = keyframes`
   100% { left: 42%; top: 22%; opacity: 0; transform: scale(6) translateX(-50%); }
 `;
 
-// 화면 전체 흔들기 (뇌우·업화 전용)
 const screenShake = keyframes`
   0%   { transform: translate(0, 0) rotate(0deg); }
   10%  { transform: translate(-5px, -3px) rotate(-0.5deg); }
@@ -461,16 +453,34 @@ const screenShake = keyframes`
   100% { transform: translate(0, 0) rotate(0deg); }
 `;
 
+// ── 강렬한 화면 진동 (오의필살 전용)
+const heavyScreenShake = keyframes`
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  5%   { transform: translate(-8px, -5px) rotate(-1deg); }
+  10%  { transform: translate(8px, 5px) rotate(1deg); }
+  15%  { transform: translate(-7px, 3px) rotate(-0.8deg); }
+  20%  { transform: translate(7px, -3px) rotate(0.8deg); }
+  25%  { transform: translate(-6px, 4px) rotate(-0.6deg); }
+  30%  { transform: translate(6px, -4px) rotate(0.6deg); }
+  40%  { transform: translate(-4px, 2px) rotate(-0.4deg); }
+  50%  { transform: translate(4px, -2px) rotate(0.4deg); }
+  60%  { transform: translate(-3px, 3px) rotate(-0.2deg); }
+  75%  { transform: translate(3px, -2px) rotate(0.2deg); }
+  88%  { transform: translate(-2px, 1px); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+`;
+
 const ScreenShakeOverlay = styled.div`
   position: absolute;
   width: 100%; height: 100%;
   top: 0; left: 0;
   pointer-events: none;
   z-index: 49;
-  animation: ${props => props.$active ? css`${screenShake} ${props.$duration || '0.6s'} ease-in-out` : 'none'};
+  animation: ${props => props.$heavy
+    ? css`${heavyScreenShake} ${props.$duration || '0.8s'} ease-in-out`
+    : css`${screenShake} ${props.$duration || '0.6s'} ease-in-out`};
 `;
 
-// 멀티 이펙트 아이콘 (절대위치 CSS 직접제어)
 const MultiIcon = styled.div`
   position: absolute;
   font-size: ${props => props.$size || '4rem'};
@@ -481,7 +491,205 @@ const MultiIcon = styled.div`
   ${props => props.$delay ? `animation-delay: ${props.$delay};` : ''}
 `;
 
-// ─── 용의 발톱: 불꽃 발톱 2연타 슬래시
+// ==========================================
+// 반격태세 전용 애니메이션
+// Phase 1: 자기 위치에서 상대 쪽으로 돌격
+// Phase 2: 상대 위치에서 X자 검기 폭발
+// ==========================================
+
+// 돌격 이동 (내가 공격자 — 오른쪽 위 상대에게 달려감)
+const counterDashToOpp = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.5); }
+  10%  { opacity: 1; transform: scale(1.2); filter: brightness(1.5) drop-shadow(0 0 10px #4dabf7); }
+  55%  { left: 65%; bottom: 62%; transform: scale(1.6); filter: brightness(2.5) drop-shadow(0 0 20px #4dabf7); }
+  80%  { left: 71%; bottom: 68%; transform: scale(2.0); filter: brightness(3) drop-shadow(0 0 28px #74c0fc); }
+  100% { left: 73%; bottom: 70%; opacity: 0; transform: scale(2.5); }
+`;
+const counterDashToMe = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0; transform: scale(0.5); }
+  10%  { opacity: 1; transform: scale(1.2); filter: brightness(1.5) drop-shadow(0 0 10px #4dabf7); }
+  55%  { right: 65%; top: 62%; transform: scale(1.6); filter: brightness(2.5) drop-shadow(0 0 20px #4dabf7); }
+  80%  { right: 71%; top: 68%; transform: scale(2.0); filter: brightness(3) drop-shadow(0 0 28px #74c0fc); }
+  100% { right: 73%; top: 70%; opacity: 0; transform: scale(2.5); }
+`;
+
+// X자 검기 — 왼위→오아래 사선
+const xSlash1ToOpp = keyframes`
+  0%   { left: 58%; bottom: 72%; opacity: 0; transform: scale(0.3) rotate(-45deg) scaleX(0.4); }
+  15%  { opacity: 1; transform: scale(2.2) rotate(-45deg) scaleX(3.5); filter: brightness(4) drop-shadow(0 0 22px #4dabf7); }
+  45%  { transform: scale(2.8) rotate(-45deg) scaleX(4.5); filter: brightness(5.5) drop-shadow(0 0 35px #74c0fc); }
+  70%  { opacity: 0.7; transform: scale(3.5) rotate(-45deg) scaleX(5.0); filter: brightness(6); }
+  100% { left: 64%; bottom: 66%; opacity: 0; transform: scale(1.5) rotate(-45deg); }
+`;
+const xSlash1ToMe = keyframes`
+  0%   { right: 58%; top: 72%; opacity: 0; transform: scale(0.3) rotate(45deg) scaleX(0.4); }
+  15%  { opacity: 1; transform: scale(2.2) rotate(45deg) scaleX(3.5); filter: brightness(4) drop-shadow(0 0 22px #4dabf7); }
+  45%  { transform: scale(2.8) rotate(45deg) scaleX(4.5); filter: brightness(5.5) drop-shadow(0 0 35px #74c0fc); }
+  70%  { opacity: 0.7; transform: scale(3.5) rotate(45deg) scaleX(5.0); filter: brightness(6); }
+  100% { right: 64%; top: 66%; opacity: 0; transform: scale(1.5) rotate(45deg); }
+`;
+
+// X자 검기 — 오위→왼아래 사선
+const xSlash2ToOpp = keyframes`
+  0%   { left: 62%; bottom: 72%; opacity: 0; transform: scale(0.3) rotate(45deg) scaleX(0.4); }
+  15%  { opacity: 1; transform: scale(2.2) rotate(45deg) scaleX(3.5); filter: brightness(4) drop-shadow(0 0 22px #ffe066); }
+  45%  { transform: scale(2.8) rotate(45deg) scaleX(4.5); filter: brightness(5.5) drop-shadow(0 0 35px #ffd43b); }
+  70%  { opacity: 0.7; transform: scale(3.5) rotate(45deg) scaleX(5.0); filter: brightness(6); }
+  100% { left: 56%; bottom: 64%; opacity: 0; transform: scale(1.5) rotate(45deg); }
+`;
+const xSlash2ToMe = keyframes`
+  0%   { right: 62%; top: 72%; opacity: 0; transform: scale(0.3) rotate(-45deg) scaleX(0.4); }
+  15%  { opacity: 1; transform: scale(2.2) rotate(-45deg) scaleX(3.5); filter: brightness(4) drop-shadow(0 0 22px #ffe066); }
+  45%  { transform: scale(2.8) rotate(-45deg) scaleX(4.5); filter: brightness(5.5) drop-shadow(0 0 35px #ffd43b); }
+  70%  { opacity: 0.7; transform: scale(3.5) rotate(-45deg) scaleX(5.0); filter: brightness(6); }
+  100% { right: 56%; top: 64%; opacity: 0; transform: scale(1.5) rotate(-45deg); }
+`;
+
+// X자 중심 폭발
+const xImpactToOpp = keyframes`
+  0%   { left: 60%; bottom: 68%; opacity: 0; transform: scale(0.4); }
+  20%  { opacity: 1; transform: scale(2.0); filter: brightness(5) drop-shadow(0 0 30px #4dabf7); }
+  50%  { transform: scale(3.5); filter: brightness(7) drop-shadow(0 0 50px #74c0fc); }
+  75%  { transform: scale(4.5); filter: brightness(8); opacity: 0.8; }
+  100% { left: 61%; bottom: 69%; opacity: 0; transform: scale(2.0); }
+`;
+const xImpactToMe = keyframes`
+  0%   { right: 60%; top: 68%; opacity: 0; transform: scale(0.4); }
+  20%  { opacity: 1; transform: scale(2.0); filter: brightness(5) drop-shadow(0 0 30px #4dabf7); }
+  50%  { transform: scale(3.5); filter: brightness(7) drop-shadow(0 0 50px #74c0fc); }
+  75%  { transform: scale(4.5); filter: brightness(8); opacity: 0.8; }
+  100% { right: 61%; top: 69%; opacity: 0; transform: scale(2.0); }
+`;
+
+// 반격 준비 버프 오라 (자기 위치에서 빛남)
+const counterAuraToOpp = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.6); }
+  30%  { opacity: 1; transform: scale(2.0); filter: brightness(3) drop-shadow(0 0 25px #ffe066); }
+  60%  { transform: scale(2.8); filter: brightness(4) drop-shadow(0 0 40px #ffd43b); }
+  100% { left: 20%; bottom: 22%; opacity: 0; transform: scale(1.5); }
+`;
+const counterAuraToMe = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0; transform: scale(0.6); }
+  30%  { opacity: 1; transform: scale(2.0); filter: brightness(3) drop-shadow(0 0 25px #ffe066); }
+  60%  { transform: scale(2.8); filter: brightness(4) drop-shadow(0 0 40px #ffd43b); }
+  100% { right: 20%; top: 22%; opacity: 0; transform: scale(1.5); }
+`;
+
+// ==========================================
+// 오의필살 전용 애니메이션 (소년만화 궁극기 스타일)
+// Phase 1: 집중 — 강렬한 기 모으기
+// Phase 2: 사라짐 (순간이동 예고)
+// Phase 3: 섬광 베기 폭발
+// Phase 4: 여진 + 화면 흔들림
+// ==========================================
+
+// 기 모으기 오라 (공격자 위치)
+const ultChargeAuraToOpp = keyframes`
+  0%   { left: 16%; bottom: 16%; opacity: 0; transform: scale(0.3); }
+  20%  { opacity: 1; transform: scale(1.5); filter: brightness(2) drop-shadow(0 0 15px #f8f9fa); }
+  50%  { transform: scale(3.0); filter: brightness(4) drop-shadow(0 0 35px #ffffff); }
+  80%  { transform: scale(5.0); filter: brightness(6) drop-shadow(0 0 60px #ffffff); opacity: 0.9; }
+  100% { left: 18%; bottom: 18%; opacity: 0; transform: scale(6.5); }
+`;
+const ultChargeAuraToMe = keyframes`
+  0%   { right: 16%; top: 16%; opacity: 0; transform: scale(0.3); }
+  20%  { opacity: 1; transform: scale(1.5); filter: brightness(2) drop-shadow(0 0 15px #f8f9fa); }
+  50%  { transform: scale(3.0); filter: brightness(4) drop-shadow(0 0 35px #ffffff); }
+  80%  { transform: scale(5.0); filter: brightness(6) drop-shadow(0 0 60px #ffffff); opacity: 0.9; }
+  100% { right: 18%; top: 18%; opacity: 0; transform: scale(6.5); }
+`;
+
+// 순간이동 잔상 (여러 개 흐릿하게)
+const ultGhostToOpp = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0.6; transform: scale(1.0); filter: brightness(3) blur(1px); }
+  40%  { left: 45%; bottom: 45%; opacity: 0.4; transform: scale(1.2); }
+  100% { left: 65%; bottom: 65%; opacity: 0; transform: scale(0.8); }
+`;
+const ultGhostToMe = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0.6; transform: scale(1.0); filter: brightness(3) blur(1px); }
+  40%  { right: 45%; top: 45%; opacity: 0.4; transform: scale(1.2); }
+  100% { right: 65%; top: 65%; opacity: 0; transform: scale(0.8); }
+`;
+
+// 수평 참격 (넓고 빠른 가로 베기)
+const ultSlashHorizToOpp = keyframes`
+  0%   { left: 5%; bottom: 45%; opacity: 0; transform: scale(0.3) scaleX(0.2) rotate(-5deg); }
+  8%   { opacity: 1; transform: scale(1.5) scaleX(4.0) rotate(-5deg); filter: brightness(6) drop-shadow(0 0 30px #ffffff); }
+  20%  { left: 85%; bottom: 55%; opacity: 1; transform: scale(2.0) scaleX(5.5) rotate(-3deg); filter: brightness(8) drop-shadow(0 0 50px #f8f9fa); }
+  35%  { opacity: 0; transform: scale(3.0) scaleX(6.0); }
+  100% { opacity: 0; }
+`;
+const ultSlashHorizToMe = keyframes`
+  0%   { right: 5%; top: 45%; opacity: 0; transform: scale(0.3) scaleX(0.2) rotate(5deg); }
+  8%   { opacity: 1; transform: scale(1.5) scaleX(4.0) rotate(5deg); filter: brightness(6) drop-shadow(0 0 30px #ffffff); }
+  20%  { right: 85%; top: 55%; opacity: 1; transform: scale(2.0) scaleX(5.5) rotate(3deg); filter: brightness(8) drop-shadow(0 0 50px #f8f9fa); }
+  35%  { opacity: 0; transform: scale(3.0) scaleX(6.0); }
+  100% { opacity: 0; }
+`;
+
+// 사선 참격 1 (왼아래→오위)
+const ultSlashDiag1ToOpp = keyframes`
+  0%   { left: 8%; bottom: 20%; opacity: 0; transform: scale(0.4) rotate(50deg) scaleX(0.3); }
+  8%   { opacity: 1; transform: scale(2.0) rotate(50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #ffffff); }
+  22%  { left: 72%; bottom: 75%; opacity: 1; transform: scale(2.5) rotate(50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 55px #f8f9fa); }
+  40%  { opacity: 0; transform: scale(3.0) rotate(50deg) scaleX(5.5); }
+  100% { opacity: 0; }
+`;
+const ultSlashDiag1ToMe = keyframes`
+  0%   { right: 8%; top: 20%; opacity: 0; transform: scale(0.4) rotate(-50deg) scaleX(0.3); }
+  8%   { opacity: 1; transform: scale(2.0) rotate(-50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #ffffff); }
+  22%  { right: 72%; top: 75%; opacity: 1; transform: scale(2.5) rotate(-50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 55px #f8f9fa); }
+  40%  { opacity: 0; transform: scale(3.0) rotate(-50deg) scaleX(5.5); }
+  100% { opacity: 0; }
+`;
+
+// 사선 참격 2 (오아래→왼위)
+const ultSlashDiag2ToOpp = keyframes`
+  0%   { left: 75%; bottom: 20%; opacity: 0; transform: scale(0.4) rotate(-50deg) scaleX(0.3); }
+  10%  { opacity: 1; transform: scale(2.0) rotate(-50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #c5f6fa); }
+  25%  { left: 10%; bottom: 72%; opacity: 1; transform: scale(2.5) rotate(-50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 50px #74c0fc); }
+  45%  { opacity: 0; transform: scale(3.0) rotate(-50deg) scaleX(5.5); }
+  100% { opacity: 0; }
+`;
+const ultSlashDiag2ToMe = keyframes`
+  0%   { right: 75%; top: 20%; opacity: 0; transform: scale(0.4) rotate(50deg) scaleX(0.3); }
+  10%  { opacity: 1; transform: scale(2.0) rotate(50deg) scaleX(4.0); filter: brightness(7) drop-shadow(0 0 35px #c5f6fa); }
+  25%  { right: 10%; top: 72%; opacity: 1; transform: scale(2.5) rotate(50deg) scaleX(5.0); filter: brightness(9) drop-shadow(0 0 50px #74c0fc); }
+  45%  { opacity: 0; transform: scale(3.0) rotate(50deg) scaleX(5.5); }
+  100% { opacity: 0; }
+`;
+
+// 중심 폭발 (모든 참격이 교차하는 지점)
+const ultExplosionToOpp = keyframes`
+  0%   { left: 62%; bottom: 62%; opacity: 0; transform: scale(0.5) rotate(0deg); }
+  15%  { opacity: 1; transform: scale(2.5) rotate(45deg); filter: brightness(6) drop-shadow(0 0 40px #ffffff); }
+  35%  { transform: scale(5.0) rotate(90deg); filter: brightness(9) drop-shadow(0 0 70px #f8f9fa); }
+  60%  { transform: scale(7.0) rotate(135deg); filter: brightness(11); opacity: 0.9; }
+  80%  { transform: scale(9.0) rotate(180deg); filter: brightness(7); opacity: 0.5; }
+  100% { left: 60%; bottom: 60%; opacity: 0; transform: scale(12.0) rotate(225deg); }
+`;
+const ultExplosionToMe = keyframes`
+  0%   { right: 62%; top: 62%; opacity: 0; transform: scale(0.5) rotate(0deg); }
+  15%  { opacity: 1; transform: scale(2.5) rotate(-45deg); filter: brightness(6) drop-shadow(0 0 40px #ffffff); }
+  35%  { transform: scale(5.0) rotate(-90deg); filter: brightness(9) drop-shadow(0 0 70px #f8f9fa); }
+  60%  { transform: scale(7.0) rotate(-135deg); filter: brightness(11); opacity: 0.9; }
+  80%  { transform: scale(9.0) rotate(-180deg); filter: brightness(7); opacity: 0.5; }
+  100% { right: 60%; top: 60%; opacity: 0; transform: scale(12.0) rotate(-225deg); }
+`;
+
+// 여진 충격파 (폭발 후 퍼져나가는 원형 링)
+const ultShockwaveToOpp = keyframes`
+  0%   { left: 62%; bottom: 62%; opacity: 0.9; transform: scale(0.3) rotate(0deg); }
+  50%  { opacity: 0.6; transform: scale(4.0); filter: brightness(3) drop-shadow(0 0 25px #74c0fc); }
+  100% { left: 58%; bottom: 58%; opacity: 0; transform: scale(8.0); filter: brightness(1); }
+`;
+const ultShockwaveToMe = keyframes`
+  0%   { right: 62%; top: 62%; opacity: 0.9; transform: scale(0.3) rotate(0deg); }
+  50%  { opacity: 0.6; transform: scale(4.0); filter: brightness(3) drop-shadow(0 0 25px #74c0fc); }
+  100% { right: 58%; top: 58%; opacity: 0; transform: scale(8.0); filter: brightness(1); }
+`;
+
+// 기존 dragon claw 애니메이션
 const dragonClawSlash1ToOpp = keyframes`
   0%   { left: 18%; bottom: 22%; opacity: 0; transform: scale(0.4) rotate(-30deg) scaleX(0.6); }
   12%  { opacity: 1; transform: scale(1.5) rotate(-10deg) scaleX(2.0); filter: brightness(3) drop-shadow(0 0 18px #ff4500); }
@@ -553,7 +761,6 @@ const windBladeSlash3ToMe = keyframes`
   100% { opacity: 0; }
 `;
 
-// ─── 토네이도 멀티: 큰 회오리 + 주변 작은 소용돌이 2개 + 화면 흔들기
 const tornadoSub1 = keyframes`
   0%   { left: 50%; bottom: -5%; opacity: 0; transform: scale(0.2) rotate(0deg); }
   20%  { opacity: 0.85; transform: scale(1.3) rotate(360deg); filter: drop-shadow(0 0 12px #74c0fc); }
@@ -581,7 +788,6 @@ const tornadoSub2ToMe = keyframes`
   100% { left: 18%; top: 25%; opacity: 0; transform: scale(2.8) rotate(1080deg); }
 `;
 
-// ─── 재빠른 교란 강화: 잔상 이펙트 추가
 const disturbAfterimage1ToOpp = keyframes`
   0%   { left: 18%; bottom: 18%; opacity: 0.7; transform: scale(1.0); filter: brightness(1.5) drop-shadow(0 0 8px #74c0fc); }
   100% { left: 72%; bottom: 72%; opacity: 0; transform: scale(0.6); }
@@ -603,29 +809,26 @@ const disturbAfterimage2ToMe = keyframes`
 // 3. 스킬 → 아이콘/타입/지속시간 매핑
 // ==========================================
 const SKILL_CONFIG = {
-  // 불 계열
   FIERY_BREATH: { icon: '🔥', duration: '1.4s', type: 'BREATH' },
   DRAGON_CLAW: { icon: '🐲', duration: '1.0s', type: 'DRAGON_CLAW_MULTI' },
   STELLAR_BLAST: { icon: '⭐', duration: '1.5s', type: 'STELLAR' },
   REM_FIRE: { icon: '🔥', duration: '1.3s', type: 'REM_FIRE' },
   FLAME_DASH: { icon: '🔥', duration: '0.8s', type: 'FLAME_DASH' },
   UPHWA: { icon: '🌋', duration: '2.0s', type: 'UPHWA_FULL' },
-
-  // 바람 계열
   QUICK_DISTURBANCE: { icon: '💨', duration: '1.0s', type: 'DISTURBANCE_MULTI' },
   WIND_BLADE: { icon: '🌬️', duration: '1.1s', type: 'WIND_BLADE_MULTI' },
   TORNADO_SWEEP: { icon: '🌪️', duration: '2.0s', type: 'TORNADO_FULL' },
-
-  // 풀 계열
   LEECH_SEED: { icon: '🌱', duration: '1.3s', type: 'SEED' },
   VINE_WHIP: { icon: '🌿', duration: '1.2s', type: 'VINE_WHIP_MULTI' },
   SOLAR_BEAM: { icon: '☀️', duration: '1.5s', type: 'SOLAR' },
-
-  // 번개 계열
   SHOCK_SCRATCH: { icon: '⚡', duration: '0.9s', type: 'SCRATCH' },
   THUNDER_PUNCH: { icon: '👊', duration: '0.7s', type: 'THUNDER_PUNCH_MULTI' },
   THUNDERSTORM: { icon: '⛈️', duration: '1.8s', type: 'THUNDER_FULL' },
-
+  // 🐸 개구리 계열
+  WATER_BALL: { icon: '💧', duration: '1.2s', type: 'PROJECTILE' },
+  COUNTER_STANCE: { icon: '⚔️', duration: '1.4s', type: 'COUNTER_STANCE_MULTI' },
+  REED_BOW: { icon: '🏹', duration: '1.0s', type: 'ARROW' },
+  ULTIMATE_SECRET: { icon: '', duration: '2.2s', type: 'ULTIMATE_SECRET_FULL' },
   // 독/공용
   POISON_STING: { icon: '☠️', duration: '1.3s', type: 'POISON' },
   STATIC_SHOCK: { icon: '⚡', duration: '0.8s', type: 'PROJECTILE' },
@@ -636,8 +839,6 @@ const SKILL_CONFIG = {
   HEALING_PRAYER: { icon: '💖', duration: '1.2s', type: 'BUFF' },
   MIND_FOCUS: { icon: '⚡', duration: '1.0s', type: 'BUFF' },
   TAUNT: { icon: '😤', duration: '1.0s', type: 'BUFF' },
-
-  // 기본
   TACKLE: { icon: '💥', duration: '0.6s', type: 'PROJECTILE' },
 };
 
@@ -646,6 +847,7 @@ const SKILL_CONFIG = {
 // ==========================================
 const getAnimation = (type, isMine) => {
   switch (type) {
+    case 'ARROW': return isMine ? arrowFlyToOpponent : arrowFlyToMe;
     case 'ZIGZAG': return isMine ? zigzagToOpponent : zigzagToMe;
     case 'DROP':
     case 'THUNDER': return isMine ? thunderBolt : thunderBoltToMe;
@@ -689,7 +891,6 @@ const EffectContainer = styled.div`
   }
 `;
 
-// 도트딜 이펙트 (화상/중독 펫 위에 표시)
 export const DotDamageEffect = styled.div`
   position: absolute;
   top: ${props => props.$top || '10%'};
@@ -708,15 +909,149 @@ const BattleSkillEffect = ({ type, isMine }) => {
   const config = SKILL_CONFIG[type] || { icon: '✨', duration: '1s', type: 'PROJECTILE' };
 
   const glowMap = {
-    POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', VINE_WHIP_MULTI: '#40c057', SOLAR: '#ffd43b',
-    REM_FIRE: '#ff6b35', UPHWA: '#ff4500', UPHWA_FULL: '#ff4500', BREATH: '#ff4500', FLAME_DASH: '#ff6b35', DRAGON_CLAW_MULTI: '#ff4500',
-    THUNDER: '#ffd43b', THUNDER_FULL: '#ffd43b', THUNDER_PUNCH_MULTI: '#ffd43b',
-    STELLAR: '#ffd43b', SCRATCH: '#ffd43b',
+    POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', VINE_WHIP_MULTI: '#40c057', ARROW: '#69db7c',
+    WATER_BALL: '#4dabf7',
+    COUNTER_STANCE_MULTI: '#4dabf7',
+    ULTIMATE_SECRET_FULL: '#f8f9fa',
+    SOLAR: '#ffd43b', REM_FIRE: '#ff6b35', UPHWA: '#ff4500', UPHWA_FULL: '#ff4500', BREATH: '#ff4500', FLAME_DASH: '#ff6b35', DRAGON_CLAW_MULTI: '#ff4500',
+    THUNDER: '#ffd43b', THUNDER_FULL: '#ffd43b', THUNDER_PUNCH_MULTI: '#ffd43b', STELLAR: '#ffd43b', SCRATCH: '#ffd43b',
     TORNADO: '#74c0fc', TORNADO_FULL: '#74c0fc', ZIGZAG: '#74c0fc', DISTURBANCE_MULTI: '#74c0fc', WIND_BLADE_MULTI: '#339af0',
     SIPHON: '#cc5de8',
   };
 
-  // ── 용의 발톱: 불꽃 발톱 2연타 슬래시
+  // ── 🐸 반격태세: 돌격 → X자 검기 교차 + 반격 오라
+  if (config.type === 'COUNTER_STANCE_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.4s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#4dabf7">
+        {/* Phase 1: 돌격 아이콘 */}
+        <MultiIcon
+          $anim={isMine ? counterDashToOpp : counterDashToMe}
+          $duration="0.55s"
+          $glow="#4dabf7"
+          $size="3.5rem"
+        >⚔️</MultiIcon>
+
+        {/* Phase 2: X자 검기 — 사선 1 */}
+        <MultiIcon
+          $anim={isMine ? xSlash1ToOpp : xSlash1ToMe}
+          $duration="0.55s"
+          $glow="#74c0fc"
+          $size="2.5rem"
+          $delay="0.50s"
+        >✨</MultiIcon>
+
+        {/* Phase 2: X자 검기 — 사선 2 */}
+        <MultiIcon
+          $anim={isMine ? xSlash2ToOpp : xSlash2ToMe}
+          $duration="0.55s"
+          $glow="#ffd43b"
+          $size="2.5rem"
+          $delay="0.54s"
+        >✨</MultiIcon>
+
+        {/* Phase 2: X자 중심 폭발 */}
+        <MultiIcon
+          $anim={isMine ? xImpactToOpp : xImpactToMe}
+          $duration="0.60s"
+          $glow="#ffffff"
+          $size="4rem"
+          $delay="0.62s"
+        >💥</MultiIcon>
+
+        {/* Phase 3: 반격 준비 오라 (자기 자신 위치에 황금빛) */}
+        <MultiIcon
+          $anim={isMine ? counterAuraToOpp : counterAuraToMe}
+          $duration="0.70s"
+          $glow="#ffd43b"
+          $size="4rem"
+          $delay="0.85s"
+        >🛡️</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 🐸 오의필살: 소년만화 궁극기 — 기 모으기 → 순간이동 → 다중 참격 폭발 + 강진
+  if (config.type === 'ULTIMATE_SECRET_FULL') {
+    return (
+      <EffectContainer $icon="" $duration="2.2s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#f8f9fa">
+        {/* 강력한 화면 진동 (0.6s 후 발동) */}
+        <ScreenShakeOverlay $heavy $duration="1.0s" style={{ animationDelay: '0.6s' }} />
+
+        {/* Phase 1 (0~0.5s): 기 모으기 오라 */}
+        <MultiIcon
+          $anim={isMine ? ultChargeAuraToOpp : ultChargeAuraToMe}
+          $duration="0.55s"
+          $glow="#ffffff"
+          $size="5rem"
+        >💫</MultiIcon>
+
+        {/* Phase 2 (0.4~0.8s): 순간이동 잔상 */}
+        <MultiIcon
+          $anim={isMine ? ultGhostToOpp : ultGhostToMe}
+          $duration="0.45s"
+          $glow="#c5f6fa"
+          $size="3.5rem"
+          $delay="0.40s"
+        >👤</MultiIcon>
+
+        {/* Phase 3a (0.6~0.9s): 수평 참격 */}
+        <MultiIcon
+          $anim={isMine ? ultSlashHorizToOpp : ultSlashHorizToMe}
+          $duration="0.40s"
+          $glow="#ffffff"
+          $size="3rem"
+          $delay="0.60s"
+        >⚡</MultiIcon>
+
+        {/* Phase 3b (0.7~1.0s): 사선 참격 1 */}
+        <MultiIcon
+          $anim={isMine ? ultSlashDiag1ToOpp : ultSlashDiag1ToMe}
+          $duration="0.40s"
+          $glow="#ffffff"
+          $size="3rem"
+          $delay="0.72s"
+        >⚡</MultiIcon>
+
+        {/* Phase 3c (0.8~1.1s): 사선 참격 2 */}
+        <MultiIcon
+          $anim={isMine ? ultSlashDiag2ToOpp : ultSlashDiag2ToMe}
+          $duration="0.40s"
+          $glow="#74c0fc"
+          $size="3rem"
+          $delay="0.84s"
+        >⚡</MultiIcon>
+
+        {/* Phase 4a (1.0~1.8s): 중심 대폭발 */}
+        <MultiIcon
+          $anim={isMine ? ultExplosionToOpp : ultExplosionToMe}
+          $duration="0.90s"
+          $glow="#ffffff"
+          $size="5rem"
+          $delay="1.00s"
+        >✨</MultiIcon>
+
+        {/* Phase 4b (1.1~2.0s): 충격파 링 */}
+        <MultiIcon
+          $anim={isMine ? ultShockwaveToOpp : ultShockwaveToMe}
+          $duration="0.90s"
+          $glow="#74c0fc"
+          $size="4rem"
+          $delay="1.10s"
+        >💠</MultiIcon>
+
+        {/* Phase 4c (1.3~2.2s): 여진 별 파티클 */}
+        <MultiIcon
+          $anim={isMine ? ultShockwaveToOpp : ultShockwaveToMe}
+          $duration="0.80s"
+          $glow="#ffd43b"
+          $size="3rem"
+          $delay="1.35s"
+        >⭐</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 용의 발톱
   if (config.type === 'DRAGON_CLAW_MULTI') {
     return (
       <EffectContainer $icon="" $duration="1.0s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#ff4500">
@@ -726,7 +1061,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 재빠른 교란: 메인 이펙트 + 잔상 2개
+  // ── 재빠른 교란
   if (config.type === 'DISTURBANCE_MULTI') {
     return (
       <EffectContainer $icon="" $duration="1.0s" $animType="ZIGZAG" $isMine={isMine} $glowColor="#74c0fc">
@@ -737,7 +1072,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 바람의 칼날: 날카로운 바람 슬래시 3연타
+  // ── 바람의 칼날
   if (config.type === 'WIND_BLADE_MULTI') {
     return (
       <EffectContainer $icon="" $duration="1.1s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#339af0">
@@ -748,11 +1083,11 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 토네이도: 메인 회오리 + 소용돌이 2개 + 화면 흔들기
+  // ── 토네이도
   if (config.type === 'TORNADO_FULL') {
     return (
       <EffectContainer $icon="" $duration="2.0s" $animType="TORNADO" $isMine={isMine} $glowColor="#74c0fc">
-        <ScreenShakeOverlay $active $duration="0.7s" />
+        <ScreenShakeOverlay $duration="0.7s" />
         <MultiIcon $anim={isMine ? tornadoRise : tornadoRiseToMe} $duration="2.0s" $glow="#74c0fc" $size="6rem">🌪️</MultiIcon>
         <MultiIcon $anim={isMine ? tornadoSub1 : tornadoSub1ToMe} $duration="1.8s" $glow="#339af0" $size="4rem" $delay="0.15s">🌀</MultiIcon>
         <MultiIcon $anim={isMine ? tornadoSub2 : tornadoSub2ToMe} $duration="1.6s" $glow="#74c0fc" $size="3rem" $delay="0.3s">🌪️</MultiIcon>
@@ -760,7 +1095,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 덩굴 채찍: 메인 덩굴 + 잔가지 + 충격파
+  // ── 덩굴 채찍
   if (config.type === 'VINE_WHIP_MULTI') {
     return (
       <EffectContainer $icon="" $duration="1.2s" $animType="VINE_WHIP_MULTI" $isMine={isMine} $glowColor="#40c057">
@@ -771,7 +1106,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 찌릿펀치: 주먹 + 번개 동시 발사
+  // ── 찌릿펀치
   if (config.type === 'THUNDER_PUNCH_MULTI') {
     return (
       <EffectContainer $icon="" $duration="0.7s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#ffd43b">
@@ -781,11 +1116,11 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 뇌우: 화면 전체 번개 3줄기 + 흔들기
+  // ── 뇌우
   if (config.type === 'THUNDER_FULL') {
     return (
       <EffectContainer $icon="" $duration="1.8s" $animType="THUNDER" $isMine={isMine} $glowColor="#ffd43b">
-        <ScreenShakeOverlay $active $duration="0.7s" />
+        <ScreenShakeOverlay $duration="0.7s" />
         <MultiIcon $anim={isMine ? thunderBolt1 : thunderBolt1ToMe} $duration="1.2s" $glow="#fff176" $size="5rem">⚡</MultiIcon>
         <MultiIcon $anim={isMine ? thunderBolt2 : thunderBolt2ToMe} $duration="1.1s" $glow="#ffd43b" $size="4rem" $delay="0.2s">🌩️</MultiIcon>
         <MultiIcon $anim={isMine ? thunderBolt3 : thunderBolt3ToMe} $duration="1.0s" $glow="#ffd43b" $size="3.5rem" $delay="0.4s">⚡</MultiIcon>
@@ -793,11 +1128,11 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 업화: 중앙 화산 + 좌우 불꽃 파편 + 흔들기
+  // ── 업화
   if (config.type === 'UPHWA_FULL') {
     return (
       <EffectContainer $icon="" $duration="2.0s" $animType="UPHWA" $isMine={isMine} $glowColor="#ff4500">
-        <ScreenShakeOverlay $active $duration="0.8s" />
+        <ScreenShakeOverlay $duration="0.8s" />
         <MultiIcon $anim={isMine ? fireCenter : fireCenterToMe} $duration="2.0s" $glow="#ff4500" $size="5rem">🌋</MultiIcon>
         <MultiIcon $anim={isMine ? fireSparkL : fireSparkLToMe} $duration="1.6s" $glow="#ff6b35" $size="3rem" $delay="0.1s">🔥</MultiIcon>
         <MultiIcon $anim={isMine ? fireSparkR : fireSparkRToMe} $duration="1.6s" $glow="#ff6b35" $size="3rem" $delay="0.2s">🔥</MultiIcon>
@@ -811,7 +1146,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
       $duration={config.duration}
       $animType={config.type}
       $isMine={isMine}
-      $glowColor={glowMap[config.type]}
+      $glowColor={glowMap[config.type] || '#339af0'}
       $large={['UPHWA_FULL', 'STELLAR', 'TORNADO', 'TORNADO_FULL', 'SOLAR', 'BREATH'].includes(config.type)}
     />
   );

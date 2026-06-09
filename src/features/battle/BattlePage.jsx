@@ -48,7 +48,6 @@ const tackleLeft = keyframes`
   100% { transform: translateX(0) scale(1) rotate(0deg); }
 `;
 
-// 재빠른 교란: 토끼가 상대에게 달려가 이리저리 부딪히고 돌아옴
 const zigzagRight = keyframes`
   0%   { transform: translate(0, 0) scale(1); filter: brightness(1); }
   10%  { transform: translate(-20px, 0) scale(0.85); }
@@ -73,7 +72,6 @@ const zigzagLeft = keyframes`
   100% { transform: translate(0, 0) scale(1); filter: brightness(1); }
 `;
 
-// 불꽃 질주: 불비비가 빛을 내며 상대에게 직선 돌진
 const flameDashRight = keyframes`
   0%   { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
   8%   { transform: translateX(-30px) scaleX(0.7) scaleY(1.1); filter: brightness(1.2); }
@@ -84,8 +82,17 @@ const flameDashRight = keyframes`
   82%  { transform: translateX(50px) scaleX(1) scaleY(1); filter: brightness(1.5); }
   100% { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
 `;
+const flameDashLeft = keyframes`
+  0%   { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
+  8%   { transform: translateX(30px) scaleX(0.7) scaleY(1.1); filter: brightness(1.2); }
+  20%  { transform: translateX(-80px) scaleX(1.4) scaleY(0.85); filter: brightness(2) drop-shadow(0 0 12px #ff6b35); }
+  38%  { transform: translateX(-190px) scaleX(1.6) scaleY(0.75); filter: brightness(3) drop-shadow(0 0 22px #ff4500); }
+  52%  { transform: translateX(-210px) scaleX(1.3) scaleY(0.9); filter: brightness(4) drop-shadow(0 0 30px #ff6b35); }
+  65%  { transform: translateX(-185px) scaleX(1.0) scaleY(1.2); filter: brightness(3) drop-shadow(0 0 18px #ffa94d); }
+  82%  { transform: translateX(-50px) scaleX(1) scaleY(1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
+`;
 
-// ⚡ 찌릿펀치: 전방으로 빠르게 돌진 후 복귀
 const thunderPunchRight = keyframes`
   0%   { transform: translateX(0) scale(1); filter: brightness(1); }
   10%  { transform: translateX(-18px) scale(0.92); }
@@ -102,7 +109,7 @@ const thunderPunchLeft = keyframes`
   75%  { transform: translateX(-80px) scale(1.05); filter: brightness(1.4); }
   100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
 `;
-// 🌩️ 뇌우: 전기를 모아 돌진 + 화면 진동
+
 const thunderstormRight = keyframes`
   0%   { transform: translateX(0) scale(1); filter: brightness(1); }
   8%   { transform: translateX(-22px) scale(0.88); }
@@ -121,7 +128,7 @@ const thunderstormLeft = keyframes`
   70%  { transform: translateX(-90px) scale(1.1); filter: brightness(2.5); }
   100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
 `;
-// 🌋 업화: 아래서 솟구치며 돌진
+
 const uphwaChargeRight = keyframes`
   0%   { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
   15%  { transform: translateX(-20px) translateY(10px) scale(0.9); filter: brightness(1.2); }
@@ -140,7 +147,7 @@ const uphwaChargeLeft = keyframes`
   80%  { transform: translateX(-70px) translateY(0) scale(1.1); filter: brightness(2.5); }
   100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
 `;
-// ☀️ 솔라빔: 빛을 모아 전진
+
 const solarBeamRight = keyframes`
   0%   { transform: translateX(0) scale(1); filter: brightness(1); }
   20%  { transform: translateX(-15px) scale(0.9); filter: brightness(1.5) drop-shadow(0 0 12px #fff176); }
@@ -157,7 +164,7 @@ const solarBeamLeft = keyframes`
   75%  { transform: translateX(-110px) scale(1.2); filter: brightness(6) drop-shadow(0 0 60px #fff176); }
   100% { transform: translateX(0) scale(1); filter: brightness(1); }
 `;
-// 🌟 스텔라 블라스트: 솟구치며 별폭발
+
 const stellarBlastRight = keyframes`
   0%   { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
   15%  { transform: translateX(-15px) translateY(5px) scale(0.9); }
@@ -176,7 +183,7 @@ const stellarBlastLeft = keyframes`
   85%  { transform: translateX(-60px) translateY(-10px) scale(1.1); filter: brightness(3); }
   100% { transform: translateX(0) translateY(0) scale(1); filter: brightness(1); }
 `;
-// 💨 바람의 칼날: 짧게 세 번 빠르게 슬쩍 전진
+
 const windBladeRight = keyframes`
   0%   { transform: translateX(0) scale(1); filter: brightness(1); }
   12%  { transform: translateX(60px) scale(1.08); filter: brightness(1.5) drop-shadow(0 0 8px #74c0fc); }
@@ -197,7 +204,7 @@ const windBladeLeft = keyframes`
   70%  { transform: translateX(-50px) scale(1.05); filter: brightness(1.5); }
   100% { transform: translateX(0) scale(1); filter: brightness(1); }
 `;
-// 🌪️ 토네이도: 작게 웅크렸다가 회전하며 전방으로 크게 솟구침
+
 const tornadoSweepRight = keyframes`
   0%   { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
   10%  { transform: translateX(-15px) scale(0.85) rotate(-10deg); }
@@ -219,18 +226,6 @@ const tornadoSweepLeft = keyframes`
   100% { transform: translateX(0) scale(1) rotate(0deg); filter: brightness(1); }
 `;
 
-const flameDashLeft = keyframes`
-  0%   { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
-  8%   { transform: translateX(30px) scaleX(0.7) scaleY(1.1); filter: brightness(1.2); }
-  20%  { transform: translateX(-80px) scaleX(1.4) scaleY(0.85); filter: brightness(2) drop-shadow(0 0 12px #ff6b35); }
-  38%  { transform: translateX(-190px) scaleX(1.6) scaleY(0.75); filter: brightness(3) drop-shadow(0 0 22px #ff4500); }
-  52%  { transform: translateX(-210px) scaleX(1.3) scaleY(0.9); filter: brightness(4) drop-shadow(0 0 30px #ff6b35); }
-  65%  { transform: translateX(-185px) scaleX(1.0) scaleY(1.2); filter: brightness(3) drop-shadow(0 0 18px #ffa94d); }
-  82%  { transform: translateX(-50px) scaleX(1) scaleY(1); filter: brightness(1.5); }
-  100% { transform: translateX(0) scaleX(1) scaleY(1); filter: brightness(1); }
-`;
-
-// 🐲 용의 발톱: 불꽃을 두른 발톱으로 빠르게 뛰어들어 할퀴고 복귀
 const dragonClawRight = keyframes`
   0%   { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
   10%  { transform: translateX(-20px) translateY(8px) scale(0.88); filter: brightness(1.3); }
@@ -249,6 +244,64 @@ const dragonClawLeft = keyframes`
   72%  { transform: translateX(-80px) translateY(0) scale(1.05) rotate(-1deg); filter: brightness(2); }
   100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
 `;
+
+// --- 🐸 개구리 스킬 전용 애니메이션 ---
+const waterBallRight = keyframes`
+  0% { transform: translateX(0) scale(1); }
+  20% { transform: translateX(-15px) scale(0.9); }
+  50% { transform: translateX(30px) scale(1.1); filter: brightness(1.5) drop-shadow(0 0 15px #4dabf7); }
+  100% { transform: translateX(0) scale(1); }
+`;
+const waterBallLeft = keyframes`
+  0% { transform: translateX(0) scale(1); }
+  20% { transform: translateX(15px) scale(0.9); }
+  50% { transform: translateX(-30px) scale(1.1); filter: brightness(1.5) drop-shadow(0 0 15px #4dabf7); }
+  100% { transform: translateX(0) scale(1); }
+`;
+
+const counterStanceRight = keyframes`
+  0% { transform: translateX(0) scale(1); filter: brightness(1); }
+  50% { transform: translateX(-5px) scale(1.05); filter: brightness(1.8) drop-shadow(0 0 20px #ffe066); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+const counterStanceLeft = keyframes`
+  0% { transform: translateX(0) scale(1); filter: brightness(1); }
+  50% { transform: translateX(5px) scale(1.05); filter: brightness(1.8) drop-shadow(0 0 20px #ffe066); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+
+const ultimateSecretRight = keyframes`
+  0% { transform: translateX(0) scale(1); filter: brightness(1); opacity: 1; }
+  15% { transform: translateX(-20px) scale(0.8); opacity: 0.5; }
+  30% { transform: translateX(150px) scale(1.2); opacity: 1; filter: brightness(3) drop-shadow(0 0 30px #f8f9fa); }
+  50% { transform: translateX(200px) scale(1.4) rotate(15deg); filter: brightness(4) drop-shadow(0 0 40px #fff); }
+  70% { transform: translateX(150px) scale(1.2) rotate(-5deg); filter: brightness(2); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); opacity: 1; filter: brightness(1); }
+`;
+const ultimateSecretLeft = keyframes`
+  0% { transform: translateX(0) scale(1); filter: brightness(1); opacity: 1; }
+  15% { transform: translateX(20px) scale(0.8); opacity: 0.5; }
+  30% { transform: translateX(-150px) scale(1.2); opacity: 1; filter: brightness(3) drop-shadow(0 0 30px #f8f9fa); }
+  50% { transform: translateX(-200px) scale(1.4) rotate(-15deg); filter: brightness(4) drop-shadow(0 0 40px #fff); }
+  70% { transform: translateX(-150px) scale(1.2) rotate(5deg); filter: brightness(2); }
+  100% { transform: translateX(0) scale(1) rotate(0deg); opacity: 1; filter: brightness(1); }
+`;
+
+const reedBowRight = keyframes`
+  0% { transform: translateX(0) scale(1); filter: brightness(1); }
+  25% { transform: translateX(-25px) scale(0.95); filter: brightness(1.2); }
+  50% { transform: translateX(-25px) scale(1.05); filter: brightness(2) drop-shadow(0 0 20px #8ce99a); }
+  75% { transform: translateX(15px) scale(1.1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+const reedBowLeft = keyframes`
+  0% { transform: translateX(0) scale(1); filter: brightness(1); }
+  25% { transform: translateX(25px) scale(0.95); filter: brightness(1.2); }
+  50% { transform: translateX(25px) scale(1.05); filter: brightness(2) drop-shadow(0 0 20px #8ce99a); }
+  75% { transform: translateX(-15px) scale(1.1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+`;
+
 
 const StunEffect = styled.div`
   position: absolute;
@@ -283,7 +336,6 @@ const Arena = styled.div`
   transform-origin: top center;
   transform: scale(${props => props.$scale || 1});
   transition: transform 0.2s ease;
-  /* scale 후 부모가 잘리지 않도록 마진 보정 */
   margin-bottom: ${props => props.$scale ? `calc(2rem - (1 - ${props.$scale}) * 800px)` : '2rem'};
 `;
 
@@ -327,7 +379,11 @@ const PetContainer = styled.div`
                                             props.$animType === 'WIND_BLADE' ? css`${props.$isMine ? windBladeRight : windBladeLeft}     1.1s ease-in-out` :
                                                 props.$animType === 'TORNADO_SWEEP' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft}  2.0s ease-in-out` :
                                                     props.$animType === 'DRAGON_CLAW' ? css`${props.$isMine ? dragonClawRight : dragonClawLeft} 1.0s ease-in-out` :
-                                                        'none'};
+                                                        props.$animType === 'WATER_BALL' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.2s ease-in-out` :
+                                                            props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
+                                                                props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 1.6s ease-in-out` :
+                                                                    props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
+                                                                        'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -357,7 +413,6 @@ const BarFill = styled.div`
   width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease;
 `;
 
-// ▼▼▼ [수정완료] 보호막을 영롱한 보라색과 입체감 있는 그림자로 업데이트 완료했습니다! ▼▼▼
 const ShieldFill = styled.div`
   width: ${props => props.$percent}%; height: 100%; 
   background-color: #845ef7; 
@@ -368,7 +423,7 @@ const ShieldFill = styled.div`
 
 const SpOverflowFill = styled.div`
   width: ${props => props.$percent}%; height: 100%; 
-  background-color: #fcc419; /* 인기스타 전용 황금색 오버차지 효과 */
+  background-color: #fcc419; 
   transition: width 0.5s ease;
   border-left: 1px solid rgba(255,255,255,0.6);
   box-shadow: inset 0 0 10px rgba(255,255,255,0.6);
@@ -391,7 +446,7 @@ const QuizArea = styled.div`
 
 const LogText = styled.p` 
   font-size: 1.3rem; font-weight: 700; min-height: 60px; margin: 0 0 1rem 0; color: #343a40;
-  display: flex; align-items: center;
+  display: flex; align-items: center; white-space: pre-line;
 `;
 
 const AnswerInput = styled.input`
@@ -585,26 +640,24 @@ function BattlePage() {
     const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
-    const [dotEffect, setDotEffect] = useState(null); // { target: 'my'|'opponent', type: 'burn'|'poison' }
+    const [dotEffect, setDotEffect] = useState(null);
 
-    // 선택지 셔플 — 문제가 바뀔 때마다 새로 섞음
     const [shuffledOptions, setShuffledOptions] = useState([]);
-    // 화면 크기 조절 (태블릿 대응) — localStorage로 기기별 저장
     const [battleScale, setBattleScale] = useState(() => {
         const saved = typeof window !== 'undefined' && localStorage.getItem('battleScale');
         return saved ? parseFloat(saved) : 1.0;
     });
+
     useEffect(() => {
         const opts = battleState?.question?.options;
         if (!opts || opts.length === 0) { setShuffledOptions([]); return; }
-        // OX 퀴즈는 순서 고정 (O 먼저)
         const isOX = opts.length === 2 && opts.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
         if (isOX) {
             setShuffledOptions(['O', 'X']);
         } else {
             setShuffledOptions([...opts].sort(() => Math.random() - 0.5));
         }
-    }, [battleState?.question?.question]); // 문제 텍스트 기준으로 재셔플
+    }, [battleState?.question?.question]);
 
     const [actionSubMenu, setActionSubMenu] = useState(null);
     const [quizPool, setQuizPool] = useState([]);
@@ -759,7 +812,6 @@ function BattlePage() {
                     }, 600);
 
                 } else if (actionType === 'WIND_BLADE') {
-                    // 바람의 칼날: 펫 3연 슬래시 전진 + 슬래시 이펙트 3연타
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'WIND_BLADE' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'WIND_BLADE' }));
                     setCurrentEffect({ type: 'WIND_BLADE', isMine: isAttackerMe });
@@ -786,7 +838,6 @@ function BattlePage() {
                     }, 1400);
 
                 } else if (actionType === 'TORNADO_SWEEP') {
-                    // 토네이도: 펫 회전 돌진 + 회오리 멀티 이펙트 + 화면 흔들기
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'TORNADO_SWEEP' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'TORNADO_SWEEP' }));
                     setCurrentEffect({ type: 'TORNADO_SWEEP', isMine: isAttackerMe });
@@ -808,12 +859,10 @@ function BattlePage() {
                     }, 2200);
 
                 } else if (actionType === 'QUICK_DISTURBANCE') {
-                    // 토끼가 직접 지그재그 질주 — 이펙트 + 펫 이동 동시
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'ZIGZAG' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'ZIGZAG' }));
                     setCurrentEffect({ type: 'QUICK_DISTURBANCE', isMine: isAttackerMe });
 
-                    // 충돌 히트: 지그재그 중반부(500ms)에 맞춤
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
@@ -821,7 +870,6 @@ function BattlePage() {
                     setTimeout(() => {
                         setHitState({ my: false, opponent: false });
                     }, 700);
-                    // 두 번째 충돌(800ms)
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
@@ -836,12 +884,10 @@ function BattlePage() {
                     }, 1600);
 
                 } else if (actionType === 'FLAME_DASH') {
-                    // 불비비가 빛을 내며 직선 돌진 — 이펙트 + 펫 이동
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'FLAME_DASH' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'FLAME_DASH' }));
                     setCurrentEffect({ type: 'FLAME_DASH', isMine: isAttackerMe });
 
-                    // 돌진 최고속도 시점에 히트
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
@@ -856,7 +902,6 @@ function BattlePage() {
                     }, 1300);
 
                 } else if (actionType === 'THUNDER_PUNCH') {
-                    // 찌릿펀치: 펫이 전방 돌진 + 주먹+번개 아이콘 동시 발사
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'THUNDER_PUNCH' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'THUNDER_PUNCH' }));
                     setCurrentEffect({ type: 'THUNDER_PUNCH', isMine: isAttackerMe });
@@ -873,7 +918,6 @@ function BattlePage() {
                     }, 900);
 
                 } else if (actionType === 'THUNDERSTORM') {
-                    // 뇌우: 펫 돌진 + 화면 전체 번개 이펙트
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'THUNDERSTORM' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'THUNDERSTORM' }));
                     setCurrentEffect({ type: 'THUNDERSTORM', isMine: isAttackerMe });
@@ -890,7 +934,6 @@ function BattlePage() {
                     }, 1800);
 
                 } else if (actionType === 'UPHWA') {
-                    // 업화: 펫이 솟구치며 돌진 + 화염 이펙트
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'UPHWA' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'UPHWA' }));
                     setCurrentEffect({ type: 'UPHWA', isMine: isAttackerMe });
@@ -907,7 +950,6 @@ function BattlePage() {
                     }, 1900);
 
                 } else if (actionType === 'SOLAR_BEAM') {
-                    // 솔라빔: 펫이 빛을 모아 전진
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'SOLAR_BEAM' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'SOLAR_BEAM' }));
                     setCurrentEffect({ type: 'SOLAR_BEAM', isMine: isAttackerMe });
@@ -924,7 +966,6 @@ function BattlePage() {
                     }, 1900);
 
                 } else if (actionType === 'STELLAR_BLAST') {
-                    // 스텔라 블라스트: 별폭발 + 펫 솟구침
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'STELLAR_BLAST' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'STELLAR_BLAST' }));
                     setCurrentEffect({ type: 'STELLAR_BLAST', isMine: isAttackerMe });
@@ -941,7 +982,6 @@ function BattlePage() {
                     }, 2000);
 
                 } else if (actionType === 'DRAGON_CLAW') {
-                    // 🐲 용의 발톱: 불꽃을 두르며 뛰어들어 2연 할퀴기 후 복귀
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'DRAGON_CLAW' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'DRAGON_CLAW' }));
                     setCurrentEffect({ type: 'DRAGON_CLAW', isMine: isAttackerMe });
@@ -961,6 +1001,71 @@ function BattlePage() {
                         setIsProcessing(false);
                         handleResolution(battleRef);
                     }, 1200);
+
+                    // --- 개구리 스킬 애니메이션 분기 ---
+                } else if (actionType === 'WATER_BALL') {
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'WATER_BALL' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'WATER_BALL' }));
+                    setCurrentEffect({ type: 'WATER_BALL', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 400);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1200);
+
+                } else if (actionType === 'COUNTER_STANCE') {
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'COUNTER_STANCE' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'COUNTER_STANCE' }));
+                    setCurrentEffect({ type: 'COUNTER_STANCE', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 500);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1000);
+
+                } else if (actionType === 'ULTIMATE_SECRET') {
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'ULTIMATE_SECRET' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'ULTIMATE_SECRET' }));
+                    setCurrentEffect({ type: 'ULTIMATE_SECRET', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 800);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1600);
+
+                } else if (actionType === 'REED_BOW') {
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'REED_BOW' }));
+                    else setAnimState(prev => ({ ...prev, opponent: 'REED_BOW' }));
+                    setCurrentEffect({ type: 'REED_BOW', isMine: isAttackerMe });
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 750);
+                    setTimeout(() => {
+                        setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
+                        setIsProcessing(false);
+                        handleResolution(battleRef);
+                    }, 1500);
 
                 } else {
                     setCurrentEffect({
@@ -1043,7 +1148,20 @@ function BattlePage() {
 
                 const updates = {};
                 if (!data.attackerAction) updates.attackerAction = 'TACKLE';
-                if (!data.defenderAction) updates.defenderAction = 'BRACE';
+
+                // 속박 상태인지 체크 후 자동 방어행동 분기
+                const isChallengerTurn = data.turn === data.challenger.id;
+                const defenderPet = isChallengerTurn ? data.opponent.pet : data.challenger.pet;
+
+                if (!data.defenderAction) {
+                    if (defenderPet.status?.bound) {
+                        updates.defenderAction = 'BOUND';
+                    } else if (defenderPet.status?.stunned) {
+                        updates.defenderAction = 'STUNNED';
+                    } else {
+                        updates.defenderAction = 'BRACE';
+                    }
+                }
 
                 if (Object.keys(updates).length > 0) transaction.update(battleRef, updates);
             });
@@ -1054,7 +1172,6 @@ function BattlePage() {
         }
     };
 
-    // ▼▼▼ [수정완료] 일타강사 칭호 효과 연동 (시간 초과 오답 페널티 폭증) ▼▼▼
     const handleTimeout = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -1070,10 +1187,10 @@ function BattlePage() {
                 let { challenger, opponent } = data;
 
                 let damageChallenger = Math.max(1, Math.floor(challenger.pet.maxHp * 0.05));
-                if (opponent.equippedTitle === 'daily_helper') damageChallenger *= 2; // 일타강사 저격 패시브
+                if (opponent.equippedTitle === 'daily_helper') damageChallenger *= 2;
 
                 let damageOpponent = Math.max(1, Math.floor(opponent.pet.maxHp * 0.05));
-                if (challenger.equippedTitle === 'daily_helper') damageOpponent *= 2; // 일타강사 저격 패시브
+                if (challenger.equippedTitle === 'daily_helper') damageOpponent *= 2;
 
                 challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
                 opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
@@ -1126,16 +1243,12 @@ function BattlePage() {
         }
     };
 
-    // ▼▼▼ [수정완료] 일타강사 칭호 효과 연동 (퀴즈 오답 시 실전 페널티 폭증) ▼▼▼
-    // ▼▼▼ [수정완료] 일타강사 칭호 효과 연동 (퀴즈 오답 시 즉발 데미지 처벌) ▼▼▼
     const processQuizAnswer = async (submittedAnswer) => {
         if (!battleState.question || !submittedAnswer || isProcessing) return;
 
         const isObjective = (battleState.question.options && battleState.question.options.length > 0) || battleState.question.type === 'ox';
 
-        // OX 정규화: ○→O, ×→X
         const normalizeOX = (s) => s.replace('○', 'O').replace('×', 'X').trim().toLowerCase();
-        const isCorrect = normalizeOX(submittedAnswer) === normalizeOX(battleState.question.answer);
 
         if (isObjective && battleState.chat?.[myPlayerData.id]) return;
 
@@ -1162,7 +1275,6 @@ function BattlePage() {
                 const opponentIsStunned = data[opponentRole].pet.status?.stunned;
 
                 const myPet = data[myRole].pet;
-                // OX 정규화 재적용 (트랜잭션 내부)
                 const normalizeAns = (s) => (s || '').replace('○', 'O').replace('×', 'X').trim().toLowerCase();
                 const txIsCorrect = normalizeAns(filteredAnswer) === normalizeAns(data.question.answer);
                 const myChatEntry = { text: filteredAnswer, isCorrect: txIsCorrect, timestamp: Date.now() };
@@ -1258,7 +1370,6 @@ function BattlePage() {
                             return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
                         }
                     } else {
-                        // ▼▼▼ [신규] 즉각 처벌 로직: 혼자 오답을 냈을 때 상대가 일타강사인지 확인 ▼▼▼
                         const opponentTitle = data[opponentRole].equippedTitle;
 
                         if (opponentTitle === 'daily_helper') {
@@ -1267,7 +1378,6 @@ function BattlePage() {
                             const isFinished = myPet.hp <= 0;
 
                             if (isFinished) {
-                                // 오답 데미지 누적으로 사망한 경우
                                 let { challenger, opponent } = data;
                                 challenger.pet = myRole === 'challenger' ? myPet : data.challenger.pet;
                                 opponent.pet = myRole === 'opponent' ? myPet : data.opponent.pet;
@@ -1283,7 +1393,6 @@ function BattlePage() {
                                 });
                                 return { isFinished: true, winnerId: opponentId, finalChallenger: challenger, finalOpponent: opponent };
                             } else {
-                                // 생존 시 즉발 데미지만 입고 기회 유지
                                 transaction.update(battleRef, {
                                     chat: updatedChat,
                                     [`${myRole}.pet.hp`]: myPet.hp,
@@ -1291,13 +1400,11 @@ function BattlePage() {
                                 });
                             }
                         } else {
-                            // 일반적인 오답
                             transaction.update(battleRef, {
                                 chat: updatedChat,
                                 log: `${myPlayerData.name} 오답! (다시 시도하세요)`
                             });
                         }
-                        // ▲▲▲ [신규 로직 끝] ▲▲▲
                     }
                     return null;
                 }
@@ -1395,22 +1502,24 @@ function BattlePage() {
                 const opponentRole = myRole === 'challenger' ? 'opponent' : 'challenger';
                 const myPet = battleState[myRole].pet;
 
-                // recharging(용의 숨결 반동) 중이면 자동으로 TACKLE 강제 (휴식 턴)
                 let resolvedActionId = actionId;
                 if (myPet.status?.recharging) {
-                    resolvedActionId = 'TACKLE'; // 실질적으로 아무것도 못 함
+                    resolvedActionId = 'TACKLE';
                     delete myPet.status.recharging;
                 }
 
                 const updates = { attackerAction: resolvedActionId };
                 const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
+                const opponentIsBound = battleState[opponentRole].pet.status?.bound;
 
                 if (opponentIsStunned) {
                     updates.defenderAction = 'STUNNED';
                     updates.log = `${myPet.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
+                } else if (opponentIsBound) {
+                    updates.defenderAction = 'BOUND';
+                    updates.log = `${myPet.name}의 공격! (상대방은 속박 상태라 방어 불가!)`;
                 }
 
-                // recharging이었다면 log에 휴식 표시
                 if (myPet.status?.recharging === false && resolvedActionId === 'TACKLE') {
                     updates.log = `💤 ${myPet.name}은(는) 반동으로 지쳐 쉬었습니다!`;
                     updates.defenderAction = updates.defenderAction || 'BRACE';
@@ -1451,7 +1560,6 @@ function BattlePage() {
         }
     };
 
-    // ▼▼▼ [수정완료] 우리반 지식인(스킬코스트 감면) 및 성실한 나무(턴 종료시 5% 힐) 연동 완료 ▼▼▼
     const handleResolution = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -1479,8 +1587,6 @@ function BattlePage() {
                 let isSpInsufficient = false;
                 const originalSkillName = skill?.name;
 
-                // [지식인 칭호 효과 버프] 스킬 코스트 계산 전 20% 할인
-                // [밸런스] 레벨에 따른 SP 코스트 스케일링 적용
                 let actualCost = skill ? getScaledSkillCost(skill.cost, attacker.pet.level) : 0;
                 if (skill && attacker.equippedTitle === 'classroom_intellectual') {
                     actualCost = Math.floor(actualCost * 0.8);
@@ -1494,15 +1600,16 @@ function BattlePage() {
                 }
 
                 let log = "";
+                const preHp = defender.pet.hp; // 스킬 발동 전 체력 저장 (반격 반사 데미지 계산용)
+
                 if (skill && skill.effect) {
-                    // petData에 플레이어 전체 정보를 넘겨 칭호를 판별합니다.
                     log = skill.effect(attacker, defender, defenderAction);
                     if (isSpInsufficient) {
                         log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                     }
                 } else {
                     let damage = 20 + attacker.pet.atk * 2;
-                    if (defenderAction === 'BRACE') damage *= 0.7; // 밸런싱 수정치 적용
+                    if (defenderAction === 'BRACE') damage *= 0.7;
                     damage = Math.round(damage);
                     defender.pet.hp = Math.max(0, defender.pet.hp - damage);
                     log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
@@ -1512,34 +1619,30 @@ function BattlePage() {
                     attacker.pet.sp = Math.max(0, attacker.pet.sp - actualCost);
                 }
 
-                // ─────────────────────────────────────────────────────────
-                // 📌 상태이상 도트딜 & 턴 종료 처리 (스킬 발동 후, 승패 판정 전)
-                // ─────────────────────────────────────────────────────────
+                // --- ⚔️ 반격 (Counter) 시스템 처리 ---
+                const damageTaken = preHp - defender.pet.hp;
+                if (defender.pet.status?.counterReady && damageTaken > 0) {
+                    const reflectDamage = Math.round(damageTaken * defender.pet.status.counterReady);
+                    attacker.pet.hp = Math.max(0, attacker.pet.hp - reflectDamage);
+                    log += ` \n⚔️ [반격 발동!] 상대의 공격을 쳐내어 ${reflectDamage}의 피해를 돌려주었습니다!`;
+                    delete defender.pet.status.counterReady; // 반격은 1회 발동 후 해제됩니다.
+                }
 
-                // 1. focusCharge 일괄 소비 (스킬별 개별 처리 제거 → 여기서 통일)
-                //    calculateDamage 내부에서 이미 2배 적용됨. 이 턴에 소비.
+                // --- 상태이상 도트딜 및 턴 감소 처리 ---
                 if (attacker.pet.status?.focusCharge) {
                     attacker.pet.status.focusCharge = 0;
                 }
 
-                // 2. 화상(burned) 도트딜 — 방어자에게 적용
-                //    최대 체력의 8%. UPHWA 소비 후 이미 burned가 false로 바뀌었으면 스킵.
                 if (defender.pet.status?.burned) {
                     const burnDmg = Math.round(defender.pet.maxHp * 0.08);
                     defender.pet.hp = Math.max(0, defender.pet.hp - burnDmg);
-                    log += ` 🔥 [화상 도트] ${burnDmg}의 화상 피해!`;
-                    // UI 이펙트 트리거 (배틀 결과 수신 후)
-                    const defenderIsMe = isChallengerAttacker
-                        ? (myPlayerData?.id === (isChallengerAttacker ? data.opponent?.id : data.challenger?.id))
-                        : true;
+                    log += ` 🔥 [화상 도트] ${burnDmg}의 피해!`;
                     setTimeout(() => {
                         setDotEffect({ target: isChallengerAttacker ? 'opponent' : 'my', type: 'burn' });
                         setTimeout(() => setDotEffect(null), 900);
                     }, 300);
                 }
 
-                // 3. 중독(poisoned) 도트딜 — 방어자에게 적용
-                //    최대 체력의 6%. 3턴 후 자동 만료.
                 if (defender.pet.status?.poisoned) {
                     const poisonDmg = Math.round(defender.pet.maxHp * 0.06);
                     defender.pet.hp = Math.max(0, defender.pet.hp - poisonDmg);
@@ -1549,7 +1652,6 @@ function BattlePage() {
                         setTimeout(() => setDotEffect(null), 900);
                     }, 600);
 
-                    // 중독 지속 턴 관리
                     defender.pet.status.poisonTurns = (defender.pet.status.poisonTurns ?? 3) - 1;
                     if (defender.pet.status.poisonTurns <= 0) {
                         delete defender.pet.status.poisoned;
@@ -1558,8 +1660,16 @@ function BattlePage() {
                     }
                 }
 
-                // 4. defenseUp 지속 턴 관리 — 공격자(행동한 쪽) 기준 소모
-                //    2턴 지속. 매 자신의 행동 턴마다 1씩 감소.
+                // 🌿 속박(Bound) 지속 턴 처리
+                if (defender.pet.status?.bound) {
+                    defender.pet.status.boundTurns = (defender.pet.status.boundTurns ?? 3) - 1;
+                    if (defender.pet.status.boundTurns <= 0) {
+                        delete defender.pet.status.bound;
+                        delete defender.pet.status.boundTurns;
+                        log += ` (덩굴이 끊어지며 속박이 풀렸습니다.)`;
+                    }
+                }
+
                 if (attacker.pet.status?.defenseUp) {
                     attacker.pet.status.defenseUpTurns = (attacker.pet.status.defenseUpTurns ?? 2) - 1;
                     if (attacker.pet.status.defenseUpTurns <= 0) {
@@ -1569,21 +1679,18 @@ function BattlePage() {
                     }
                 }
 
-                // [성실한 나무 칭호 효과 버프] 턴 종료 시 행동한 펫 최대체력의 5% 자가 회복 발동
                 if (attacker.equippedTitle === 'diligent_tree') {
                     const heal = Math.floor(attacker.pet.maxHp * 0.05);
                     attacker.pet.hp = Math.min(attacker.pet.maxHp, attacker.pet.hp + heal);
                     log += ` 🌳 [성실한 나무 효과로 HP +${heal} 회복]`;
                 }
 
-                // ─────────────────────────────────────────────────────────
-                // 승패 판정 (도트딜 포함 최종 HP 기준)
-                // ─────────────────────────────────────────────────────────
-                const isFinished = defender.pet.hp <= 0;
+                const isFinished = defender.pet.hp <= 0 || attacker.pet.hp <= 0;
                 let winnerId = null;
                 if (isFinished) {
-                    winnerId = attacker.id;
-                    log += ` ${defender.pet.name}은(는) 쓰러졌다! ${attacker.name}의 승리!`;
+                    if (attacker.pet.hp > 0) winnerId = attacker.id;
+                    else if (defender.pet.hp > 0) winnerId = defender.id;
+                    log += ` 펫이 지쳐 쓰러졌습니다! 전투 종료!`;
                 }
 
                 const nextQuiz = (quizPool && quizPool.length > 0)
@@ -1624,7 +1731,6 @@ function BattlePage() {
         }
     };
 
-    // ▼▼▼ [수정완료] 지식인 버프 + 레벨 SP 스케일링 연동 헬퍼 함수 (메뉴 UI 표시용) ▼▼▼
     const getSkillCost = (skill) => {
         const scaled = getScaledSkillCost(skill.cost, myInfo?.pet?.level);
         return myInfo.equippedTitle === 'classroom_intellectual' ? Math.floor(scaled * 0.8) : scaled;
@@ -1693,6 +1799,7 @@ function BattlePage() {
 
     const showTimer = (battleState.status === 'quiz' || battleState.status === 'action');
     const isStunned = myInfo.pet.status?.stunned;
+    const isBound = myInfo.pet.status?.bound;
     const hasSubmitted = battleState.chat?.[myPlayerData?.id] !== undefined;
 
     return (
@@ -1748,6 +1855,9 @@ function BattlePage() {
                                     {opponentInfo.pet.status?.poisoned && <RechargeEffect style={{ color: '#9775fa', top: 'auto', bottom: '36px' }}>☠️ 중독</RechargeEffect>}
                                     {opponentInfo.pet.status?.defenseUp && <RechargeEffect style={{ color: '#339af0', top: 'auto', bottom: '60px' }}>🛡️ 방어↑</RechargeEffect>}
                                     {opponentInfo.pet.status?.blind && <RechargeEffect style={{ color: '#868e96', top: 'auto', bottom: '84px' }}>🙈 실명</RechargeEffect>}
+                                    {opponentInfo.pet.status?.bound && <RechargeEffect style={{ color: '#2b8a3e', top: 'auto', bottom: '108px' }}>🌿 속박</RechargeEffect>}
+                                    {opponentInfo.pet.status?.counterReady && <RechargeEffect style={{ color: '#fcc419', top: 'auto', bottom: '132px' }}>⚔️ 반격준비</RechargeEffect>}
+
                                     {dotEffect?.target === 'opponent' && (
                                         <DotDamageEffect $type={dotEffect.type} $top="15%" $left="55%">
                                             {dotEffect.type === 'burn' ? '🔥' : '☠️'}
@@ -1766,6 +1876,9 @@ function BattlePage() {
                                     {myInfo.pet.status?.poisoned && <RechargeEffect style={{ color: '#9775fa', top: 'auto', bottom: '36px' }}>☠️ 중독</RechargeEffect>}
                                     {myInfo.pet.status?.defenseUp && <RechargeEffect style={{ color: '#339af0', top: 'auto', bottom: '60px' }}>🛡️ 방어↑</RechargeEffect>}
                                     {myInfo.pet.status?.blind && <RechargeEffect style={{ color: '#868e96', top: 'auto', bottom: '84px' }}>🙈 실명</RechargeEffect>}
+                                    {myInfo.pet.status?.bound && <RechargeEffect style={{ color: '#2b8a3e', top: 'auto', bottom: '108px' }}>🌿 속박</RechargeEffect>}
+                                    {myInfo.pet.status?.counterReady && <RechargeEffect style={{ color: '#fcc419', top: 'auto', bottom: '132px' }}>⚔️ 반격준비</RechargeEffect>}
+
                                     {dotEffect?.target === 'my' && (
                                         <DotDamageEffect $type={dotEffect.type} $top="15%" $left="45%">
                                             {dotEffect.type === 'burn' ? '🔥' : '☠️'}
@@ -1791,7 +1904,6 @@ function BattlePage() {
                                         ) : (
                                             <>
                                                 {(() => {
-                                                    // OX 타입: options 유무 관계없이 버튼 표시
                                                     const isOXType = battleState.question.type === 'ox';
                                                     const isOXOptions = shuffledOptions.length === 2 &&
                                                         shuffledOptions.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
@@ -1831,7 +1943,6 @@ function BattlePage() {
                                                         );
                                                     }
 
-                                                    // 주관식
                                                     return (
                                                         <form onSubmit={handleQuizSubmit}>
                                                             <AnswerInput
@@ -1875,7 +1986,6 @@ function BattlePage() {
                                                 actionSubMenu === 'skills' ?
                                                     <>
                                                         {myEquippedSkills.map(skill => (
-                                                            // ▼ [수정완료] 스킬 렌더링 시 감면된 지식인 SP 소모 비용 표시 연동 완료
                                                             <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < getSkillCost(skill)}>
                                                                 {skill.name} ({getSkillCost(skill)}SP)
                                                             </MenuItem>
@@ -1900,10 +2010,19 @@ function BattlePage() {
                                                             <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
                                                         </> : null
                                         )}
+
+                                        {/* ▼▼▼ 속박 당했을 때 방어/회피 행동 차단 ▼▼▼ */}
                                         {showDefenseMenu && (
-                                            Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
-                                                <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
-                                            ))
+                                            isBound ? (
+                                                <div style={{ textAlign: 'center', marginTop: '20px', gridColumn: 'span 2' }}>
+                                                    <p style={{ color: '#2b8a3e', fontWeight: 'bold', fontSize: '1.2rem' }}>🌿 속박 상태!</p>
+                                                    <p style={{ fontSize: '0.9rem' }}>덩굴에 묶여 방어/도망 행동을 할 수 없습니다.</p>
+                                                </div>
+                                            ) : (
+                                                Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
+                                                    <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
+                                                ))
+                                            )
                                         )}
                                     </>
                                 )}
@@ -1924,7 +2043,6 @@ function BattlePage() {
                                 {isDraw ? '무승부' : isWin ? '🏆 승리!' : '💀 패배...'}
                             </h2>
                             <p>{battleState.log}</p>
-                            {/* ▼ [추가] 전적 요약 */}
                             {myPet && (
                                 <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '10px', padding: '0.7rem 1rem', margin: '0.5rem 0 1rem', fontSize: '0.88rem' }}>
                                     <div style={{ fontWeight: 800, marginBottom: '0.3rem', opacity: 0.85 }}>
@@ -1936,7 +2054,6 @@ function BattlePage() {
                                     </div>
                                 </div>
                             )}
-                            {/* ▲ [추가 끝] */}
                             <button onClick={() => navigate('/pet')}>확인</button>
                         </ModalContent>
                     </ModalBackground>

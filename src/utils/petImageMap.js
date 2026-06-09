@@ -48,7 +48,7 @@ import bird3_back from '@/assets/pets/bird3_back.png';
 import bird3_crunch from '@/assets/pets/bird3_crunch.png';
 import bird3_crunch_back from '@/assets/pets/bird3_crunch_back.png';
 
-// --- Monkey Assets (신규 추가) ---
+// --- Monkey Assets ---
 import monkey1_portrait from '@/assets/pets/monkey1_portrait.png';
 import monkey1_back from '@/assets/pets/monkey1_back.png';
 import monkey1_crunch from '@/assets/pets/monkey1_crunch.png';
@@ -64,6 +64,7 @@ import monkey3_back from '@/assets/pets/monkey3_back.png';
 import monkey3_crunch from '@/assets/pets/monkey3_crunch.png';
 import monkey3_crunch_back from '@/assets/pets/monkey3_crunch_back.png';
 
+// --- Fox Assets ---
 import fox1_portrait from '@/assets/pets/fox1_portrait.png';
 import fox1_back from '@/assets/pets/fox1_back.png';
 import fox1_crunch from '@/assets/pets/fox1_crunch.png';
@@ -78,6 +79,23 @@ import fox3_portrait from '@/assets/pets/fox3_portrait.png';
 import fox3_back from '@/assets/pets/fox3_back.png';
 import fox3_crunch from '@/assets/pets/fox3_crunch.png';
 import fox3_crunch_back from '@/assets/pets/fox3_crunch_back.png';
+
+// --- Frog Assets (신규 추가) ---
+import frog1_portrait from '@/assets/pets/frog1_portrait.png';
+import frog1_back from '@/assets/pets/frog1_back.png';
+import frog1_crunch from '@/assets/pets/frog1_crunch.png';
+import frog1_crunch_back from '@/assets/pets/frog1_crunch_back.png';
+
+import frog2_portrait from '@/assets/pets/frog2_portrait.png';
+import frog2_back from '@/assets/pets/frog2_back.png';
+import frog2_crunch from '@/assets/pets/frog2_crunch.png';
+import frog2_crunch_back from '@/assets/pets/frog2_crunch_back.png';
+
+import frog3_portrait from '@/assets/pets/frog3_portrait.png';
+import frog3_back from '@/assets/pets/frog3_back.png';
+import frog3_crunch from '@/assets/pets/frog3_crunch.png';
+import frog3_crunch_back from '@/assets/pets/frog3_crunch_back.png';
+
 
 export const petImageMap = {
     // === Dragon ===
@@ -113,58 +131,66 @@ export const petImageMap = {
     rabbit_lv3_brace_back: rabbit3_crunch_back,
 
     // === Turtle (Uses Bird Assets) ===
-    // Lv1: 새싹치 (Turtle ID but uses Bird1 images)
     turtle_lv1_idle: bird1_portrait,
     turtle_lv1_battle: bird1_back,
     turtle_lv1_brace: bird1_crunch,
     turtle_lv1_brace_back: bird1_crunch_back,
 
-    // Lv2: 꽃잎치 (ID: bird_lv2 -> Bird2 images)
     bird_lv2_idle: bird2_portrait,
     bird_lv2_battle: bird2_back,
     bird_lv2_brace: bird2_crunch,
     bird_lv2_brace_back: bird2_crunch_back,
 
-    // Lv3: 열매치 (ID: bird_lv3 -> Bird3 images)
     bird_lv3_idle: bird3_portrait,
     bird_lv3_battle: bird3_back,
     bird_lv3_brace: bird3_crunch,
     bird_lv3_brace_back: bird3_crunch_back,
 
-    // === Monkey (신규 추가) ===
-    // Lv1: 찌릿숭이 (ID: monkey_lv1)
+    // === Monkey ===
     monkey_lv1_idle: monkey1_portrait,
     monkey_lv1_battle: monkey1_back,
     monkey_lv1_brace: monkey1_crunch,
     monkey_lv1_brace_back: monkey1_crunch_back,
 
-    // Lv2: 지직숭 (ID: monkey_lv2)
     monkey_lv2_idle: monkey2_portrait,
     monkey_lv2_battle: monkey2_back,
     monkey_lv2_brace: monkey2_crunch,
     monkey_lv2_brace_back: monkey2_crunch_back,
 
-    // Lv3: 콰릉숭 (ID: monkey_lv3)
     monkey_lv3_idle: monkey3_portrait,
     monkey_lv3_battle: monkey3_back,
     monkey_lv3_brace: monkey3_crunch,
     monkey_lv3_brace_back: monkey3_crunch_back,
-    // === Fox (신규 추가: 모롱이 계열) ===
-    // Lv1: 모롱이 (ID: fox_lv1)
+
+    // === Fox ===
     fox_lv1_idle: fox1_portrait,
     fox_lv1_battle: fox1_back,
     fox_lv1_brace: fox1_crunch,
     fox_lv1_brace_back: fox1_crunch_back,
 
-    // Lv2: 불비비 (ID: fox_lv2)
     fox_lv2_idle: fox2_portrait,
     fox_lv2_battle: fox2_back,
     fox_lv2_brace: fox2_crunch,
     fox_lv2_brace_back: fox2_crunch_back,
 
-    // Lv3: 인페르노 (ID: fox_lv3)
     fox_lv3_idle: fox3_portrait,
     fox_lv3_battle: fox3_back,
     fox_lv3_brace: fox3_crunch,
     fox_lv3_brace_back: fox3_crunch_back,
+
+    // === Frog (신규 추가: 미소구리 계열) ===
+    frog_lv1_idle: frog1_portrait,
+    frog_lv1_battle: frog1_back,
+    frog_lv1_brace: frog1_crunch,
+    frog_lv1_brace_back: frog1_crunch_back,
+
+    frog_lv2_idle: frog2_portrait,
+    frog_lv2_battle: frog2_back,
+    frog_lv2_brace: frog2_crunch,
+    frog_lv2_brace_back: frog2_crunch_back,
+
+    frog_lv3_idle: frog3_portrait,
+    frog_lv3_battle: frog3_back,
+    frog_lv3_brace: frog3_crunch,
+    frog_lv3_brace_back: frog3_crunch_back,
 };

@@ -329,6 +329,10 @@ function MissionManager({ onNavigate }) {
     const [showArchived, setShowArchived] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState({ rewards: false, prerequisite: false });
     const [defaultPrivate, setDefaultPrivate] = useState(false);
+    // ── 퀘스트 모드 ──
+    const [isQuest, setIsQuest] = useState(false);
+    const [questMaxAcceptors, setQuestMaxAcceptors] = useState(1);
+    const [questDeadline, setQuestDeadline] = useState('');
 
     // 💡 [무적의 우회 로직 추가] 새 미션이 추가되어 배열 길이가 늘어나는 순간을 감지합니다.
     const prevMissionsLength = React.useRef(missions.length);
@@ -380,6 +384,7 @@ function MissionManager({ onNavigate }) {
         setEditMode(null); setTitle(''); setPlaceholderText(''); setRewards(['100', '', '']);
         setSubmissionTypes({ text: false, photo: false }); setIsFixed(false); setAdminOnly(false);
         setPrerequisiteMissionId(''); setDefaultPrivate(false); setShowAdvanced({ rewards: false, prerequisite: false });
+        setIsQuest(false); setQuestMaxAcceptors(1); setQuestDeadline('');
     };
 
     const handleSaveMission = async () => {
@@ -389,6 +394,23 @@ function MissionManager({ onNavigate }) {
         const selectedTypes = Object.entries(submissionTypes).filter(([, isSelected]) => isSelected).map(([type]) => type);
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
         const finalRewards = rewards.map(r => Number(r)).filter(r => r > 0);
+
+        // ── 퀘스트 모드: createQuest 호출 ──
+        if (isQuest && !editMode) {
+            try {
+                await createQuest(classId, {
+                    title: title.trim(),
+                    description: placeholderText.trim(),
+                    reward: finalRewards[0] || 0,
+                    maxAcceptors: Number(questMaxAcceptors) || 1,
+                    submissionType: typeToSend,
+                    deadline: questDeadline.trim() || null,
+                });
+                alert('퀘스트가 출제됐습니다! 전체 학생에게 알림이 전송됩니다.');
+                handleCancel();
+            } catch (e) { alert(`퀘스트 출제 실패: ${e.message}`); }
+            return;
+        }
 
         const missionData = {
             title, rewards: finalRewards, reward: finalRewards[0] || 0,
@@ -416,7 +438,7 @@ function MissionManager({ onNavigate }) {
             <SectionTitle>{editMode ? `미션 수정: ${editMode.title}` : '미션 관리 📜'}</SectionTitle>
             <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
                 <InputGroup>
-                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="미션 이름" style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }} />
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isQuest ? '퀘스트 이름 (예: 급식실 쓰레기 수거)' : '미션 이름'} style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }} />
                     <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '80px' }} placeholder="기본 보상" />
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                         <label title="글 제출 필요"><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} /> 글</label>
@@ -424,9 +446,35 @@ function MissionManager({ onNavigate }) {
                     </div>
                 </InputGroup>
 
-                {submissionTypes.text && (
+                {(submissionTypes.text || isQuest) && (
                     <InputGroup>
-                        <TextArea value={placeholderText} onChange={(e) => setPlaceholderText(e.target.value)} placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요." style={{ minHeight: '60px' }} />
+                        <TextArea value={placeholderText} onChange={(e) => setPlaceholderText(e.target.value)} placeholder={isQuest ? '퀘스트 설명 (해야 할 일, 완료 기준 등)' : '학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요.'} style={{ minHeight: '60px' }} />
+                    </InputGroup>
+                )}
+
+                {/* 퀘스트 활성 시: 수락 인원 + 기한 입력란 */}
+                {isQuest && (
+                    <InputGroup style={{ background: '#fffbf0', border: '1px solid #ffe8a1', borderRadius: '8px', padding: '10px 12px', gap: '1rem', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#7a4d00', fontWeight: 600 }}>
+                            ⚔ 수락 인원 (선착순):
+                            <ScoreInput
+                                type="number" min={1} max={10}
+                                value={questMaxAcceptors}
+                                onChange={e => setQuestMaxAcceptors(e.target.value)}
+                                style={{ width: '60px' }}
+                            />
+                            명
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#7a4d00', fontWeight: 600, flex: 1 }}>
+                            🕐 기한:
+                            <input
+                                type="text"
+                                value={questDeadline}
+                                onChange={e => setQuestDeadline(e.target.value)}
+                                placeholder="예: 오늘 하교 전, 3교시 쉬는 시간"
+                                style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #ffe066', borderRadius: '4px', fontSize: '0.9rem' }}
+                            />
+                        </label>
                     </InputGroup>
                 )}
 
@@ -449,12 +497,28 @@ function MissionManager({ onNavigate }) {
                 )}
 
                 <InputGroup style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
-                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
-                    <StyledButton onClick={() => setIsFixed(p => !p)} style={{ backgroundColor: isFixed ? '#17a2b8' : '#6c757d' }} title="매일 반복해서 수행할 수 있는 고정 미션으로 설정합니다. (예: 일기 쓰기)">{isFixed ? '반복(활성)' : '반복 미션'}</StyledButton>
-                    <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)" >{defaultPrivate ? '비공개' : '공개'}</StyledButton>
-                    <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? ' 관리자만(활성)' : '관리자만'}</StyledButton>
-                    <SaveButton onClick={handleSaveMission}>{editMode ? '수정 완료' : '미션 출제'}</SaveButton>
+                    {/* 퀘스트 버튼 — 활성 시 노란 강조 */}
+                    {!editMode && (
+                        <StyledButton
+                            onClick={() => setIsQuest(p => !p)}
+                            style={{ backgroundColor: isQuest ? '#fcc419' : '#6c757d', color: isQuest ? '#7a4d00' : '#fff', fontWeight: isQuest ? 800 : 400 }}
+                            title="선착순으로 수락하는 공공 퀘스트로 출제합니다."
+                        >
+                            {isQuest ? '⚔ 퀘스트' : '⚔ 퀘스트'}
+                        </StyledButton>
+                    )}
+                    {/* 퀘스트 모드에선 미션 전용 옵션 숨김 */}
+                    {!isQuest && (
+                        <>
+                            <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
+                            <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
+                            <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)">{defaultPrivate ? '비공개' : '공개'}</StyledButton>
+                            <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? '관리자만(활성)' : '관리자만'}</StyledButton>
+                        </>
+                    )}
+                    <SaveButton onClick={handleSaveMission}>
+                        {editMode ? '수정 완료' : isQuest ? '⚔ 퀘스트 출제' : '미션 출제'}
+                    </SaveButton>
                     {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
                 </InputGroup>
             </div>
@@ -484,254 +548,6 @@ function MissionManager({ onNavigate }) {
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ▼▼▼ 퀘스트 관리 컴포넌트 (관리자 전용)
-// ─────────────────────────────────────────────────────────────────────────────
-const SUBMISSION_TYPES = [
-    { value: 'simple', label: '단순 완료' },
-    { value: 'text', label: '글 제출' },
-    { value: 'photo', label: '사진 제출' },
-];
-
-function QuestManager() {
-    const { classId } = useClassStore();
-    const { players } = useLeagueStore();
-
-    const [quests, setQuests] = useState([]);
-    const [form, setForm] = useState({
-        title: '', description: '', reward: '', maxAcceptors: 1,
-        submissionType: 'simple', deadline: '',
-    });
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [expandedId, setExpandedId] = useState(null);
-
-    useEffect(() => {
-        if (!classId) return;
-        return listenQuests(classId, setQuests);
-    }, [classId]);
-
-    const handleCreate = async () => {
-        if (!form.title.trim() || !form.reward) return alert('퀘스트 이름과 보상을 입력해주세요.');
-        setIsSubmitting(true);
-        try {
-            await createQuest(classId, {
-                title: form.title.trim(),
-                description: form.description.trim(),
-                reward: Number(form.reward),
-                maxAcceptors: Number(form.maxAcceptors) || 1,
-                submissionType: form.submissionType,
-                deadline: form.deadline.trim() || null,
-            });
-            setForm({ title: '', description: '', reward: '', maxAcceptors: 1, submissionType: 'simple', deadline: '' });
-            alert('퀘스트가 출제되었습니다! 전체 학생에게 알림이 전송됩니다.');
-        } catch (e) {
-            alert(`퀘스트 출제 실패: ${e.message}`);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleClose = async (quest) => {
-        if (!window.confirm(`"${quest.title}" 퀘스트를 마감할까요?`)) return;
-        await updateQuest(classId, quest.id, { status: 'closed', closedAt: new Date() });
-    };
-
-    const handleDelete = async (quest) => {
-        if (!window.confirm(`"${quest.title}" 퀘스트를 완전히 삭제할까요?`)) return;
-        await deleteQuest(classId, quest.id);
-    };
-
-    const handleComplete = async (quest, acceptor) => {
-        if (!window.confirm(`${acceptor.playerName} 학생의 퀘스트 완료를 승인하고 ${quest.reward}P를 지급할까요?`)) return;
-        try {
-            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward);
-            alert(`${acceptor.playerName}에게 ${quest.reward}P가 지급됐습니다!`);
-        } catch (e) {
-            alert(`완료 처리 실패: ${e.message}`);
-        }
-    };
-
-    const openQuests = quests.filter(q => q.status === 'open');
-    const closedQuests = quests.filter(q => q.status === 'closed');
-
-    const tagStyle = (bg, color) => ({
-        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-        fontSize: '0.72rem', fontWeight: 700, background: bg, color,
-    });
-
-    return (
-        <Section style={{ marginTop: '2rem', borderTop: '2px dashed #ffe066', paddingTop: '1.5rem' }}>
-            <SectionTitle>⚔ 퀘스트 관리</SectionTitle>
-
-            {/* ── 출제 폼 ── */}
-            <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-                <InputGroup>
-                    <input
-                        type="text" value={form.title}
-                        onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                        placeholder="퀘스트 이름 (예: 급식실 쓰레기 수거)"
-                        style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }}
-                    />
-                    <ScoreInput
-                        type="number" value={form.reward}
-                        onChange={e => setForm(p => ({ ...p, reward: e.target.value }))}
-                        style={{ width: '90px' }} placeholder="보상 P"
-                    />
-                </InputGroup>
-                <InputGroup>
-                    <TextArea
-                        value={form.description}
-                        onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                        placeholder="퀘스트 설명 (해야 할 일, 완료 기준 등)"
-                        style={{ minHeight: '60px' }}
-                    />
-                </InputGroup>
-                <InputGroup style={{ flexWrap: 'wrap', gap: '0.8rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
-                        최대 인원:
-                        <ScoreInput
-                            type="number" min={1} max={10}
-                            value={form.maxAcceptors}
-                            onChange={e => setForm(p => ({ ...p, maxAcceptors: e.target.value }))}
-                            style={{ width: '60px' }}
-                        />
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
-                        제출 방식:
-                        <select
-                            value={form.submissionType}
-                            onChange={e => setForm(p => ({ ...p, submissionType: e.target.value }))}
-                            style={{ padding: '0.4rem' }}
-                        >
-                            {SUBMISSION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                        </select>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
-                        기한:
-                        <input
-                            type="text" value={form.deadline}
-                            onChange={e => setForm(p => ({ ...p, deadline: e.target.value }))}
-                            placeholder="예: 오늘 하교 전"
-                            style={{ padding: '0.4rem', border: '1px solid #dee2e6', borderRadius: '4px' }}
-                        />
-                    </label>
-                    <SaveButton onClick={handleCreate} disabled={isSubmitting}>
-                        {isSubmitting ? '출제 중...' : '⚔ 퀘스트 출제'}
-                    </SaveButton>
-                </InputGroup>
-            </div>
-
-            {/* ── 진행 중 퀘스트 ── */}
-            <p style={{ fontWeight: 700, marginBottom: '0.8rem' }}>
-                진행 중 ({openQuests.length}개)
-            </p>
-            {openQuests.length === 0 && <p style={{ color: '#adb5bd', fontSize: '0.9rem' }}>진행 중인 퀘스트가 없습니다.</p>}
-            <List>
-                {openQuests.map(quest => {
-                    const acceptors = quest.acceptors || [];
-                    const isExpanded = expandedId === quest.id;
-                    return (
-                        <ListItem key={quest.id}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
-                                <div style={{ flex: 1 }}>
-                                    <strong>⚔ {quest.title}</strong>
-                                    <span style={{ marginLeft: '8px', ...tagStyle('#fff3bf', '#e67700') }}>💰 {quest.reward}P</span>
-                                    <span style={{ marginLeft: '6px', ...tagStyle('#e7f5ff', '#1c7ed6') }}>
-                                        {acceptors.length}/{quest.maxAcceptors || 1}명 수락
-                                    </span>
-                                    {quest.deadline && (
-                                        <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.78rem' }}>🕐 {quest.deadline}</span>
-                                    )}
-                                </div>
-                                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                                    {acceptors.length > 0 && (
-                                        <StyledButton
-                                            onClick={() => setExpandedId(isExpanded ? null : quest.id)}
-                                            style={{ fontSize: '0.8rem', padding: '4px 10px', background: isExpanded ? '#495057' : '#868e96' }}
-                                        >
-                                            {isExpanded ? '접기' : `수락자 보기 (${acceptors.length})`}
-                                        </StyledButton>
-                                    )}
-                                    <StyledButton
-                                        onClick={() => handleClose(quest)}
-                                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#fd7e14' }}
-                                    >
-                                        마감
-                                    </StyledButton>
-                                    <StyledButton
-                                        onClick={() => handleDelete(quest)}
-                                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#fa5252' }}
-                                    >
-                                        삭제
-                                    </StyledButton>
-                                </div>
-                            </div>
-
-                            {/* 수락자 목록 & 완료 승인 */}
-                            {isExpanded && acceptors.length > 0 && (
-                                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f3f5' }}>
-                                    {acceptors.map(a => (
-                                        <div key={a.playerId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f8f9fa' }}>
-                                            <span style={{ fontSize: '0.9rem' }}>
-                                                {a.playerName}
-                                                <span style={{
-                                                    marginLeft: '8px', ...tagStyle(
-                                                        a.completionStatus === 'completed' ? '#d3f9d8' : '#e7f5ff',
-                                                        a.completionStatus === 'completed' ? '#2f9e44' : '#1c7ed6'
-                                                    )
-                                                }}>
-                                                    {a.completionStatus === 'completed' ? '✓ 완료' : '수락됨'}
-                                                </span>
-                                            </span>
-                                            {a.completionStatus !== 'completed' && (
-                                                <StyledButton
-                                                    onClick={() => handleComplete(quest, a)}
-                                                    style={{ fontSize: '0.78rem', padding: '3px 10px', background: '#20c997', color: '#fff' }}
-                                                >
-                                                    완료 승인
-                                                </StyledButton>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </ListItem>
-                    );
-                })}
-            </List>
-
-            {/* ── 마감된 퀘스트 ── */}
-            {closedQuests.length > 0 && (
-                <>
-                    <p style={{ fontWeight: 700, marginTop: '1.5rem', marginBottom: '0.8rem', color: '#adb5bd' }}>
-                        마감됨 ({closedQuests.length}개)
-                    </p>
-                    <List>
-                        {closedQuests.map(quest => (
-                            <ListItem key={quest.id} style={{ opacity: 0.6 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                                    <span style={{ fontSize: '0.9rem' }}>
-                                        ⚔ {quest.title}
-                                        <span style={{ marginLeft: '8px', ...tagStyle('#f1f3f5', '#adb5bd') }}>마감</span>
-                                        <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.8rem' }}>
-                                            {(quest.acceptors || []).length}명 수락
-                                        </span>
-                                    </span>
-                                    <StyledButton
-                                        onClick={() => handleDelete(quest)}
-                                        style={{ fontSize: '0.78rem', padding: '3px 10px', background: '#adb5bd' }}
-                                    >
-                                        삭제
-                                    </StyledButton>
-                                </div>
-                            </ListItem>
-                        ))}
-                    </List>
-                </>
-            )}
-        </Section>
-    );
-}
 
 function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, preselectedMissionId }) {
     // AdminPage에서 렌더링하던 로직을 그대로 가져왔습니다.
@@ -743,7 +559,6 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
                 <>
                     <MissionManager onNavigate={onNavigateToHistory} />
                     <GoalManager />
-                    <QuestManager />
                 </>
             );
         case 'history':
