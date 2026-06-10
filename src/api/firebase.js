@@ -5008,6 +5008,35 @@ export async function cancelQuestAcceptance(classId, questId, playerId) {
   await updateDoc(questRef, { acceptors: newAcceptors });
 }
 
+
+/**
+ * 퀘스트 완료 반려 (관리자) — completionStatus: 'rejected'로 변경, 학생은 재제출 가능
+ */
+export async function rejectQuestCompletion(classId, questId, playerId, reason) {
+  if (!classId) return;
+  const questRef = doc(db, 'classes', classId, 'quests', questId);
+  const snap = await getDoc(questRef);
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const newAcceptors = data.acceptors.map(a =>
+    a.playerId === playerId
+      ? { ...a, completionStatus: 'rejected', rejectedReason: reason || '' }
+      : a
+  );
+  await updateDoc(questRef, { acceptors: newAcceptors });
+}
+
+export async function requestQuestCompletion(classId, questId, playerId) {
+  if (!classId) return;
+  const questRef = doc(db, 'classes', classId, 'quests', questId);
+  const snap = await getDoc(questRef);
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const newAcceptors = data.acceptors.map(a =>
+    a.playerId === playerId ? { ...a, completionStatus: 'pending' } : a
+  );
+  await updateDoc(questRef, { acceptors: newAcceptors });
+}
 /**
  * 특정 댓글의 기존 신고 상태 조회
  * returns: null | { status: 'pending'|'resolved'|'dismissed' }

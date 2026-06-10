@@ -1,19 +1,19 @@
 // src/components/QuestSection.jsx
-// 미션 페이지 상단에 삽입되는 퀘스트 섹션 (선착순 수락 방식)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useClassStore, useLeagueStore } from '../store/leagueStore';
-import { auth, listenQuests, acceptQuest, cancelQuestAcceptance } from '../api/firebase';
-
+import {
+  auth, listenQuests, acceptQuest,
+  cancelQuestAcceptance, requestQuestCompletion,
+} from '../api/firebase';
 // ─────────────────────────────────────────────
 // Animations
 // ─────────────────────────────────────────────
 const fadeUp = keyframes`
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
-
 const popIn = keyframes`
   from { transform: scale(0.88); opacity: 0; }
   to   { transform: scale(1);    opacity: 1; }
@@ -28,173 +28,135 @@ const SectionHeader = styled.div`
   gap: 10px;
   margin-bottom: 12px;
 `;
-
 const QuestBadge = styled.span`
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: #e67700;
-  background: #fff3bf;
-  border: 1px solid #ffe066;
-  border-radius: 6px;
-  padding: 3px 9px;
-  white-space: nowrap;
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #e67700;
+  background: #fff3bf; border: 1px solid #ffe066;
+  border-radius: 6px; padding: 3px 9px; white-space: nowrap;
 `;
-
 const SectionLine = styled.div`
-  flex: 1;
-  height: 1px;
-  background: #ffe066;
-  opacity: 0.55;
+  flex: 1; height: 1px; background: #ffe066; opacity: 0.55;
 `;
-
 const SectionCount = styled.span`
-  font-size: 0.78rem;
-  color: #adb5bd;
-  font-weight: 500;
-  white-space: nowrap;
+  font-size: 0.78rem; color: #adb5bd; font-weight: 500; white-space: nowrap;
 `;
 
 // ─────────────────────────────────────────────
-// Quest card (MissionCard 스타일 계승)
+// Quest card
 // ─────────────────────────────────────────────
 const QuestCard = styled.div`
-  background: #fff;
-  border-radius: 16px;
+  background: #fff; border-radius: 16px;
   padding: 1.2rem 1.4rem;
   box-shadow: 0 4px 20px rgba(0,0,0,0.05);
   border: 1px solid #f1f3f5;
-  position: relative;
-  overflow: hidden;
+  position: relative; overflow: hidden;
   margin-bottom: 12px;
   cursor: ${p => p.$clickable ? 'pointer' : 'default'};
   transition: transform 0.18s, box-shadow 0.18s;
   animation: ${fadeUp} 0.3s ease-out both;
 
   &::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; bottom: 0;
-    width: 6px;
+    content: ''; position: absolute;
+    top: 0; left: 0; bottom: 0; width: 6px;
     background: ${p =>
-    p.$accepted ? '#20c997' :
-      p.$full ? '#adb5bd' :
-        '#fcc419'};
+    p.$completed ? '#a9e34b' :
+      p.$pending ? '#74c0fc' :
+        p.$rejected ? '#ff8787' :
+          p.$accepted ? '#20c997' :
+            p.$full ? '#adb5bd' :
+              '#fcc419'};
     transition: background 0.3s;
   }
-
   &:hover {
     transform: ${p => p.$clickable ? 'translateY(-2px)' : 'none'};
     box-shadow: ${p => p.$clickable ? '0 8px 25px rgba(0,0,0,0.09)' : '0 4px 20px rgba(0,0,0,0.05)'};
   }
 `;
-
-const CardInner = styled.div`
-  padding-left: 6px;
-`;
-
+const CardInner = styled.div` padding-left: 6px; `;
 const TopRow = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
 `;
-
 const TitleRow = styled.h3`
-  margin: 0 0 4px;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #343a40;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  margin: 0 0 4px; font-size: 1.05rem; font-weight: 700; color: #343a40;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 `;
-
 const Tag = styled.span`
-  font-size: 0.68rem;
-  padding: 2px 7px;
-  border-radius: 5px;
-  font-weight: 700;
+  font-size: 0.68rem; padding: 2px 7px; border-radius: 5px; font-weight: 700;
   background: ${p => p.$bg || '#f1f3f5'};
   color: ${p => p.$color || '#495057'};
 `;
-
 const Reward = styled.div`
-  font-size: 1rem;
-  font-weight: 800;
-  color: #fcc419;
-  white-space: nowrap;
-  margin-top: 2px;
-  text-shadow: 0 1px 1px rgba(0,0,0,0.08);
+  font-size: 1rem; font-weight: 800; color: #fcc419;
+  white-space: nowrap; margin-top: 2px;
 `;
-
 const Desc = styled.p`
-  margin: 8px 0 10px;
-  font-size: 0.88rem;
-  color: #868e96;
-  line-height: 1.55;
-  background: #f8f9fa;
-  padding: 8px 10px;
-  border-radius: 8px;
+  margin: 8px 0 10px; font-size: 0.88rem; color: #868e96;
+  line-height: 1.55; background: #f8f9fa;
+  padding: 8px 10px; border-radius: 8px;
 `;
-
 const MetaRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 `;
-
 const MetaChip = styled.span`
-  font-size: 0.76rem;
-  color: #adb5bd;
-  display: flex;
-  align-items: center;
-  gap: 3px;
+  font-size: 0.76rem; color: #adb5bd;
+  display: flex; align-items: center; gap: 3px;
 `;
-
-const SlotPips = styled.div`
-  display: flex;
-  gap: 4px;
-  align-items: center;
-`;
-
+const SlotPips = styled.div` display: flex; gap: 4px; align-items: center; `;
 const Pip = styled.span`
-  display: inline-block;
-  width: 11px; height: 11px;
-  border-radius: 3px;
+  display: inline-block; width: 11px; height: 11px; border-radius: 3px;
   border: 1.5px solid ${p => p.$taken ? '#f59f00' : '#dee2e6'};
   background: ${p => p.$taken ? '#fcc419' : '#fff'};
   transition: background 0.25s, border-color 0.25s;
 `;
 
-const AcceptBtn = styled.button`
+// 수락자 아바타 목록 (카드 하단 인라인)
+const AcceptorRow = styled.div`
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid #f1f3f5; flex-wrap: wrap;
+`;
+const AcceptorChip = styled.span`
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.75rem; font-weight: 600;
+  padding: 3px 8px; border-radius: 20px;
+  background: ${p =>
+    p.$status === 'completed' ? '#d3f9d8' :
+      p.$status === 'pending' ? '#e7f5ff' :
+        p.$status === 'rejected' ? '#ffe3e3' :
+          '#fff9db'};
+  color: ${p =>
+    p.$status === 'completed' ? '#2f9e44' :
+      p.$status === 'pending' ? '#1c7ed6' :
+        p.$status === 'rejected' ? '#fa5252' :
+          '#e67700'};
+  border: 1px solid ${p =>
+    p.$status === 'completed' ? '#b2f2bb' :
+      p.$status === 'pending' ? '#a5d8ff' :
+        p.$status === 'rejected' ? '#ffc9c9' :
+          '#ffe066'};
+`;
+
+const ActionBtn = styled.button`
   margin-left: auto;
-  padding: 7px 18px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  border: none;
-  border-radius: 10px;
-  cursor: ${p => (p.$full || p.$accepted || p.$loading) ? 'not-allowed' : 'pointer'};
+  padding: 7px 16px; font-size: 0.82rem; font-weight: 700;
+  border: none; border-radius: 10px; cursor: pointer;
   transition: filter 0.15s, transform 0.15s;
   background: ${p =>
-    p.$accepted ? '#d3f9d8' :
-      p.$full ? '#f1f3f5' :
-        '#fcc419'};
+    p.$completed ? '#d3f9d8' :
+      p.$pending ? '#e7f5ff' :
+        p.$rejected ? '#ffe3e3' :
+          p.$accepted ? '#fff9db' :
+            p.$full ? '#f1f3f5' :
+              '#fcc419'};
   color: ${p =>
-    p.$accepted ? '#2f9e44' :
-      p.$full ? '#adb5bd' :
-        '#7a4d00'};
-  box-shadow: ${p => (!p.$full && !p.$accepted) ? '0 2px 6px rgba(252,196,25,0.3)' : 'none'};
-
-  &:hover:not(:disabled) {
-    filter: brightness(0.95);
-    transform: ${p => (!p.$full && !p.$accepted) ? 'translateY(-1px)' : 'none'};
-  }
-
-  &:disabled { opacity: 0.8; }
+    p.$completed ? '#2f9e44' :
+      p.$pending ? '#1c7ed6' :
+        p.$rejected ? '#fa5252' :
+          p.$accepted ? '#e67700' :
+            p.$full ? '#adb5bd' :
+              '#7a4d00'};
+  &:hover:not(:disabled) { filter: brightness(0.95); transform: translateY(-1px); }
+  &:disabled { opacity: 0.7; cursor: not-allowed; }
 `;
 
 // ─────────────────────────────────────────────
@@ -202,162 +164,88 @@ const AcceptBtn = styled.button`
 // ─────────────────────────────────────────────
 const ModalOverlay = styled.div`
   display: ${p => p.$open ? 'flex' : 'none'};
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 200;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 200; align-items: center; justify-content: center; padding: 1rem;
 `;
-
 const Modal = styled.div`
-  background: #fff;
-  border-radius: 20px;
-  padding: 28px 24px 20px;
-  max-width: 380px;
-  width: 100%;
+  background: #fff; border-radius: 20px; padding: 28px 24px 20px;
+  max-width: 400px; width: 100%;
   box-shadow: 0 20px 60px rgba(0,0,0,0.18);
   animation: ${popIn} 0.2s ease-out;
 `;
-
 const ModalBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #fff3bf;
-  border: 1px solid #ffe066;
-  border-radius: 8px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: #e67700;
-  letter-spacing: 1px;
-  margin-bottom: 12px;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fff3bf; border: 1px solid #ffe066; border-radius: 8px;
+  padding: 4px 10px; font-size: 0.72rem; font-weight: 800;
+  color: #e67700; letter-spacing: 1px; margin-bottom: 12px;
 `;
-
 const ModalTitle = styled.h2`
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: #343a40;
-  margin: 0 0 10px;
-  line-height: 1.35;
+  font-size: 1.2rem; font-weight: 800; color: #343a40;
+  margin: 0 0 10px; line-height: 1.35;
 `;
-
 const ModalDesc = styled.p`
-  font-size: 0.9rem;
-  color: #495057;
-  line-height: 1.65;
-  background: #f8f9fa;
-  border-radius: 10px;
-  padding: 12px;
-  margin: 0 0 16px;
-  white-space: pre-wrap;
+  font-size: 0.9rem; color: #495057; line-height: 1.65;
+  background: #f8f9fa; border-radius: 10px;
+  padding: 12px; margin: 0 0 14px; white-space: pre-wrap;
 `;
-
 const ModalRewardBox = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fffbf0;
-  border: 1px solid #ffe8a1;
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: #fffbf0; border: 1px solid #ffe8a1;
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 10px;
 `;
-
-const ModalRewardLabel = styled.span`
-  font-size: 0.82rem;
-  color: #adb5bd;
-  font-weight: 500;
-`;
-
-const ModalRewardValue = styled.span`
-  font-size: 1.25rem;
-  font-weight: 800;
-  color: #f59f00;
-`;
-
+const ModalRewardLabel = styled.span` font-size: 0.82rem; color: #adb5bd; font-weight: 500; `;
+const ModalRewardValue = styled.span` font-size: 1.25rem; font-weight: 800; color: #f59f00; `;
 const ModalSlots = styled.p`
-  font-size: 0.82rem;
-  color: #adb5bd;
-  margin: 0 0 18px;
-
+  font-size: 0.82rem; color: #adb5bd; margin: 0 0 14px;
   strong { color: #1c7ed6; }
 `;
 
-const ModalAcceptBtn = styled.button`
-  display: block;
-  width: 100%;
-  padding: 13px;
-  background: #fcc419;
-  border: none;
-  border-radius: 12px;
-  font-size: 1rem;
-  font-weight: 800;
-  color: #7a4d00;
-  cursor: ${p => p.disabled ? 'not-allowed' : 'pointer'};
-  transition: filter 0.15s;
-  margin-bottom: 8px;
+// 수락자 목록 (모달 내)
+const AcceptorList = styled.div`
+  border: 1px solid #f1f3f5; border-radius: 10px;
+  overflow: hidden; margin-bottom: 16px;
+`;
+const AcceptorListHeader = styled.div`
+  background: #f8f9fa; padding: 8px 12px;
+  font-size: 0.78rem; font-weight: 700; color: #868e96;
+`;
+const AcceptorItem = styled.div`
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-top: 1px solid #f1f3f5;
+  font-size: 0.88rem; gap: 8px;
+`;
+const StatusDot = styled.span`
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: ${p =>
+    p.$status === 'completed' ? '#2f9e44' :
+      p.$status === 'pending' ? '#1c7ed6' :
+        p.$status === 'rejected' ? '#fa5252' :
+          '#fcc419'};
+`;
+
+const ModalBtn = styled.button`
+  display: block; width: 100%; padding: 12px;
+  border: none; border-radius: 12px;
+  font-size: 0.95rem; font-weight: 800; cursor: pointer;
+  transition: filter 0.15s; margin-bottom: 8px;
+  background: ${p => p.$variant === 'cancel' ? 'none' : p.$variant === 'danger' ? 'none' : p.$variant === 'complete' ? '#e7f5ff' : '#fcc419'};
+  color: ${p => p.$variant === 'cancel' ? '#adb5bd' : p.$variant === 'danger' ? '#fa5252' : p.$variant === 'complete' ? '#1c7ed6' : '#7a4d00'};
+  border: ${p => (p.$variant === 'cancel' || p.$variant === 'danger') ? '1px solid #dee2e6' : 'none'};
   opacity: ${p => p.disabled ? 0.6 : 1};
-
-  &:hover:not(:disabled) { filter: brightness(0.95); }
-`;
-
-const ModalCancelBtn = styled.button`
-  display: block;
-  width: 100%;
-  padding: 10px;
-  background: none;
-  border: 1px solid #dee2e6;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #adb5bd;
-  cursor: pointer;
-  transition: background 0.15s;
-
-  &:hover { background: #f8f9fa; }
-`;
-
-// 수락됨 상태 취소 버튼
-const CancelAcceptBtn = styled.button`
-  display: block;
-  width: 100%;
-  padding: 10px;
-  background: none;
-  border: 1px solid #ffe3e3;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #fa5252;
-  cursor: pointer;
-  transition: background 0.15s;
-  margin-bottom: 8px;
-
-  &:hover { background: #fff5f5; }
+  cursor: ${p => p.disabled ? 'not-allowed' : 'pointer'};
+  &:hover:not(:disabled) { filter: brightness(0.96); }
 `;
 
 // ─────────────────────────────────────────────
-// Wrapper
+// Misc
 // ─────────────────────────────────────────────
-const Wrapper = styled.div`
-  margin-bottom: 2rem;
-`;
-
+const Wrapper = styled.div` margin-bottom: 2rem; `;
 const EmptyQuest = styled.div`
-  text-align: center;
-  padding: 1.5rem;
-  color: #adb5bd;
-  font-size: 0.9rem;
-  background: #f8f9fa;
-  border-radius: 12px;
-  margin-bottom: 12px;
+  text-align: center; padding: 1.5rem; color: #adb5bd;
+  font-size: 0.9rem; background: #f8f9fa;
+  border-radius: 12px; margin-bottom: 12px;
 `;
 
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
 function getSubmissionLabel(type) {
   if (!type) return '단순 완료';
   const map = { simple: '단순 완료', text: '📝 글 제출', photo: '📸 사진 제출' };
@@ -365,8 +253,15 @@ function getSubmissionLabel(type) {
   return map[type] || type;
 }
 
+function statusLabel(s) {
+  if (s === 'completed') return '✓ 완료';
+  if (s === 'pending') return '승인 대기 중';
+  if (s === 'rejected') return '✗ 반려됨';
+  return '수락됨';
+}
+
 // ─────────────────────────────────────────────
-// Main component
+// Main
 // ─────────────────────────────────────────────
 export default function QuestSection() {
   const { classId } = useClassStore();
@@ -382,62 +277,63 @@ export default function QuestSection() {
     return players.find(p => p.authUid === currentUser.uid) || null;
   }, [players, currentUser]);
 
-  // 실시간 퀘스트 구독
   useEffect(() => {
     if (!classId) return;
-    const unsub = listenQuests(classId, (data) => {
-      // open 상태인 퀘스트만 표시
+    return listenQuests(classId, (data) => {
       setQuests(data.filter(q => q.status === 'open'));
+      // 모달이 열려 있으면 최신 데이터로 동기화
+      setModalQuest(prev => {
+        if (!prev) return null;
+        return data.find(q => q.id === prev.id) || null;
+      });
     });
-    return unsub;
   }, [classId]);
 
   const getMyAcceptor = (quest) => {
     if (!myPlayer) return null;
     return (quest.acceptors || []).find(a => a.playerId === myPlayer.id) || null;
   };
+  const isFull = (quest) => (quest.acceptors || []).length >= (quest.maxAcceptors || 1);
 
-  const isFull = (quest) =>
-    (quest.acceptors || []).length >= (quest.maxAcceptors || 1);
-
-  // 수락 가능한 퀘스트 수 (알림 카운트용)
   const availableCount = quests.filter(q => !isFull(q) && !getMyAcceptor(q)).length;
 
+  // ── 수락 ──
   const handleAccept = async () => {
     if (!modalQuest || !myPlayer || loading) return;
     setLoading(true);
     try {
       const result = await acceptQuest(classId, modalQuest.id, myPlayer);
-      if (result === 'accepted') {
-        setModalQuest(null);
-      } else if (result === 'full') {
-        alert('아쉽게도 이미 다른 학생이 선착순을 채웠어요. 다음 기회에 도전해보세요!');
-        setModalQuest(null);
-      } else if (result === 'already') {
-        alert('이미 수락한 퀘스트예요.');
-        setModalQuest(null);
-      }
+      if (result === 'full') alert('아쉽게도 이미 마감됐어요. 다음 기회에 도전해보세요!');
+      else if (result === 'already') alert('이미 수락한 퀘스트예요.');
+      // 성공이면 onSnapshot이 모달 상태를 자동 갱신
     } catch (e) {
-      alert(`수락 중 오류가 발생했습니다: ${e.message}`);
+      alert(`수락 중 오류: ${e.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCancel = async (questId) => {
+  // ── 수락 취소 ──
+  const handleCancelAccept = async (questId) => {
     if (!myPlayer) return;
     if (!window.confirm('퀘스트 수락을 취소할까요?')) return;
     try {
       await cancelQuestAcceptance(classId, questId, myPlayer.id);
-      setModalQuest(null);
-    } catch (e) {
-      alert(`취소 중 오류가 발생했습니다: ${e.message}`);
-    }
+    } catch (e) { alert(`취소 중 오류: ${e.message}`); }
   };
 
-  // 학생이 아니거나 퀘스트가 없으면 렌더하지 않음 (admin은 MissionTab에서 관리)
-  const canSee = myPlayer && ['player', 'recorder'].includes(myPlayer.role);
-  if (!canSee && quests.length === 0) return null;
+  // ── 완료 요청 (학생) ──
+  const handleRequestComplete = async (questId) => {
+    if (!myPlayer) return;
+    if (!window.confirm('완료를 요청할까요? 선생님이 확인 후 포인트가 지급됩니다.')) return;
+    setLoading(true);
+    try {
+      await requestQuestCompletion(classId, questId, myPlayer.id);
+    } catch (e) { alert(`완료 요청 중 오류: ${e.message}`); }
+    finally { setLoading(false); }
+  };
+
+  if (!myPlayer) return null;
 
   return (
     <Wrapper>
@@ -450,128 +346,183 @@ export default function QuestSection() {
       </SectionHeader>
 
       {quests.length === 0 ? (
-        <EmptyQuest>지금은 공개된 퀘스트가 없어요. 선생님이 새 퀘스트를 올리면 알려드릴게요!</EmptyQuest>
-      ) : (
-        quests.map((quest, i) => {
-          const myAcceptor = getMyAcceptor(quest);
-          const full = isFull(quest);
-          const accepted = !!myAcceptor;
-          const clickable = !full && !accepted;
-          const takenCount = (quest.acceptors || []).length;
-          const maxSlots = quest.maxAcceptors || 1;
+        <EmptyQuest>선생님이 새 퀘스트를 올리면 알려드릴게요!</EmptyQuest>
+      ) : quests.map((quest, i) => {
+        const myAcceptor = getMyAcceptor(quest);
+        const full = isFull(quest);
+        const accepted = !!myAcceptor;
+        const status = myAcceptor?.completionStatus; // 'accepted' | 'pending' | 'completed' | 'rejected'
+        const clickable = !full && !accepted;
+        const takenCount = (quest.acceptors || []).length;
+        const maxSlots = quest.maxAcceptors || 1;
 
-          return (
-            <QuestCard
-              key={quest.id}
-              $accepted={accepted}
-              $full={full && !accepted}
-              $clickable={clickable}
-              style={{ animationDelay: `${i * 0.05}s` }}
-              onClick={() => clickable && setModalQuest(quest)}
-            >
-              <CardInner>
-                <TopRow>
-                  <div>
-                    <TitleRow>
-                      <span>⚔</span>
-                      {quest.title}
-                      {!full && !accepted && (
-                        <Tag $bg="#fff0f6" $color="#c2255c">NEW</Tag>
-                      )}
-                      {full && !accepted && (
-                        <Tag $bg="#f1f3f5" $color="#adb5bd">마감</Tag>
-                      )}
-                      <Tag $bg="#e7f5ff" $color="#1c7ed6">
-                        {maxSlots - takenCount}/{maxSlots} 자리
-                      </Tag>
-                    </TitleRow>
-                  </div>
-                  <Reward>💰 {quest.reward}P</Reward>
-                </TopRow>
+        return (
+          <QuestCard
+            key={quest.id}
+            $accepted={accepted && status === 'accepted'}
+            $pending={status === 'pending'}
+            $completed={status === 'completed'}
+            $rejected={status === 'rejected'}
+            $full={full && !accepted}
+            $clickable={clickable}
+            style={{ animationDelay: `${i * 0.05}s` }}
+            onClick={() => setModalQuest(quest)}
+          >
+            <CardInner>
+              <TopRow>
+                <div>
+                  <TitleRow>
+                    <span>⚔</span>
+                    {quest.title}
+                    {!full && !accepted && <Tag $bg="#fff0f6" $color="#c2255c">NEW</Tag>}
+                    {full && !accepted && <Tag $bg="#f1f3f5" $color="#adb5bd">마감</Tag>}
+                    {status === 'pending' && <Tag $bg="#e7f5ff" $color="#1c7ed6">승인 대기</Tag>}
+                    {status === 'completed' && <Tag $bg="#d3f9d8" $color="#2f9e44">완료</Tag>}
+                    {status === 'rejected' && <Tag $bg="#ffe3e3" $color="#fa5252">반려됨</Tag>}
+                    <Tag $bg="#e7f5ff" $color="#1c7ed6">{maxSlots - takenCount}/{maxSlots} 자리</Tag>
+                  </TitleRow>
+                </div>
+                <Reward>💰 {quest.reward}P</Reward>
+              </TopRow>
 
-                {quest.description && (
-                  <Desc>{quest.description}</Desc>
-                )}
+              {quest.description && <Desc>{quest.description}</Desc>}
 
-                <MetaRow>
-                  <MetaChip>
-                    📋 {getSubmissionLabel(quest.submissionType)}
-                  </MetaChip>
-                  {quest.deadline && (
-                    <MetaChip>🕐 {quest.deadline}</MetaChip>
-                  )}
-                  <SlotPips>
-                    {Array.from({ length: maxSlots }).map((_, idx) => (
-                      <Pip key={idx} $taken={idx < takenCount} />
-                    ))}
-                  </SlotPips>
-                  <AcceptBtn
-                    $accepted={accepted}
-                    $full={full && !accepted}
-                    $loading={loading}
-                    disabled={full && !accepted}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (accepted) setModalQuest(quest);
-                      else if (clickable) setModalQuest(quest);
-                    }}
-                  >
-                    {accepted ? '✓ 수락됨' : full ? '마감됨' : '수락하기'}
-                  </AcceptBtn>
-                </MetaRow>
-              </CardInner>
-            </QuestCard>
-          );
-        })
-      )}
+              <MetaRow>
+                <MetaChip>📋 {getSubmissionLabel(quest.submissionType)}</MetaChip>
+                {quest.deadline && <MetaChip>🕐 {quest.deadline}</MetaChip>}
+                <SlotPips>
+                  {Array.from({ length: maxSlots }).map((_, idx) => (
+                    <Pip key={idx} $taken={idx < takenCount} />
+                  ))}
+                </SlotPips>
+                <ActionBtn
+                  $accepted={accepted && status === 'accepted'}
+                  $pending={status === 'pending'}
+                  $completed={status === 'completed'}
+                  $rejected={status === 'rejected'}
+                  $full={full && !accepted}
+                  disabled={(full && !accepted) || status === 'completed' || status === 'pending'}
+                  onClick={(e) => { e.stopPropagation(); setModalQuest(quest); }}
+                >
+                  {status === 'completed' ? '✓ 완료됨' :
+                    status === 'pending' ? '⏳ 승인 대기' :
+                      status === 'rejected' ? '↩ 재제출하기' :
+                        accepted ? '완료 요청' :
+                          full ? '마감됨' : '수락하기'}
+                </ActionBtn>
+              </MetaRow>
 
-      {/* 수락 모달 */}
+              {/* 수락자 인라인 표시 */}
+              {takenCount > 0 && (
+                <AcceptorRow>
+                  <MetaChip style={{ marginRight: 2 }}>수락:</MetaChip>
+                  {(quest.acceptors || []).map(a => (
+                    <AcceptorChip key={a.playerId} $status={a.completionStatus}>
+                      <StatusDot $status={a.completionStatus} />
+                      {a.playerName}
+                    </AcceptorChip>
+                  ))}
+                </AcceptorRow>
+              )}
+            </CardInner>
+          </QuestCard>
+        );
+      })}
+
+      {/* ── 모달 ── */}
       <ModalOverlay $open={!!modalQuest} onClick={(e) => { if (e.target === e.currentTarget) setModalQuest(null); }}>
         {modalQuest && (() => {
           const myAcceptor = getMyAcceptor(modalQuest);
           const accepted = !!myAcceptor;
+          const status = myAcceptor?.completionStatus;
           const full = isFull(modalQuest);
           const takenCount = (modalQuest.acceptors || []).length;
           const maxSlots = modalQuest.maxAcceptors || 1;
+          const acceptors = modalQuest.acceptors || [];
           return (
             <Modal onClick={(e) => e.stopPropagation()}>
               <ModalBadge>⚔ 공공 퀘스트</ModalBadge>
               <ModalTitle>{modalQuest.title}</ModalTitle>
-              {modalQuest.description && (
-                <ModalDesc>{modalQuest.description}</ModalDesc>
-              )}
+              {modalQuest.description && <ModalDesc>{modalQuest.description}</ModalDesc>}
+
               <ModalRewardBox>
                 <ModalRewardLabel>🪙 완료 보상 (완료 후 지급)</ModalRewardLabel>
                 <ModalRewardValue>{modalQuest.reward}P</ModalRewardValue>
               </ModalRewardBox>
+
               <ModalSlots>
                 남은 자리 <strong>{maxSlots - takenCount}/{maxSlots}</strong>
-                {modalQuest.submissionType && (
-                  <> · {getSubmissionLabel(modalQuest.submissionType)}</>
-                )}
-                {modalQuest.deadline && (
-                  <> · 🕐 {modalQuest.deadline}</>
-                )}
+                {modalQuest.submissionType && <> · {getSubmissionLabel(modalQuest.submissionType)}</>}
+                {modalQuest.deadline && <> · 🕐 {modalQuest.deadline}</>}
               </ModalSlots>
 
-              {accepted ? (
+              {/* 수락자 목록 */}
+              {acceptors.length > 0 && (
+                <AcceptorList>
+                  <AcceptorListHeader>수락한 학생</AcceptorListHeader>
+                  {acceptors.map(a => (
+                    <AcceptorItem key={a.playerId}>
+                      <StatusDot $status={a.completionStatus} />
+                      <span style={{ fontWeight: 600 }}>{a.playerName}</span>
+                      <span style={{
+                        marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 700,
+                        color: a.completionStatus === 'completed' ? '#2f9e44' :
+                          a.completionStatus === 'pending' ? '#1c7ed6' : '#e67700'
+                      }}>
+                        {statusLabel(a.completionStatus)}
+                      </span>
+                    </AcceptorItem>
+                  ))}
+                </AcceptorList>
+              )}
+
+              {/* 버튼 — 내 상태에 따라 분기 */}
+              {!accepted && !full && (
+                <ModalBtn onClick={handleAccept} disabled={loading}>
+                  {loading ? '처리 중...' : '⚔ 퀘스트 수락하기'}
+                </ModalBtn>
+              )}
+              {!accepted && full && (
+                <ModalBtn disabled>이미 마감된 퀘스트예요</ModalBtn>
+              )}
+              {accepted && status === 'accepted' && (
                 <>
-                  <ModalAcceptBtn disabled style={{ background: '#d3f9d8', color: '#2f9e44' }}>
-                    ✓ 이미 수락한 퀘스트예요
-                  </ModalAcceptBtn>
-                  <CancelAcceptBtn onClick={() => handleCancel(modalQuest.id)}>
+                  <ModalBtn $variant="complete" onClick={() => handleRequestComplete(modalQuest.id)} disabled={loading}>
+                    ✅ 완료 요청하기 (선생님 승인 후 포인트 지급)
+                  </ModalBtn>
+                  <ModalBtn $variant="danger" onClick={() => handleCancelAccept(modalQuest.id)}>
                     수락 취소하기
-                  </CancelAcceptBtn>
-                  <ModalCancelBtn onClick={() => setModalQuest(null)}>닫기</ModalCancelBtn>
-                </>
-              ) : (
-                <>
-                  <ModalAcceptBtn onClick={handleAccept} disabled={loading || full}>
-                    {loading ? '처리 중...' : full ? '이미 마감된 퀘스트예요' : '⚔ 퀘스트 수락하기'}
-                  </ModalAcceptBtn>
-                  <ModalCancelBtn onClick={() => setModalQuest(null)}>나중에 하기</ModalCancelBtn>
+                  </ModalBtn>
                 </>
               )}
+              {accepted && status === 'rejected' && (
+                <>
+                  {/* 반려 사유 표시 */}
+                  <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px' }}>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.78rem', fontWeight: 700, color: '#fa5252' }}>✗ 완료 요청이 반려됐어요</p>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#495057' }}>
+                      {myAcceptor?.rejectedReason ? `사유: ${myAcceptor.rejectedReason}` : '선생님이 반려 사유를 남기지 않았어요.'}
+                    </p>
+                  </div>
+                  <ModalBtn $variant="complete" onClick={() => handleRequestComplete(modalQuest.id)} disabled={loading}>
+                    ↩ 다시 완료 요청하기
+                  </ModalBtn>
+                  <ModalBtn $variant="danger" onClick={() => handleCancelAccept(modalQuest.id)}>
+                    퀘스트 포기하기
+                  </ModalBtn>
+                </>
+              )}
+              {accepted && status === 'pending' && (
+                <ModalBtn disabled $variant="complete">
+                  ⏳ 선생님의 승인을 기다리는 중이에요
+                </ModalBtn>
+              )}
+              {accepted && status === 'completed' && (
+                <ModalBtn disabled style={{ background: '#d3f9d8', color: '#2f9e44' }}>
+                  ✓ 완료! 포인트가 지급됐어요
+                </ModalBtn>
+              )}
+              <ModalBtn $variant="cancel" onClick={() => setModalQuest(null)}>닫기</ModalBtn>
             </Modal>
           );
         })()}

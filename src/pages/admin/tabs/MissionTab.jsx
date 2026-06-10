@@ -8,7 +8,7 @@ import {
     auth, db, createClassGoal, getActiveGoals,
     deleteClassGoal, completeClassGoal, updateClassGoalStatus,
     approveMissionsInBatch, rejectMissionSubmission,
-    createQuest, listenQuests, updateQuest, deleteQuest, completeQuestForPlayer,
+    createQuest, listenQuests, updateQuest, deleteQuest, completeQuestForPlayer, rejectQuestCompletion,
 } from '../../../api/firebase';
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import RecorderPage from '../../RecorderPage';
@@ -25,7 +25,6 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [doneIds, setDoneIds] = useState(new Map()); // id → 'approved' | 'rejected'
     const [selectedSubmissionId, setSelectedSubmissionId] = useState(null); // id 기반으로 변경
     const [frozenSubmission, setFrozenSubmission] = useState(null); // 승인/반려 후 모달 고정용
     const currentUser = auth.currentUser;
@@ -102,7 +101,7 @@ function PendingMissionWidget({ setModalImageSrc }) {
 
     const handleAction = async (action, submission, reward) => {
         if (!classId) return;
-        setProcessingIds(prev => new Set(prev).add(submission.id));
+        setProcessingIds(prev => new Set(prev.add(submission.id)));
         const student = players.find(p => p.id === submission.studentId);
         const mission = missions.find(m => m.id === submission.missionId);
 
@@ -122,17 +121,9 @@ function PendingMissionWidget({ setModalImageSrc }) {
             } else if (action === 'reject') {
                 await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
             }
-            // 처리 완료 → 목록에서 즉시 제거 대신 완료 표시로 전환 (Firestore 업데이트가 반영될 때까지)
-            setDoneIds(prev => new Map(prev).set(submission.id, action === 'approve' ? 'approved' : 'rejected'));
         } catch (error) {
             console.error(`미션 ${action} 오류:`, error);
             alert(`${action === 'approve' ? '승인' : '거절'} 처리 중 오류가 발생했습니다.`);
-        } finally {
-            setProcessingIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(submission.id);
-                return newSet;
-            });
         }
     };
 
@@ -147,22 +138,9 @@ function PendingMissionWidget({ setModalImageSrc }) {
                         const student = players.find(p => p.id === sub.studentId);
                         const mission = missions.find(m => m.id === sub.missionId);
                         const isProcessing = processingIds.has(sub.id);
-                        const doneStatus = doneIds.get(sub.id);
                         const isTieredReward = mission?.rewards && mission.rewards.length > 1;
 
                         if (!mission) return null;
-
-                        // 처리 완료된 항목은 완료 뱃지로 표시 (Firestore 동기화 전까지 유지)
-                        if (doneStatus) {
-                            return (
-                                <PendingListItem key={sub.id} style={{ opacity: 0.5, pointerEvents: 'none', background: doneStatus === 'approved' ? '#d4edda' : '#f8d7da' }}>
-                                    <div>{student?.name} - [{mission?.title}]</div>
-                                    <div style={{ color: doneStatus === 'approved' ? '#28a745' : '#dc3545', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                                        {doneStatus === 'approved' ? '✅ 승인 완료' : '❌ 반려 완료'}
-                                    </div>
-                                </PendingListItem>
-                            );
-                        }
 
                         return (
                             <PendingListItem key={sub.id} onClick={() => handleModalOpen(sub.id)}>
@@ -332,6 +310,304 @@ function SortableListItem(props) {
                 <StyledButton onClick={handleDelete} style={{ backgroundColor: '#dc3545' }}>삭제</StyledButton>
             </MissionControls>
         </ListItem>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 퀘스트 완료 승인/반려 위젯 (관리자 전용 — 승인 탭)
+// ─────────────────────────────────────────────────────────────────────────────
+function QuestApprovalWidget() {
+    const { classId } = useClassStore();
+    const [quests, setQuests] = useState([]);
+    const [rejectModal, setRejectModal] = useState(null); // { quest, acceptor }
+    const [rejectReason, setRejectReason] = useState('');
+
+    useEffect(() => {
+        if (!classId) return;
+        return listenQuests(classId, (data) => {
+            setQuests(data.filter(q =>
+                q.status === 'open' &&
+                (q.acceptors || []).some(a => a.completionStatus === 'pending')
+            ));
+        });
+    }, [classId]);
+
+    const handleApprove = async (quest, acceptor) => {
+        if (!window.confirm(`${acceptor.playerName} 학생의 퀘스트 완료를 승인하고 ${quest.reward}P를 지급할까요?`)) return;
+        try {
+            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward);
+        } catch (e) { alert(`완료 처리 실패: ${e.message}`); }
+    };
+
+    const openRejectModal = (quest, acceptor) => {
+        setRejectModal({ quest, acceptor });
+        setRejectReason('');
+    };
+
+    const handleReject = async () => {
+        if (!rejectModal) return;
+        const { quest, acceptor } = rejectModal;
+        try {
+            await rejectQuestCompletion(classId, quest.id, acceptor.playerId, rejectReason.trim());
+            setRejectModal(null);
+        } catch (e) { alert(`반려 처리 실패: ${e.message}`); }
+    };
+
+    if (quests.length === 0) return null;
+
+    const pendingCount = quests.reduce((s, q) =>
+        s + (q.acceptors || []).filter(a => a.completionStatus === 'pending').length, 0);
+
+    return (
+        <>
+            <Section style={{ marginTop: '2rem', borderTop: '2px dashed #a5d8ff', paddingTop: '1.5rem' }}>
+                <SectionTitle>⚔ 퀘스트 완료 승인 대기 ({pendingCount}건)</SectionTitle>
+                <List>
+                    {quests.map(quest => (
+                        <ListItem key={quest.id}>
+                            <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.95rem' }}>
+                                ⚔ {quest.title} · 💰 {quest.reward}P
+                            </strong>
+                            {(quest.acceptors || []).filter(a => a.completionStatus === 'pending').map(a => (
+                                <div key={a.playerId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f8f9fa', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#1c7ed6', flexShrink: 0 }} />
+                                        <strong>{a.playerName}</strong>
+                                        <span style={{ color: '#1c7ed6', fontSize: '0.75rem', fontWeight: 700 }}>승인 대기 중</span>
+                                    </span>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <StyledButton onClick={() => handleApprove(quest, a)} style={{ fontSize: '0.78rem', padding: '4px 12px', background: '#20c997' }}>
+                                            ✓ 승인
+                                        </StyledButton>
+                                        <StyledButton onClick={() => openRejectModal(quest, a)} style={{ fontSize: '0.78rem', padding: '4px 12px', background: '#fa5252' }}>
+                                            ✗ 반려
+                                        </StyledButton>
+                                    </div>
+                                </div>
+                            ))}
+                        </ListItem>
+                    ))}
+                </List>
+            </Section>
+
+            {/* 반려 사유 모달 */}
+            {rejectModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: '360px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
+                        <p style={{ fontWeight: 800, fontSize: '1.05rem', margin: '0 0 6px' }}>
+                            완료 요청 반려
+                        </p>
+                        <p style={{ color: '#868e96', fontSize: '0.88rem', margin: '0 0 14px' }}>
+                            <strong>{rejectModal.acceptor.playerName}</strong>의 <strong>"{rejectModal.quest.title}"</strong> 완료 요청을 반려합니다.
+                        </p>
+                        <textarea
+                            value={rejectReason}
+                            onChange={e => setRejectReason(e.target.value)}
+                            placeholder="반려 사유 (선택) — 학생에게 표시됩니다"
+                            style={{ width: '100%', minHeight: '80px', padding: '0.6rem', border: '1px solid #dee2e6', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                            <SaveButton onClick={handleReject} style={{ flex: 1, background: '#fa5252' }}>반려 확정</SaveButton>
+                            <StyledButton onClick={() => setRejectModal(null)} style={{ background: '#6c757d' }}>취소</StyledButton>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 퀘스트 관리 위젯 (출제 탭 하단 — 출제된 퀘스트 목록/수정/삭제)
+// ─────────────────────────────────────────────────────────────────────────────
+function QuestManager() {
+    const { classId } = useClassStore();
+    const [quests, setQuests] = useState([]);
+    const [editingId, setEditingId] = useState(null); // 수정 중인 퀘스트 id
+    const [editForm, setEditForm] = useState({});
+
+    useEffect(() => {
+        if (!classId) return;
+        return listenQuests(classId, setQuests);
+    }, [classId]);
+
+    const openEdit = (quest) => {
+        setEditingId(quest.id);
+        setEditForm({
+            title: quest.title || '',
+            description: quest.description || '',
+            reward: quest.reward?.toString() || '',
+            maxAcceptors: quest.maxAcceptors?.toString() || '1',
+            deadline: quest.deadline || '',
+        });
+    };
+
+    const handleUpdate = async (questId) => {
+        if (!editForm.title.trim() || !editForm.reward) return alert('이름과 보상을 입력해주세요.');
+        try {
+            await updateQuest(classId, questId, {
+                title: editForm.title.trim(),
+                description: editForm.description.trim(),
+                reward: Number(editForm.reward),
+                maxAcceptors: Number(editForm.maxAcceptors) || 1,
+                deadline: editForm.deadline.trim() || null,
+            });
+            setEditingId(null);
+        } catch (e) { alert(`수정 실패: ${e.message}`); }
+    };
+
+    // (3) 삭제 시 completed가 아닌 수락자는 퀘스트 실패 처리 (그냥 문서 삭제 — QuestSection의 listenQuests가 open 상태만 구독하므로 학생 화면에서 사라짐)
+    const handleDelete = async (quest) => {
+        const acceptors = quest.acceptors || [];
+        const activeCount = acceptors.filter(a => a.completionStatus !== 'completed').length;
+        const confirmMsg = activeCount > 0
+            ? `"${quest.title}" 퀘스트를 삭제하면 완료되지 않은 수락자 ${activeCount}명의 퀘스트가 실패 처리됩니다.\n\n정말 삭제할까요?`
+            : `"${quest.title}" 퀘스트를 삭제할까요?`;
+        if (!window.confirm(confirmMsg)) return;
+        try {
+            await deleteQuest(classId, quest.id);
+        } catch (e) { alert(`삭제 실패: ${e.message}`); }
+    };
+
+    const openQuests = quests.filter(q => q.status === 'open');
+    const closedQuests = quests.filter(q => q.status !== 'open');
+
+    if (quests.length === 0) return null;
+
+    const fieldStyle = { padding: '0.4rem 0.6rem', border: '1px solid #ffe066', borderRadius: '6px', fontSize: '0.88rem', background: '#fffbf0' };
+
+    return (
+        <Section style={{ marginTop: '2rem', borderTop: '2px dashed #ffe066', paddingTop: '1.5rem' }}>
+            <SectionTitle>⚔ 출제된 퀘스트 관리</SectionTitle>
+
+            {openQuests.length === 0 && <p style={{ color: '#adb5bd', fontSize: '0.9rem' }}>진행 중인 퀘스트가 없습니다.</p>}
+
+            <List>
+                {openQuests.map(quest => {
+                    const isEditing = editingId === quest.id;
+                    const acceptors = quest.acceptors || [];
+                    const takenCount = acceptors.length;
+                    const maxSlots = quest.maxAcceptors || 1;
+
+                    return (
+                        <ListItem key={quest.id}>
+                            {isEditing ? (
+                                /* ── 수정 폼 인라인 ── */
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <input
+                                            value={editForm.title}
+                                            onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
+                                            placeholder="퀘스트 이름"
+                                            style={{ ...fieldStyle, flex: 1, minWidth: '160px' }}
+                                        />
+                                        <input
+                                            type="number"
+                                            value={editForm.reward}
+                                            onChange={e => setEditForm(p => ({ ...p, reward: e.target.value }))}
+                                            placeholder="보상 P"
+                                            style={{ ...fieldStyle, width: '80px' }}
+                                        />
+                                    </div>
+                                    <textarea
+                                        value={editForm.description}
+                                        onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
+                                        placeholder="퀘스트 설명"
+                                        style={{ ...fieldStyle, minHeight: '56px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00' }}>
+                                            수락 인원:
+                                            <input
+                                                type="number" min={takenCount || 1} max={10}
+                                                value={editForm.maxAcceptors}
+                                                onChange={e => setEditForm(p => ({ ...p, maxAcceptors: e.target.value }))}
+                                                style={{ ...fieldStyle, width: '56px' }}
+                                            />
+                                            명
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00', flex: 1 }}>
+                                            기한:
+                                            <input
+                                                value={editForm.deadline}
+                                                onChange={e => setEditForm(p => ({ ...p, deadline: e.target.value }))}
+                                                placeholder="예: 오늘 하교 전"
+                                                style={{ ...fieldStyle, flex: 1 }}
+                                            />
+                                        </label>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <SaveButton onClick={() => handleUpdate(quest.id)} style={{ fontSize: '0.85rem', padding: '5px 14px' }}>저장</SaveButton>
+                                        <StyledButton onClick={() => setEditingId(null)} style={{ background: '#6c757d', fontSize: '0.85rem', padding: '5px 14px' }}>취소</StyledButton>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* ── 일반 표시 ── */
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <span style={{ fontWeight: 700 }}>⚔ {quest.title}</span>
+                                            <span style={{ marginLeft: '8px', fontSize: '0.78rem', background: '#fff3bf', color: '#e67700', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>💰 {quest.reward}P</span>
+                                            <span style={{ marginLeft: '6px', fontSize: '0.78rem', background: '#e7f5ff', color: '#1c7ed6', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>{takenCount}/{maxSlots}명 수락</span>
+                                            {quest.deadline && <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.78rem' }}>🕐 {quest.deadline}</span>}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                            <StyledButton onClick={() => openEdit(quest)} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#f59f00' }}>
+                                                수정
+                                            </StyledButton>
+                                            <StyledButton onClick={() => handleDelete(quest)} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#fa5252' }}>
+                                                삭제
+                                            </StyledButton>
+                                        </div>
+                                    </div>
+                                    {quest.description && (
+                                        <p style={{ margin: '6px 0 0', fontSize: '0.83rem', color: '#868e96', background: '#f8f9fa', padding: '6px 8px', borderRadius: '6px' }}>
+                                            {quest.description}
+                                        </p>
+                                    )}
+                                    {takenCount > 0 && (
+                                        <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {acceptors.map(a => (
+                                                <span key={a.playerId} style={{
+                                                    fontSize: '0.75rem', fontWeight: 600,
+                                                    padding: '2px 8px', borderRadius: '20px',
+                                                    background: a.completionStatus === 'completed' ? '#d3f9d8' : a.completionStatus === 'pending' ? '#e7f5ff' : a.completionStatus === 'rejected' ? '#ffe3e3' : '#fff9db',
+                                                    color: a.completionStatus === 'completed' ? '#2f9e44' : a.completionStatus === 'pending' ? '#1c7ed6' : a.completionStatus === 'rejected' ? '#fa5252' : '#e67700',
+                                                    border: `1px solid ${a.completionStatus === 'completed' ? '#b2f2bb' : a.completionStatus === 'pending' ? '#a5d8ff' : a.completionStatus === 'rejected' ? '#ffc9c9' : '#ffe066'}`,
+                                                }}>
+                                                    {a.playerName} · {a.completionStatus === 'completed' ? '완료' : a.completionStatus === 'pending' ? '승인대기' : a.completionStatus === 'rejected' ? '반려됨' : '수락중'}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </ListItem>
+                    );
+                })}
+            </List>
+
+            {closedQuests.length > 0 && (
+                <>
+                    <p style={{ fontWeight: 700, marginTop: '1.2rem', marginBottom: '0.6rem', color: '#adb5bd', fontSize: '0.88rem' }}>
+                        마감됨 ({closedQuests.length})
+                    </p>
+                    <List>
+                        {closedQuests.map(quest => (
+                            <ListItem key={quest.id} style={{ opacity: 0.55 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.88rem' }}>
+                                        ⚔ {quest.title}
+                                        <span style={{ marginLeft: '8px', fontSize: '0.75rem', background: '#f1f3f5', color: '#adb5bd', padding: '2px 6px', borderRadius: '4px' }}>마감</span>
+                                    </span>
+                                    <StyledButton onClick={() => handleDelete(quest)} style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#adb5bd' }}>삭제</StyledButton>
+                                </div>
+                            </ListItem>
+                        ))}
+                    </List>
+                </>
+            )}
+        </Section>
     );
 }
 
@@ -518,30 +794,34 @@ function MissionManager({ onNavigate }) {
                     </InputGroup>
                 )}
 
-                <InputGroup style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {/* 퀘스트 버튼 — 활성 시 노란 강조 */}
-                    {!editMode && (
-                        <StyledButton
-                            onClick={() => setIsQuest(p => !p)}
-                            style={{ backgroundColor: isQuest ? '#fcc419' : '#6c757d', color: isQuest ? '#7a4d00' : '#fff', fontWeight: isQuest ? 800 : 400 }}
-                            title="선착순으로 수락하는 공공 퀘스트로 출제합니다."
-                        >
-                            {isQuest ? '⚔ 퀘스트' : '⚔ 퀘스트'}
-                        </StyledButton>
-                    )}
-                    {/* 퀘스트 모드에선 미션 전용 옵션 숨김 */}
-                    {!isQuest && (
-                        <>
-                            <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
-                            <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
-                            <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)">{defaultPrivate ? '비공개' : '공개'}</StyledButton>
-                            <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? '관리자만(활성)' : '관리자만'}</StyledButton>
-                        </>
-                    )}
-                    <SaveButton onClick={handleSaveMission}>
-                        {editMode ? '수정 완료' : isQuest ? '⚔ 퀘스트 출제' : '미션 출제'}
-                    </SaveButton>
-                    {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
+                <InputGroup style={{ justifyContent: 'space-between', marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {/* ── 왼쪽: 퀘스트 토글 버튼 ── */}
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        {!editMode && (
+                            <StyledButton
+                                onClick={() => setIsQuest(p => !p)}
+                                style={{ backgroundColor: isQuest ? '#fcc419' : '#6c757d', color: isQuest ? '#7a4d00' : '#fff', fontWeight: isQuest ? 800 : 400 }}
+                                title="선착순으로 수락하는 공공 퀘스트로 출제합니다."
+                            >
+                                {isQuest ? '⚔ 퀘스트 (활성)' : '⚔ 퀘스트'}
+                            </StyledButton>
+                        )}
+                    </div>
+                    {/* ── 오른쪽: 미션 옵션 + 출제 버튼 ── */}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {!isQuest && (
+                            <>
+                                <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
+                                <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
+                                <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)">{defaultPrivate ? '비공개' : '공개'}</StyledButton>
+                                <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? '관리자만(활성)' : '관리자만'}</StyledButton>
+                            </>
+                        )}
+                        <SaveButton onClick={handleSaveMission}>
+                            {editMode ? '수정 완료' : isQuest ? '⚔ 퀘스트 출제' : '미션 출제'}
+                        </SaveButton>
+                        {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
+                    </div>
                 </InputGroup>
             </div>
 
@@ -575,12 +855,18 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
     // AdminPage에서 렌더링하던 로직을 그대로 가져왔습니다.
     switch (missionSubMenu) {
         case 'approval':
-            return <PendingMissionWidget setModalImageSrc={setModalImageSrc} />;
+            return (
+                <>
+                    <PendingMissionWidget setModalImageSrc={setModalImageSrc} />
+                    <QuestApprovalWidget />
+                </>
+            );
         case 'creation':
             return (
                 <>
                     <MissionManager onNavigate={onNavigateToHistory} />
                     <GoalManager />
+                    <QuestManager />
                 </>
             );
         case 'history':
