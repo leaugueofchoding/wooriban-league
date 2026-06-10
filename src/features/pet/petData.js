@@ -647,7 +647,7 @@ export const PET_DATA = {
         compatibleElements: ['풀'],
         description: "고요한 숲, 생명의 나무 꼭대기에서 이슬을 머금고 태어난 숲의 수호자입니다. (🌿풀 속성)",
         baseStats: { maxHp: 120, maxSp: 40, atk: 8 },
-        growth: { hp: 25, sp: 4, atk: 4 },           // [밸런스] atk 성장치 3→4
+        growth: { hp: 25, sp: 5, atk: 4 },           // [밸런스] atk 성장치 3→4
         skill: SKILLS.LEECH_SEED,
         initialSkills: [SKILLS.LEECH_SEED.id],
         evolution: {
