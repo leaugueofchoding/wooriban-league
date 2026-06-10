@@ -4715,7 +4715,7 @@ export async function renamePetWithItem(classId, playerId, petId, newName) {
 // =====================================================
 export async function releasePet(classId, playerId, petId) {
   if (!classId) throw new Error('학급 정보가 없습니다.');
-  const RELEASE_REWARD = 5000;
+  const RELEASE_REWARD = 2500;
   const playerRef = doc(db, 'classes', classId, 'players', playerId);
   return await runTransaction(db, async (transaction) => {
     const playerDoc = await transaction.get(playerRef);
