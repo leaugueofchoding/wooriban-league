@@ -1,6 +1,6 @@
 // src/components/QuestSection.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useClassStore, useLeagueStore } from '../store/leagueStore';
 import {
@@ -240,6 +240,29 @@ const ModalBtn = styled.button`
 // Misc
 // ─────────────────────────────────────────────
 const Wrapper = styled.div` margin-bottom: 2rem; `;
+
+const QuestFilterContainer = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 0.8rem;
+`;
+
+const QuestToggleButton = styled.button`
+  padding: 0.45rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 2px solid ${props => props.$active ? '#f59f00' : '#dee2e6'};
+  border-radius: 20px;
+  cursor: pointer;
+  background-color: ${props => props.$active ? '#fff9db' : '#fff'};
+  color: ${props => props.$active ? '#e67700' : '#868e96'};
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    background-color: ${props => props.$active ? '#fff3bf' : '#f8f9fa'};
+  }
+`;
 const EmptyQuest = styled.div`
   text-align: center; padding: 1.5rem; color: #adb5bd;
   font-size: 0.9rem; background: #f8f9fa;
@@ -263,7 +286,7 @@ function statusLabel(s) {
 // ─────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────
-export default function QuestSection() {
+export default function QuestSection({ onQuestCountChange }) {
   const { classId } = useClassStore();
   const { players } = useLeagueStore();
   const currentUser = auth.currentUser;
@@ -271,6 +294,7 @@ export default function QuestSection() {
   const [quests, setQuests] = useState([]);
   const [modalQuest, setModalQuest] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showAllQuests, setShowAllQuests] = useState(false);
 
   const myPlayer = useMemo(() => {
     if (!currentUser) return null;
@@ -289,6 +313,13 @@ export default function QuestSection() {
     });
   }, [classId]);
 
+  // 부모에 퀘스트 수 전달 — ref로 콜백을 저장해 무한 루프 방지
+  const onQuestCountChangeRef = useRef(onQuestCountChange);
+  useEffect(() => { onQuestCountChangeRef.current = onQuestCountChange; });
+  useEffect(() => {
+    onQuestCountChangeRef.current?.(quests.length);
+  }, [quests.length]);
+
   const getMyAcceptor = (quest) => {
     if (!myPlayer) return null;
     return (quest.acceptors || []).find(a => a.playerId === myPlayer.id) || null;
@@ -296,6 +327,18 @@ export default function QuestSection() {
   const isFull = (quest) => (quest.acceptors || []).length >= (quest.maxAcceptors || 1);
 
   const availableCount = quests.filter(q => !isFull(q) && !getMyAcceptor(q)).length;
+
+  // 완료된 퀘스트 필터링
+  const completedQuests = quests.filter(q => {
+    const myAcceptor = getMyAcceptor(q);
+    return myAcceptor?.completionStatus === 'completed';
+  });
+  const visibleQuests = showAllQuests
+    ? quests
+    : quests.filter(q => {
+      const myAcceptor = getMyAcceptor(q);
+      return myAcceptor?.completionStatus !== 'completed';
+    });
 
   // ── 수락 ──
   const handleAccept = async () => {
@@ -345,9 +388,22 @@ export default function QuestSection() {
         </SectionCount>
       </SectionHeader>
 
-      {quests.length === 0 ? (
+      {completedQuests.length > 0 && (
+        <QuestFilterContainer>
+          <QuestToggleButton
+            $active={showAllQuests}
+            onClick={() => setShowAllQuests(prev => !prev)}
+          >
+            {showAllQuests ? '할 일만 보기' : `모든 퀘스트 보기 (완료 ${completedQuests.length}개)`}
+          </QuestToggleButton>
+        </QuestFilterContainer>
+      )}
+
+      {visibleQuests.length === 0 && quests.length === 0 ? (
         <EmptyQuest>선생님이 새 퀘스트를 올리면 알려드릴게요!</EmptyQuest>
-      ) : quests.map((quest, i) => {
+      ) : visibleQuests.length === 0 ? (
+        <EmptyQuest>🎉 모든 퀘스트를 완료했어요!</EmptyQuest>
+      ) : visibleQuests.map((quest, i) => {
         const myAcceptor = getMyAcceptor(quest);
         const full = isFull(quest);
         const accepted = !!myAcceptor;

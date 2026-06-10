@@ -16,12 +16,34 @@ const fadeIn = keyframes`
 `;
 
 const MissionsWrapper = styled.div`
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 2rem 1rem;
   animation: ${fadeIn} 0.5s ease-out;
   padding-bottom: 5rem;
 `;
+
+// 항상 렌더되는 단일 레이아웃 컨테이너 — $twoColumn prop으로 CSS만 전환
+const PageLayout = styled.div`
+  display: grid;
+  grid-template-columns: ${p => p.$twoColumn ? '1fr 1fr' : '1fr'};
+  gap: ${p => p.$twoColumn ? '2rem' : '0'};
+  max-width: ${p => p.$twoColumn ? '100%' : '700px'};
+  margin: 0 auto;
+  align-items: start;
+  transition: grid-template-columns 0.3s ease;
+
+  @media (max-width: 800px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const QuestColumn = styled.div`
+  /* 퀘스트가 없을 때(1단) 숨기지 않고 그냥 두면 빈 공간이 생기므로,
+     QuestSection 자체가 내부적으로 빈 상태를 처리함 */
+`;
+
+const MissionColumn = styled.div``;
 
 const HeaderSection = styled.div`
   text-align: center;
@@ -727,6 +749,7 @@ function MissionsPage() {
   const currentUser = auth.currentUser;
   const [hideCompleted, setHideCompleted] = useState(true);
   const [historyModalState, setHistoryModalState] = useState({ isOpen: false, missionTitle: '', history: [], student: null });
+  const [questCount, setQuestCount] = useState(0);
 
   const myPlayerData = useMemo(() => {
     if (!currentUser) return null;
@@ -821,6 +844,10 @@ function MissionsPage() {
 
   const canSubmitMission = myPlayerData && ['player', 'recorder', 'admin'].includes(myPlayerData.role);
 
+  const hasMissions = missions.length > 0;
+  const hasPlayer = !!myPlayerData;
+  const useTwoColumn = hasMissions && hasPlayer && questCount > 0;
+
   return (
     <>
       <MissionsWrapper>
@@ -829,41 +856,48 @@ function MissionsPage() {
           <SubTitle>오늘 수행해야 할 미션을 확인하고 완료해주세요!</SubTitle>
         </HeaderSection>
 
-        {/* ── 퀘스트 섹션 (선착순 공공 임무) ── */}
-        <QuestSection />
+        {/* QuestSection은 항상 단 한 번만 렌더 — 언마운트 없이 CSS로만 배치 제어 */}
+        <PageLayout $twoColumn={useTwoColumn}>
+          {/* 퀘스트 컬럼 */}
+          <QuestColumn $twoColumn={useTwoColumn}>
+            <QuestSection onQuestCountChange={setQuestCount} />
+          </QuestColumn>
 
-        {/* ── 일반 미션 섹션 구분선 ── */}
-        <MissionSectionHeader>
-          <MissionSectionBadge>📋 Mission</MissionSectionBadge>
-          <MissionSectionLine />
-        </MissionSectionHeader>
+          {/* 미션 컬럼 */}
+          <MissionColumn $twoColumn={useTwoColumn}>
+            <MissionSectionHeader>
+              <MissionSectionBadge>📋 Mission</MissionSectionBadge>
+              <MissionSectionLine />
+            </MissionSectionHeader>
 
-        <FilterContainer>
-          <ToggleButton onClick={() => setHideCompleted(prev => !prev)} $active={!hideCompleted}>
-            {hideCompleted ? '모든 미션 보기' : '할 일만 보기'}
-          </ToggleButton>
-        </FilterContainer>
+            <FilterContainer>
+              <ToggleButton onClick={() => setHideCompleted(prev => !prev)} $active={!hideCompleted}>
+                {hideCompleted ? '모든 미션 보기' : '할 일만 보기'}
+              </ToggleButton>
+            </FilterContainer>
 
-        <MissionList>
-          {filteredMissions.length > 0 ? (
-            filteredMissions.map(mission => (
-              <MissionItem
-                key={mission.id}
-                mission={mission}
-                myPlayerData={myPlayerData}
-                mySubmissions={mySubmissionsMap}
-                canSubmitMission={canSubmitMission}
-                onHistoryView={handleHistoryView}
-              />
-            ))
-          ) : (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#868e96', background: '#f8f9fa', borderRadius: '16px' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
-              <h3>와우! 모든 미션을 완료했어요!</h3>
-              <p>정말 대단해요! 내일도 파이팅!</p>
-            </div>
-          )}
-        </MissionList>
+            <MissionList>
+              {filteredMissions.length > 0 ? (
+                filteredMissions.map(mission => (
+                  <MissionItem
+                    key={mission.id}
+                    mission={mission}
+                    myPlayerData={myPlayerData}
+                    mySubmissions={mySubmissionsMap}
+                    canSubmitMission={canSubmitMission}
+                    onHistoryView={handleHistoryView}
+                  />
+                ))
+              ) : (
+                <div style={{ textAlign: 'center', padding: '3rem', color: '#868e96', background: '#f8f9fa', borderRadius: '16px' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
+                  <h3>와우! 모든 미션을 완료했어요!</h3>
+                  <p>정말 대단해요! 내일도 파이팅!</p>
+                </div>
+              )}
+            </MissionList>
+          </MissionColumn>
+        </PageLayout>
 
         <ButtonGroup>
           <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>

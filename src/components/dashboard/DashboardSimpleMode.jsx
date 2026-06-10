@@ -6,7 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import baseAvatar from '../../assets/base-avatar.png';
 import { petImageMap } from '../../utils/petImageMap';
 import QuizWidget from '../QuizWidget';
-import { useLeagueStore } from '../../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../../store/leagueStore';
+import { auth, listenQuests } from '../../api/firebase';
 import { emblemMap } from '../../utils/emblemMap';
 import defaultEmblem from '../../assets/default-emblem.png';
 
@@ -103,22 +104,28 @@ const getWinningStars = (count) => {
   return <StarContainer>{stars}</StarContainer>;
 };
 
-function MissionItem({ mission, mySubmissions, canSubmitMission }) {
+function MissionItem({ mission, mySubmissions, canSubmitMission, compact }) {
   const navigate = useNavigate();
   const submission = mySubmissions[mission.id];
   let submissionStatus = submission?.status;
   const isCompletedToday = mission.isFixed && submissionStatus === 'approved' && submission?.approvedAt && new Date(submission.approvedAt.toDate()).toDateString() === new Date().toDateString();
   if (mission.isFixed && submissionStatus === 'approved' && !isCompletedToday) submissionStatus = null;
 
+  const btnLabel = isCompletedToday ? '완료!' : (submissionStatus === 'pending' ? '…' : (submissionStatus === 'rejected' ? '↩' : 'GO'));
+  const btnBg = isCompletedToday ? '#e6fcf5' : (submissionStatus === 'pending' ? '#f1f3f5' : (submissionStatus === 'rejected' ? '#fff5f5' : '#e7f5ff'));
+  const btnColor = isCompletedToday ? '#0ca678' : (submissionStatus === 'pending' ? '#495057' : (submissionStatus === 'rejected' ? '#fa5252' : '#1c7ed6'));
+
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.8rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '16px', marginBottom: '0.6rem', border: '1px solid #e9ecef' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: compact ? '0.5rem 0.6rem' : '0.8rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.4rem', border: '1px solid #e9ecef' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: '700', fontSize: '0.95rem', marginBottom: '0.3rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{mission.title}</div>
-        <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: '700' }}>💰 {mission.reward} P</div>
+        {/* 글씨 크기 고정 (0.95rem) 및 말줄임 처리 적용 */}
+        <div style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{mission.title}</div>
+        {!compact && <div style={{ fontSize: '0.85rem', color: '#868e96', fontWeight: 700, marginTop: '0.2rem' }}>💰 {mission.reward} P</div>}
+        {compact && <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 700 }}>💰 {mission.reward}P</div>}
       </div>
       {canSubmitMission && (
-        <button onClick={(e) => { e.preventDefault(); navigate('/missions'); }} disabled={isCompletedToday || submissionStatus === 'pending'} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', border: 'none', borderRadius: '10px', background: isCompletedToday ? '#e6fcf5' : (submissionStatus === 'pending' ? '#f1f3f5' : (submissionStatus === 'rejected' ? '#fff5f5' : '#e7f5ff')), color: isCompletedToday ? '#0ca678' : (submissionStatus === 'pending' ? '#495057' : (submissionStatus === 'rejected' ? '#fa5252' : '#1c7ed6')), fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 0 rgba(0,0,0,0.05)', marginLeft: '0.5rem', flexShrink: 0 }}>
-          {isCompletedToday ? "완료!" : (submissionStatus === 'pending' ? "확인중" : (submissionStatus === 'rejected' ? "재도전" : "GO"))}
+        <button onClick={(e) => { e.preventDefault(); navigate('/missions'); }} disabled={isCompletedToday || submissionStatus === 'pending'} style={{ padding: compact ? '0.3rem 0.5rem' : '0.4rem 0.8rem', fontSize: compact ? '0.75rem' : '0.85rem', border: 'none', borderRadius: '8px', background: btnBg, color: btnColor, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s', marginLeft: '0.4rem', flexShrink: 0 }}>
+          {btnLabel}
         </button>
       )}
     </div>
@@ -133,13 +140,30 @@ function DashboardSimpleMode({
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
 }) {
   const [donationAmount, setDonationAmount] = useState('');
+  const [dashQuests, setDashQuests] = useState([]);
+  const { classId } = useClassStore();
+  const currentUser = auth.currentUser;
+
+  React.useEffect(() => {
+    if (!classId) return;
+    return listenQuests(classId, (data) => {
+      setDashQuests(data.filter(q => q.status === 'open'));
+    });
+  }, [classId]);
+
+  const myQuestItems = React.useMemo(() => {
+    if (!myPlayerData) return [];
+    return dashQuests.map(q => {
+      const myAcceptor = (q.acceptors || []).find(a => a.playerId === myPlayerData.id);
+      return { ...q, myAcceptor };
+    }).filter(q => q.myAcceptor || (q.acceptors || []).length < (q.maxAcceptors || 1));
+  }, [dashQuests, myPlayerData]);
   const { themeColor, setThemeColor } = useLeagueStore();
   const [customColor, setCustomColor] = useState(null);
 
   const handleDonateClick = () => { onDonate(donationAmount); setDonationAmount(''); };
   const handleCustomColorChange = (e) => { const newColor = e.target.value; setCustomColor(newColor); setThemeColor(newColor); };
 
-  // 최고 기여자 계산 로직을 렌더링 밖으로 분리
   const topContributionEntry = React.useMemo(() => {
     if (!activeGoal?.contributions) return null;
     const contribMap = {};
@@ -148,6 +172,16 @@ function DashboardSimpleMode({
     });
     return Object.entries(contribMap).sort((a, b) => b[1] - a[1])[0];
   }, [activeGoal]);
+
+  // ▼ 미션/퀘스트 동적 분할 렌더링 조건 계산 ▼
+  const hasMissions = recentMissions && recentMissions.length > 0;
+  const hasQuests = myQuestItems && myQuestItems.length > 0;
+
+  const showOnlyMissions = hasMissions && !hasQuests;
+  const showOnlyQuests = !hasMissions && hasQuests;
+
+  // 둘 중 하나만 보이면 1fr, 둘 다 보이거나 둘 다 없으면 정확히 50:50(minmax 사용)
+  const gridTemplateCols = (showOnlyMissions || showOnlyQuests) ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)';
 
   return (
     <DashboardWrapper style={{ backgroundColor: themeColor }}>
@@ -164,20 +198,9 @@ function DashboardSimpleMode({
               </IDPhotoContainer>
             </IDPhotoFrame>
             <IDInfo>
-              {/* ▼ 테두리와 상단 뱃지를 완전히 지우고, 이름 왼쪽으로 칭호를 자연스럽게 녹여냈습니다 ▼ */}
               <NameTitle>
                 {equippedTitle && (
-                  <span style={{
-                    fontWeight: 900,
-                    fontSize: '1.1rem', // 이름(1.8rem) 크기와 밸런스를 맞춘 세련된 크기
-                    color: equippedTitle.color,
-                    marginRight: '10px',
-                    letterSpacing: '-0.3px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    verticalAlign: 'middle'
-                  }}>
+                  <span style={{ fontWeight: 900, fontSize: '1.1rem', color: equippedTitle.color, marginRight: '10px', letterSpacing: '-0.3px', display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle' }}>
                     {equippedTitle.icon} {equippedTitle.name}
                   </span>
                 )}
@@ -209,10 +232,62 @@ function DashboardSimpleMode({
         </HeroSection>
 
         <MainGrid>
+          {/* ▼ 미션 + 퀘스트 동적 분할 적용 위젯 ▼ */}
           <WidgetCard to="/missions" $color="#339af0">
-            <WidgetHeader $icon="📝"><h3>오늘의 미션</h3><span style={{ fontSize: '0.9rem', color: '#495057', fontWeight: '700' }}>{activeMissions.length}개 남음</span></WidgetHeader>
-            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              {recentMissions.length > 0 ? recentMissions.map(m => <MissionItem key={m.id} mission={m} mySubmissions={mySubmissions} canSubmitMission={true} />) : <div style={{ textAlign: 'center', color: '#868e96', padding: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎉</div><div>모든 미션 완료!</div></div>}
+            <div style={{ display: 'grid', gridTemplateColumns: gridTemplateCols, gap: '0', height: '100%' }}>
+
+              {/* 왼쪽: 미션 (showOnlyQuests가 아닐 때만 렌더링) */}
+              {!showOnlyQuests && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  paddingRight: showOnlyMissions ? '0' : '1rem',
+                  borderRight: showOnlyMissions ? 'none' : '1px solid rgba(0,0,0,0.06)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#343a40', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>📝 미션</h3>
+                    <span style={{ fontSize: '0.85rem', color: '#339af0', fontWeight: 700 }}>{activeMissions.length}개 남음</span>
+                  </div>
+                  <div style={{ flexGrow: 1 }}>
+                    {hasMissions
+                      ? recentMissions.map(m => <MissionItem key={m.id} mission={m} mySubmissions={mySubmissions} canSubmitMission={true} compact={true} />)
+                      : <div style={{ textAlign: 'center', color: '#868e96', padding: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎉</div><div>모든 미션 완료!</div></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* 오른쪽: 퀘스트 (showOnlyMissions가 아닐 때만 렌더링) */}
+              {!showOnlyMissions && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  paddingLeft: showOnlyQuests ? '0' : '1rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#343a40', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>⚔️ 퀘스트</h3>
+                    <span style={{ fontSize: '0.85rem', color: '#e67700', fontWeight: 700 }}>{myQuestItems.length > 0 ? `${myQuestItems.length}개` : '없음'}</span>
+                  </div>
+                  <div style={{ flexGrow: 1 }}>
+                    {hasQuests
+                      ? myQuestItems.slice(0, 3).map(q => {
+                        const status = q.myAcceptor?.completionStatus;
+                        const accepted = !!q.myAcceptor;
+                        return (
+                          <div key={q.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.6rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.4rem', border: '1px solid #e9ecef' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              {/* 글씨 크기 고정 (0.95rem) 및 말줄임 처리 적용 */}
+                              <div style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{q.title}</div>
+                              <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 700 }}>💰 {q.reward}P</div>
+                            </div>
+                            <span style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', borderRadius: '8px', fontWeight: 800, marginLeft: '0.4rem', flexShrink: 0, background: status === 'completed' ? '#d3f9d8' : status === 'pending' ? '#e7f5ff' : status === 'rejected' ? '#ffe3e3' : accepted ? '#fff9db' : '#fff3bf', color: status === 'completed' ? '#2f9e44' : status === 'pending' ? '#1c7ed6' : status === 'rejected' ? '#fa5252' : '#e67700' }}>
+                              {status === 'completed' ? '✓' : status === 'pending' ? '⏳' : status === 'rejected' ? '✗' : accepted ? '수락' : 'NEW'}
+                            </span>
+                          </div>
+                        );
+                      })
+                      : <div style={{ textAlign: 'center', color: '#868e96', padding: '1rem' }}><div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚔️</div><div>진행 중인 퀘스트 없음</div></div>}
+                  </div>
+                </div>
+              )}
+
             </div>
           </WidgetCard>
 
@@ -265,7 +340,6 @@ function DashboardSimpleMode({
                     <InfoBadge>
                       <span style={{ fontSize: '0.9rem' }}>🐾</span>
                       {friendPartnerPet.name}
-                      {/* ▼ 펫 전적 */}
                       {((friendPartnerPet.battleWins || 0) + (friendPartnerPet.battleLosses || 0)) > 0 && (
                         <span style={{ marginLeft: '0.35rem', fontSize: '0.72rem', color: '#adb5bd', fontWeight: 700 }}>
                           🏆{friendPartnerPet.battleWins || 0} 💀{friendPartnerPet.battleLosses || 0}
@@ -273,7 +347,6 @@ function DashboardSimpleMode({
                       )}
                     </InfoBadge>
                   )}
-                  {/* ▼ 팀 + 순위 */}
                   <InfoBadge>
                     <span style={{ fontSize: '0.9rem' }}>🛡️</span>
                     {friendTeamInfo ? (
@@ -291,11 +364,7 @@ function DashboardSimpleMode({
                   {myTeam && (
                     <InfoBadge style={{ marginTop: '0.3rem', background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                       <img
-                        src={
-                          myTeam.emblemId && emblemMap[myTeam.emblemId]
-                            ? emblemMap[myTeam.emblemId]
-                            : myTeam.emblemUrl || defaultEmblem
-                        }
+                        src={myTeam.emblemId && emblemMap[myTeam.emblemId] ? emblemMap[myTeam.emblemId] : myTeam.emblemUrl || defaultEmblem}
                         alt="팀 엠블렘"
                         style={{ width: '18px', height: '18px', objectFit: 'contain', flexShrink: 0, display: 'block' }}
                         onError={e => { e.target.src = defaultEmblem; }}

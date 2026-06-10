@@ -865,8 +865,8 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
             return (
                 <>
                     <MissionManager onNavigate={onNavigateToHistory} />
-                    <GoalManager />
                     <QuestManager />
+                    <GoalManager />
                 </>
             );
         case 'history':

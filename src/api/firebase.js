@@ -4959,11 +4959,13 @@ export async function acceptQuest(classId, questId, player) {
   if (!classId || !questId) return;
   const questRef = doc(db, 'classes', classId, 'quests', questId);
   let result = 'accepted';
+  let questTitle = '';
 
   await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(questRef);
     if (!snap.exists()) throw new Error('퀘스트를 찾을 수 없습니다.');
     const data = snap.data();
+    questTitle = data.title || '';
 
     const acceptors = data.acceptors || [];
     if (acceptors.some(a => a.playerId === player.id)) { result = 'already'; return; }
@@ -4973,6 +4975,23 @@ export async function acceptQuest(classId, questId, player) {
       acceptors: arrayUnion({ playerId: player.id, playerName: player.name, acceptedAt: new Date().toISOString(), completionStatus: 'accepted' })
     });
   });
+
+  // 수락 성공 시 학생에게 알림, 관리자에게도 알림
+  if (result === 'accepted' && questTitle) {
+    // 학생 본인에게 알림
+    if (player.authUid) {
+      createNotification(player.authUid, `⚔️ 퀘스트 수락됨`, `'${questTitle}' 퀘스트를 수락했습니다. 완료 후 선생님께 확인 요청하세요!`, 'quest', '/missions');
+    }
+    // 관리자(admin role)에게 알림
+    try {
+      const adminsSnap = await getDocs(query(collection(db, 'classes', classId, 'players'), where('role', '==', 'admin')));
+      adminsSnap.forEach(d => {
+        const a = d.data();
+        if (a.authUid) createNotification(a.authUid, `⚔️ 퀘스트 수락`, `${player.name} 학생이 '${questTitle}' 퀘스트를 수락했습니다.`, 'quest', null);
+      });
+    } catch (e) { /* 알림 실패는 무시 */ }
+  }
+
   return result;
 }
 
@@ -4993,6 +5012,27 @@ export async function completeQuestForPlayer(classId, questId, playerId, playerN
 
   // 포인트 지급
   await adjustPlayerPoints(classId, playerId, reward, `퀘스트 완료: ${data.title}`);
+
+  // 펫 경험치 100 지급 + 학생/관리자 알림
+  try {
+    const playerRef = doc(db, 'classes', classId, 'players', playerId);
+    const playerSnap = await getDoc(playerRef);
+    if (playerSnap.exists()) {
+      const pData = playerSnap.data();
+      if (pData.pets && pData.pets.length > 0) {
+        await updatePetExperience(playerRef, 100);
+      }
+      if (pData.authUid) {
+        createNotification(
+          pData.authUid,
+          `✅ 퀘스트 승인됨!`,
+          `'${data.title}' 퀘스트가 승인됐습니다! ${reward}P와 펫 경험치 100을 획득했어요.`,
+          'quest',
+          '/missions'
+        );
+      }
+    }
+  } catch (e) { /* 알림/경험치 실패는 무시 */ }
 }
 
 /**
@@ -5024,6 +5064,24 @@ export async function rejectQuestCompletion(classId, questId, playerId, reason) 
       : a
   );
   await updateDoc(questRef, { acceptors: newAcceptors });
+
+  // 학생에게 반려 알림
+  try {
+    const playerRef = doc(db, 'classes', classId, 'players', playerId);
+    const playerSnap = await getDoc(playerRef);
+    if (playerSnap.exists()) {
+      const pData = playerSnap.data();
+      if (pData.authUid) {
+        createNotification(
+          pData.authUid,
+          `❌ 퀘스트 반려됨`,
+          `'${data.title}' 퀘스트 완료 요청이 반려됐습니다.${reason ? ' 사유: ' + reason : ''} 다시 도전해보세요!`,
+          'quest',
+          '/missions'
+        );
+      }
+    }
+  } catch (e) { /* 알림 실패 무시 */ }
 }
 
 export async function requestQuestCompletion(classId, questId, playerId) {
@@ -5032,10 +5090,26 @@ export async function requestQuestCompletion(classId, questId, playerId) {
   const snap = await getDoc(questRef);
   if (!snap.exists()) return;
   const data = snap.data();
+  const playerName = (data.acceptors || []).find(a => a.playerId === playerId)?.playerName || '';
   const newAcceptors = data.acceptors.map(a =>
     a.playerId === playerId ? { ...a, completionStatus: 'pending' } : a
   );
   await updateDoc(questRef, { acceptors: newAcceptors });
+
+  // 관리자에게 완료 요청 알림
+  try {
+    const adminsSnap = await getDocs(query(collection(db, 'classes', classId, 'players'), where('role', '==', 'admin')));
+    adminsSnap.forEach(d => {
+      const a = d.data();
+      if (a.authUid) createNotification(
+        a.authUid,
+        `⚔️ 퀘스트 완료 요청`,
+        `${playerName} 학생이 '${data.title}' 퀘스트 완료를 요청했습니다. 확인해주세요!`,
+        'quest',
+        null
+      );
+    });
+  } catch (e) { /* 알림 실패 무시 */ }
 }
 /**
  * 특정 댓글의 기존 신고 상태 조회
