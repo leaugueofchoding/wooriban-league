@@ -249,7 +249,7 @@ function GoalManager() {
                     <List>
                         {activeGoals.length > 0 ? (
                             activeGoals.map(goal => (
-                                <ListItem key={goal.id} style={{ gridTemplateColumns: '1fr auto' }}>
+                                <ListItem key={goal.id} style={{ gridTemplateColumns: '1fr auto', borderLeft: '4px solid #fcc419' }}>
                                     <div>
                                         <span>{goal.title}</span>
                                         {goal.status === 'paused' && <span style={{ marginLeft: '1rem', color: '#ffc107', fontWeight: 'bold' }}>[일시중단됨]</span>}
@@ -418,13 +418,79 @@ function QuestApprovalWidget() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 퀘스트 관리 위젯 (출제 탭 하단 — 출제된 퀘스트 목록/수정/삭제)
+// 퀘스트 관리 위젯 (출제 탭 하단 — 출제된 퀘스트 목록/수정/삭제/숨김/순서)
 // ─────────────────────────────────────────────────────────────────────────────
+function SortableQuestItem({ quest, isEditing, editForm, setEditForm, onSave, onCancel, onEdit, onHide, onDelete, takenCount }) {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: quest.id });
+    const style = { transform: CSS.Transform.toString(transform), transition };
+    const maxSlots = quest.maxAcceptors || 1;
+    const fieldStyle = { padding: '0.4rem 0.6rem', border: '1px solid #ffe066', borderRadius: '6px', fontSize: '0.88rem', background: '#fffbf0' };
+    const acceptors = quest.acceptors || [];
+
+    return (
+        <ListItem ref={setNodeRef} style={style} {...attributes}>
+            <DragHandle {...listeners}>⋮⋮</DragHandle>
+            {isEditing ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))} placeholder="퀘스트 이름" style={{ ...fieldStyle, flex: 1, minWidth: '160px' }} />
+                        <input type="number" value={editForm.reward} onChange={e => setEditForm(p => ({ ...p, reward: e.target.value }))} placeholder="보상 P" style={{ ...fieldStyle, width: '80px' }} />
+                    </div>
+                    <textarea value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))} placeholder="퀘스트 설명" style={{ ...fieldStyle, minHeight: '56px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00' }}>
+                            수락 인원:
+                            <input type="number" min={takenCount || 1} max={10} value={editForm.maxAcceptors} onChange={e => setEditForm(p => ({ ...p, maxAcceptors: e.target.value }))} style={{ ...fieldStyle, width: '56px' }} />
+                            명
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00', flex: 1 }}>
+                            기한:
+                            <input value={editForm.deadline} onChange={e => setEditForm(p => ({ ...p, deadline: e.target.value }))} placeholder="예: 오늘 하교 전" style={{ ...fieldStyle, flex: 1 }} />
+                        </label>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                        <SaveButton onClick={onSave} style={{ fontSize: '0.85rem', padding: '5px 14px' }}>저장</SaveButton>
+                        <StyledButton onClick={onCancel} style={{ background: '#6c757d', fontSize: '0.85rem', padding: '5px 14px' }}>취소</StyledButton>
+                    </div>
+                </div>
+            ) : (
+                <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1 }}>
+                            <span style={{ fontWeight: 700 }}>⚔ {quest.title}</span>
+                            <span style={{ marginLeft: '8px', fontSize: '0.78rem', background: '#fff3bf', color: '#e67700', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>💰 {quest.reward}P</span>
+                            <span style={{ marginLeft: '6px', fontSize: '0.78rem', background: '#e7f5ff', color: '#1c7ed6', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>{takenCount}/{maxSlots}명 수락</span>
+                            {quest.deadline && <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.78rem' }}>🕐 {quest.deadline}</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                            <StyledButton onClick={onEdit} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#f59f00' }}>수정</StyledButton>
+                            <StyledButton onClick={onHide} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#6c757d' }}>숨김</StyledButton>
+                            <StyledButton onClick={onDelete} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#fa5252' }}>삭제</StyledButton>
+                        </div>
+                    </div>
+                    {quest.description && <p style={{ margin: '6px 0 0', fontSize: '0.83rem', color: '#868e96', background: '#f8f9fa', padding: '6px 8px', borderRadius: '6px' }}>{quest.description}</p>}
+                    {takenCount > 0 && (
+                        <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {acceptors.map(a => (
+                                <span key={a.playerId} style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: a.completionStatus === 'completed' ? '#d3f9d8' : a.completionStatus === 'pending' ? '#e7f5ff' : a.completionStatus === 'rejected' ? '#ffe3e3' : '#fff9db', color: a.completionStatus === 'completed' ? '#2f9e44' : a.completionStatus === 'pending' ? '#1c7ed6' : a.completionStatus === 'rejected' ? '#fa5252' : '#e67700', border: `1px solid ${a.completionStatus === 'completed' ? '#b2f2bb' : a.completionStatus === 'pending' ? '#a5d8ff' : a.completionStatus === 'rejected' ? '#ffc9c9' : '#ffe066'}` }}>
+                                    {a.playerName} · {a.completionStatus === 'completed' ? '완료' : a.completionStatus === 'pending' ? '승인대기' : a.completionStatus === 'rejected' ? '반려됨' : '수락중'}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </ListItem>
+    );
+}
+
 function QuestManager() {
     const { classId } = useClassStore();
     const [quests, setQuests] = useState([]);
-    const [editingId, setEditingId] = useState(null); // 수정 중인 퀘스트 id
+    const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
+    const [showHidden, setShowHidden] = useState(false);
+    const sensors = useSensors(useSensor(PointerSensor));
 
     useEffect(() => {
         if (!classId) return;
@@ -456,7 +522,17 @@ function QuestManager() {
         } catch (e) { alert(`수정 실패: ${e.message}`); }
     };
 
-    // (3) 삭제 시 completed가 아닌 수락자는 퀘스트 실패 처리 (그냥 문서 삭제 — QuestSection의 listenQuests가 open 상태만 구독하므로 학생 화면에서 사라짐)
+    const handleHide = async (quest) => {
+        if (!window.confirm(`"${quest.title}" 퀘스트를 숨기시겠습니까? 학생 목록에서 사라집니다.`)) return;
+        try { await updateQuest(classId, quest.id, { status: 'hidden' }); }
+        catch (e) { alert(`숨김 처리 실패: ${e.message}`); }
+    };
+
+    const handleUnhide = async (quest) => {
+        try { await updateQuest(classId, quest.id, { status: 'open' }); }
+        catch (e) { alert(`복구 실패: ${e.message}`); }
+    };
+
     const handleDelete = async (quest) => {
         const acceptors = quest.acceptors || [];
         const activeCount = acceptors.filter(a => a.completionStatus !== 'completed').length;
@@ -464,17 +540,31 @@ function QuestManager() {
             ? `"${quest.title}" 퀘스트를 삭제하면 완료되지 않은 수락자 ${activeCount}명의 퀘스트가 실패 처리됩니다.\n\n정말 삭제할까요?`
             : `"${quest.title}" 퀘스트를 삭제할까요?`;
         if (!window.confirm(confirmMsg)) return;
-        try {
-            await deleteQuest(classId, quest.id);
-        } catch (e) { alert(`삭제 실패: ${e.message}`); }
+        try { await deleteQuest(classId, quest.id); }
+        catch (e) { alert(`삭제 실패: ${e.message}`); }
     };
 
-    const openQuests = quests.filter(q => q.status === 'open');
-    const closedQuests = quests.filter(q => q.status !== 'open');
+    const handleDragEnd = async (event) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        const openQuests = quests.filter(q => q.status === 'open' || q.status === undefined);
+        const oldIndex = openQuests.findIndex(q => q.id === active.id);
+        const newIndex = openQuests.findIndex(q => q.id === over.id);
+        if (oldIndex < 0 || newIndex < 0) return;
+        const reordered = arrayMove(openQuests, oldIndex, newIndex);
+        // 순서 저장: order 필드 업데이트
+        try {
+            await Promise.all(reordered.map((q, idx) => updateQuest(classId, q.id, { order: idx })));
+        } catch (e) { console.error('퀘스트 순서 저장 실패:', e); }
+    };
+
+    const openQuests = quests
+        .filter(q => q.status === 'open' || q.status === undefined || q.status === null)
+        .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+    const hiddenQuests = quests.filter(q => q.status === 'hidden');
+    const closedQuests = quests.filter(q => q.status === 'closed');
 
     if (quests.length === 0) return null;
-
-    const fieldStyle = { padding: '0.4rem 0.6rem', border: '1px solid #ffe066', borderRadius: '6px', fontSize: '0.88rem', background: '#fffbf0' };
 
     return (
         <Section style={{ marginTop: '2rem', borderTop: '2px dashed #ffe066', paddingTop: '1.5rem' }}>
@@ -482,129 +572,51 @@ function QuestManager() {
 
             {openQuests.length === 0 && <p style={{ color: '#adb5bd', fontSize: '0.9rem' }}>진행 중인 퀘스트가 없습니다.</p>}
 
-            <List>
-                {openQuests.map(quest => {
-                    const isEditing = editingId === quest.id;
-                    const acceptors = quest.acceptors || [];
-                    const takenCount = acceptors.length;
-                    const maxSlots = quest.maxAcceptors || 1;
-
-                    return (
-                        <ListItem key={quest.id}>
-                            {isEditing ? (
-                                /* ── 수정 폼 인라인 ── */
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                        <input
-                                            value={editForm.title}
-                                            onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
-                                            placeholder="퀘스트 이름"
-                                            style={{ ...fieldStyle, flex: 1, minWidth: '160px' }}
-                                        />
-                                        <input
-                                            type="number"
-                                            value={editForm.reward}
-                                            onChange={e => setEditForm(p => ({ ...p, reward: e.target.value }))}
-                                            placeholder="보상 P"
-                                            style={{ ...fieldStyle, width: '80px' }}
-                                        />
-                                    </div>
-                                    <textarea
-                                        value={editForm.description}
-                                        onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
-                                        placeholder="퀘스트 설명"
-                                        style={{ ...fieldStyle, minHeight: '56px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
-                                    />
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00' }}>
-                                            수락 인원:
-                                            <input
-                                                type="number" min={takenCount || 1} max={10}
-                                                value={editForm.maxAcceptors}
-                                                onChange={e => setEditForm(p => ({ ...p, maxAcceptors: e.target.value }))}
-                                                style={{ ...fieldStyle, width: '56px' }}
-                                            />
-                                            명
-                                        </label>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00', flex: 1 }}>
-                                            기한:
-                                            <input
-                                                value={editForm.deadline}
-                                                onChange={e => setEditForm(p => ({ ...p, deadline: e.target.value }))}
-                                                placeholder="예: 오늘 하교 전"
-                                                style={{ ...fieldStyle, flex: 1 }}
-                                            />
-                                        </label>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                        <SaveButton onClick={() => handleUpdate(quest.id)} style={{ fontSize: '0.85rem', padding: '5px 14px' }}>저장</SaveButton>
-                                        <StyledButton onClick={() => setEditingId(null)} style={{ background: '#6c757d', fontSize: '0.85rem', padding: '5px 14px' }}>취소</StyledButton>
-                                    </div>
-                                </div>
-                            ) : (
-                                /* ── 일반 표시 ── */
-                                <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
-                                        <div style={{ flex: 1 }}>
-                                            <span style={{ fontWeight: 700 }}>⚔ {quest.title}</span>
-                                            <span style={{ marginLeft: '8px', fontSize: '0.78rem', background: '#fff3bf', color: '#e67700', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>💰 {quest.reward}P</span>
-                                            <span style={{ marginLeft: '6px', fontSize: '0.78rem', background: '#e7f5ff', color: '#1c7ed6', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>{takenCount}/{maxSlots}명 수락</span>
-                                            {quest.deadline && <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.78rem' }}>🕐 {quest.deadline}</span>}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                                            <StyledButton onClick={() => openEdit(quest)} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#f59f00' }}>
-                                                수정
-                                            </StyledButton>
-                                            <StyledButton onClick={() => handleDelete(quest)} style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#fa5252' }}>
-                                                삭제
-                                            </StyledButton>
-                                        </div>
-                                    </div>
-                                    {quest.description && (
-                                        <p style={{ margin: '6px 0 0', fontSize: '0.83rem', color: '#868e96', background: '#f8f9fa', padding: '6px 8px', borderRadius: '6px' }}>
-                                            {quest.description}
-                                        </p>
-                                    )}
-                                    {takenCount > 0 && (
-                                        <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                            {acceptors.map(a => (
-                                                <span key={a.playerId} style={{
-                                                    fontSize: '0.75rem', fontWeight: 600,
-                                                    padding: '2px 8px', borderRadius: '20px',
-                                                    background: a.completionStatus === 'completed' ? '#d3f9d8' : a.completionStatus === 'pending' ? '#e7f5ff' : a.completionStatus === 'rejected' ? '#ffe3e3' : '#fff9db',
-                                                    color: a.completionStatus === 'completed' ? '#2f9e44' : a.completionStatus === 'pending' ? '#1c7ed6' : a.completionStatus === 'rejected' ? '#fa5252' : '#e67700',
-                                                    border: `1px solid ${a.completionStatus === 'completed' ? '#b2f2bb' : a.completionStatus === 'pending' ? '#a5d8ff' : a.completionStatus === 'rejected' ? '#ffc9c9' : '#ffe066'}`,
-                                                }}>
-                                                    {a.playerName} · {a.completionStatus === 'completed' ? '완료' : a.completionStatus === 'pending' ? '승인대기' : a.completionStatus === 'rejected' ? '반려됨' : '수락중'}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </ListItem>
-                    );
-                })}
-            </List>
-
-            {closedQuests.length > 0 && (
-                <>
-                    <p style={{ fontWeight: 700, marginTop: '1.2rem', marginBottom: '0.6rem', color: '#adb5bd', fontSize: '0.88rem' }}>
-                        마감됨 ({closedQuests.length})
-                    </p>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={openQuests.map(q => q.id)} strategy={verticalListSortingStrategy}>
                     <List>
-                        {closedQuests.map(quest => (
-                            <ListItem key={quest.id} style={{ opacity: 0.55 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '0.88rem' }}>
-                                        ⚔ {quest.title}
-                                        <span style={{ marginLeft: '8px', fontSize: '0.75rem', background: '#f1f3f5', color: '#adb5bd', padding: '2px 6px', borderRadius: '4px' }}>마감</span>
-                                    </span>
-                                    <StyledButton onClick={() => handleDelete(quest)} style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#adb5bd' }}>삭제</StyledButton>
-                                </div>
-                            </ListItem>
+                        {openQuests.map(quest => (
+                            <SortableQuestItem
+                                key={quest.id} quest={quest}
+                                isEditing={editingId === quest.id}
+                                editForm={editForm} setEditForm={setEditForm}
+                                onSave={() => handleUpdate(quest.id)}
+                                onCancel={() => setEditingId(null)}
+                                onEdit={() => openEdit(quest)}
+                                onHide={() => handleHide(quest)}
+                                onDelete={() => handleDelete(quest)}
+                                takenCount={(quest.acceptors || []).length}
+                            />
                         ))}
                     </List>
+                </SortableContext>
+            </DndContext>
+
+            {(hiddenQuests.length > 0 || closedQuests.length > 0) && (
+                <>
+                    <ToggleButton onClick={() => setShowHidden(p => !p)} style={{ marginTop: '0.8rem' }}>
+                        {showHidden ? '숨긴 퀘스트 접기' : `숨긴/마감 퀘스트 보기 (${hiddenQuests.length + closedQuests.length}개)`}
+                    </ToggleButton>
+                    {showHidden && (
+                        <List style={{ marginTop: '0.8rem' }}>
+                            {[...hiddenQuests, ...closedQuests].map(quest => (
+                                <ListItem key={quest.id} style={{ opacity: 0.6, gridTemplateColumns: '1fr auto' }}>
+                                    <div>
+                                        <span style={{ fontSize: '0.88rem' }}>⚔ {quest.title}</span>
+                                        <span style={{ marginLeft: '8px', fontSize: '0.75rem', background: '#f1f3f5', color: '#adb5bd', padding: '2px 6px', borderRadius: '4px' }}>
+                                            {quest.status === 'hidden' ? '숨김' : '마감'}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        {quest.status === 'hidden' && (
+                                            <StyledButton onClick={() => handleUnhide(quest)} style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#20c997' }}>복구</StyledButton>
+                                        )}
+                                        <StyledButton onClick={() => handleDelete(quest)} style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#adb5bd' }}>삭제</StyledButton>
+                                    </div>
+                                </ListItem>
+                            ))}
+                        </List>
+                    )}
                 </>
             )}
         </Section>

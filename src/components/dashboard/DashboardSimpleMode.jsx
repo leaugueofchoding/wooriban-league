@@ -46,7 +46,7 @@ const Badge = styled.div` background: ${props => props.$bg || 'white'}; color: $
 const QuickMenuGrid = styled.div` flex: 2; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.8rem; `;
 const QuickBtn = styled(Link)` background: rgba(255, 255, 255, 0.9); border-radius: 20px; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; padding-left: 1.2rem; text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; border: 2px solid transparent; &:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); background: white; border-color: ${props => props.$themeColor}; } .icon-emoji { font-size: 1.5rem; margin-right: 0.5rem; z-index: 2; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1)); } .label { font-size: 1rem; font-weight: 800; color: #495057; z-index: 2; } .icon-bg { position: absolute; right: -5px; bottom: -10px; font-size: 3.5rem; opacity: 0.15; transform: rotate(-15deg); transition: all 0.3s ease; } &:hover .icon-bg { transform: rotate(0deg) scale(1.1); opacity: 0.25; } `;
 const MainGrid = styled.div` display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; @media (max-width: 768px) { grid-template-columns: 1fr; } `;
-const WidgetCard = styled(CommonCardStyle)` display: flex; flex-direction: column; height: 100%; min-height: 180px; border: 2px solid transparent; &:hover { border-color: ${props => props.$color || 'transparent'}; } `;
+const WidgetCard = styled(CommonCardStyle)` display: flex; flex-direction: column; height: 100%; min-height: 140px; border: 2px solid transparent; &:hover { border-color: ${props => props.$color || 'transparent'}; } `;
 const WidgetHeader = styled.div` display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; z-index: 2; h3 { margin: 0; font-size: 1.3rem; font-weight: 800; color: #343a40; display: flex; align-items: center; gap: 0.5rem; } h3::before { content: '${props => props.$icon || ''}'; font-size: 1.4rem; } `;
 const FriendSection = styled(WidgetCard)` background: linear-gradient(135deg, rgba(212, 252, 121, 0.85) 0%, rgba(150, 230, 161, 0.85) 100%); border: 2px solid white; &:hover { border-color: #51cf66; } `;
 
@@ -118,10 +118,9 @@ function MissionItem({ mission, mySubmissions, canSubmitMission, compact }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: compact ? '0.5rem 0.6rem' : '0.8rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.4rem', border: '1px solid #e9ecef' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* 글씨 크기 고정 (0.95rem) 및 말줄임 처리 적용 */}
-        <div style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{mission.title}</div>
-        {!compact && <div style={{ fontSize: '0.85rem', color: '#868e96', fontWeight: 700, marginTop: '0.2rem' }}>💰 {mission.reward} P</div>}
-        {compact && <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 700 }}>💰 {mission.reward}P</div>}
+        <div style={{ fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{mission.title}</div>
+        {!compact && <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 700, marginTop: '0.2rem' }}>💰 {mission.reward} P</div>}
+        {compact && <div style={{ fontSize: '0.75rem', color: '#868e96', fontWeight: 700 }}>💰 {mission.reward}P</div>}
       </div>
       {canSubmitMission && (
         <button onClick={(e) => { e.preventDefault(); navigate('/missions'); }} disabled={isCompletedToday || submissionStatus === 'pending'} style={{ padding: compact ? '0.3rem 0.5rem' : '0.4rem 0.8rem', fontSize: compact ? '0.75rem' : '0.85rem', border: 'none', borderRadius: '8px', background: btnBg, color: btnColor, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s', marginLeft: '0.4rem', flexShrink: 0 }}>
@@ -273,9 +272,8 @@ function DashboardSimpleMode({
                         return (
                           <div key={q.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.6rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.4rem', border: '1px solid #e9ecef' }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              {/* 글씨 크기 고정 (0.95rem) 및 말줄임 처리 적용 */}
-                              <div style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{q.title}</div>
-                              <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 700 }}>💰 {q.reward}P</div>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{q.title}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#868e96', fontWeight: 700 }}>💰 {q.reward}P</div>
                             </div>
                             <span style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', borderRadius: '8px', fontWeight: 800, marginLeft: '0.4rem', flexShrink: 0, background: status === 'completed' ? '#d3f9d8' : status === 'pending' ? '#e7f5ff' : status === 'rejected' ? '#ffe3e3' : accepted ? '#fff9db' : '#fff3bf', color: status === 'completed' ? '#2f9e44' : status === 'pending' ? '#1c7ed6' : status === 'rejected' ? '#fa5252' : '#e67700' }}>
                               {status === 'completed' ? '✓' : status === 'pending' ? '⏳' : status === 'rejected' ? '✗' : accepted ? '수락' : 'NEW'}

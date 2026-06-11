@@ -5084,7 +5084,7 @@ export async function rejectQuestCompletion(classId, questId, playerId, reason) 
   } catch (e) { /* 알림 실패 무시 */ }
 }
 
-export async function requestQuestCompletion(classId, questId, playerId) {
+export async function requestQuestCompletion(classId, questId, playerId, submissionData) {
   if (!classId) return;
   const questRef = doc(db, 'classes', classId, 'quests', questId);
   const snap = await getDoc(questRef);
@@ -5092,7 +5092,12 @@ export async function requestQuestCompletion(classId, questId, playerId) {
   const data = snap.data();
   const playerName = (data.acceptors || []).find(a => a.playerId === playerId)?.playerName || '';
   const newAcceptors = data.acceptors.map(a =>
-    a.playerId === playerId ? { ...a, completionStatus: 'pending' } : a
+    a.playerId === playerId ? {
+      ...a,
+      completionStatus: 'pending',
+      submissionText: submissionData?.text || null,
+      submissionPhotoCount: submissionData?.photos?.length || 0,
+    } : a
   );
   await updateDoc(questRef, { acceptors: newAcceptors });
 

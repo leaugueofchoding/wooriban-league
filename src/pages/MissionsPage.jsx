@@ -858,12 +858,7 @@ function MissionsPage() {
 
         {/* QuestSection은 항상 단 한 번만 렌더 — 언마운트 없이 CSS로만 배치 제어 */}
         <PageLayout $twoColumn={useTwoColumn}>
-          {/* 퀘스트 컬럼 */}
-          <QuestColumn $twoColumn={useTwoColumn}>
-            <QuestSection onQuestCountChange={setQuestCount} />
-          </QuestColumn>
-
-          {/* 미션 컬럼 */}
+          {/* 미션 컬럼 (왼쪽) */}
           <MissionColumn $twoColumn={useTwoColumn}>
             <MissionSectionHeader>
               <MissionSectionBadge>📋 Mission</MissionSectionBadge>
@@ -897,6 +892,11 @@ function MissionsPage() {
               )}
             </MissionList>
           </MissionColumn>
+
+          {/* 퀘스트 컬럼 (오른쪽) */}
+          <QuestColumn $twoColumn={useTwoColumn}>
+            <QuestSection onQuestCountChange={setQuestCount} />
+          </QuestColumn>
         </PageLayout>
 
         <ButtonGroup>
