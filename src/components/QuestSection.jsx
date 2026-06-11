@@ -444,7 +444,7 @@ export default function QuestSection({ onQuestCountChange }) {
             $active={showAllQuests}
             onClick={() => setShowAllQuests(prev => !prev)}
           >
-            {showAllQuests ? '할 일만 보기' : `모든 퀘스트 보기 (완료 ${myCompletedQuests.length + hiddenCount}개)`}
+            {showAllQuests ? '할 일만 보기' : `모든 퀘스트 보기`}
           </QuestToggleButton>
         )}
       </QuestFilterContainer>
