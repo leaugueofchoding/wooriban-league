@@ -84,29 +84,30 @@ const TopRow = styled.div`
   display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
 `;
 const TitleRow = styled.h3`
-  margin: 0 0 4px; font-size: 1.05rem; font-weight: 700; color: #343a40;
+  margin: 0 0 4px; font-size: 1.15rem; /* 1.05rem -> 1.15rem 폰트 약간 키움 */
+  font-weight: 800; color: #343a40;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 `;
 const Tag = styled.span`
-  font-size: 0.68rem; padding: 2px 7px; border-radius: 5px; font-weight: 700;
+  font-size: 0.72rem; padding: 3px 8px; border-radius: 5px; font-weight: 700;
   background: ${p => p.$bg || '#f1f3f5'};
   color: ${p => p.$color || '#495057'};
 `;
 const Reward = styled.div`
-  font-size: 1rem; font-weight: 800; color: #fcc419;
+  font-size: 1.1rem; font-weight: 800; color: #fcc419;
   white-space: nowrap; margin-top: 2px;
 `;
 const Desc = styled.p`
-  margin: 8px 0 10px; font-size: 0.88rem; color: #868e96;
+  margin: 8px 0 12px; font-size: 0.95rem; color: #868e96; /* 0.88rem -> 0.95rem */
   line-height: 1.55; background: #f8f9fa;
-  padding: 8px 10px; border-radius: 8px;
+  padding: 10px 12px; border-radius: 8px;
 `;
 const MetaRow = styled.div`
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 `;
 const MetaChip = styled.span`
-  font-size: 0.76rem; color: #adb5bd;
-  display: flex; align-items: center; gap: 3px;
+  font-size: 0.8rem; color: #adb5bd; /* 0.76rem -> 0.8rem */
+  display: flex; align-items: center; gap: 3px; font-weight: 600;
 `;
 const SlotPips = styled.div` display: flex; gap: 4px; align-items: center; `;
 const Pip = styled.span`
@@ -119,13 +120,13 @@ const Pip = styled.span`
 // 수락자 아바타 목록 (카드 하단 인라인)
 const AcceptorRow = styled.div`
   display: flex; align-items: center; gap: 6px;
-  margin-top: 8px; padding-top: 8px;
+  margin-top: 10px; padding-top: 10px;
   border-top: 1px solid #f1f3f5; flex-wrap: wrap;
 `;
 const AcceptorChip = styled.span`
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 0.75rem; font-weight: 600;
-  padding: 3px 8px; border-radius: 20px;
+  font-size: 0.8rem; font-weight: 700; /* 0.75rem -> 0.8rem */
+  padding: 4px 10px; border-radius: 20px;
   background: ${p =>
     p.$status === 'completed' ? '#d3f9d8' :
       p.$status === 'pending' ? '#e7f5ff' :
@@ -145,7 +146,7 @@ const AcceptorChip = styled.span`
 
 const ActionBtn = styled.button`
   margin-left: auto;
-  padding: 7px 16px; font-size: 0.82rem; font-weight: 700;
+  padding: 8px 18px; font-size: 0.85rem; font-weight: 800;
   border: none; border-radius: 10px; cursor: pointer;
   transition: filter 0.15s, transform 0.15s;
   background: ${p =>
@@ -444,7 +445,7 @@ export default function QuestSection({ onQuestCountChange }) {
             $active={showAllQuests}
             onClick={() => setShowAllQuests(prev => !prev)}
           >
-            {showAllQuests ? '할 일만 보기' : `모든 퀘스트 보기`}
+            {showAllQuests ? '할 일만 보기' : `모든 퀘스트 보기 (완료 ${myCompletedQuests.length + hiddenCount}개)`}
           </QuestToggleButton>
         )}
       </QuestFilterContainer>

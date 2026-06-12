@@ -116,14 +116,14 @@ function MissionItem({ mission, mySubmissions, canSubmitMission, compact }) {
   const btnColor = isCompletedToday ? '#0ca678' : (submissionStatus === 'pending' ? '#495057' : (submissionStatus === 'rejected' ? '#fa5252' : '#1c7ed6'));
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: compact ? '0.5rem 0.6rem' : '0.8rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.4rem', border: '1px solid #e9ecef' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: compact ? '0.7rem 0.8rem' : '0.8rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.6rem', border: '1px solid #e9ecef' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{mission.title}</div>
+        <div style={{ fontWeight: 800, fontSize: compact ? '0.95rem' : '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{mission.title}</div>
         {!compact && <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 700, marginTop: '0.2rem' }}>💰 {mission.reward} P</div>}
-        {compact && <div style={{ fontSize: '0.75rem', color: '#868e96', fontWeight: 700 }}>💰 {mission.reward}P</div>}
+        {compact && <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 800, marginTop: '2px' }}>💰 {mission.reward}P</div>}
       </div>
       {canSubmitMission && (
-        <button onClick={(e) => { e.preventDefault(); navigate('/missions'); }} disabled={isCompletedToday || submissionStatus === 'pending'} style={{ padding: compact ? '0.3rem 0.5rem' : '0.4rem 0.8rem', fontSize: compact ? '0.75rem' : '0.85rem', border: 'none', borderRadius: '8px', background: btnBg, color: btnColor, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s', marginLeft: '0.4rem', flexShrink: 0 }}>
+        <button onClick={(e) => { e.preventDefault(); navigate('/missions'); }} disabled={isCompletedToday || submissionStatus === 'pending'} style={{ padding: compact ? '0.4rem 0.8rem' : '0.4rem 0.8rem', fontSize: compact ? '0.85rem' : '0.85rem', border: 'none', borderRadius: '8px', background: btnBg, color: btnColor, fontWeight: 900, cursor: 'pointer', transition: 'all 0.2s', marginLeft: '0.4rem', flexShrink: 0 }}>
           {btnLabel}
         </button>
       )}
@@ -270,12 +270,12 @@ function DashboardSimpleMode({
                         const status = q.myAcceptor?.completionStatus;
                         const accepted = !!q.myAcceptor;
                         return (
-                          <div key={q.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.6rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.4rem', border: '1px solid #e9ecef' }}>
+                          <div key={q.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.7rem 0.8rem', background: 'rgba(248, 249, 250, 0.7)', borderRadius: '12px', marginBottom: '0.6rem', border: '1px solid #e9ecef' }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{q.title}</div>
-                              <div style={{ fontSize: '0.75rem', color: '#868e96', fontWeight: 700 }}>💰 {q.reward}P</div>
+                              <div style={{ fontWeight: 800, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#343a40' }}>{q.title}</div>
+                              <div style={{ fontSize: '0.8rem', color: '#868e96', fontWeight: 800, marginTop: '2px' }}>💰 {q.reward}P</div>
                             </div>
-                            <span style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', borderRadius: '8px', fontWeight: 800, marginLeft: '0.4rem', flexShrink: 0, background: status === 'completed' ? '#d3f9d8' : status === 'pending' ? '#e7f5ff' : status === 'rejected' ? '#ffe3e3' : accepted ? '#fff9db' : '#fff3bf', color: status === 'completed' ? '#2f9e44' : status === 'pending' ? '#1c7ed6' : status === 'rejected' ? '#fa5252' : '#e67700' }}>
+                            <span style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderRadius: '8px', fontWeight: 900, marginLeft: '0.4rem', flexShrink: 0, background: status === 'completed' ? '#d3f9d8' : status === 'pending' ? '#e7f5ff' : status === 'rejected' ? '#ffe3e3' : accepted ? '#fff9db' : '#fff3bf', color: status === 'completed' ? '#2f9e44' : status === 'pending' ? '#1c7ed6' : status === 'rejected' ? '#fa5252' : '#e67700' }}>
                               {status === 'completed' ? '✓' : status === 'pending' ? '⏳' : status === 'rejected' ? '✗' : accepted ? '수락' : 'NEW'}
                             </span>
                           </div>

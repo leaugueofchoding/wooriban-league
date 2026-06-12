@@ -14,7 +14,7 @@ import { collection, query, where, orderBy, onSnapshot } from "firebase/firestor
 import RecorderPage from '../../RecorderPage';
 import ApprovalModal from '../../../components/ApprovalModal';
 import {
-    FullWidthSection, Section, SectionTitle, InputGroup,
+    Section, SectionTitle, InputGroup,
     StyledButton, List, ListItem, PendingListItem, SaveButton,
     DragHandle, MissionControls, ToggleButton,
     ScoreInput, TextArea
@@ -25,15 +25,14 @@ function PendingMissionWidget({ setModalImageSrc }) {
     const { players, missions } = useLeagueStore();
     const [pendingSubmissions, setPendingSubmissions] = useState([]);
     const [processingIds, setProcessingIds] = useState(new Set());
-    const [selectedSubmissionId, setSelectedSubmissionId] = useState(null); // id 기반으로 변경
-    const [frozenSubmission, setFrozenSubmission] = useState(null); // 승인/반려 후 모달 고정용
+    const [selectedSubmissionId, setSelectedSubmissionId] = useState(null);
+    const [frozenSubmission, setFrozenSubmission] = useState(null);
     const currentUser = auth.currentUser;
 
     useEffect(() => {
         if (!classId) return;
 
         const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
-        // [수정 이슈 5] 오래된 미션부터 위에 쌓이도록 asc 정렬 (기존 desc → asc)
         const q = query(submissionsRef, where("status", "==", "pending"), orderBy("requestedAt", "asc"));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -49,21 +48,18 @@ function PendingMissionWidget({ setModalImageSrc }) {
 
     const handleModalOpen = (id) => {
         setSelectedSubmissionId(id);
-        setFrozenSubmission(null); // 새로 열 때는 고정 해제
+        setFrozenSubmission(null);
     };
     const handleModalClose = () => {
         setSelectedSubmissionId(null);
         setFrozenSubmission(null);
     };
 
-    // 현재 모달에 표시 중인 submission (고정됐으면 frozen, 아니면 live 목록에서 찾기)
     const activeSubmission = frozenSubmission || pendingSubmissions.find(s => s.id === selectedSubmissionId) || null;
     const currentIndex = activeSubmission ? pendingSubmissions.findIndex(s => s.id === activeSubmission.id) : -1;
 
     const handleNext = () => {
         if (pendingSubmissions.length === 0) return;
-        // frozen 상태라면 현재 submission은 이미 처리됨 → 목록의 첫 번째로 이동
-        // 아직 pending 상태라면 현재 다음 항목으로 이동
         if (frozenSubmission) {
             const nextSub = pendingSubmissions[0];
             if (nextSub) {
@@ -91,12 +87,10 @@ function PendingMissionWidget({ setModalImageSrc }) {
     };
 
     const handleActionInModal = (actedSubmissionId, actionStatus) => {
-        // 승인/반려 후 현재 submission을 frozen 상태로 고정 (자동 이동 없음)
         const sub = pendingSubmissions.find(s => s.id === actedSubmissionId);
         if (sub) {
-            setFrozenSubmission({ ...sub, status: actionStatus }); // status를 처리된 값으로 변경
+            setFrozenSubmission({ ...sub, status: actionStatus });
         }
-        // pendingSubmissions는 Firestore onSnapshot이 자동 업데이트하므로 로컬 필터 제거
     };
 
     const handleAction = async (action, submission, reward) => {
@@ -235,42 +229,42 @@ function GoalManager() {
     };
 
     return (
-        <FullWidthSection>
-            <Section>
-                <SectionTitle>학급 목표 관리 🎯</SectionTitle>
-                <InputGroup>
-                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="목표 이름 (예: 2단계-영화 보는 날)" style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }} />
-                    <ScoreInput type="number" value={targetPoints} onChange={(e) => setTargetPoints(e.target.value)} style={{ width: '120px' }} />
-                    <SaveButton onClick={handleCreateGoal}>새 목표 설정</SaveButton>
-                </InputGroup>
-
-                <div style={{ marginTop: '2rem' }}>
-                    <h4>진행 중인 목표 목록</h4>
-                    <List>
-                        {activeGoals.length > 0 ? (
-                            activeGoals.map(goal => (
-                                <ListItem key={goal.id} style={{ gridTemplateColumns: '1fr auto', borderLeft: '4px solid #fcc419' }}>
-                                    <div>
-                                        <span>{goal.title}</span>
-                                        {goal.status === 'paused' && <span style={{ marginLeft: '1rem', color: '#ffc107', fontWeight: 'bold' }}>[일시중단됨]</span>}
-                                        <span style={{ marginLeft: '1rem', color: '#6c757d' }}>({goal.currentPoints.toLocaleString()} / {goal.targetPoints.toLocaleString()} P)</span>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <SaveButton onClick={() => handleGoalStatusToggle(goal)} style={{ backgroundColor: goal.status === 'paused' ? '#17a2b8' : '#ffc107', color: goal.status === 'paused' ? 'white' : 'black' }}>
-                                            {goal.status === 'paused' ? '다시시작' : '일시중단'}
-                                        </SaveButton>
-                                        <SaveButton onClick={() => handleGoalComplete(goal.id)} style={{ backgroundColor: '#28a745' }} disabled={goal.currentPoints < goal.targetPoints} title={goal.currentPoints < goal.targetPoints ? "아직 달성되지 않은 목표입니다." : ""}>
-                                            완료 처리
-                                        </SaveButton>
-                                        <SaveButton onClick={() => handleGoalDelete(goal.id)} style={{ backgroundColor: '#dc3545' }}>삭제</SaveButton>
-                                    </div>
-                                </ListItem>
-                            ))
-                        ) : <p>현재 진행 중인 학급 목표가 없습니다.</p>}
-                    </List>
+        <div style={{ padding: '0.5rem' }}>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '12px', padding: '1.5rem', marginBottom: '2.5rem' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '1.2rem', fontSize: '1.1rem', color: '#495057' }}>🎯 새 학급 목표 설정</h3>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="목표 이름 (예: 2단계-영화 보는 날)" style={{ flex: 1, minWidth: '200px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} />
+                    <ScoreInput type="number" value={targetPoints} onChange={(e) => setTargetPoints(e.target.value)} style={{ width: '130px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="목표 점수" />
+                    <SaveButton onClick={handleCreateGoal} style={{ padding: '0.7rem 1.5rem', borderRadius: '8px', fontSize: '0.95rem', whiteSpace: 'nowrap' }}>새 목표 설정</SaveButton>
                 </div>
-            </Section>
-        </FullWidthSection>
+            </div>
+
+            <div>
+                <h4 style={{ fontSize: '1.1rem', color: '#495057', marginBottom: '1rem' }}>진행 중인 목표 목록</h4>
+                <List>
+                    {activeGoals.length > 0 ? (
+                        activeGoals.map(goal => (
+                            <ListItem key={goal.id} style={{ gridTemplateColumns: '1fr auto', borderLeft: '4px solid #fcc419' }}>
+                                <div>
+                                    <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{goal.title}</span>
+                                    {goal.status === 'paused' && <span style={{ marginLeft: '1rem', color: '#ffc107', fontWeight: 'bold' }}>[일시중단됨]</span>}
+                                    <span style={{ marginLeft: '1rem', color: '#6c757d', fontSize: '0.9rem' }}>({goal.currentPoints.toLocaleString()} / {goal.targetPoints.toLocaleString()} P)</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <SaveButton onClick={() => handleGoalStatusToggle(goal)} style={{ backgroundColor: goal.status === 'paused' ? '#17a2b8' : '#ffc107', color: goal.status === 'paused' ? 'white' : 'black', padding: '0.4rem 1rem' }}>
+                                        {goal.status === 'paused' ? '다시시작' : '일시중단'}
+                                    </SaveButton>
+                                    <SaveButton onClick={() => handleGoalComplete(goal.id)} style={{ backgroundColor: '#28a745', padding: '0.4rem 1rem' }} disabled={goal.currentPoints < goal.targetPoints} title={goal.currentPoints < goal.targetPoints ? "아직 달성되지 않은 목표입니다." : ""}>
+                                        완료 처리
+                                    </SaveButton>
+                                    <SaveButton onClick={() => handleGoalDelete(goal.id)} style={{ backgroundColor: '#dc3545', padding: '0.4rem 1rem' }}>삭제</SaveButton>
+                                </div>
+                            </ListItem>
+                        ))
+                    ) : <p style={{ color: '#adb5bd' }}>현재 진행 중인 학급 목표가 없습니다.</p>}
+                </List>
+            </div>
+        </div>
     );
 }
 
@@ -319,7 +313,7 @@ function SortableListItem(props) {
 function QuestApprovalWidget() {
     const { classId } = useClassStore();
     const [quests, setQuests] = useState([]);
-    const [rejectModal, setRejectModal] = useState(null); // { quest, acceptor }
+    const [rejectModal, setRejectModal] = useState(null);
     const [rejectReason, setRejectReason] = useState('');
 
     useEffect(() => {
@@ -418,39 +412,39 @@ function QuestApprovalWidget() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 퀘스트 관리 위젯 (출제 탭 하단 — 출제된 퀘스트 목록/수정/삭제/숨김/순서)
+// 퀘스트 관리 위젯 (퀘스트 생성 및 관리 전용 탭)
 // ─────────────────────────────────────────────────────────────────────────────
-function SortableQuestItem({ quest, isEditing, editForm, setEditForm, onSave, onCancel, onEdit, onHide, onDelete, takenCount }) {
+function SortableQuestItem({ quest, isEditing, editForm, setEditForm, onSave, onCancel, onEdit, onHide, onDelete, takenCount, onForceComplete }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: quest.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
     const maxSlots = quest.maxAcceptors || 1;
-    const fieldStyle = { padding: '0.4rem 0.6rem', border: '1px solid #ffe066', borderRadius: '6px', fontSize: '0.88rem', background: '#fffbf0' };
+    const fieldStyle = { padding: '0.5rem 0.8rem', border: '1px solid #ffe066', borderRadius: '6px', fontSize: '0.95rem', background: '#fffbf0' };
     const acceptors = quest.acceptors || [];
 
     return (
         <ListItem ref={setNodeRef} style={style} {...attributes}>
             <DragHandle {...listeners}>⋮⋮</DragHandle>
             {isEditing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                         <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))} placeholder="퀘스트 이름" style={{ ...fieldStyle, flex: 1, minWidth: '160px' }} />
-                        <input type="number" value={editForm.reward} onChange={e => setEditForm(p => ({ ...p, reward: e.target.value }))} placeholder="보상 P" style={{ ...fieldStyle, width: '80px' }} />
+                        <input type="number" value={editForm.reward} onChange={e => setEditForm(p => ({ ...p, reward: e.target.value }))} placeholder="보상 P" style={{ ...fieldStyle, width: '100px' }} />
                     </div>
-                    <textarea value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))} placeholder="퀘스트 설명" style={{ ...fieldStyle, minHeight: '56px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00' }}>
+                    <textarea value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))} placeholder="퀘스트 설명" style={{ ...fieldStyle, minHeight: '60px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#7a4d00', fontWeight: 600 }}>
                             수락 인원:
-                            <input type="number" min={takenCount || 1} max={10} value={editForm.maxAcceptors} onChange={e => setEditForm(p => ({ ...p, maxAcceptors: e.target.value }))} style={{ ...fieldStyle, width: '56px' }} />
+                            <input type="number" min={takenCount || 1} max={10} value={editForm.maxAcceptors} onChange={e => setEditForm(p => ({ ...p, maxAcceptors: e.target.value }))} style={{ ...fieldStyle, width: '70px', padding: '0.4rem 0.6rem' }} />
                             명
                         </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#7a4d00', flex: 1 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#7a4d00', fontWeight: 600, flex: 1 }}>
                             기한:
-                            <input value={editForm.deadline} onChange={e => setEditForm(p => ({ ...p, deadline: e.target.value }))} placeholder="예: 오늘 하교 전" style={{ ...fieldStyle, flex: 1 }} />
+                            <input value={editForm.deadline} onChange={e => setEditForm(p => ({ ...p, deadline: e.target.value }))} placeholder="예: 오늘 하교 전" style={{ ...fieldStyle, flex: 1, padding: '0.4rem 0.6rem' }} />
                         </label>
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                        <SaveButton onClick={onSave} style={{ fontSize: '0.85rem', padding: '5px 14px' }}>저장</SaveButton>
-                        <StyledButton onClick={onCancel} style={{ background: '#6c757d', fontSize: '0.85rem', padding: '5px 14px' }}>취소</StyledButton>
+                        <SaveButton onClick={onSave} style={{ fontSize: '0.9rem', padding: '6px 16px' }}>저장</SaveButton>
+                        <StyledButton onClick={onCancel} style={{ background: '#6c757d', fontSize: '0.9rem', padding: '6px 16px' }}>취소</StyledButton>
                     </div>
                 </div>
             ) : (
@@ -472,7 +466,28 @@ function SortableQuestItem({ quest, isEditing, editForm, setEditForm, onSave, on
                     {takenCount > 0 && (
                         <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {acceptors.map(a => (
-                                <span key={a.playerId} style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: a.completionStatus === 'completed' ? '#d3f9d8' : a.completionStatus === 'pending' ? '#e7f5ff' : a.completionStatus === 'rejected' ? '#ffe3e3' : '#fff9db', color: a.completionStatus === 'completed' ? '#2f9e44' : a.completionStatus === 'pending' ? '#1c7ed6' : a.completionStatus === 'rejected' ? '#fa5252' : '#e67700', border: `1px solid ${a.completionStatus === 'completed' ? '#b2f2bb' : a.completionStatus === 'pending' ? '#a5d8ff' : a.completionStatus === 'rejected' ? '#ffc9c9' : '#ffe066'}` }}>
+                                <span
+                                    key={a.playerId}
+                                    onClick={() => {
+                                        if (a.completionStatus !== 'completed' && onForceComplete) {
+                                            onForceComplete(quest, a);
+                                        }
+                                    }}
+                                    style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        padding: '2px 8px',
+                                        borderRadius: '20px',
+                                        background: a.completionStatus === 'completed' ? '#d3f9d8' : a.completionStatus === 'pending' ? '#e7f5ff' : a.completionStatus === 'rejected' ? '#ffe3e3' : '#fff9db',
+                                        color: a.completionStatus === 'completed' ? '#2f9e44' : a.completionStatus === 'pending' ? '#1c7ed6' : a.completionStatus === 'rejected' ? '#fa5252' : '#e67700',
+                                        border: `1px solid ${a.completionStatus === 'completed' ? '#b2f2bb' : a.completionStatus === 'pending' ? '#a5d8ff' : a.completionStatus === 'rejected' ? '#ffc9c9' : '#ffe066'}`,
+                                        cursor: a.completionStatus !== 'completed' ? 'pointer' : 'default',
+                                        transition: 'filter 0.2s'
+                                    }}
+                                    title={a.completionStatus !== 'completed' ? '클릭하여 강제로 완료 처리하기' : ''}
+                                    onMouseOver={(e) => { if (a.completionStatus !== 'completed') e.currentTarget.style.filter = 'brightness(0.9)'; }}
+                                    onMouseOut={(e) => e.currentTarget.style.filter = 'none'}
+                                >
                                     {a.playerName} · {a.completionStatus === 'completed' ? '완료' : a.completionStatus === 'pending' ? '승인대기' : a.completionStatus === 'rejected' ? '반려됨' : '수락중'}
                                 </span>
                             ))}
@@ -492,10 +507,44 @@ function QuestManager() {
     const [showHidden, setShowHidden] = useState(false);
     const sensors = useSensors(useSensor(PointerSensor));
 
+    // 퀘스트 생성 상태
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [reward, setReward] = useState('100');
+    const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
+    const [questMaxAcceptors, setQuestMaxAcceptors] = useState(1);
+    const [questDeadline, setQuestDeadline] = useState('');
+
     useEffect(() => {
         if (!classId) return;
         return listenQuests(classId, setQuests);
     }, [classId]);
+
+    const handleSubmissionTypeChange = (type) => {
+        setSubmissionTypes(prev => ({ ...prev, [type]: !prev[type] }));
+    };
+
+    const handleSaveQuest = async () => {
+        if (!title.trim() || !reward) return alert('퀘스트 이름과 보상을 입력해주세요.');
+        const selectedTypes = Object.entries(submissionTypes).filter(([, isSelected]) => isSelected).map(([type]) => type);
+        const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
+
+        try {
+            await createQuest(classId, {
+                title: title.trim(),
+                description: description.trim(),
+                reward: Number(reward) || 0,
+                maxAcceptors: Number(questMaxAcceptors) || 1,
+                submissionType: typeToSend,
+                deadline: questDeadline.trim() || null,
+            });
+            alert('퀘스트가 출제됐습니다! 전체 학생에게 알림이 전송됩니다.');
+
+            setTitle(''); setDescription(''); setReward('100');
+            setSubmissionTypes({ text: false, photo: false });
+            setQuestMaxAcceptors(1); setQuestDeadline('');
+        } catch (e) { alert(`퀘스트 출제 실패: ${e.message}`); }
+    };
 
     const openEdit = (quest) => {
         setEditingId(quest.id);
@@ -552,10 +601,19 @@ function QuestManager() {
         const newIndex = openQuests.findIndex(q => q.id === over.id);
         if (oldIndex < 0 || newIndex < 0) return;
         const reordered = arrayMove(openQuests, oldIndex, newIndex);
-        // 순서 저장: order 필드 업데이트
         try {
             await Promise.all(reordered.map((q, idx) => updateQuest(classId, q.id, { order: idx })));
         } catch (e) { console.error('퀘스트 순서 저장 실패:', e); }
+    };
+
+    const handleForceComplete = async (quest, acceptor) => {
+        if (acceptor.completionStatus === 'completed') return;
+        if (!window.confirm(`[관리자 권한] ${acceptor.playerName} 학생의 퀘스트를 즉시 완료 처리하고 ${quest.reward}P를 지급할까요?`)) return;
+        try {
+            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward);
+        } catch (e) {
+            alert(`완료 처리 실패: ${e.message}`);
+        }
     };
 
     const openQuests = quests
@@ -564,37 +622,69 @@ function QuestManager() {
     const hiddenQuests = quests.filter(q => q.status === 'hidden');
     const closedQuests = quests.filter(q => q.status === 'closed');
 
-    if (quests.length === 0) return null;
-
     return (
-        <Section style={{ marginTop: '2rem', borderTop: '2px dashed #ffe066', paddingTop: '1.5rem' }}>
-            <SectionTitle>⚔ 출제된 퀘스트 관리</SectionTitle>
+        <div style={{ padding: '0.5rem' }}>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '12px', padding: '1.5rem', marginBottom: '2.5rem' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '1.2rem', fontSize: '1.1rem', color: '#495057' }}>⚔ 새 퀘스트 출제</h3>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="퀘스트 이름 (예: 급식실 쓰레기 수거)" style={{ flex: 1, minWidth: '200px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} />
+                    <ScoreInput type="number" value={reward} onChange={(e) => setReward(e.target.value)} style={{ width: '100px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="보상 P" />
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0 0.5rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} style={{ width: '16px', height: '16px' }} /> 글</label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} style={{ width: '16px', height: '16px' }} /> 사진</label>
+                    </div>
+                </div>
 
-            {openQuests.length === 0 && <p style={{ color: '#adb5bd', fontSize: '0.9rem' }}>진행 중인 퀘스트가 없습니다.</p>}
+                {(submissionTypes.text || submissionTypes.photo) && (
+                    <div style={{ marginBottom: '10px' }}>
+                        <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="퀘스트 설명 (해야 할 일, 완료 기준 등)" style={{ minHeight: '80px', width: '100%', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem', boxSizing: 'border-box' }} />
+                    </div>
+                )}
 
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={openQuests.map(q => q.id)} strategy={verticalListSortingStrategy}>
-                    <List>
-                        {openQuests.map(quest => (
-                            <SortableQuestItem
-                                key={quest.id} quest={quest}
-                                isEditing={editingId === quest.id}
-                                editForm={editForm} setEditForm={setEditForm}
-                                onSave={() => handleUpdate(quest.id)}
-                                onCancel={() => setEditingId(null)}
-                                onEdit={() => openEdit(quest)}
-                                onHide={() => handleHide(quest)}
-                                onDelete={() => handleDelete(quest)}
-                                takenCount={(quest.acceptors || []).length}
-                            />
-                        ))}
-                    </List>
-                </SortableContext>
-            </DndContext>
+                <div style={{ background: '#fffbf0', border: '1px solid #ffe8a1', borderRadius: '8px', padding: '12px 16px', display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', color: '#7a4d00', fontWeight: 700 }}>
+                        ⚔ 수락 인원 (선착순):
+                        <ScoreInput type="number" min={1} max={10} value={questMaxAcceptors} onChange={e => setQuestMaxAcceptors(e.target.value)} style={{ width: '70px', padding: '0.5rem', borderRadius: '6px', border: '1px solid #ffe066' }} /> 명
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', color: '#7a4d00', fontWeight: 700, flex: 1 }}>
+                        🕐 기한:
+                        <input type="text" value={questDeadline} onChange={e => setQuestDeadline(e.target.value)} placeholder="예: 오늘 하교 전, 3교시 쉬는 시간" style={{ flex: 1, padding: '0.5rem 0.8rem', border: '1px solid #ffe066', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </label>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.2rem' }}>
+                    <SaveButton onClick={handleSaveQuest} style={{ padding: '0.8rem 1.8rem', borderRadius: '8px', fontSize: '1rem', fontWeight: 800 }}>⚔ 퀘스트 출제</SaveButton>
+                </div>
+            </div>
+
+            {openQuests.length === 0 && quests.length > 0 && <p style={{ color: '#adb5bd', fontSize: '0.95rem' }}>진행 중인 퀘스트가 없습니다.</p>}
+
+            {openQuests.length > 0 && (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={openQuests.map(q => q.id)} strategy={verticalListSortingStrategy}>
+                        <List>
+                            {openQuests.map(quest => (
+                                <SortableQuestItem
+                                    key={quest.id} quest={quest}
+                                    isEditing={editingId === quest.id}
+                                    editForm={editForm} setEditForm={setEditForm}
+                                    onSave={() => handleUpdate(quest.id)}
+                                    onCancel={() => setEditingId(null)}
+                                    onEdit={() => openEdit(quest)}
+                                    onHide={() => handleHide(quest)}
+                                    onDelete={() => handleDelete(quest)}
+                                    takenCount={(quest.acceptors || []).length}
+                                    onForceComplete={handleForceComplete}
+                                />
+                            ))}
+                        </List>
+                    </SortableContext>
+                </DndContext>
+            )}
 
             {(hiddenQuests.length > 0 || closedQuests.length > 0) && (
                 <>
-                    <ToggleButton onClick={() => setShowHidden(p => !p)} style={{ marginTop: '0.8rem' }}>
+                    <ToggleButton onClick={() => setShowHidden(p => !p)} style={{ marginTop: '1.5rem' }}>
                         {showHidden ? '숨긴 퀘스트 접기' : `숨긴/마감 퀘스트 보기 (${hiddenQuests.length + closedQuests.length}개)`}
                     </ToggleButton>
                     {showHidden && (
@@ -619,7 +709,7 @@ function QuestManager() {
                     )}
                 </>
             )}
-        </Section>
+        </div>
     );
 }
 
@@ -639,30 +729,17 @@ function MissionManager({ onNavigate }) {
     const [showArchived, setShowArchived] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState({ rewards: false, prerequisite: false });
     const [defaultPrivate, setDefaultPrivate] = useState(false);
-    // ── 퀘스트 모드 ──
-    const [isQuest, setIsQuest] = useState(false);
-    const [questMaxAcceptors, setQuestMaxAcceptors] = useState(1);
-    const [questDeadline, setQuestDeadline] = useState('');
 
-    // 💡 [무적의 우회 로직 추가] 새 미션이 추가되어 배열 길이가 늘어나는 순간을 감지합니다.
     const prevMissionsLength = React.useRef(missions.length);
 
     useEffect(() => {
-        // 활성 미션의 개수가 이전보다 늘어났다면 (즉, 새 미션이 출제되어 맨 아래에 붙었을 때)
         if (missions.length > prevMissionsLength.current) {
-            // 맨 아래(배열의 맨 끝)에 새로 추가된 미션을 가져옵니다.
             const latestMission = missions[missions.length - 1];
-
-            // 새 미션을 맨 앞으로 보내고, 나머지 기존 미션들을 뒤로 밀어 새로운 리스트를 만듭니다.
             const newList = [latestMission, ...missions.slice(0, missions.length - 1)];
-
-            // 이미 잘 작동하고 있는 드래그앤드롭 정렬 함수를 강제로 실행시켜 DB 순서를 최상단으로 엎어버립니다!
             reorderMissions(newList, 'missions');
         }
-        // 비교용 기준점을 현재 미션 개수로 최신화합니다.
         prevMissionsLength.current = missions.length;
     }, [missions, reorderMissions]);
-
 
     const handleDragEnd = (event) => {
         const { active, over } = event;
@@ -694,7 +771,6 @@ function MissionManager({ onNavigate }) {
         setEditMode(null); setTitle(''); setPlaceholderText(''); setRewards(['100', '', '']);
         setSubmissionTypes({ text: false, photo: false }); setIsFixed(false); setAdminOnly(false);
         setPrerequisiteMissionId(''); setDefaultPrivate(false); setShowAdvanced({ rewards: false, prerequisite: false });
-        setIsQuest(false); setQuestMaxAcceptors(1); setQuestDeadline('');
     };
 
     const handleSaveMission = async () => {
@@ -704,23 +780,6 @@ function MissionManager({ onNavigate }) {
         const selectedTypes = Object.entries(submissionTypes).filter(([, isSelected]) => isSelected).map(([type]) => type);
         const typeToSend = selectedTypes.length > 0 ? selectedTypes : ['simple'];
         const finalRewards = rewards.map(r => Number(r)).filter(r => r > 0);
-
-        // ── 퀘스트 모드: createQuest 호출 ──
-        if (isQuest && !editMode) {
-            try {
-                await createQuest(classId, {
-                    title: title.trim(),
-                    description: placeholderText.trim(),
-                    reward: finalRewards[0] || 0,
-                    maxAcceptors: Number(questMaxAcceptors) || 1,
-                    submissionType: typeToSend,
-                    deadline: questDeadline.trim() || null,
-                });
-                alert('퀘스트가 출제됐습니다! 전체 학생에게 알림이 전송됩니다.');
-                handleCancel();
-            } catch (e) { alert(`퀘스트 출제 실패: ${e.message}`); }
-            return;
-        }
 
         const missionData = {
             title, rewards: finalRewards, reward: finalRewards[0] || 0,
@@ -744,97 +803,54 @@ function MissionManager({ onNavigate }) {
     const missionsToDisplay = showArchived ? archivedMissions : missions;
 
     return (
-        <Section>
-            <SectionTitle>{editMode ? `미션 수정: ${editMode.title}` : '미션 관리 📜'}</SectionTitle>
-            <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-                <InputGroup>
-                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isQuest ? '퀘스트 이름 (예: 급식실 쓰레기 수거)' : '미션 이름'} style={{ flex: 1, minWidth: '200px', padding: '0.5rem' }} />
-                    <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '80px' }} placeholder="기본 보상" />
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        <label title="글 제출 필요"><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} /> 글</label>
-                        <label title="사진 제출 필요"><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} /> 사진</label>
+        <div style={{ padding: '0.5rem' }}>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '12px', padding: '1.5rem', marginBottom: '2.5rem', transition: 'all 0.3s ease' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '1.2rem', fontSize: '1.1rem', color: '#495057' }}>{editMode ? '📝 미션 수정' : '📝 새 미션 출제'}</h3>
+
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="미션 이름" style={{ flex: 1, minWidth: '200px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} />
+                    <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '100px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="보상 P" />
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0 0.5rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} style={{ width: '16px', height: '16px' }} /> 글</label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} style={{ width: '16px', height: '16px' }} /> 사진</label>
                     </div>
-                </InputGroup>
+                </div>
 
-                {(submissionTypes.text || isQuest) && (
-                    <InputGroup>
-                        <TextArea value={placeholderText} onChange={(e) => setPlaceholderText(e.target.value)} placeholder={isQuest ? '퀘스트 설명 (해야 할 일, 완료 기준 등)' : '학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요.'} style={{ minHeight: '60px' }} />
-                    </InputGroup>
-                )}
-
-                {/* 퀘스트 활성 시: 수락 인원 + 기한 입력란 */}
-                {isQuest && (
-                    <InputGroup style={{ background: '#fffbf0', border: '1px solid #ffe8a1', borderRadius: '8px', padding: '10px 12px', gap: '1rem', flexWrap: 'wrap' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#7a4d00', fontWeight: 600 }}>
-                            ⚔ 수락 인원 (선착순):
-                            <ScoreInput
-                                type="number" min={1} max={10}
-                                value={questMaxAcceptors}
-                                onChange={e => setQuestMaxAcceptors(e.target.value)}
-                                style={{ width: '60px' }}
-                            />
-                            명
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#7a4d00', fontWeight: 600, flex: 1 }}>
-                            🕐 기한:
-                            <input
-                                type="text"
-                                value={questDeadline}
-                                onChange={e => setQuestDeadline(e.target.value)}
-                                placeholder="예: 오늘 하교 전, 3교시 쉬는 시간"
-                                style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #ffe066', borderRadius: '4px', fontSize: '0.9rem' }}
-                            />
-                        </label>
-                    </InputGroup>
+                {submissionTypes.text && (
+                    <div style={{ marginBottom: '10px' }}>
+                        <TextArea value={placeholderText} onChange={(e) => setPlaceholderText(e.target.value)} placeholder="학생들에게 보여줄 문제나 안내사항을 여기에 입력하세요." style={{ minHeight: '80px', width: '100%', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem', boxSizing: 'border-box' }} />
+                    </div>
                 )}
 
                 {showAdvanced.rewards && (
-                    <InputGroup>
-                        <label>차등 보상:</label>
-                        <ScoreInput type="number" value={rewards[1]} onChange={e => setRewards(p => [p[0], e.target.value, p[2]])} style={{ width: '80px' }} placeholder="2단계" />
-                        <ScoreInput type="number" value={rewards[2]} onChange={e => setRewards(p => [p[0], p[1], e.target.value])} style={{ width: '80px' }} placeholder="3단계" />
-                    </InputGroup>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#fff3cd', padding: '12px 16px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #ffeeba' }}>
+                        <span style={{ fontWeight: 700, color: '#856404' }}>차등 보상:</span>
+                        <ScoreInput type="number" value={rewards[1]} onChange={e => setRewards(p => [p[0], e.target.value, p[2]])} style={{ width: '100px', padding: '0.5rem', borderRadius: '6px', border: '1px solid #ffdf7e' }} placeholder="2단계 P" />
+                        <ScoreInput type="number" value={rewards[2]} onChange={e => setRewards(p => [p[0], p[1], e.target.value])} style={{ width: '100px', padding: '0.5rem', borderRadius: '6px', border: '1px solid #ffdf7e' }} placeholder="3단계 P" />
+                    </div>
                 )}
+
                 {showAdvanced.prerequisite && (
-                    <InputGroup>
-                        <label htmlFor="prerequisite">연계 미션:</label>
-                        <select id="prerequisite" value={prerequisiteMissionId} onChange={(e) => setPrerequisiteMissionId(e.target.value)} style={{ flex: 1, padding: '0.5rem' }}>
-                            <option value="">-- 없음 --</option>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#e2e3e5', padding: '12px 16px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #d6d8db' }}>
+                        <span style={{ fontWeight: 700, color: '#383d41' }}>연계 미션:</span>
+                        <select value={prerequisiteMissionId} onChange={(e) => setPrerequisiteMissionId(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #ced4da' }}>
                             <option value="">-- 없음 --</option>
                             {missions.map(mission => (<option key={mission.id} value={mission.id}>{mission.title}</option>))}
                         </select>
-                    </InputGroup>
+                    </div>
                 )}
 
-                <InputGroup style={{ justifyContent: 'space-between', marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {/* ── 왼쪽: 퀘스트 토글 버튼 ── */}
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        {!editMode && (
-                            <StyledButton
-                                onClick={() => setIsQuest(p => !p)}
-                                style={{ backgroundColor: isQuest ? '#fcc419' : '#6c757d', color: isQuest ? '#7a4d00' : '#fff', fontWeight: isQuest ? 800 : 400 }}
-                                title="선착순으로 수락하는 공공 퀘스트로 출제합니다."
-                            >
-                                {isQuest ? '⚔ 퀘스트 (활성)' : '⚔ 퀘스트'}
-                            </StyledButton>
-                        )}
-                    </div>
-                    {/* ── 오른쪽: 미션 옵션 + 출제 버튼 ── */}
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        {!isQuest && (
-                            <>
-                                <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
-                                <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
-                                <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)">{defaultPrivate ? '비공개' : '공개'}</StyledButton>
-                                <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? '관리자만(활성)' : '관리자만'}</StyledButton>
-                            </>
-                        )}
-                        <SaveButton onClick={handleSaveMission}>
-                            {editMode ? '수정 완료' : isQuest ? '⚔ 퀘스트 출제' : '미션 출제'}
-                        </SaveButton>
-                        {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d' }}>취소</StyledButton>}
-                    </div>
-                </InputGroup>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.2rem', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, rewards: !p.rewards }))} style={{ backgroundColor: showAdvanced.rewards ? '#e0a800' : '#ffc107', color: 'black', padding: '0.6rem 1.2rem', borderRadius: '8px' }} title="미션 완료 시 보상을 등급별(최대 3개)로 다르게 설정합니다.">차등 보상</StyledButton>
+                    <StyledButton onClick={() => setShowAdvanced(p => ({ ...p, prerequisite: !p.prerequisite }))} style={{ backgroundColor: showAdvanced.prerequisite ? '#5a6268' : '#6c757d', padding: '0.6rem 1.2rem', borderRadius: '8px' }} title="특정 미션을 완료해야만 이 미션을 수행할 수 있도록 설정합니다.">연계 미션</StyledButton>
+                    <StyledButton onClick={() => setDefaultPrivate(p => !p)} style={{ backgroundColor: defaultPrivate ? '#dc3545' : '#007bff', padding: '0.6rem 1.2rem', borderRadius: '8px' }} title="미션 갤러리 공개 여부의 기본값을 설정합니다. (학생이 최종 변경 가능)">{defaultPrivate ? '비공개' : '공개'}</StyledButton>
+                    <StyledButton onClick={() => setAdminOnly(p => !p)} style={{ backgroundColor: adminOnly ? '#dc3545' : '#6c757d', padding: '0.6rem 1.2rem', borderRadius: '8px' }} title="이 미션을 기록원에게는 보이지 않고, 관리자만 승인할 수 있도록 설정합니다.">{adminOnly ? '관리자만(활성)' : '관리자만'}</StyledButton>
+
+                    <SaveButton onClick={handleSaveMission} style={{ padding: '0.6rem 1.8rem', borderRadius: '8px', fontSize: '1rem', fontWeight: 800 }}>
+                        {editMode ? '수정 완료' : '미션 출제'}
+                    </SaveButton>
+                    {editMode && <StyledButton onClick={handleCancel} style={{ backgroundColor: '#6c757d', padding: '0.6rem 1.2rem', borderRadius: '8px' }}>취소</StyledButton>}
+                </div>
             </div>
 
             <div style={{ marginTop: '2rem' }}>
@@ -858,13 +874,51 @@ function MissionManager({ onNavigate }) {
                     </SortableContext>
                 </DndContext>
             </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 새롭게 추가된 탭 관리 래퍼 컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+function CreationTabs({ onNavigateToHistory }) {
+    const [activeTab, setActiveTab] = useState('mission'); // 'mission' | 'quest' | 'goal'
+
+    return (
+        <Section>
+            {/* 탭 네비게이션 헤더 */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', borderBottom: '2px solid #f1f3f5', paddingBottom: '10px' }}>
+                <ToggleButton
+                    onClick={() => setActiveTab('mission')}
+                    style={{ backgroundColor: activeTab === 'mission' ? '#339af0' : '#f8f9fa', color: activeTab === 'mission' ? 'white' : '#495057', border: 'none', borderRadius: '8px' }}
+                >
+                    📝 미션 관리
+                </ToggleButton>
+                <ToggleButton
+                    onClick={() => setActiveTab('quest')}
+                    style={{ backgroundColor: activeTab === 'quest' ? '#f59f00' : '#f8f9fa', color: activeTab === 'quest' ? 'white' : '#495057', border: 'none', borderRadius: '8px' }}
+                >
+                    ⚔ 퀘스트 관리
+                </ToggleButton>
+                <ToggleButton
+                    onClick={() => setActiveTab('goal')}
+                    style={{ backgroundColor: activeTab === 'goal' ? '#20c997' : '#f8f9fa', color: activeTab === 'goal' ? 'white' : '#495057', border: 'none', borderRadius: '8px' }}
+                >
+                    🎯 학급 목표 관리
+                </ToggleButton>
+            </div>
+
+            {/* 활성화된 탭에 따라 컴포넌트 렌더링 */}
+            <div style={{ width: '100%' }}>
+                {activeTab === 'mission' && <MissionManager onNavigate={onNavigateToHistory} />}
+                {activeTab === 'quest' && <QuestManager />}
+                {activeTab === 'goal' && <GoalManager />}
+            </div>
         </Section>
     );
 }
 
-
 function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, preselectedMissionId }) {
-    // AdminPage에서 렌더링하던 로직을 그대로 가져왔습니다.
     switch (missionSubMenu) {
         case 'approval':
             return (
@@ -874,13 +928,7 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
                 </>
             );
         case 'creation':
-            return (
-                <>
-                    <MissionManager onNavigate={onNavigateToHistory} />
-                    <QuestManager />
-                    <GoalManager />
-                </>
-            );
+            return <CreationTabs onNavigateToHistory={onNavigateToHistory} />;
         case 'history':
             return <RecorderPage isAdminView={true} initialMissionId={preselectedMissionId} />;
         default:
@@ -889,4 +937,3 @@ function MissionTab({ missionSubMenu, setModalImageSrc, onNavigateToHistory, pre
 }
 
 export default MissionTab;
-

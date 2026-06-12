@@ -72,11 +72,11 @@ const MissionList = styled.div`
 const MissionCard = styled.div`
   background-color: #fff;
   border-radius: 16px;
-  padding: 1.5rem;
+  padding: 1.2rem 1.4rem; /* 미션카드 패딩 조금 축소 (기존 1.5rem) */
   box-shadow: 0 4px 20px rgba(0,0,0,0.05);
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
+  gap: 1rem;
   position: relative;
   overflow: hidden;
   border: 1px solid #f1f3f5;
@@ -123,9 +123,9 @@ const MissionInfo = styled.div`
 `;
 
 const MissionTitle = styled.h3`
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 700;
+  margin: 0 0 4px;
+  font-size: 1.15rem; /* 미션 제목 축소 (기존 1.3rem) */
+  font-weight: 800;
   color: #343a40;
   display: flex;
   align-items: center;
@@ -134,33 +134,32 @@ const MissionTitle = styled.h3`
 `;
 
 const Tag = styled.span`
-  font-size: 0.75rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 6px;
+  font-size: 0.72rem; /* 패딩 축소 */
+  padding: 3px 8px;
+  border-radius: 5px;
   background-color: ${props => props.$bg || '#f1f3f5'};
   color: ${props => props.$color || '#495057'};
   font-weight: 700;
 `;
 
 const MissionReward = styled.div`
-  font-size: 1rem;
+  font-size: 1.1rem; /* 보상 텍스트 (1rem -> 1.1rem) */
   font-weight: 800;
   color: #fcc419;
-  margin-top: 0.5rem;
+  margin-top: 2px;
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  text-shadow: 0 1px 1px rgba(0,0,0,0.1);
 `;
 
 const MissionDescription = styled.p`
-  margin: 0.5rem 0 0 0;
+  margin: 8px 0 0 0;
   font-size: 0.95rem;
   color: #495057;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-wrap;
-  background-color: #f1f3f5;
-  padding: 0.8rem;
+  background-color: #f8f9fa;
+  padding: 10px 12px;
   border-radius: 8px;
   width: 100%;
 `;
@@ -178,8 +177,8 @@ const ActionGroup = styled.div`
 `;
 
 const VisibilityToggleButton = styled.button`
-  padding: 0.6rem 1rem;
-  font-size: 0.85rem;
+  padding: 0.5rem 0.8rem; /* 버튼 패딩 축소 */
+  font-size: 0.8rem;
   font-weight: 700;
   border: 1px solid #dee2e6;
   border-radius: 8px;
@@ -205,9 +204,9 @@ const VisibilityToggleButton = styled.button`
 const SubmissionArea = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.8rem;
   margin-top: 0.5rem;
-  padding: 1.2rem;
+  padding: 1rem;
   background-color: #f8f9fa;
   border-radius: 12px;
   border: 1px solid #f1f3f5;
@@ -215,11 +214,11 @@ const SubmissionArea = styled.div`
 
 const TextArea = styled.textarea`
   width: 100%;
-  min-height: 120px;
-  padding: 1rem;
+  min-height: 80px; /* 텍스트 에어리어 높이 축소 (120px -> 80px) */
+  padding: 0.8rem;
   border: 1px solid #dee2e6;
-  border-radius: 12px;
-  font-size: 1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
   font-family: inherit;
   resize: vertical;
   background-color: ${props => props.disabled ? '#e9ecef' : '#fff'};
@@ -233,13 +232,14 @@ const TextArea = styled.textarea`
 `;
 
 const FileInputLabel = styled.label`
-  padding: 0.8rem;
+  padding: 0.6rem; /* 라벨 높이 축소 */
   background-color: #fff;
   border: 1px dashed #adb5bd;
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   text-align: center;
   font-weight: 600;
+  font-size: 0.9rem;
   color: #495057;
   transition: all 0.2s;
   display: flex;
@@ -262,14 +262,14 @@ const FileInputLabel = styled.label`
 `;
 
 const FileName = styled.div`
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #495057;
   background: #fff;
-  padding: 0.8rem;
+  padding: 0.6rem;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   
-  strong { display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: #868e96; }
+  strong { display: block; margin-bottom: 0.3rem; font-size: 0.8rem; color: #868e96; }
   ul { margin: 0; padding-left: 1.2rem; }
   li { margin-bottom: 0.2rem; }
 `;
@@ -279,16 +279,16 @@ const ClearButton = styled.button`
   border: none;
   color: #fa5252;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 700;
   margin-left: 0.5rem;
   &:hover { text-decoration: underline; }
 `;
 
 const RequestButton = styled.button`
-  padding: 0.7rem 1.2rem;
-  font-size: 0.95rem;
-  font-weight: 700;
+  padding: 0.6rem 1.2rem; /* 버튼 패딩 축소 */
+  font-size: 0.85rem; /* 버튼 폰트 축소 */
+  font-weight: 800;
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -359,6 +359,7 @@ const FilterContainer = styled.div`
   justify-content: flex-end;
   align-items: center;
   margin-bottom: 1.5rem;
+  min-height: 38px; /* 추가: 퀘스트 쪽과 완벽한 대칭을 위해 고정 */
 `;
 
 const ToggleButton = styled.button`

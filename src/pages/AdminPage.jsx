@@ -43,10 +43,6 @@ const SubNavButton = styled.button`
   &:hover { background-color: #e9ecef; }
 `;
 const Title = styled.h1`margin-top: 0; margin-bottom: 2rem; text-align: center;`;
-const BroadcastButton = styled(Link)`
-  display: block; width: 100%; padding: 0.75rem 1rem; margin-bottom: 1rem; background-color: #dc3545; color: white; text-decoration: none; border-radius: 6px; text-align: center; font-size: 1rem; font-weight: bold; transition: background-color 0.2s;
-  &:hover { background-color: #c82333; }
-`;
 
 function AdminPage() {
     const { players } = useLeagueStore();
@@ -55,24 +51,27 @@ function AdminPage() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // ▼▼▼ [수정] 초기값을 쿼리파라미터에서 바로 읽어 미션 탭으로 잘못 시작되는 문제 방지
+    // 초기값을 쿼리파라미터에서 바로 읽어 미션 탭으로 잘못 시작되는 문제 방지
     const getInitialMenu = () => {
         const params = new URLSearchParams(location.search);
         if (params.get('tab') === 'messages') return 'social';
-        if (params.get('tab') === 'reports') return 'reports'; // [추가] 신고 탭 직접 진입
+        if (params.get('tab') === 'reports') return 'social'; // 소셜 하위 탭으로 변경됨
         return tab || 'mission';
     };
+
     const [activeMenu, setActiveMenu] = useState(getInitialMenu);
     const [activeSubMenu, setActiveSubMenu] = useState('messages');
     const [studentSubMenu, setStudentSubMenu] = useState('point');
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
     const [preselectedStudentId, setPreselectedStudentId] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null);
-    const [missionSubMenu, setMissionSubMenu] = useState('approval');
-    const [preselectedMissionId, setPreselectedMissionId] = useState(null);
-    const [pendingReportCount, setPendingReportCount] = useState(0); // [추가] 신고 배지
 
-    // [추가] 신고 수 실시간 구독 (사이드바 배지용)
+    // 미션 초기 서브메뉴를 'creation'(미션 출제)으로 변경
+    const [missionSubMenu, setMissionSubMenu] = useState('creation');
+    const [preselectedMissionId, setPreselectedMissionId] = useState(null);
+    const [pendingReportCount, setPendingReportCount] = useState(0);
+
+    // 신고 수 실시간 구독 (사이드바 배지용)
     useEffect(() => {
         if (!classId) return;
         const unsub = listenCommentReports(classId, (reports) => {
@@ -89,20 +88,21 @@ function AdminPage() {
             setPreselectedStudentId(studentIdFromState);
             window.history.replaceState({}, document.title);
         }
-        // ▼▼▼ [수정] forceTab state로 탭 강제 전환 (알림 클릭 시)
+        // 알림 클릭을 통한 강제 탭 전환
         if (location.state?.forceTab === 'messages') {
             setActiveMenu('social');
             setActiveSubMenu('messages');
             window.history.replaceState({}, document.title);
         }
-        // [추가] 신고 알림 클릭 시 신고 탭으로 이동
+        // 신고 알림 클릭 시 소셜 탭의 댓글 신고로 이동
         if (location.state?.forceTab === 'reports') {
-            setActiveMenu('reports');
+            setActiveMenu('social');
+            setActiveSubMenu('reports');
             window.history.replaceState({}, document.title);
         }
     }, [location.state]);
 
-    // ▼▼▼ [추가] ?tab=messages URL 파라미터로 직접 탭 진입 (건의함 알림 클릭 시)
+    // ?tab=xxx URL 파라미터로 직접 탭 진입
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tabParam = params.get('tab');
@@ -110,12 +110,11 @@ function AdminPage() {
             setActiveMenu('social');
             setActiveSubMenu('messages');
         }
-        // [추가] ?tab=reports 직접 진입
         if (tabParam === 'reports') {
-            setActiveMenu('reports');
+            setActiveMenu('social');
+            setActiveSubMenu('reports');
         }
     }, [location.search]);
-    // ▲▲▲ [추가 끝] ▲▲▲
 
     const handleSendMessageClick = (studentId) => {
         navigate('/admin', { state: { preselectedStudentId: studentId } });
@@ -132,6 +131,7 @@ function AdminPage() {
             return <MissionTab missionSubMenu={missionSubMenu} setModalImageSrc={setModalImageSrc} onNavigateToHistory={handleNavigateToHistory} preselectedMissionId={preselectedMissionId} />;
         }
         if (activeMenu === 'social') {
+            if (activeSubMenu === 'reports') return <ReportTab />;
             return <SocialTab activeSubMenu={activeSubMenu} preselectedStudentId={preselectedStudentId} onStudentSelect={setPreselectedStudentId} />;
         }
         if (activeMenu === 'student') {
@@ -141,6 +141,7 @@ function AdminPage() {
             return <ShopTab shopSubMenu={shopSubMenu} />;
         }
         if (activeMenu === 'league') {
+            if (activeSubMenu === 'recorder') return <RecorderDashboardPage />;
             return <LeagueTab activeSubMenu={activeSubMenu} />;
         }
         if (activeMenu === 'title') {
@@ -153,12 +154,6 @@ function AdminPage() {
         if (activeMenu === 'class') {
             return <ClassTab />;
         }
-        if (activeMenu === 'recorder') {
-            return <RecorderDashboardPage />;
-        }
-        if (activeMenu === 'reports') { // [추가] 댓글 신고 탭
-            return <ReportTab />;
-        }
         return null;
     };
 
@@ -170,10 +165,8 @@ function AdminPage() {
             if (activeMenu !== 'student') setStudentSubMenu('point');
         } else if (menu === 'league') {
             if (activeMenu !== 'league') setActiveSubMenu('league_manage');
-        } else if (menu === 'quiz') {
-            setActiveSubMenu('');
-        } else if (menu === 'class') {
-            setActiveSubMenu('');
+        } else if (menu === 'mission') {
+            if (activeMenu !== 'mission') setMissionSubMenu('creation');
         } else {
             setActiveSubMenu('');
         }
@@ -184,19 +177,17 @@ function AdminPage() {
             <ImageModal src={modalImageSrc?.src} rotation={modalImageSrc?.rotation} onClose={() => setModalImageSrc(null)} />
             <AdminWrapper>
                 <Sidebar>
-                    <BroadcastButton to="/broadcast" target="_blank">📺 방송 송출 화면</BroadcastButton>
                     <NavList>
                         <NavItem>
-                            <NavButton $active={activeMenu === 'recorder'} onClick={() => handleMenuClick('recorder')}>📝 기록원 화면</NavButton>
+                            <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션/퀘스트 관리</NavButton>
+                            {activeMenu === 'mission' && (
+                                <SubNavList>
+                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'creation'} onClick={() => setMissionSubMenu('creation')}>출제</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>승인</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={missionSubMenu === 'history'} onClick={() => setMissionSubMenu('history')}>기록 확인</SubNavButton></SubNavItem>
+                                </SubNavList>
+                            )}
                         </NavItem>
-                        <NavButton $active={activeMenu === 'mission'} onClick={() => handleMenuClick('mission')}>미션 관리</NavButton>
-                        {activeMenu === 'mission' && (
-                            <SubNavList>
-                                <SubNavItem><SubNavButton $active={missionSubMenu === 'approval'} onClick={() => setMissionSubMenu('approval')}>미션 승인</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={missionSubMenu === 'creation'} onClick={() => setMissionSubMenu('creation')}>미션 출제</SubNavButton></SubNavItem>
-                                <SubNavItem><SubNavButton $active={missionSubMenu === 'history'} onClick={() => setMissionSubMenu('history')}>기록 확인</SubNavButton></SubNavItem>
-                            </SubNavList>
-                        )}
                         <NavItem>
                             <NavButton $active={activeMenu === 'quiz'} onClick={() => handleMenuClick('quiz')}>퀴즈 관리</NavButton>
                         </NavItem>
@@ -207,6 +198,24 @@ function AdminPage() {
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'messages'} onClick={() => setActiveSubMenu('messages')}>1:1 메시지</SubNavButton></SubNavItem>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'myroom_comments'} onClick={() => setActiveSubMenu('myroom_comments')}>마이룸 댓글</SubNavButton></SubNavItem>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'mission_comments'} onClick={() => setActiveSubMenu('mission_comments')}>미션 갤러리 댓글</SubNavButton></SubNavItem>
+                                    {/* 댓글 신고 탭을 소셜 관리 맨 하단으로 이동 */}
+                                    <SubNavItem>
+                                        <SubNavButton
+                                            $active={activeSubMenu === 'reports'}
+                                            onClick={() => setActiveSubMenu('reports')}
+                                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                        >
+                                            <span>🚨 댓글 신고</span>
+                                            {pendingReportCount > 0 && (
+                                                <span style={{
+                                                    background: '#e03131', color: '#fff', borderRadius: '50%',
+                                                    width: '20px', height: '20px', fontSize: '0.72rem', fontWeight: 700,
+                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                    flexShrink: 0
+                                                }}>{pendingReportCount}</span>
+                                            )}
+                                        </SubNavButton>
+                                    </SubNavItem>
                                 </SubNavList>
                             )}
                         </NavItem>
@@ -234,6 +243,13 @@ function AdminPage() {
                             {activeMenu === 'league' && (
                                 <SubNavList>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
+                                    {/* 기록원 화면 및 방송 송출 화면을 하위 탭으로 이동 */}
+                                    <SubNavItem><SubNavButton $active={activeSubMenu === 'recorder'} onClick={() => setActiveSubMenu('recorder')}>📝 기록원 화면</SubNavButton></SubNavItem>
+                                    <SubNavItem>
+                                        <SubNavButton as={Link} to="/broadcast" target="_blank" style={{ textDecoration: 'none', display: 'block', color: 'inherit' }}>
+                                            📺 방송 송출 화면
+                                        </SubNavButton>
+                                    </SubNavItem>
                                 </SubNavList>
                             )}
                         </NavItem>
@@ -242,24 +258,6 @@ function AdminPage() {
                         </NavItem>
                         <NavItem>
                             <NavButton $active={activeMenu === 'class'} onClick={() => handleMenuClick('class')}>학급 관리</NavButton>
-                        </NavItem>
-                        {/* [추가] 댓글 신고 탭 */}
-                        <NavItem>
-                            <NavButton
-                                $active={activeMenu === 'reports'}
-                                onClick={() => handleMenuClick('reports')}
-                                style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                            >
-                                <span>🚨 댓글 신고</span>
-                                {pendingReportCount > 0 && (
-                                    <span style={{
-                                        background: '#e03131', color: '#fff', borderRadius: '50%',
-                                        width: '20px', height: '20px', fontSize: '0.72rem', fontWeight: 700,
-                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0
-                                    }}>{pendingReportCount}</span>
-                                )}
-                            </NavButton>
                         </NavItem>
                     </NavList>
                 </Sidebar>
