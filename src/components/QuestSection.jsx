@@ -491,7 +491,9 @@ export default function QuestSection({ onQuestCountChange }) {
                         <Tag $bg="#e7f5ff" $color="#1c7ed6">{maxSlots - takenCount}/{maxSlots} 자리</Tag>
                       </TitleRow>
                     </div>
-                    <Reward>💰 {quest.reward}P</Reward>
+                    <Reward>
+                      💰 {quest.reward}P{quest.heartReward > 0 ? ` · ❤️ ${quest.heartReward}` : ''}
+                    </Reward>
                   </TopRow>
 
                   {quest.description && <Desc>{quest.description}</Desc>}
@@ -558,7 +560,14 @@ export default function QuestSection({ onQuestCountChange }) {
 
               <ModalRewardBox>
                 <ModalRewardLabel>🪙 완료 보상 (완료 후 지급)</ModalRewardLabel>
-                <ModalRewardValue>{modalQuest.reward}P</ModalRewardValue>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <ModalRewardValue>{modalQuest.reward}P</ModalRewardValue>
+                  {modalQuest.heartReward > 0 && (
+                    <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fa5252' }}>
+                      + ❤️ {modalQuest.heartReward}
+                    </span>
+                  )}
+                </div>
               </ModalRewardBox>
 
               <ModalSlots>

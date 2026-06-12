@@ -327,9 +327,10 @@ function QuestApprovalWidget() {
     }, [classId]);
 
     const handleApprove = async (quest, acceptor) => {
-        if (!window.confirm(`${acceptor.playerName} 학생의 퀘스트 완료를 승인하고 ${quest.reward}P를 지급할까요?`)) return;
+        const heartMsg = quest.heartReward > 0 ? ` + ❤️ ${quest.heartReward}` : '';
+        if (!window.confirm(`${acceptor.playerName} 학생의 퀘스트 완료를 승인하고 ${quest.reward}P${heartMsg}를 지급할까요?`)) return;
         try {
-            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward);
+            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward, quest.heartReward || 0);
         } catch (e) { alert(`완료 처리 실패: ${e.message}`); }
     };
 
@@ -360,7 +361,7 @@ function QuestApprovalWidget() {
                     {quests.map(quest => (
                         <ListItem key={quest.id}>
                             <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.95rem' }}>
-                                ⚔ {quest.title} · 💰 {quest.reward}P
+                                ⚔ {quest.title} · 💰 {quest.reward}P{quest.heartReward > 0 ? ` · ❤️ ${quest.heartReward}` : ''}
                             </strong>
                             {(quest.acceptors || []).filter(a => a.completionStatus === 'pending').map(a => (
                                 <div key={a.playerId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f8f9fa', gap: '8px', flexWrap: 'wrap' }}>
@@ -429,6 +430,10 @@ function SortableQuestItem({ quest, isEditing, editForm, setEditForm, onSave, on
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                         <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))} placeholder="퀘스트 이름" style={{ ...fieldStyle, flex: 1, minWidth: '160px' }} />
                         <input type="number" value={editForm.reward} onChange={e => setEditForm(p => ({ ...p, reward: e.target.value }))} placeholder="보상 P" style={{ ...fieldStyle, width: '100px' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.9rem' }}>❤️</span>
+                            <input type="number" min={0} value={editForm.heartReward ?? '0'} onChange={e => setEditForm(p => ({ ...p, heartReward: e.target.value }))} placeholder="하트" style={{ ...fieldStyle, width: '70px', background: '#fff5f5', borderColor: '#ffc9c9' }} />
+                        </div>
                     </div>
                     <textarea value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))} placeholder="퀘스트 설명" style={{ ...fieldStyle, minHeight: '60px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -453,6 +458,7 @@ function SortableQuestItem({ quest, isEditing, editForm, setEditForm, onSave, on
                         <div style={{ flex: 1 }}>
                             <span style={{ fontWeight: 700 }}>⚔ {quest.title}</span>
                             <span style={{ marginLeft: '8px', fontSize: '0.78rem', background: '#fff3bf', color: '#e67700', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>💰 {quest.reward}P</span>
+                            {quest.heartReward > 0 && <span style={{ marginLeft: '4px', fontSize: '0.78rem', background: '#fff5f5', color: '#fa5252', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>❤️ {quest.heartReward}</span>}
                             <span style={{ marginLeft: '6px', fontSize: '0.78rem', background: '#e7f5ff', color: '#1c7ed6', padding: '2px 7px', borderRadius: '5px', fontWeight: 700 }}>{takenCount}/{maxSlots}명 수락</span>
                             {quest.deadline && <span style={{ marginLeft: '6px', color: '#adb5bd', fontSize: '0.78rem' }}>🕐 {quest.deadline}</span>}
                         </div>
@@ -511,6 +517,7 @@ function QuestManager() {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [reward, setReward] = useState('100');
+    const [heartReward, setHeartReward] = useState('0');
     const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
     const [questMaxAcceptors, setQuestMaxAcceptors] = useState(1);
     const [questDeadline, setQuestDeadline] = useState('');
@@ -534,13 +541,14 @@ function QuestManager() {
                 title: title.trim(),
                 description: description.trim(),
                 reward: Number(reward) || 0,
+                heartReward: Number(heartReward) || 0,
                 maxAcceptors: Number(questMaxAcceptors) || 1,
                 submissionType: typeToSend,
                 deadline: questDeadline.trim() || null,
             });
             alert('퀘스트가 출제됐습니다! 전체 학생에게 알림이 전송됩니다.');
 
-            setTitle(''); setDescription(''); setReward('100');
+            setTitle(''); setDescription(''); setReward('100'); setHeartReward('0');
             setSubmissionTypes({ text: false, photo: false });
             setQuestMaxAcceptors(1); setQuestDeadline('');
         } catch (e) { alert(`퀘스트 출제 실패: ${e.message}`); }
@@ -552,6 +560,7 @@ function QuestManager() {
             title: quest.title || '',
             description: quest.description || '',
             reward: quest.reward?.toString() || '',
+            heartReward: quest.heartReward?.toString() || '0',
             maxAcceptors: quest.maxAcceptors?.toString() || '1',
             deadline: quest.deadline || '',
         });
@@ -564,6 +573,7 @@ function QuestManager() {
                 title: editForm.title.trim(),
                 description: editForm.description.trim(),
                 reward: Number(editForm.reward),
+                heartReward: Number(editForm.heartReward) || 0,
                 maxAcceptors: Number(editForm.maxAcceptors) || 1,
                 deadline: editForm.deadline.trim() || null,
             });
@@ -608,9 +618,10 @@ function QuestManager() {
 
     const handleForceComplete = async (quest, acceptor) => {
         if (acceptor.completionStatus === 'completed') return;
-        if (!window.confirm(`[관리자 권한] ${acceptor.playerName} 학생의 퀘스트를 즉시 완료 처리하고 ${quest.reward}P를 지급할까요?`)) return;
+        const heartMsg = quest.heartReward > 0 ? ` + ❤️ ${quest.heartReward}` : '';
+        if (!window.confirm(`[관리자 권한] ${acceptor.playerName} 학생의 퀘스트를 즉시 완료 처리하고 ${quest.reward}P${heartMsg}를 지급할까요?`)) return;
         try {
-            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward);
+            await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward, quest.heartReward || 0);
         } catch (e) {
             alert(`완료 처리 실패: ${e.message}`);
         }
@@ -629,6 +640,10 @@ function QuestManager() {
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                     <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="퀘스트 이름 (예: 급식실 쓰레기 수거)" style={{ flex: 1, minWidth: '200px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} />
                     <ScoreInput type="number" value={reward} onChange={(e) => setReward(e.target.value)} style={{ width: '100px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="보상 P" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fa5252' }}>❤️</span>
+                        <ScoreInput type="number" min={0} value={heartReward} onChange={(e) => setHeartReward(e.target.value)} style={{ width: '70px', padding: '0.7rem 0.8rem', borderRadius: '8px', border: '1px solid #ffc9c9', fontSize: '0.95rem', background: '#fff5f5' }} placeholder="하트" />
+                    </div>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0 0.5rem' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} style={{ width: '16px', height: '16px' }} /> 글</label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} style={{ width: '16px', height: '16px' }} /> 사진</label>

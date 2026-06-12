@@ -4998,7 +4998,7 @@ export async function acceptQuest(classId, questId, player) {
 /**
  * 퀘스트 완료 처리 (관리자) — 포인트 지급 포함
  */
-export async function completeQuestForPlayer(classId, questId, playerId, playerName, reward) {
+export async function completeQuestForPlayer(classId, questId, playerId, playerName, reward, heartReward = 0) {
   if (!classId) return;
   const questRef = doc(db, 'classes', classId, 'quests', questId);
   const snap = await getDoc(questRef);
@@ -5013,6 +5013,14 @@ export async function completeQuestForPlayer(classId, questId, playerId, playerN
   // 포인트 지급
   await adjustPlayerPoints(classId, playerId, reward, `퀘스트 완료: ${data.title}`);
 
+  // 하트(좋아요) 지급
+  if (heartReward > 0) {
+    const playerRef = doc(db, 'classes', classId, 'players', playerId);
+    await updateDoc(playerRef, {
+      totalLikes: increment(heartReward),
+    });
+  }
+
   // 펫 경험치 100 지급 + 학생/관리자 알림
   try {
     const playerRef = doc(db, 'classes', classId, 'players', playerId);
@@ -5023,10 +5031,11 @@ export async function completeQuestForPlayer(classId, questId, playerId, playerN
         await updatePetExperience(playerRef, 100);
       }
       if (pData.authUid) {
+        const heartMsg = heartReward > 0 ? ` + ❤️ ${heartReward}` : '';
         createNotification(
           pData.authUid,
           `✅ 퀘스트 승인됨!`,
-          `'${data.title}' 퀘스트가 승인됐습니다! ${reward}P와 펫 경험치 100을 획득했어요.`,
+          `'${data.title}' 퀘스트가 승인됐습니다! ${reward}P${heartMsg}와 펫 경험치 100을 획득했어요.`,
           'quest',
           '/missions'
         );
