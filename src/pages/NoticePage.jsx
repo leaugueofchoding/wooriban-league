@@ -1,6 +1,6 @@
 // src/pages/NoticePage.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import {
@@ -8,13 +8,14 @@ import {
   markNoticeRead, listenNoticeReaders,
   addNoticeComment, deleteNoticeComment, listenNoticeComments,
   toggleNoticeHeart, listenNoticeHearts,
+  listenNoticeVotes, toggleNoticeVote, finalizeNoticeVote // ✅ 추가됨
 } from '../api/firebase';
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
 import { filterProfanity } from '../utils/profanityFilter';
 
 const DEFAULT_TABS = ['주간학습 안내', '공지사항', '식단표'];
-const DEFAULT_TAB_CONFIG = { comment: true, heart: true }; // 기본: 댓글·하트 모두 ON
+const DEFAULT_TAB_CONFIG = { comment: true, heart: true };
 
 const fadeIn = keyframes`from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}`;
 const fadeInFull = keyframes`from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)}`;
@@ -63,7 +64,22 @@ const CommentInputRow = styled.div`display:flex;gap:0.5rem;margin-top:0.5rem;`;
 const CommentInput = styled.input`flex:1;padding:0.55rem 0.9rem;border:1.5px solid #dee2e6;border-radius:10px;font-size:0.9rem;&:focus{border-color:#339af0;outline:none;}`;
 const CommentSendBtn = styled.button`background:#1971c2;color:white;border:none;border-radius:10px;padding:0.55rem 1rem;font-size:0.88rem;font-weight:800;cursor:pointer;white-space:nowrap;&:hover{background:#1864ab;}`;
 
-/* ─── 읽은 사람 모달 ──────────────────────────────────────── */
+/* ─── 투표(Poll) UI 컴포넌트 ────────────────────────────── */
+const PollContainer = styled.div`margin: 1rem 0; padding: 1.2rem; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;`;
+const PollTitle = styled.h4`margin: 0 0 0.8rem; font-size: 1.05rem; color: #1c1c1e; display: flex; align-items: center; justify-content: space-between;`;
+const PollMeta = styled.span`font-size: 0.75rem; color: #868e96; font-weight: 700; background: #e9ecef; padding: 0.2rem 0.5rem; border-radius: 6px;`;
+const PollOptionList = styled.div`display: flex; flex-direction: column; gap: 0.5rem;`;
+const PollOptionBtn = styled.div`
+  position: relative; width: 100%; text-align: left; background: white; border: 2px solid ${p => p.$selected ? '#339af0' : '#dee2e6'}; 
+  border-radius: 8px; padding: 0.7rem 0.8rem; cursor: ${p => p.$disabled ? 'default' : 'pointer'}; transition: all 0.2s; overflow: hidden;
+  &:hover { border-color: ${p => (p.$selected ? '#228be6' : (p.$disabled ? '#dee2e6' : '#adb5bd'))}; }
+  opacity: ${p => (p.$disabled && !p.$selected) ? 0.7 : 1};
+`;
+const PollProgressBar = styled.div`position: absolute; top: 0; left: 0; bottom: 0; width: ${p => p.$percent}%; background: ${p => p.$selected ? '#e7f5ff' : '#f1f3f5'}; z-index: 1; transition: width 0.4s ease-out;`;
+const PollOptionContent = styled.div`position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; color: #343a40; font-weight: ${p => p.$selected ? '800' : '500'};`;
+const PollCheck = styled.span`color: #339af0; margin-right: 0.4rem; font-weight: bold;`;
+
+/* ─── 모달 ────────────────────────────────────────────── */
 const ModalOverlay = styled.div`position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:9500;padding:1rem;`;
 const ModalCard = styled.div`background:white;border-radius:18px;padding:1.6rem;width:100%;max-width:440px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);animation:${fadeIn} 0.2s ease;`;
 const ModalTitle2 = styled.h3`margin:0 0 1rem;font-size:1.05rem;font-weight:900;`;
@@ -97,20 +113,32 @@ const CancelBtn = styled.button`flex:1;padding:0.82rem;border:none;border-radius
 const TabItem = styled.div`display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0.8rem;background:#f8f9fa;border-radius:8px;margin-bottom:0.5rem;`;
 const TabNameInput = styled.input`flex:1;padding:0.4rem 0.7rem;border:1.5px solid #dee2e6;border-radius:7px;font-size:0.92rem;font-weight:700;&:focus{border-color:#339af0;outline:none;}`;
 const ToggleSwitch = styled.button`padding:0.25rem 0.55rem;font-size:0.75rem;font-weight:800;border-radius:6px;border:none;cursor:pointer;background:${p => p.$on ? '#d3f9d8' : '#ffe3e3'};color:${p => p.$on ? '#2b8a3e' : '#c92a2a'};`;
+const PollSetupCard = styled.div`background:#f8f9fa;border:1px solid #dee2e6;border-radius:12px;padding:1rem;margin-top:0.5rem;`;
+const OptionInputRow = styled.div`display:flex;gap:0.4rem;margin-bottom:0.4rem;`;
 
-/* ─── 인라인 소셜 서브컴포넌트 ──────────────────────────── */
+/* ─── 인라인 소셜/투표 서브컴포넌트 ──────────────────────────── */
 function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeacher, players }) {
   const [hearts, setHearts] = useState([]);
   const [comments, setComments] = useState([]);
   const [readers, setReaders] = useState([]);
+  const [votes, setVotes] = useState([]);
   const [commentInput, setCommentInput] = useState('');
   const [showComments, setShowComments] = useState(false);
   const [showReaders, setShowReaders] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
+  const [showVotersOptionIdx, setShowVotersOptionIdx] = useState(null);
 
   const heartOn = tabConfig?.heart !== false;
   const commentOn = tabConfig?.comment !== false;
   const myId = myPlayerData?.id;
+
+  // 기한 초과 여부 확인 (현재 시간과 비교)
+  const isTimeOver = notice.poll?.deadline ? new Date() > new Date(notice.poll.deadline) : false;
+  const isPollClosed = notice.poll?.isClosed || isTimeOver;
+
+  // 내가 낸 표 찾기
+  const myVote = votes.find(v => v.playerId === myId);
+  const isVoterFinalized = myVote?.isFinalized || false;
 
   useEffect(() => {
     if (!heartOn) return;
@@ -125,6 +153,11 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
   useEffect(() => {
     return listenNoticeReaders(classId, notice.id, setReaders);
   }, [classId, notice.id]);
+
+  useEffect(() => {
+    if (!notice.poll) return;
+    return listenNoticeVotes(classId, notice.id, setVotes);
+  }, [classId, notice.id, notice.poll]);
 
   const handleHeart = async (e) => {
     e.stopPropagation();
@@ -143,11 +176,141 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
     } finally { setIsSendingComment(false); }
   };
 
+  const handleVote = async (optionIdx, e) => {
+    e.stopPropagation();
+    if (isPollClosed) return alert('이미 마감된 투표입니다.');
+    if (isVoterFinalized) return alert('이미 투표 제출을 완료하셨습니다.');
+    try {
+      await toggleNoticeVote(classId, notice.id, myId, optionIdx, notice.poll.multiple);
+    } catch (err) { alert('투표 처리 중 오류가 발생했습니다.'); }
+  };
+
+  const handleFinalizeVote = async (e) => {
+    e.stopPropagation();
+    if (!window.confirm('선택하신 항목으로 투표를 제출하시겠습니까?\n제출 후에는 수정할 수 없습니다.')) return;
+    try {
+      await finalizeNoticeVote(classId, notice.id, myId);
+    } catch (err) { alert('제출 중 오류가 발생했습니다.'); }
+  };
+
+  const formatDeadlineText = (isoString) => {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours()}시 ${String(d.getMinutes()).padStart(2, '0')}분`;
+  };
+
   const iHearted = hearts.includes(myId);
-  const unreadCount = 23 - readers.length; // 전체 인원 기준 — 실제로는 players.length 사용 가능
+
+  // 투표 집계 로직
+  const totalVotes = votes.length;
+  const voteCounts = {};
+  if (notice.poll) {
+    notice.poll.options.forEach((_, i) => voteCounts[i] = 0);
+    votes.forEach(v => {
+      if (Array.isArray(v.options)) {
+        v.options.forEach(opt => { if (voteCounts[opt] !== undefined) voteCounts[opt]++; });
+      }
+    });
+  }
+
+  const getMySelectedOptions = () => {
+    return myVote ? myVote.options : [];
+  };
 
   return (
     <>
+      {notice.poll && (
+        <PollContainer onClick={e => e.stopPropagation()}>
+          <PollTitle>
+            <span>📊 투표: {notice.poll.title}</span>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+              {notice.poll.anonymous && <PollMeta>익명</PollMeta>}
+              {notice.poll.multiple && <PollMeta>복수선택</PollMeta>}
+
+              {isPollClosed ? (
+                <PollMeta style={{ background: '#ffe3e3', color: '#fa5252', marginLeft: '0.5rem' }}>마감됨</PollMeta>
+              ) : (
+                isTeacher && (
+                  <button onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!window.confirm('정말로 이 투표를 마감 처리하시겠습니까?')) return;
+                    await updateDoc(doc(db, 'classes', classId, 'notices', notice.id), { 'poll.isClosed': true });
+                  }}
+                    style={{ marginLeft: '0.5rem', background: '#495057', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', padding: '0.2rem 0.6rem', cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    마감하기
+                  </button>
+                )
+              )}
+            </div>
+          </PollTitle>
+
+          {notice.poll.deadline && (
+            <p style={{ fontSize: '0.8rem', color: isTimeOver ? '#fa5252' : '#868e96', margin: '-0.4rem 0 0.8rem 0', fontWeight: 600 }}>
+              🕐 마감 기한: {formatDeadlineText(notice.poll.deadline)} {isTimeOver && '(시간 초과)'}
+            </p>
+          )}
+
+          <PollOptionList>
+            {notice.poll.options.map((opt, idx) => {
+              const mySelections = getMySelectedOptions();
+              const isSelected = mySelections.includes(idx);
+              const count = voteCounts[idx] || 0;
+              const percent = totalVotes === 0 ? 0 : Math.round((count / totalVotes) * 100);
+              const isDisabled = isPollClosed || isVoterFinalized;
+
+              return (
+                <PollOptionBtn key={idx} $selected={isSelected} $disabled={isDisabled} onClick={(e) => handleVote(idx, e)}>
+                  <PollProgressBar $percent={percent} $selected={isSelected} />
+                  <PollOptionContent $selected={isSelected}>
+                    <div>
+                      {isSelected && <PollCheck>✓</PollCheck>}
+                      <span>{opt}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>{percent}%</span>
+                      {count > 0 && !notice.poll.anonymous ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowVotersOptionIdx(idx); }}
+                          style={{ background: 'none', border: '1px solid #ced4da', borderRadius: '4px', fontSize: '0.7rem', padding: '0.1rem 0.3rem', cursor: 'pointer', zIndex: 10 }}
+                        >{count}명 👤</button>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({count}명)</span>
+                      )}
+                    </div>
+                  </PollOptionContent>
+                </PollOptionBtn>
+              );
+            })}
+          </PollOptionList>
+
+          {/* 학생 투표 완료 처리 영역 */}
+          {!isTeacher && !isPollClosed && (
+            <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+              {isVoterFinalized ? (
+                <span style={{ color: '#2b8a3e', fontSize: '0.9rem', fontWeight: 800, background: '#d3f9d8', padding: '0.4rem 1rem', borderRadius: '20px' }}>
+                  ✅ 투표를 완료했습니다
+                </span>
+              ) : (
+                <button
+                  onClick={handleFinalizeVote}
+                  disabled={getMySelectedOptions().length === 0}
+                  style={{
+                    width: '100%', padding: '0.75rem', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 800, border: 'none',
+                    background: getMySelectedOptions().length > 0 ? '#339af0' : '#e9ecef',
+                    color: getMySelectedOptions().length > 0 ? 'white' : '#adb5bd',
+                    cursor: getMySelectedOptions().length > 0 ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  ✅ 투표 최종 제출 (이후 수정 불가)
+                </button>
+              )}
+            </div>
+          )}
+        </PollContainer>
+      )}
+
       <ActionBar onClick={e => e.stopPropagation()}>
         {heartOn && (
           <>
@@ -204,6 +367,7 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
         </CommentsArea>
       )}
 
+      {/* 읽은 사람 명단 모달 */}
       {showReaders && (
         <ModalOverlay onClick={() => setShowReaders(false)}>
           <ModalCard onClick={e => e.stopPropagation()}>
@@ -225,6 +389,28 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
           </ModalCard>
         </ModalOverlay>
       )}
+
+      {/* 투표자 명단 모달 */}
+      {showVotersOptionIdx !== null && notice.poll && (
+        <ModalOverlay onClick={() => setShowVotersOptionIdx(null)}>
+          <ModalCard onClick={e => e.stopPropagation()}>
+            <ModalTitle2>🗳️ "{notice.poll.options[showVotersOptionIdx]}" 투표자</ModalTitle2>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+              {votes.filter(v => Array.isArray(v.options) && v.options.includes(showVotersOptionIdx)).map(v => {
+                const voterName = players?.find(p => p.id === v.playerId)?.name || '알 수 없음';
+                return (
+                  <span key={v.playerId} style={{ background: '#e7f5ff', color: '#1971c2', borderRadius: '8px', padding: '0.3rem 0.7rem', fontSize: '0.85rem', fontWeight: 700 }}>
+                    {voterName}
+                  </span>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: '1rem', textAlign: 'right' }}>
+              <CancelBtn style={{ maxWidth: '120px' }} onClick={() => setShowVotersOptionIdx(null)}>닫기</CancelBtn>
+            </div>
+          </ModalCard>
+        </ModalOverlay>
+      )}
     </>
   );
 }
@@ -239,7 +425,7 @@ function NoticePage() {
 
   const [notices, setNotices] = useState([]);
   const [tabs, setTabs] = useState(DEFAULT_TABS);
-  const [tabConfigs, setTabConfigs] = useState({}); // { [tabName]: { comment, heart } }
+  const [tabConfigs, setTabConfigs] = useState({});
   const [activeTab, setActiveTab] = useState('전체');
   const [expandedId, setExpandedId] = useState(null);
   const [fullscreenNotice, setFullscreenNotice] = useState(null);
@@ -252,6 +438,11 @@ function NoticePage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
+
+  // 투표 폼 상태
+  const [includePoll, setIncludePoll] = useState(false);
+  const [pollForm, setPollForm] = useState({ title: '', options: ['', ''], multiple: false, anonymous: false, deadline: '', isClosed: false });
+
   const [editingTabs, setEditingTabs] = useState([]);
   const [editingTabConfigs, setEditingTabConfigs] = useState({});
   const fileRef = useRef();
@@ -297,15 +488,26 @@ function NoticePage() {
     const defaultTab = activeTab === '전체' ? (tabs[0] || '') : activeTab;
     setForm({ title: '', content: '', tab: defaultTab });
     setSelectedFiles([]); setPreviews([]); setExistingUrls([]);
+    setIncludePoll(false);
+    setPollForm({ title: '', options: ['', ''], multiple: false, anonymous: false, deadline: '', isClosed: false });
     setEditingNotice(null); setModalMode('create');
   };
+
   const openEdit = (notice, e) => {
     e.stopPropagation();
     setForm({ title: notice.title, content: notice.content || '', tab: notice.tab || tabs[0] || '' });
     setExistingUrls(notice.imageUrls || []);
     setSelectedFiles([]); setPreviews([]);
+    if (notice.poll) {
+      setIncludePoll(true);
+      setPollForm({ ...notice.poll });
+    } else {
+      setIncludePoll(false);
+      setPollForm({ title: '', options: ['', ''], multiple: false, anonymous: false, deadline: '', isClosed: false });
+    }
     setEditingNotice(notice); setModalMode('edit');
   };
+
   const closeModal = () => { setModalMode(null); setEditingNotice(null); };
 
   const handleFileChange = (e) => {
@@ -316,19 +518,46 @@ function NoticePage() {
     e.target.value = '';
   };
 
+  const handlePollOptionChange = (idx, val) => {
+    const newOpts = [...pollForm.options];
+    newOpts[idx] = val;
+    setPollForm({ ...pollForm, options: newOpts });
+  };
+
+  const addPollOption = () => {
+    if (pollForm.options.length >= 10) return alert('항목은 최대 10개까지만 추가할 수 있습니다.');
+    setPollForm({ ...pollForm, options: [...pollForm.options, ''] });
+  };
+
+  const removePollOption = (idx) => {
+    if (pollForm.options.length <= 2) return alert('항목은 최소 2개가 필요합니다.');
+    const newOpts = pollForm.options.filter((_, i) => i !== idx);
+    setPollForm({ ...pollForm, options: newOpts });
+  };
+
   const handleSubmit = async () => {
-    if (!form.content.trim() && selectedFiles.length === 0 && existingUrls.length === 0) return alert('내용이나 이미지를 추가해주세요.');
+    if (!form.content.trim() && selectedFiles.length === 0 && existingUrls.length === 0 && !includePoll) return alert('내용, 이미지 또는 투표를 추가해주세요.');
     const finalTitle = form.title.trim() || '제목없음';
+
+    let finalPoll = null;
+    if (includePoll) {
+      const validOptions = pollForm.options.filter(o => o.trim() !== '');
+      if (!pollForm.title.trim()) return alert('투표 제목을 입력해주세요.');
+      if (validOptions.length < 2) return alert('유효한 투표 항목을 2개 이상 입력해주세요.');
+      finalPoll = { ...pollForm, title: pollForm.title.trim(), options: validOptions, deadline: pollForm.deadline || null };
+    }
+
     setIsSubmitting(true);
     try {
       const newUrls = [];
       for (const file of selectedFiles) newUrls.push(await uploadNoticeImage(classId, file));
       const finalUrls = [...existingUrls, ...newUrls];
+
       if (modalMode === 'create') {
-        await createNotice(classId, myPlayerData.name, finalTitle, form.content.trim(), finalUrls, form.tab);
+        await createNotice(classId, myPlayerData.name, finalTitle, form.content.trim(), finalUrls, form.tab, finalPoll);
       } else {
         await updateDoc(doc(db, 'classes', classId, 'notices', editingNotice.id), {
-          title: finalTitle, content: form.content.trim(), imageUrls: finalUrls, tab: form.tab, updatedAt: serverTimestamp(),
+          title: finalTitle, content: form.content.trim(), imageUrls: finalUrls, tab: form.tab, poll: finalPoll, updatedAt: serverTimestamp(),
         });
       }
       closeModal();
@@ -405,6 +634,7 @@ function NoticePage() {
                     <span>·</span>
                     <span>{formatDate(notice.createdAt)}</span>
                     {(notice.imageUrls || []).length > 0 && <MetaTag>📎 {notice.imageUrls.length}장</MetaTag>}
+                    {notice.poll && <MetaTag style={{ background: '#fff9db', color: '#f08c00' }}>📊 투표</MetaTag>}
                     {isExpanded && <MetaTag style={{ background: '#f3f0ff', color: '#7048e8', cursor: 'pointer' }}>🔍 전체화면</MetaTag>}
                   </MetaRow>
                 </div>
@@ -427,6 +657,7 @@ function NoticePage() {
                       ))}
                     </ImgGrid>
                   )}
+
                   <NoticeInlineFeatures
                     classId={classId} notice={notice} myPlayerData={myPlayerData}
                     tabConfig={cfg} isTeacher={isTeacher} players={players}
@@ -478,7 +709,44 @@ function NoticePage() {
             <Input placeholder="제목 (비워두면 '제목없음'으로 저장)" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
             <Label>내용</Label>
             <Textarea placeholder="공지 내용 (선택)" value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} />
-            <Label>이미지 첨부</Label>
+
+            {/* 투표 설정 영역 */}
+            <div style={{ marginTop: '1.2rem', borderTop: '1px dashed #dee2e6', paddingTop: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Label style={{ margin: 0 }}>📊 투표 첨부</Label>
+                <ToggleSwitch $on={includePoll} onClick={() => setIncludePoll(!includePoll)}>
+                  {includePoll ? '사용 ON' : '사용 OFF'}
+                </ToggleSwitch>
+              </div>
+
+              {includePoll && (
+                <PollSetupCard>
+                  <Input placeholder="투표 제목 (예: 회장 선거, 체육대회 종목)" value={pollForm.title} onChange={e => setPollForm({ ...pollForm, title: e.target.value })} style={{ marginBottom: '0.8rem', padding: '0.6rem', fontSize: '0.9rem' }} />
+
+                  {/* 기한 설정 (날짜/시간 선택) */}
+                  <Input type="datetime-local" value={pollForm.deadline || ''} onChange={e => setPollForm({ ...pollForm, deadline: e.target.value })} style={{ marginBottom: '0.8rem', padding: '0.6rem', fontSize: '0.9rem', color: pollForm.deadline ? '#1c1c1e' : '#adb5bd' }} />
+
+                  {pollForm.options.map((opt, i) => (
+                    <OptionInputRow key={i}>
+                      <Input placeholder={`항목 ${i + 1}`} value={opt} onChange={e => handlePollOptionChange(i, e.target.value)} style={{ padding: '0.5rem', fontSize: '0.9rem' }} />
+                      <button onClick={() => removePollOption(i)} style={{ background: '#ffe3e3', color: '#c92a2a', border: 'none', borderRadius: '8px', padding: '0 0.6rem', cursor: 'pointer' }}>✕</button>
+                    </OptionInputRow>
+                  ))}
+                  <button onClick={addPollOption} style={{ width: '100%', padding: '0.5rem', background: 'white', border: '1px dashed #adb5bd', borderRadius: '8px', color: '#495057', cursor: 'pointer', marginTop: '0.2rem' }}>+ 항목 추가</button>
+
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                    <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={pollForm.multiple} onChange={e => setPollForm({ ...pollForm, multiple: e.target.checked })} /> 복수 선택 허용
+                    </label>
+                    <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={pollForm.anonymous} onChange={e => setPollForm({ ...pollForm, anonymous: e.target.checked })} /> 익명 투표 (누가 했는지 비공개)
+                    </label>
+                  </div>
+                </PollSetupCard>
+              )}
+            </div>
+
+            <Label style={{ marginTop: '1.2rem' }}>이미지 첨부</Label>
             {existingUrls.length > 0 && <PreviewGrid>{existingUrls.map((url, i) => <Thumb key={`e${i}`}><ThumbImg src={url} /><ThumbRemove onClick={() => setExistingUrls(p => p.filter((_, idx) => idx !== i))}>✕</ThumbRemove></Thumb>)}</PreviewGrid>}
             {previews.length > 0 && <PreviewGrid style={{ marginTop: existingUrls.length ? '0.5rem' : '0.7rem' }}>{previews.map((src, i) => <Thumb key={`n${i}`}><ThumbImg src={src} /><ThumbRemove onClick={() => { setSelectedFiles(p => p.filter((_, idx) => idx !== i)); setPreviews(p => p.filter((_, idx) => idx !== i)); }}>✕</ThumbRemove></Thumb>)}</PreviewGrid>}
             <UploadZone htmlFor="notice-img" style={{ marginTop: '0.6rem' }}>

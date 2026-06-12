@@ -650,11 +650,10 @@ function QuestManager() {
                     </div>
                 </div>
 
-                {(submissionTypes.text || submissionTypes.photo) && (
-                    <div style={{ marginBottom: '10px' }}>
-                        <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="퀘스트 설명 (해야 할 일, 완료 기준 등)" style={{ minHeight: '80px', width: '100%', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem', boxSizing: 'border-box' }} />
-                    </div>
-                )}
+                {/* 항상 표시되도록 변경된 설명 텍스트 영역 */}
+                <div style={{ marginBottom: '10px' }}>
+                    <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="퀘스트 설명 (해야 할 일, 완료 기준 등)" style={{ minHeight: '80px', width: '100%', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem', boxSizing: 'border-box' }} />
+                </div>
 
                 <div style={{ background: '#fffbf0', border: '1px solid #ffe8a1', borderRadius: '8px', padding: '12px 16px', display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '10px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', color: '#7a4d00', fontWeight: 700 }}>
@@ -824,7 +823,7 @@ function MissionManager({ onNavigate }) {
 
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                     <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="미션 이름" style={{ flex: 1, minWidth: '200px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} />
-                    <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '100px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="보상 P" />
+                    <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '100px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="기본 보상" />
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0 0.5rem' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} style={{ width: '16px', height: '16px' }} /> 글</label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} style={{ width: '16px', height: '16px' }} /> 사진</label>
@@ -849,6 +848,7 @@ function MissionManager({ onNavigate }) {
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#e2e3e5', padding: '12px 16px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #d6d8db' }}>
                         <span style={{ fontWeight: 700, color: '#383d41' }}>연계 미션:</span>
                         <select value={prerequisiteMissionId} onChange={(e) => setPrerequisiteMissionId(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #ced4da' }}>
+                            <option value="">-- 없음 --</option>
                             <option value="">-- 없음 --</option>
                             {missions.map(mission => (<option key={mission.id} value={mission.id}>{mission.title}</option>))}
                         </select>

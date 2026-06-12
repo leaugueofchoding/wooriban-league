@@ -4623,19 +4623,6 @@ export function listenNotices(classId, callback) {
   });
 }
 
-/**
- * 공지사항 작성 (교사만 호출)
- */
-export async function createNotice(classId, authorName, title, content, imageUrls = [], tab = '') {
-  if (!classId) throw new Error('학급 정보가 없습니다.');
-  const noticesRef = collection(db, 'classes', classId, 'notices');
-  await addDoc(noticesRef, {
-    title, content, imageUrls, tab,
-    authorName,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-}
 
 /**
  * 공지사항 삭제 (교사만 호출)
@@ -5166,3 +5153,78 @@ export function listenClassSchedules(classId, callback) {
     callback(snap.exists() ? (snap.data().schedules || []) : []);
   });
 }
+
+/// 1. 기존 createNotice 함수를 아래 코드로 덮어쓰기 해주세요.
+// (파라미터 맨 끝에 poll = null 이 추가되었고, 저장 객체에 poll이 들어갑니다.)
+export const createNotice = async (classId, authorName, title, content, imageUrls, tab, poll = null) => {
+  const docRef = await addDoc(collection(db, 'classes', classId, 'notices'), {
+    authorName,
+    title,
+    content,
+    imageUrls,
+    tab,
+    poll, // ✅ 투표 데이터 서버 저장 완료!
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef;
+};
+
+// ---------------------------------------------------------
+
+// 2. 아래 두 함수는 파일 맨 아래에 그대로 두시거나 추가해 주시면 됩니다.
+/** 투표 데이터 실시간 리스너 */
+export const listenNoticeVotes = (classId, noticeId, callback) => {
+  const votesRef = collection(db, 'classes', classId, 'notices', noticeId, 'votes');
+  return onSnapshot(votesRef, (snapshot) => {
+    const votes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(votes);
+  });
+};
+
+/** 투표 하기 / 취소하기 토글 함수 */
+export const toggleNoticeVote = async (classId, noticeId, playerId, optionIndex, isMultiple) => {
+  const voteDocRef = doc(db, 'classes', classId, 'notices', noticeId, 'votes', playerId);
+  const voteSnap = await getDoc(voteDocRef);
+
+  if (voteSnap.exists()) {
+    const data = voteSnap.data();
+    let currentOptions = data.options || [];
+
+    if (isMultiple) {
+      // 복수 선택: 있으면 제거, 없으면 추가
+      if (currentOptions.includes(optionIndex)) {
+        currentOptions = currentOptions.filter(opt => opt !== optionIndex);
+      } else {
+        currentOptions.push(optionIndex);
+      }
+
+      // 선택한 항목이 없으면 문서 삭제, 있으면 업데이트
+      if (currentOptions.length === 0) {
+        await deleteDoc(voteDocRef);
+      } else {
+        await updateDoc(voteDocRef, { options: currentOptions });
+      }
+    } else {
+      // 단일 선택: 이미 선택된 항목을 또 누르면 취소, 다른 걸 누르면 변경
+      if (currentOptions.includes(optionIndex)) {
+        await deleteDoc(voteDocRef); // 취소
+      } else {
+        await updateDoc(voteDocRef, { options: [optionIndex] }); // 변경
+      }
+    }
+  } else {
+    // 투표 기록이 없을 경우 새로 생성
+    await setDoc(voteDocRef, {
+      playerId,
+      options: [optionIndex],
+      votedAt: serverTimestamp()
+    });
+  }
+};
+
+/** 투표 최종 제출(수정 불가) 처리 */
+export const finalizeNoticeVote = async (classId, noticeId, playerId) => {
+  const voteDocRef = doc(db, 'classes', classId, 'notices', noticeId, 'votes', playerId);
+  await updateDoc(voteDocRef, { isFinalized: true });
+};
