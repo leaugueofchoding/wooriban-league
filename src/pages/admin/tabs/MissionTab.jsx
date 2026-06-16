@@ -361,7 +361,7 @@ function QuestApprovalWidget() {
                     {quests.map(quest => (
                         <ListItem key={quest.id}>
                             <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.95rem' }}>
-                                ⚔ {quest.title} · 💰 {quest.reward}P{quest.heartReward > 0 ? ` · ❤️ ${quest.heartReward}` : ''}
+                                ⚔ {quest.title} · 💰 {quest.reward}P{quest.heartReward > 0 && <> · ❤️ {quest.heartReward}</>}
                             </strong>
                             {(quest.acceptors || []).filter(a => a.completionStatus === 'pending').map(a => (
                                 <div key={a.playerId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f8f9fa', gap: '8px', flexWrap: 'wrap' }}>

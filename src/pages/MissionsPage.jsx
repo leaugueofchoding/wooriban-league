@@ -6,9 +6,11 @@ import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, getMissionHistory, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import MissionHistoryModal from '../components/MissionHistoryModal';
+import ApprovalModal from '../components/ApprovalModal';
 import QuestSection from '../components/QuestSection';
 import { useNavigate, useLocation } from 'react-router-dom';
 import imageCompression from 'browser-image-compression';
+import ImageModal from '../components/ImageModal';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(20px); }
@@ -433,17 +435,38 @@ const StudentChip = styled.span`
   font-weight: 700;
   padding: 3px 9px;
   border-radius: 20px;
-  background: ${p => p.$approved ? '#e7f5ff' : '#ebfbee'};
-  color: ${p => p.$approved ? '#1971c2' : '#2f9e44'};
-  border: 1px solid ${p => p.$approved ? '#a5d8ff' : '#b2f2bb'};
+  cursor: ${p => p.$clickable ? 'pointer' : 'default'};
+  background: ${p =>
+    p.$approved ? '#e7f5ff' :     /* 파란색: 미션 승인 */
+      p.$pending ? '#ebfbee' :      /* 초록색: 미션 제출 */
+        '#fff9db'                      /* 노란색: 기본(수락) */
+  };
+  color: ${p =>
+    p.$approved ? '#1971c2' :
+      p.$pending ? '#2f9e44' :
+        '#e67700'
+  };
+  border: 1px solid ${p =>
+    p.$approved ? '#a5d8ff' :
+      p.$pending ? '#b2f2bb' :
+        '#ffe066'
+  };
   white-space: nowrap;
+  transition: filter 0.15s;
+  &:hover {
+    filter: ${p => p.$clickable ? 'brightness(0.92)' : 'none'};
+  }
 `;
 
 const StudentChipDot = styled.span`
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: ${p => p.$approved ? '#339af0' : '#40c057'};
+  background: ${p =>
+    p.$approved ? '#339af0' :
+      p.$pending ? '#40c057' :
+        '#fcc419'
+  };
   display: inline-block;
 `;
 
@@ -500,13 +523,16 @@ function SubmissionDetailsView({ submission, isOpen }) {
   );
 }
 
-function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView, allSubmissions }) {
+function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView, allSubmissions, onImageClick }) {
   const { classId } = useClassStore();
   const { submitMissionForApproval, cancelMissionSubmission } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [], isPublic: !mission.defaultPrivate });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [showStudents, setShowStudents] = useState(false);
+  const [approvalTarget, setApprovalTarget] = useState(null); // { submissionId }
+
+  const isAdmin = myPlayerData && (myPlayerData.role === 'admin' || myPlayerData.role === 'recorder');
 
   const submission = mySubmissions[mission.id];
 
@@ -652,25 +678,47 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
   }, [mission.rewards, mission.reward]);
 
   // 이 미션의 제출/승인 학생 목록 (미제출 제외)
+  // 반복 미션(isFixed)은 오늘 제출/승인한 학생만 표시
   const studentChips = useMemo(() => {
     if (!allSubmissions) return [];
-    const submittedForMission = allSubmissions.filter(
-      sub => sub.missionId === mission.id && (sub.status === 'pending' || sub.status === 'approved')
-    );
+    const submittedForMission = allSubmissions.filter(sub => {
+      if (sub.missionId !== mission.id) return false;
+      if (sub.status !== 'pending' && sub.status !== 'approved') return false;
+      // 반복 미션은 오늘 제출/승인한 것만
+      if (mission.isFixed) {
+        const ts = sub.status === 'approved' ? sub.approvedAt : sub.requestedAt;
+        if (!isDateToday(ts)) return false;
+      }
+      return true;
+    });
     return submittedForMission.map(sub => ({
-      id: sub.id,
+      id: sub.id,          // submissionId (ApprovalModal에 전달)
       name: sub.studentName || '이름 없음',
       approved: sub.status === 'approved',
+      pending: sub.status === 'pending',
     }));
-  }, [allSubmissions, mission.id]);
+  }, [allSubmissions, mission.id, mission.isFixed]);
 
   const showSubmissionArea = isSubmissionRequired && !['APPROVED_TODAY', 'approved'].includes(missionStatus);
   const isInputDisabled = !isPrerequisiteSubmitted || isSubmitting || ['PENDING_TODAY', 'pending'].includes(missionStatus);
   const textAreaValue = isInputDisabled ? (submission?.text || "") : submissionContent.text;
 
+  // ApprovalModal용: 현재 approvalTarget submission 객체
+  const approvalSubmission = useMemo(() => {
+    if (!approvalTarget || !allSubmissions) return null;
+    return allSubmissions.find(s => s.id === approvalTarget) || null;
+  }, [approvalTarget, allSubmissions]);
+
+  // pendingSubmissions (for modal prev/next)
+  const pendingChips = studentChips.filter(c => c.pending);
+
   return (
     <>
-      <MissionCard $status={missionStatus} onClick={() => studentChips.length > 0 && setShowStudents(p => !p)} style={{ cursor: studentChips.length > 0 ? 'pointer' : 'default' }}>
+      <MissionCard
+        $status={missionStatus}
+        onClick={() => isAdmin && studentChips.length > 0 && setShowStudents(p => !p)}
+        style={{ cursor: isAdmin && studentChips.length > 0 ? 'pointer' : 'default' }}
+      >
         <MissionHeader>
           <MissionInfo>
             <MissionReward style={{ marginBottom: 2 }}>{rewardText}</MissionReward>
@@ -762,11 +810,21 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
           </SubmissionArea>
         )}
 
-        {showStudents && studentChips.length > 0 && (
+        {/* 수락자 현황: 관리자 전용 — 카드 클릭으로 토글 */}
+        {isAdmin && showStudents && studentChips.length > 0 && (
           <StudentChipRow onClick={e => e.stopPropagation()}>
             {studentChips.map(chip => (
-              <StudentChip key={chip.id} $approved={chip.approved}>
-                <StudentChipDot $approved={chip.approved} />
+              <StudentChip
+                key={chip.id}
+                $approved={chip.approved}
+                $pending={chip.pending}
+                $clickable={chip.pending}
+                onClick={() => {
+                  if (chip.pending) setApprovalTarget(chip.id);
+                }}
+                title={chip.pending ? '클릭하여 승인/반려' : undefined}
+              >
+                <StudentChipDot $approved={chip.approved} $pending={chip.pending} />
                 {chip.name}
               </StudentChip>
             ))}
@@ -775,6 +833,31 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
 
         <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
       </MissionCard>
+
+      {/* ApprovalModal — 초록 이름 클릭 시 */}
+      {isAdmin && approvalSubmission && (
+        <ApprovalModal
+          submission={approvalSubmission}
+          onClose={() => setApprovalTarget(null)}
+          onNext={() => {
+            const currentIdx = pendingChips.findIndex(c => c.id === approvalTarget);
+            const next = pendingChips[currentIdx + 1] || pendingChips[0];
+            if (next) setApprovalTarget(next.id);
+          }}
+          onPrev={() => {
+            const currentIdx = pendingChips.findIndex(c => c.id === approvalTarget);
+            const prev = pendingChips[currentIdx - 1];
+            if (prev) setApprovalTarget(prev.id);
+          }}
+          currentIndex={pendingChips.findIndex(c => c.id === approvalTarget)}
+          totalCount={pendingChips.length}
+          onAction={(submissionId, actionStatus) => {
+            // 승인/반려 후 모달 유지 (화면 초기화 없음)
+            // status 변경은 allSubmissions 실시간 업데이트로 자동 반영
+          }}
+          onImageClick={onImageClick}
+        />
+      )}
     </>
   );
 }
@@ -788,6 +871,7 @@ function MissionsPage() {
   const [hideCompleted, setHideCompleted] = useState(true);
   const [historyModalState, setHistoryModalState] = useState({ isOpen: false, missionTitle: '', history: [], student: null });
   const [questCount, setQuestCount] = useState(0);
+  const [modalImageSrc, setModalImageSrc] = useState(null); // { src, rotation }
 
   const myPlayerData = useMemo(() => {
     if (!currentUser) return null;
@@ -920,6 +1004,7 @@ function MissionsPage() {
                     canSubmitMission={canSubmitMission}
                     onHistoryView={handleHistoryView}
                     allSubmissions={missionSubmissions}
+                    onImageClick={(imageData) => setModalImageSrc(imageData)}
                   />
                 ))
               ) : (
@@ -960,6 +1045,13 @@ function MissionsPage() {
           }
         }}
       />
+      {modalImageSrc && (
+        <ImageModal
+          src={modalImageSrc.src}
+          rotation={modalImageSrc.rotation || 0}
+          onClose={() => setModalImageSrc(null)}
+        />
+      )}
     </>
   );
 }

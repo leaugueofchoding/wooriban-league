@@ -15,9 +15,9 @@ const fadeUp = keyframes`
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
-const popIn = keyframes`
-  from { transform: scale(0.88); opacity: 0; }
-  to   { transform: scale(1);    opacity: 1; }
+const slideDown = keyframes`
+  from { opacity: 0; max-height: 0; }
+  to   { opacity: 1; max-height: 800px; }
 `;
 
 // ─────────────────────────────────────────────
@@ -51,7 +51,7 @@ const QuestCard = styled.div`
   box-shadow: 0 4px 20px rgba(0,0,0,0.05);
   border: 1px solid #f1f3f5;
   position: relative; overflow: hidden;
-  cursor: ${p => p.$clickable ? 'pointer' : 'default'};
+  cursor: default;
   transition: transform 0.18s, box-shadow 0.18s;
   animation: ${fadeUp} 0.3s ease-out both;
 
@@ -67,16 +67,12 @@ const QuestCard = styled.div`
               '#fcc419'};
     transition: background 0.3s;
   }
-  &:hover {
-    transform: ${p => p.$clickable ? 'translateY(-2px)' : 'none'};
-    box-shadow: ${p => p.$clickable ? '0 8px 25px rgba(0,0,0,0.09)' : '0 4px 20px rgba(0,0,0,0.05)'};
-  }
 `;
 
 const QuestList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.5rem; /* 미션 섹션과 동일한 간격 */
+  gap: 1.5rem;
 `;
 
 const CardInner = styled.div` padding-left: 6px; `;
@@ -84,7 +80,7 @@ const TopRow = styled.div`
   display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
 `;
 const TitleRow = styled.h3`
-  margin: 0 0 4px; font-size: 1.15rem; /* 1.05rem -> 1.15rem 폰트 약간 키움 */
+  margin: 0 0 4px; font-size: 1.15rem;
   font-weight: 800; color: #343a40;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 `;
@@ -98,7 +94,7 @@ const Reward = styled.div`
   white-space: nowrap; margin-top: 2px;
 `;
 const Desc = styled.p`
-  margin: 8px 0 12px; font-size: 0.95rem; color: #868e96; /* 0.88rem -> 0.95rem */
+  margin: 8px 0 12px; font-size: 0.95rem; color: #868e96;
   line-height: 1.55; background: #f8f9fa;
   padding: 10px 12px; border-radius: 8px;
 `;
@@ -106,7 +102,7 @@ const MetaRow = styled.div`
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 `;
 const MetaChip = styled.span`
-  font-size: 0.8rem; color: #adb5bd; /* 0.76rem -> 0.8rem */
+  font-size: 0.8rem; color: #adb5bd;
   display: flex; align-items: center; gap: 3px; font-weight: 600;
 `;
 const SlotPips = styled.div` display: flex; gap: 4px; align-items: center; `;
@@ -117,7 +113,9 @@ const Pip = styled.span`
   transition: background 0.25s, border-color 0.25s;
 `;
 
-// 수락자 아바타 목록 (카드 하단 인라인)
+// ─────────────────────────────────────────────
+// 수락자 현황 칩 (색상 통일: 노란=수락, 초록=승인요청, 파란=완료)
+// ─────────────────────────────────────────────
 const AcceptorRow = styled.div`
   display: flex; align-items: center; gap: 6px;
   margin-top: 10px; padding-top: 10px;
@@ -125,23 +123,39 @@ const AcceptorRow = styled.div`
 `;
 const AcceptorChip = styled.span`
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 0.8rem; font-weight: 700; /* 0.75rem -> 0.8rem */
+  font-size: 0.8rem; font-weight: 700;
   padding: 4px 10px; border-radius: 20px;
+  cursor: ${p => p.$clickable ? 'pointer' : 'default'};
+  transition: filter 0.15s;
+
+  /* 색상 체계: 노란=수락(accepted), 초록=승인요청(pending), 파란=퀘스트 승인(completed) */
   background: ${p =>
-    p.$status === 'completed' ? '#d3f9d8' :
-      p.$status === 'pending' ? '#e7f5ff' :
+    p.$status === 'completed' ? '#e7f5ff' :   /* 파란 */
+      p.$status === 'pending' ? '#ebfbee' :   /* 초록 */
         p.$status === 'rejected' ? '#ffe3e3' :
-          '#fff9db'};
+          '#fff9db'};                          /* 노란 = accepted */
   color: ${p =>
-    p.$status === 'completed' ? '#2f9e44' :
-      p.$status === 'pending' ? '#1c7ed6' :
+    p.$status === 'completed' ? '#1971c2' :
+      p.$status === 'pending' ? '#2f9e44' :
         p.$status === 'rejected' ? '#fa5252' :
           '#e67700'};
   border: 1px solid ${p =>
-    p.$status === 'completed' ? '#b2f2bb' :
-      p.$status === 'pending' ? '#a5d8ff' :
+    p.$status === 'completed' ? '#a5d8ff' :
+      p.$status === 'pending' ? '#b2f2bb' :
         p.$status === 'rejected' ? '#ffc9c9' :
           '#ffe066'};
+
+  &:hover {
+    filter: ${p => p.$clickable ? 'brightness(0.92)' : 'none'};
+  }
+`;
+const AcceptorDot = styled.span`
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: ${p =>
+    p.$status === 'completed' ? '#339af0' :
+      p.$status === 'pending' ? '#40c057' :
+        p.$status === 'rejected' ? '#fa5252' :
+          '#fcc419'};
 `;
 
 const ActionBtn = styled.button`
@@ -150,15 +164,15 @@ const ActionBtn = styled.button`
   border: none; border-radius: 10px; cursor: pointer;
   transition: filter 0.15s, transform 0.15s;
   background: ${p =>
-    p.$completed ? '#d3f9d8' :
-      p.$pending ? '#e7f5ff' :
+    p.$completed ? '#e7f5ff' :     /* 파란 - 완료 */
+      p.$pending ? '#ebfbee' :     /* 초록 - 승인 대기 */
         p.$rejected ? '#ffe3e3' :
-          p.$accepted ? '#fff9db' :
+          p.$accepted ? '#fff9db' : /* 노란 - 수락됨 */
             p.$full ? '#f1f3f5' :
               '#fcc419'};
   color: ${p =>
-    p.$completed ? '#2f9e44' :
-      p.$pending ? '#1c7ed6' :
+    p.$completed ? '#1971c2' :
+      p.$pending ? '#2f9e44' :
         p.$rejected ? '#fa5252' :
           p.$accepted ? '#e67700' :
             p.$full ? '#adb5bd' :
@@ -168,80 +182,36 @@ const ActionBtn = styled.button`
 `;
 
 // ─────────────────────────────────────────────
-// Modal
+// 인라인 확장 패널 (모달 대신)
 // ─────────────────────────────────────────────
-const ModalOverlay = styled.div`
-  display: ${p => p.$open ? 'flex' : 'none'};
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-  z-index: 200; align-items: center; justify-content: center; padding: 1rem;
-`;
-const Modal = styled.div`
-  background: #fff; border-radius: 20px; padding: 28px 24px 20px;
-  max-width: 400px; width: 100%;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-  animation: ${popIn} 0.2s ease-out;
-`;
-const ModalBadge = styled.div`
-  display: inline-flex; align-items: center; gap: 5px;
-  background: #fff3bf; border: 1px solid #ffe066; border-radius: 8px;
-  padding: 4px 10px; font-size: 0.72rem; font-weight: 800;
-  color: #e67700; letter-spacing: 1px; margin-bottom: 12px;
-`;
-const ModalTitle = styled.h2`
-  font-size: 1.2rem; font-weight: 800; color: #343a40;
-  margin: 0 0 10px; line-height: 1.35;
-`;
-const ModalDesc = styled.p`
-  font-size: 0.9rem; color: #495057; line-height: 1.65;
-  background: #f8f9fa; border-radius: 10px;
-  padding: 12px; margin: 0 0 14px; white-space: pre-wrap;
-`;
-const ModalRewardBox = styled.div`
-  display: flex; align-items: center; justify-content: space-between;
-  background: #fffbf0; border: 1px solid #ffe8a1;
-  border-radius: 10px; padding: 10px 14px; margin-bottom: 10px;
-`;
-const ModalRewardLabel = styled.span` font-size: 0.82rem; color: #adb5bd; font-weight: 500; `;
-const ModalRewardValue = styled.span` font-size: 1.25rem; font-weight: 800; color: #f59f00; `;
-const ModalSlots = styled.p`
-  font-size: 0.82rem; color: #adb5bd; margin: 0 0 14px;
-  strong { color: #1c7ed6; }
+const InlinePanel = styled.div`
+  margin-top: 14px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #f1f3f5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: ${slideDown} 0.25s ease-out;
 `;
 
-// 수락자 목록 (모달 내)
-const AcceptorList = styled.div`
-  border: 1px solid #f1f3f5; border-radius: 10px;
-  overflow: hidden; margin-bottom: 16px;
-`;
-const AcceptorListHeader = styled.div`
-  background: #f8f9fa; padding: 8px 12px;
-  font-size: 0.78rem; font-weight: 700; color: #868e96;
-`;
-const AcceptorItem = styled.div`
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 12px; border-top: 1px solid #f1f3f5;
-  font-size: 0.88rem; gap: 8px;
-`;
-const StatusDot = styled.span`
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  background: ${p =>
-    p.$status === 'completed' ? '#2f9e44' :
-      p.$status === 'pending' ? '#1c7ed6' :
-        p.$status === 'rejected' ? '#fa5252' :
-          '#fcc419'};
-`;
-
-const ModalBtn = styled.button`
-  display: block; width: 100%; padding: 12px;
-  border: none; border-radius: 12px;
-  font-size: 0.95rem; font-weight: 800; cursor: pointer;
-  transition: filter 0.15s; margin-bottom: 8px;
-  background: ${p => p.$variant === 'cancel' ? 'none' : p.$variant === 'danger' ? 'none' : p.$variant === 'complete' ? '#e7f5ff' : '#fcc419'};
-  color: ${p => p.$variant === 'cancel' ? '#adb5bd' : p.$variant === 'danger' ? '#fa5252' : p.$variant === 'complete' ? '#1c7ed6' : '#7a4d00'};
+const InlineBtn = styled.button`
+  display: block; width: 100%; padding: 10px 14px;
+  border: none; border-radius: 10px;
+  font-size: 0.9rem; font-weight: 800; cursor: pointer;
+  transition: filter 0.15s; margin-bottom: 0;
+  background: ${p => p.$variant === 'cancel' ? 'none' : p.$variant === 'danger' ? 'none' : p.$variant === 'complete' ? '#ebfbee' : '#fcc419'};
+  color: ${p => p.$variant === 'cancel' ? '#adb5bd' : p.$variant === 'danger' ? '#fa5252' : p.$variant === 'complete' ? '#2f9e44' : '#7a4d00'};
   border: ${p => (p.$variant === 'cancel' || p.$variant === 'danger') ? '1px solid #dee2e6' : 'none'};
   opacity: ${p => p.disabled ? 0.6 : 1};
   cursor: ${p => p.disabled ? 'not-allowed' : 'pointer'};
   &:hover:not(:disabled) { filter: brightness(0.96); }
+`;
+
+const RejectedBox = styled.div`
+  background: #fff5f5; border: 1px solid #ffc9c9;
+  border-radius: 10px; padding: 10px 12px;
 `;
 
 // ─────────────────────────────────────────────
@@ -253,8 +223,8 @@ const QuestFilterContainer = styled.div`
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  margin-bottom: 1.5rem; /* 미션 섹션과 간격 통일 */
-  min-height: 38px;      /* 버튼이 사라져도 레이아웃 유지 */
+  margin-bottom: 1.5rem;
+  min-height: 38px;
 `;
 
 const QuestToggleButton = styled.button`
@@ -276,6 +246,13 @@ const EmptyQuest = styled.div`
   text-align: center; padding: 1.5rem; color: #adb5bd;
   font-size: 0.9rem; background: #f8f9fa;
   border-radius: 12px; margin-bottom: 12px;
+`;
+
+// ─────────────────────────────────────────────
+// 수락자 현황 토글용 헤더 (카드 여백 클릭 영역)
+// ─────────────────────────────────────────────
+const CardClickArea = styled.div`
+  cursor: ${p => p.$hasAcceptors ? 'pointer' : 'default'};
 `;
 
 function getSubmissionLabel(type) {
@@ -301,10 +278,12 @@ export default function QuestSection({ onQuestCountChange }) {
   const currentUser = auth.currentUser;
 
   const [quests, setQuests] = useState([]);
-  const [modalQuest, setModalQuest] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showAllQuests, setShowAllQuests] = useState(false);
   const [questSubmission, setQuestSubmission] = useState({ text: '', photos: [] });
+
+  // 인라인 확장 상태: questId → 'action' | 'acceptors' | null
+  const [expandedPanel, setExpandedPanel] = useState({}); // { [questId]: 'action' | 'acceptors' }
 
   const myPlayer = useMemo(() => {
     if (!currentUser) return null;
@@ -320,15 +299,10 @@ export default function QuestSection({ onQuestCountChange }) {
     if (!classId) return;
     return listenQuests(classId, (data) => {
       setQuests(data.filter(q => q.status === 'open'));
-      // 모달이 열려 있으면 최신 데이터로 동기화
-      setModalQuest(prev => {
-        if (!prev) return null;
-        return data.find(q => q.id === prev.id) || null;
-      });
     });
   }, [classId]);
 
-  // 부모에 퀘스트 수 전달 — ref로 콜백을 저장해 무한 루프 방지
+  // 부모에 퀘스트 수 전달
   const onQuestCountChangeRef = useRef(onQuestCountChange);
   useEffect(() => { onQuestCountChangeRef.current = onQuestCountChange; });
   useEffect(() => {
@@ -343,18 +317,15 @@ export default function QuestSection({ onQuestCountChange }) {
 
   const availableCount = quests.filter(q => !isFull(q) && !getMyAcceptor(q)).length;
 
-  // 내가 완료한 퀘스트
   const myCompletedQuests = quests.filter(q => {
     const myAcceptor = getMyAcceptor(q);
     return myAcceptor?.completionStatus === 'completed';
   });
 
-  // 모든 수락자가 completed인 퀘스트 (전원 완료 — 기본 목록에서 숨김)
   const allAcceptorsCompletedQuests = quests.filter(q => {
     const acceptors = q.acceptors || [];
     if (acceptors.length === 0) return false;
     const maxSlots = q.maxAcceptors || 1;
-    // 슬롯이 꽉 찼고, 모든 수락자가 completed 상태인 경우
     return acceptors.length >= maxSlots && acceptors.every(a => a.completionStatus === 'completed');
   });
 
@@ -363,10 +334,8 @@ export default function QuestSection({ onQuestCountChange }) {
   const visibleQuests = showAllQuests
     ? quests
     : quests.filter(q => {
-      // 내가 완료한 퀘스트도 숨김
       const myAcceptor = getMyAcceptor(q);
       if (myAcceptor?.completionStatus === 'completed') return false;
-      // 전원 완료된 퀘스트도 숨김
       const acceptors = q.acceptors || [];
       const maxSlots = q.maxAcceptors || 1;
       if (acceptors.length >= maxSlots && acceptors.every(a => a.completionStatus === 'completed')) return false;
@@ -374,14 +343,13 @@ export default function QuestSection({ onQuestCountChange }) {
     });
 
   // ── 수락 ──
-  const handleAccept = async () => {
-    if (!modalQuest || !myPlayer || loading) return;
+  const handleAccept = async (quest) => {
+    if (!myPlayer || loading) return;
     setLoading(true);
     try {
-      const result = await acceptQuest(classId, modalQuest.id, myPlayer);
+      const result = await acceptQuest(classId, quest.id, myPlayer);
       if (result === 'full') alert('아쉽게도 이미 마감됐어요. 다음 기회에 도전해보세요!');
       else if (result === 'already') alert('이미 수락한 퀘스트예요.');
-      // 성공이면 onSnapshot이 모달 상태를 자동 갱신
     } catch (e) {
       alert(`수락 중 오류: ${e.message}`);
     } finally {
@@ -395,6 +363,7 @@ export default function QuestSection({ onQuestCountChange }) {
     if (!window.confirm('퀘스트 수락을 취소할까요?')) return;
     try {
       await cancelQuestAcceptance(classId, questId, myPlayer.id);
+      setExpandedPanel(p => ({ ...p, [questId]: null }));
     } catch (e) { alert(`취소 중 오류: ${e.message}`); }
   };
 
@@ -440,6 +409,7 @@ export default function QuestSection({ onQuestCountChange }) {
     try {
       await requestQuestCompletion(classId, questId, myPlayer.id, questSubmission);
       setQuestSubmission({ text: '', photos: [] });
+      setExpandedPanel(p => ({ ...p, [questId]: null }));
     } catch (e) { alert(`완료 요청 중 오류: ${e.message}`); }
     finally { setLoading(false); }
   };
@@ -477,10 +447,41 @@ export default function QuestSection({ onQuestCountChange }) {
             const myAcceptor = getMyAcceptor(quest);
             const full = isFull(quest);
             const accepted = !!myAcceptor;
-            const status = myAcceptor?.completionStatus; // 'accepted' | 'pending' | 'completed' | 'rejected'
-            const clickable = !full && !accepted;
+            const status = myAcceptor?.completionStatus;
             const takenCount = (quest.acceptors || []).length;
             const maxSlots = quest.maxAcceptors || 1;
+            const panelMode = expandedPanel[quest.id]; // 'action' | 'acceptors' | undefined
+
+            const submissionType = quest.submissionType || ['simple'];
+            const requiresText = Array.isArray(submissionType) ? submissionType.includes('text') : submissionType === 'text';
+            const requiresPhoto = Array.isArray(submissionType) ? submissionType.includes('photo') : submissionType === 'photo';
+            const isSubmissionRequired = requiresText || requiresPhoto;
+
+            const hasAcceptors = takenCount > 0;
+
+            // 카드 여백 클릭 → 수락자 현황 토글 (acceptors 패널)
+            const handleCardClick = () => {
+              if (!hasAcceptors) return;
+              setExpandedPanel(p => ({
+                ...p,
+                [quest.id]: p[quest.id] === 'acceptors' ? null : 'acceptors'
+              }));
+            };
+
+            // 액션 버튼 클릭 → 인라인 액션 패널 토글
+            const handleActionBtnClick = (e) => {
+              e.stopPropagation();
+              if (!accepted && !full) {
+                // 수락하기: 바로 처리
+                handleAccept(quest);
+              } else {
+                // 완료요청/재제출: 인라인 패널 토글
+                setExpandedPanel(p => ({
+                  ...p,
+                  [quest.id]: p[quest.id] === 'action' ? null : 'action'
+                }));
+              }
+            };
 
             return (
               <QuestCard
@@ -490,9 +491,8 @@ export default function QuestSection({ onQuestCountChange }) {
                 $completed={status === 'completed'}
                 $rejected={status === 'rejected'}
                 $full={full && !accepted}
-                $clickable={clickable}
                 style={{ animationDelay: `${i * 0.05}s` }}
-                onClick={() => { setModalQuest(quest); setQuestSubmission({ text: '', photos: [] }); }}
+                onClick={handleCardClick}
               >
                 <CardInner>
                   <TopRow>
@@ -502,20 +502,20 @@ export default function QuestSection({ onQuestCountChange }) {
                         {quest.title}
                         {!full && !accepted && <Tag $bg="#fff0f6" $color="#c2255c">NEW</Tag>}
                         {full && !accepted && <Tag $bg="#f1f3f5" $color="#adb5bd">마감</Tag>}
-                        {status === 'pending' && <Tag $bg="#e7f5ff" $color="#1c7ed6">승인 대기</Tag>}
-                        {status === 'completed' && <Tag $bg="#d3f9d8" $color="#2f9e44">완료</Tag>}
+                        {status === 'pending' && <Tag $bg="#ebfbee" $color="#2f9e44">승인 대기</Tag>}
+                        {status === 'completed' && <Tag $bg="#e7f5ff" $color="#1971c2">완료</Tag>}
                         {status === 'rejected' && <Tag $bg="#ffe3e3" $color="#fa5252">반려됨</Tag>}
                         <Tag $bg="#e7f5ff" $color="#1c7ed6">{maxSlots - takenCount}/{maxSlots} 자리</Tag>
                       </TitleRow>
                     </div>
                     <Reward>
-                      💰 {quest.reward}P{quest.heartReward > 0 ? ` · ❤️ ${quest.heartReward}` : ''}
+                      💰 {quest.reward}P{quest.heartReward > 0 && <> · ❤️ {quest.heartReward}</>}
                     </Reward>
                   </TopRow>
 
                   {quest.description && <Desc>{quest.description}</Desc>}
 
-                  <MetaRow>
+                  <MetaRow onClick={e => e.stopPropagation()}>
                     <MetaChip>📋 {getSubmissionLabel(quest.submissionType)}</MetaChip>
                     {quest.deadline && <MetaChip>🕐 {quest.deadline}</MetaChip>}
                     <SlotPips>
@@ -530,7 +530,7 @@ export default function QuestSection({ onQuestCountChange }) {
                       $rejected={status === 'rejected'}
                       $full={full && !accepted}
                       disabled={(full && !accepted) || status === 'completed' || status === 'pending'}
-                      onClick={(e) => { e.stopPropagation(); setModalQuest(quest); }}
+                      onClick={handleActionBtnClick}
                     >
                       {status === 'completed' ? '✓ 완료됨' :
                         status === 'pending' ? '⏳ 승인 대기' :
@@ -540,32 +540,93 @@ export default function QuestSection({ onQuestCountChange }) {
                     </ActionBtn>
                   </MetaRow>
 
-                  {/* 수락자 인라인 표시 */}
-                  {takenCount > 0 && (
-                    <AcceptorRow>
+                  {/* 수락자 인라인 표시 - 카드 클릭으로 토글 */}
+                  {hasAcceptors && panelMode === 'acceptors' && (
+                    <AcceptorRow onClick={e => e.stopPropagation()}>
                       <MetaChip style={{ marginRight: 2 }}>수락:</MetaChip>
                       {(quest.acceptors || []).map(a => (
                         <AcceptorChip
                           key={a.playerId}
                           $status={a.completionStatus}
-                          style={{
-                            cursor: isAdmin && a.completionStatus !== 'completed' ? 'pointer' : 'default',
-                            transition: 'filter 0.15s',
-                          }}
+                          $clickable={isAdmin && a.completionStatus !== 'completed'}
                           title={isAdmin && a.completionStatus !== 'completed' ? '클릭하여 즉시 완료 처리' : undefined}
                           onClick={isAdmin && a.completionStatus !== 'completed'
-                            ? (e) => { e.stopPropagation(); handleForceComplete(quest, a); }
+                            ? () => handleForceComplete(quest, a)
                             : undefined
                           }
-                          onMouseOver={e => { if (isAdmin && a.completionStatus !== 'completed') e.currentTarget.style.filter = 'brightness(0.88)'; }}
-                          onMouseOut={e => { e.currentTarget.style.filter = 'none'; }}
                         >
-                          <StatusDot $status={a.completionStatus} />
+                          <AcceptorDot $status={a.completionStatus} />
                           {a.playerName}
                           {isAdmin && a.completionStatus !== 'completed' && <span style={{ fontSize: '0.68rem', opacity: 0.7 }}> ✓</span>}
                         </AcceptorChip>
                       ))}
                     </AcceptorRow>
+                  )}
+
+                  {/* 인라인 액션 패널 (모달 대신) */}
+                  {panelMode === 'action' && (
+                    <InlinePanel onClick={e => e.stopPropagation()}>
+                      {/* 반려됨 안내 */}
+                      {status === 'rejected' && (
+                        <RejectedBox>
+                          <p style={{ margin: '0 0 4px', fontSize: '0.78rem', fontWeight: 700, color: '#fa5252' }}>✗ 완료 요청이 반려됐어요</p>
+                          <p style={{ margin: 0, fontSize: '0.85rem', color: '#495057' }}>
+                            {myAcceptor?.rejectedReason ? `사유: ${myAcceptor.rejectedReason}` : '선생님이 반려 사유를 남기지 않았어요.'}
+                          </p>
+                        </RejectedBox>
+                      )}
+
+                      {/* 글/사진 제출 영역 */}
+                      {isSubmissionRequired && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {requiresText && (
+                            <textarea
+                              value={questSubmission.text}
+                              onChange={e => setQuestSubmission(prev => ({ ...prev, text: e.target.value }))}
+                              placeholder="완료 내용을 작성해주세요."
+                              style={{ width: '100%', minHeight: '80px', padding: '0.6rem', border: '1px solid #dee2e6', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                            />
+                          )}
+                          {requiresPhoto && (
+                            <div>
+                              <label htmlFor={`quest-photo-${quest.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', background: '#fff', border: '1px dashed #adb5bd', borderRadius: '8px', cursor: 'pointer', fontSize: '0.88rem', color: '#495057', fontWeight: 600 }}>
+                                <span>📸</span>
+                                <span>사진 추가하기 {questSubmission.photos.length > 0 ? `(${questSubmission.photos.length}장)` : ''}</span>
+                                <input id={`quest-photo-${quest.id}`} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                                  onChange={async (e) => {
+                                    const files = Array.from(e.target.files);
+                                    if (!files.length) return;
+                                    setQuestSubmission(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
+                                    e.target.value = null;
+                                  }}
+                                />
+                              </label>
+                              {questSubmission.photos.length > 0 && (
+                                <div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#495057', background: '#f8f9fa', padding: '6px 8px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{questSubmission.photos.map(f => f.name).join(', ')}</span>
+                                  <button onClick={() => setQuestSubmission(prev => ({ ...prev, photos: [] }))} style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>삭제</button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 완료 요청 버튼 */}
+                      <InlineBtn $variant="complete" onClick={() => handleRequestComplete(quest.id)} disabled={loading}>
+                        {status === 'rejected' ? '↩ 다시 완료 요청하기' : '✅ 완료 요청하기 (선생님 승인 후 포인트 지급)'}
+                      </InlineBtn>
+
+                      {/* 수락 취소 / 퀘스트 포기 */}
+                      <InlineBtn $variant="danger" onClick={() => handleCancelAccept(quest.id)}>
+                        {status === 'rejected' ? '퀘스트 포기하기' : '수락 취소하기'}
+                      </InlineBtn>
+
+                      {/* 닫기 */}
+                      <InlineBtn $variant="cancel" onClick={() => setExpandedPanel(p => ({ ...p, [quest.id]: null }))}>
+                        닫기
+                      </InlineBtn>
+                    </InlinePanel>
                   )}
                 </CardInner>
               </QuestCard>
@@ -573,192 +634,6 @@ export default function QuestSection({ onQuestCountChange }) {
           })}
         </QuestList>
       )}
-
-      {/* ── 모달 ── */}
-      <ModalOverlay $open={!!modalQuest} onClick={(e) => { if (e.target === e.currentTarget) setModalQuest(null); }}>
-        {modalQuest && (() => {
-          const myAcceptor = getMyAcceptor(modalQuest);
-          const accepted = !!myAcceptor;
-          const status = myAcceptor?.completionStatus;
-          const full = isFull(modalQuest);
-          const takenCount = (modalQuest.acceptors || []).length;
-          const maxSlots = modalQuest.maxAcceptors || 1;
-          const acceptors = modalQuest.acceptors || [];
-          return (
-            <Modal onClick={(e) => e.stopPropagation()}>
-              <ModalBadge>⚔ 공공 퀘스트</ModalBadge>
-              <ModalTitle>{modalQuest.title}</ModalTitle>
-              {modalQuest.description && <ModalDesc>{modalQuest.description}</ModalDesc>}
-
-              <ModalRewardBox>
-                <ModalRewardLabel>🪙 완료 보상 (완료 후 지급)</ModalRewardLabel>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <ModalRewardValue>{modalQuest.reward}P</ModalRewardValue>
-                  {modalQuest.heartReward > 0 && (
-                    <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fa5252' }}>
-                      + ❤️ {modalQuest.heartReward}
-                    </span>
-                  )}
-                </div>
-              </ModalRewardBox>
-
-              <ModalSlots>
-                남은 자리 <strong>{maxSlots - takenCount}/{maxSlots}</strong>
-                {modalQuest.submissionType && <> · {getSubmissionLabel(modalQuest.submissionType)}</>}
-                {modalQuest.deadline && <> · 🕐 {modalQuest.deadline}</>}
-              </ModalSlots>
-
-              {/* 수락자 목록 */}
-              {acceptors.length > 0 && (
-                <AcceptorList>
-                  <AcceptorListHeader>수락한 학생</AcceptorListHeader>
-                  {acceptors.map(a => (
-                    <AcceptorItem key={a.playerId}>
-                      <StatusDot $status={a.completionStatus} />
-                      <span style={{ fontWeight: 600 }}>{a.playerName}</span>
-                      <span style={{
-                        marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 700,
-                        color: a.completionStatus === 'completed' ? '#2f9e44' :
-                          a.completionStatus === 'pending' ? '#1c7ed6' : '#e67700'
-                      }}>
-                        {statusLabel(a.completionStatus)}
-                      </span>
-                    </AcceptorItem>
-                  ))}
-                </AcceptorList>
-              )}
-
-              {/* 버튼 — 내 상태에 따라 분기 */}
-              {!accepted && !full && (
-                <ModalBtn onClick={handleAccept} disabled={loading}>
-                  {loading ? '처리 중...' : '⚔ 퀘스트 수락하기'}
-                </ModalBtn>
-              )}
-              {!accepted && full && (
-                <ModalBtn disabled>이미 마감된 퀘스트예요</ModalBtn>
-              )}
-              {accepted && status === 'accepted' && (() => {
-                const submissionType = modalQuest.submissionType || ['simple'];
-                const requiresText = Array.isArray(submissionType) ? submissionType.includes('text') : submissionType === 'text';
-                const requiresPhoto = Array.isArray(submissionType) ? submissionType.includes('photo') : submissionType === 'photo';
-                const isSubmissionRequired = requiresText || requiresPhoto;
-                return (
-                  <>
-                    {isSubmissionRequired && (
-                      <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {requiresText && (
-                          <textarea
-                            value={questSubmission.text}
-                            onChange={e => setQuestSubmission(prev => ({ ...prev, text: e.target.value }))}
-                            placeholder="완료 내용을 작성해주세요."
-                            style={{ width: '100%', minHeight: '80px', padding: '0.6rem', border: '1px solid #dee2e6', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                          />
-                        )}
-                        {requiresPhoto && (
-                          <div>
-                            <label htmlFor="quest-photo-upload" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', background: '#fff', border: '1px dashed #adb5bd', borderRadius: '8px', cursor: 'pointer', fontSize: '0.88rem', color: '#495057', fontWeight: 600 }}>
-                              <span>📸</span>
-                              <span>사진 추가하기 {questSubmission.photos.length > 0 ? `(${questSubmission.photos.length}장)` : ''}</span>
-                              <input id="quest-photo-upload" type="file" accept="image/*" multiple style={{ display: 'none' }}
-                                onChange={async (e) => {
-                                  const files = Array.from(e.target.files);
-                                  if (!files.length) return;
-                                  setQuestSubmission(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
-                                  e.target.value = null;
-                                }}
-                              />
-                            </label>
-                            {questSubmission.photos.length > 0 && (
-                              <div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#495057', background: '#f8f9fa', padding: '6px 8px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>{questSubmission.photos.map(f => f.name).join(', ')}</span>
-                                <button onClick={() => setQuestSubmission(prev => ({ ...prev, photos: [] }))} style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>삭제</button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <ModalBtn $variant="complete" onClick={() => handleRequestComplete(modalQuest.id)} disabled={loading}>
-                      ✅ 완료 요청하기 (선생님 승인 후 포인트 지급)
-                    </ModalBtn>
-                    <ModalBtn $variant="danger" onClick={() => handleCancelAccept(modalQuest.id)}>
-                      수락 취소하기
-                    </ModalBtn>
-                  </>
-                );
-              })()}
-              {accepted && status === 'rejected' && (() => {
-                const submissionType = modalQuest.submissionType || ['simple'];
-                const requiresText = Array.isArray(submissionType) ? submissionType.includes('text') : submissionType === 'text';
-                const requiresPhoto = Array.isArray(submissionType) ? submissionType.includes('photo') : submissionType === 'photo';
-                const isSubmissionRequired = requiresText || requiresPhoto;
-                return (
-                  <>
-                    {/* 반려 사유 표시 */}
-                    <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px' }}>
-                      <p style={{ margin: '0 0 4px', fontSize: '0.78rem', fontWeight: 700, color: '#fa5252' }}>✗ 완료 요청이 반려됐어요</p>
-                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#495057' }}>
-                        {myAcceptor?.rejectedReason ? `사유: ${myAcceptor.rejectedReason}` : '선생님이 반려 사유를 남기지 않았어요.'}
-                      </p>
-                    </div>
-                    {isSubmissionRequired && (
-                      <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {requiresText && (
-                          <textarea
-                            value={questSubmission.text}
-                            onChange={e => setQuestSubmission(prev => ({ ...prev, text: e.target.value }))}
-                            placeholder="완료 내용을 작성해주세요."
-                            style={{ width: '100%', minHeight: '80px', padding: '0.6rem', border: '1px solid #dee2e6', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                          />
-                        )}
-                        {requiresPhoto && (
-                          <div>
-                            <label htmlFor="quest-photo-upload-retry" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', background: '#fff', border: '1px dashed #adb5bd', borderRadius: '8px', cursor: 'pointer', fontSize: '0.88rem', color: '#495057', fontWeight: 600 }}>
-                              <span>📸</span>
-                              <span>사진 추가하기 {questSubmission.photos.length > 0 ? `(${questSubmission.photos.length}장)` : ''}</span>
-                              <input id="quest-photo-upload-retry" type="file" accept="image/*" multiple style={{ display: 'none' }}
-                                onChange={async (e) => {
-                                  const files = Array.from(e.target.files);
-                                  if (!files.length) return;
-                                  setQuestSubmission(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
-                                  e.target.value = null;
-                                }}
-                              />
-                            </label>
-                            {questSubmission.photos.length > 0 && (
-                              <div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#495057', background: '#f8f9fa', padding: '6px 8px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>{questSubmission.photos.map(f => f.name).join(', ')}</span>
-                                <button onClick={() => setQuestSubmission(prev => ({ ...prev, photos: [] }))} style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>삭제</button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <ModalBtn $variant="complete" onClick={() => handleRequestComplete(modalQuest.id)} disabled={loading}>
-                      ↩ 다시 완료 요청하기
-                    </ModalBtn>
-                    <ModalBtn $variant="danger" onClick={() => handleCancelAccept(modalQuest.id)}>
-                      퀘스트 포기하기
-                    </ModalBtn>
-                  </>
-                );
-              })()}
-              {accepted && status === 'pending' && (
-                <ModalBtn disabled $variant="complete">
-                  ⏳ 선생님의 승인을 기다리는 중이에요
-                </ModalBtn>
-              )}
-              {accepted && status === 'completed' && (
-                <ModalBtn disabled style={{ background: '#d3f9d8', color: '#2f9e44' }}>
-                  ✓ 완료! 포인트가 지급됐어요
-                </ModalBtn>
-              )}
-              <ModalBtn $variant="cancel" onClick={() => setModalQuest(null)}>닫기</ModalBtn>
-            </Modal>
-          );
-        })()}
-      </ModalOverlay>
     </Wrapper>
   );
 }
