@@ -882,6 +882,7 @@ export const useLeagueStore = create((set, get) => ({
                 if (!notification.isRead) unreadCount++;
             });
             const latestPointNotification = notifications.find(n => n.type === 'point' && !n.isRead && n.data);
+            console.log('[subscribeToNotifications] point 알림:', latestPointNotification);
             set(state => {
                 if (latestPointNotification && latestPointNotification.id !== state.pointAdjustmentNotification?.id) {
                     return { notifications, unreadNotificationCount: unreadCount, pointAdjustmentNotification: latestPointNotification };

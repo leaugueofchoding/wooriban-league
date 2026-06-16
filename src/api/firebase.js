@@ -266,11 +266,14 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
         if (playerData.pets && playerData.pets.length > 0) {
           await updatePetExperience(playerRef, MISSION_EXP_REWARD);
         }
+        const missionNotifTitle = `✅ 미션 승인: ${missionData.title}`;
         createNotification(
           playerData.authUid,
-          `'${missionData.title}' 미션 완료!`,
-          `${reward}P와 펫 경험치 ${MISSION_EXP_REWARD}을 획득했습니다.`,
-          'mission'
+          `+${reward}P 포인트 조정`,
+          `${missionData.title} 미션 완료`,
+          'point',
+          null,
+          { amount: reward, reason: `${missionData.title} 미션 완료`, title: `+${reward}P 포인트 조정`, questTitle: missionNotifTitle }
         );
         await checkAndGrantAutoTitles(classId, studentId, playerData.authUid);
       });
@@ -669,7 +672,7 @@ export async function toggleSubmissionImageRotation(classId, submissionId, image
 }
 
 // --- 포인트 수동 조정 (classId 추가) ---
-export async function adjustPlayerPoints(classId, playerId, amount, reason) {
+export async function adjustPlayerPoints(classId, playerId, amount, reason, extraNotificationData = {}) {
   if (!classId) return;
   const playerRef = doc(db, "classes", classId, "players", playerId);
   let playerAuthUid = null;
@@ -687,8 +690,10 @@ export async function adjustPlayerPoints(classId, playerId, amount, reason) {
   // transaction 완료 후 알림·히스토리 기록 (transaction 안에서는 addDoc 불가)
   const title = `${amount > 0 ? '+' : ''}${amount}P 포인트 조정`;
   const body = `사유: ${reason}`;
+  const notifData = { amount, reason, title, ...extraNotificationData };
+  console.log('[adjustPlayerPoints] 알림 생성:', { playerAuthUid, title, notifData });
   if (playerAuthUid) {
-    await createNotification(playerAuthUid, title, body, 'point', null, { amount, reason, title });
+    await createNotification(playerAuthUid, title, body, 'point', null, notifData);
     await addPointHistory(classId, playerAuthUid, playerName, amount, reason);
   }
 }
@@ -4997,8 +5002,15 @@ export async function completeQuestForPlayer(classId, questId, playerId, playerN
   );
   await updateDoc(questRef, { acceptors: newAcceptors });
 
-  // 포인트 지급
-  await adjustPlayerPoints(classId, playerId, reward, `퀘스트 완료: ${data.title}`);
+  // 포인트 지급 (heartReward 포함하여 PointAdjustmentModal에 표시)
+  const questTitle = `✅ 퀘스트 승인: ${data.title}`;
+  await adjustPlayerPoints(
+    classId,
+    playerId,
+    reward,
+    `퀘스트 완료: ${data.title}`,
+    heartReward > 0 ? { heartReward, questTitle } : { questTitle }
+  );
 
   // 하트(좋아요) 지급
   if (heartReward > 0) {
@@ -5008,7 +5020,7 @@ export async function completeQuestForPlayer(classId, questId, playerId, playerN
     });
   }
 
-  // 펫 경험치 100 지급 + 학생/관리자 알림
+  // 펫 경험치 100 지급
   try {
     const playerRef = doc(db, 'classes', classId, 'players', playerId);
     const playerSnap = await getDoc(playerRef);
@@ -5017,18 +5029,8 @@ export async function completeQuestForPlayer(classId, questId, playerId, playerN
       if (pData.pets && pData.pets.length > 0) {
         await updatePetExperience(playerRef, 100);
       }
-      if (pData.authUid) {
-        const heartMsg = heartReward > 0 ? ` + ❤️ ${heartReward}` : '';
-        createNotification(
-          pData.authUid,
-          `✅ 퀘스트 승인됨!`,
-          `'${data.title}' 퀘스트가 승인됐습니다! ${reward}P${heartMsg}와 펫 경험치 100을 획득했어요.`,
-          'quest',
-          '/missions'
-        );
-      }
     }
-  } catch (e) { /* 알림/경험치 실패는 무시 */ }
+  } catch (e) { /* 경험치 실패는 무시 */ }
 }
 
 /**
