@@ -15,6 +15,14 @@ const slideUp = keyframes`
   to { transform: translateY(0); opacity: 1; }
 `;
 
+const heartBeat = keyframes`
+  0%   { transform: scale(1); }
+  15%  { transform: scale(1.25); }
+  30%  { transform: scale(1); }
+  45%  { transform: scale(1.18); }
+  60%  { transform: scale(1); }
+`;
+
 const ModalBackground = styled.div`
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -51,27 +59,46 @@ const ModalText = styled.p`
   line-height: 1.6;
 `;
 
+const RewardRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+`;
+
 const PointChange = styled.p`
-    font-size: 2.5rem;
-    font-weight: bold;
-    margin: 1.5rem 0;
-    color: ${props => (props.$isPositive ? '#28a745' : '#dc3545')};
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin: 0;
+  color: ${props => (props.$isPositive ? '#28a745' : '#dc3545')};
+`;
+
+const HeartReward = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 2rem;
+  font-weight: bold;
+  color: #fa5252;
+  animation: ${heartBeat} 1s ease-in-out infinite;
 `;
 
 const CloseButton = styled.button`
-    margin-top: 1.5rem;
-    width: 100%;
-    padding: 0.8rem;
-    border: none;
-    border-radius: 8px;
-    background-color: #007bff;
-    color: white;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-    &:hover {
-        background-color: #0056b3;
-    }
+  margin-top: 1.5rem;
+  width: 100%;
+  padding: 0.8rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #007bff;
+  color: white;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  &:hover {
+    background-color: #0056b3;
+  }
 `;
 
 const PointAdjustmentModal = () => {
@@ -92,17 +119,25 @@ const PointAdjustmentModal = () => {
   }
 
   const { title, data } = pointAdjustmentNotification;
-  const { amount, reason } = data;
+  const { amount, reason, heartReward } = data;
   const isPositive = amount > 0;
+  const hasHeart = heartReward && heartReward > 0;
 
   return (
     <ModalBackground onClick={clearPointAdjustmentNotification}>
       <ModalContainer onClick={e => e.stopPropagation()}>
         <ModalTitle $isPositive={isPositive}>{title}</ModalTitle>
         <ModalText>사유: <strong>{reason}</strong></ModalText>
-        <PointChange $isPositive={isPositive}>
-          {isPositive ? `+${amount.toLocaleString()}` : amount.toLocaleString()} P
-        </PointChange>
+        <RewardRow>
+          <PointChange $isPositive={isPositive}>
+            {isPositive ? `+${amount.toLocaleString()}` : amount.toLocaleString()} P
+          </PointChange>
+          {hasHeart && (
+            <HeartReward>
+              ❤️ +{heartReward}
+            </HeartReward>
+          )}
+        </RewardRow>
         <CloseButton onClick={clearPointAdjustmentNotification}>확인</CloseButton>
       </ModalContainer>
     </ModalBackground>

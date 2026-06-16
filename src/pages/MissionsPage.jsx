@@ -413,6 +413,40 @@ const MissionSectionLine = styled.div`
   opacity: 0.5;
 `;
 
+// ── 미션 카드 학생 이름 표시 ──
+const StudentChipRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #f1f3f5;
+  animation: ${fadeIn} 0.2s ease;
+`;
+
+const StudentChip = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: ${p => p.$approved ? '#e7f5ff' : '#ebfbee'};
+  color: ${p => p.$approved ? '#1971c2' : '#2f9e44'};
+  border: 1px solid ${p => p.$approved ? '#a5d8ff' : '#b2f2bb'};
+  white-space: nowrap;
+`;
+
+const StudentChipDot = styled.span`
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: ${p => p.$approved ? '#339af0' : '#40c057'};
+  display: inline-block;
+`;
+
 const ActionButton = styled.button`
   padding: 0.8rem 2rem;
   font-size: 1rem;
@@ -466,12 +500,13 @@ function SubmissionDetailsView({ submission, isOpen }) {
   );
 }
 
-function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView }) {
+function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, onHistoryView, allSubmissions }) {
   const { classId } = useClassStore();
   const { submitMissionForApproval, cancelMissionSubmission } = useLeagueStore();
   const [submissionContent, setSubmissionContent] = useState({ text: '', photos: [], isPublic: !mission.defaultPrivate });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [showStudents, setShowStudents] = useState(false);
 
   const submission = mySubmissions[mission.id];
 
@@ -606,65 +641,6 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     }
   };
 
-  const renderButtons = () => {
-    if (!canSubmitMission) return null;
-
-    const hasSubmission = !!submission;
-    // [수정] cancelled 상태도 액션 가능한 상태로 추가하여 제출 버튼이 영영 사라지지 않게 보호
-    const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE', 'PENDING_TODAY', 'pending', 'cancelled'].includes(missionStatus);
-    const isDoneOrPending = ['APPROVED_TODAY', 'approved'].includes(missionStatus);
-    const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || isDoneOrPending;
-
-    let actionButtonText;
-    let actionButtonStyle;
-
-    if (isSubmitting) {
-      actionButtonText = '요청 중...';
-      actionButtonStyle = 'pending';
-    } else {
-      switch (missionStatus) {
-        case 'APPROVED_TODAY': actionButtonText = '오늘 완료!'; actionButtonStyle = 'approved'; break;
-        case 'PENDING_TODAY': actionButtonText = '승인 대기중'; actionButtonStyle = 'pending'; break;
-        case 'REJECTED_TODAY': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
-        case 'approved': actionButtonText = '승인 완료!'; actionButtonStyle = 'approved'; break;
-        case 'pending': actionButtonText = '승인 대기중'; actionButtonStyle = 'pending'; break;
-        case 'rejected': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
-        // [수정] 취소된 경우 다시 제출할 수 있도록 버튼 활성화
-        case 'cancelled': actionButtonText = '다시 제출하기'; actionButtonStyle = 'rejected'; break;
-        default: actionButtonText = '미션 제출'; actionButtonStyle = 'default'; break;
-      }
-    }
-
-    return (
-      <ActionGroup>
-        {hasSubmission && (
-          <RequestButton $status="pending" onClick={() => onHistoryView(mission)} style={{ backgroundColor: '#fff', color: '#868e96', border: '1px solid #dee2e6' }}>
-            📋 기록 보기
-          </RequestButton>
-        )}
-        {(isActionable || isDoneOrPending) && (
-          <>
-            {isSubmissionRequired && isActionable && (
-              <VisibilityToggleButton
-                $isPublic={submissionContent.isPublic}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSubmissionContent(prev => ({ ...prev, isPublic: !prev.isPublic }));
-                }}
-                disabled={isButtonDisabled}
-                title={mission.defaultPrivate ? "이 미션은 기본적으로 비공개 제출됩니다." : "이 미션은 기본적으로 갤러리에 공개됩니다."}
-              >
-                {submissionContent.isPublic ? '🌐 갤러리 공개' : '🔒 비공개 제출'}
-              </VisibilityToggleButton>
-            )}
-            <RequestButton onClick={isActionable ? handleSubmit : null} disabled={isButtonDisabled} $status={actionButtonStyle}>
-              {actionButtonText}
-            </RequestButton>
-          </>
-        )}
-      </ActionGroup>
-    );
-  };
 
   const rewardText = useMemo(() => {
     if (!mission.rewards || mission.rewards.length <= 1) {
@@ -675,29 +651,88 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
     return `💰 ${minReward} ~ ${maxReward} P`;
   }, [mission.rewards, mission.reward]);
 
+  // 이 미션의 제출/승인 학생 목록 (미제출 제외)
+  const studentChips = useMemo(() => {
+    if (!allSubmissions) return [];
+    const submittedForMission = allSubmissions.filter(
+      sub => sub.missionId === mission.id && (sub.status === 'pending' || sub.status === 'approved')
+    );
+    return submittedForMission.map(sub => ({
+      id: sub.id,
+      name: sub.studentName || '이름 없음',
+      approved: sub.status === 'approved',
+    }));
+  }, [allSubmissions, mission.id]);
+
   const showSubmissionArea = isSubmissionRequired && !['APPROVED_TODAY', 'approved'].includes(missionStatus);
   const isInputDisabled = !isPrerequisiteSubmitted || isSubmitting || ['PENDING_TODAY', 'pending'].includes(missionStatus);
   const textAreaValue = isInputDisabled ? (submission?.text || "") : submissionContent.text;
 
   return (
     <>
-      <MissionCard $status={missionStatus}>
+      <MissionCard $status={missionStatus} onClick={() => studentChips.length > 0 && setShowStudents(p => !p)} style={{ cursor: studentChips.length > 0 ? 'pointer' : 'default' }}>
         <MissionHeader>
           <MissionInfo>
+            <MissionReward style={{ marginBottom: 2 }}>{rewardText}</MissionReward>
             <MissionTitle>
               {mission.title}
               {mission.isFixed && <Tag $bg="#e7f5ff" $color="#1c7ed6">🔄 매일</Tag>}
               {submissionType?.includes('text') && <Tag $bg="#fff0f6" $color="#c2255c">📝 글</Tag>}
               {submissionType?.includes('photo') && <Tag $bg="#e6fcf5" $color="#0ca678">📸 사진</Tag>}
             </MissionTitle>
-            <MissionReward>{rewardText}</MissionReward>
             {mission.description && (<MissionDescription>{mission.placeholderText}</MissionDescription>)}
           </MissionInfo>
-          {renderButtons()}
+          <ActionGroup onClick={e => e.stopPropagation()}>
+            {!!mySubmissions[mission.id] && (
+              <RequestButton $status="pending" onClick={() => onHistoryView(mission)} style={{ backgroundColor: '#fff', color: '#868e96', border: '1px solid #dee2e6', padding: '0.4rem 0.7rem', fontSize: '0.75rem' }}>
+                📋 기록
+              </RequestButton>
+            )}
+            {canSubmitMission && (() => {
+              const hasSubmission = !!mySubmissions[mission.id];
+              const isActionable = ['NOT_SUBMITTED', 'REJECTED_TODAY', 'rejected', 'SUBMITTABLE', 'PENDING_TODAY', 'pending', 'cancelled'].includes(missionStatus);
+              const isDoneOrPending = ['APPROVED_TODAY', 'approved'].includes(missionStatus);
+              const isButtonDisabled = isSubmitting || !isPrerequisiteSubmitted || isDoneOrPending;
+
+              let actionButtonText;
+              let actionButtonStyle;
+              if (isSubmitting) { actionButtonText = '요청 중...'; actionButtonStyle = 'pending'; }
+              else {
+                switch (missionStatus) {
+                  case 'APPROVED_TODAY': actionButtonText = '오늘 완료!'; actionButtonStyle = 'approved'; break;
+                  case 'PENDING_TODAY': actionButtonText = '승인 대기'; actionButtonStyle = 'pending'; break;
+                  case 'REJECTED_TODAY': actionButtonText = '재제출'; actionButtonStyle = 'rejected'; break;
+                  case 'approved': actionButtonText = '승인 완료!'; actionButtonStyle = 'approved'; break;
+                  case 'pending': actionButtonText = '승인 대기'; actionButtonStyle = 'pending'; break;
+                  case 'rejected': actionButtonText = '재제출'; actionButtonStyle = 'rejected'; break;
+                  case 'cancelled': actionButtonText = '재제출'; actionButtonStyle = 'rejected'; break;
+                  default: actionButtonText = '미션 제출'; actionButtonStyle = 'default'; break;
+                }
+              }
+              return (isActionable || isDoneOrPending) ? (
+                <>
+                  {isSubmissionRequired && isActionable && (
+                    <VisibilityToggleButton
+                      $isPublic={submissionContent.isPublic}
+                      onClick={(e) => { e.stopPropagation(); setSubmissionContent(prev => ({ ...prev, isPublic: !prev.isPublic })); }}
+                      disabled={isButtonDisabled}
+                      style={{ padding: '0.4rem 0.6rem', fontSize: '0.72rem' }}
+                      title={mission.defaultPrivate ? "기본 비공개" : "기본 공개"}
+                    >
+                      {submissionContent.isPublic ? '🌐 공개' : '🔒 비공개'}
+                    </VisibilityToggleButton>
+                  )}
+                  <RequestButton onClick={isActionable ? handleSubmit : null} disabled={isButtonDisabled} $status={actionButtonStyle} style={{ padding: '0.4rem 0.8rem', fontSize: '0.78rem' }}>
+                    {actionButtonText}
+                  </RequestButton>
+                </>
+              ) : null;
+            })()}
+          </ActionGroup>
         </MissionHeader>
 
         {showSubmissionArea && (
-          <SubmissionArea>
+          <SubmissionArea onClick={e => e.stopPropagation()}>
             {submissionType.includes('text') && (
               <TextArea
                 value={textAreaValue}
@@ -709,17 +744,9 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
             {submissionType.includes('photo') && (
               <div>
                 <FileInputLabel htmlFor={`file-${mission.id}`} disabled={isInputDisabled}>
-                  <span style={{ fontSize: '1.5rem' }}>📸</span>
-                  <span>사진 추가하기 {submissionContent.photos.length > 0 ? `(${submissionContent.photos.length}장)` : ''}</span>
-                  <input
-                    id={`file-${mission.id}`}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleFileChange}
-                    style={{ display: 'none' }}
-                    disabled={isInputDisabled}
-                  />
+                  <span style={{ fontSize: '1.2rem' }}>📸</span>
+                  <span>사진 추가 {submissionContent.photos.length > 0 ? `(${submissionContent.photos.length}장)` : ''}</span>
+                  <input id={`file-${mission.id}`} type="file" accept="image/*" multiple onChange={handleFileChange} style={{ display: 'none' }} disabled={isInputDisabled} />
                 </FileInputLabel>
                 {submissionContent.photos.length > 0 && (
                   <FileName>
@@ -727,15 +754,25 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
                       <strong>첨부된 파일:</strong>
                       <ClearButton onClick={handleClearPhotos}>[전체 삭제]</ClearButton>
                     </div>
-                    <ul>
-                      {submissionContent.photos.map((f, i) => <li key={i}>{f.name}</li>)}
-                    </ul>
+                    <ul>{submissionContent.photos.map((f, i) => <li key={i}>{f.name}</li>)}</ul>
                   </FileName>
                 )}
               </div>
             )}
           </SubmissionArea>
         )}
+
+        {showStudents && studentChips.length > 0 && (
+          <StudentChipRow onClick={e => e.stopPropagation()}>
+            {studentChips.map(chip => (
+              <StudentChip key={chip.id} $approved={chip.approved}>
+                <StudentChipDot $approved={chip.approved} />
+                {chip.name}
+              </StudentChip>
+            ))}
+          </StudentChipRow>
+        )}
+
         <SubmissionDetailsView submission={submission} isOpen={isDetailsOpen} />
       </MissionCard>
     </>
@@ -882,6 +919,7 @@ function MissionsPage() {
                     mySubmissions={mySubmissionsMap}
                     canSubmitMission={canSubmitMission}
                     onHistoryView={handleHistoryView}
+                    allSubmissions={missionSubmissions}
                   />
                 ))
               ) : (

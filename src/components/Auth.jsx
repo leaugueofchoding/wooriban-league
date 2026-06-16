@@ -424,6 +424,8 @@ function Auth({ user }) {
             'mission_request': '/admin/mission',
             'mission_approved': '/missions',
             'mission_rejected': '/missions',
+            'quest': '/missions',
+            'quest_approved': '/missions',
             'battle_request': null,
             'pet_levelup': '/pet',
             'pet_evolve': '/pet',
@@ -619,6 +621,16 @@ function Auth({ user }) {
                                                         // [추가] 댓글 신고 알림 → 관리자 신고 탭으로 이동
                                                         if (notif.type === 'comment_report') {
                                                             navigate('/admin', { state: { forceTab: 'reports' } });
+                                                            setShowNotifications(false);
+                                                            return;
+                                                        }
+                                                        // [추가] 퀘스트/미션 승인 알림 → 미션 승인 페이지로 이동
+                                                        if (
+                                                            notif.type === 'mission_request' ||
+                                                            (notif.type === 'quest' && notif.title?.includes('승인 요청')) ||
+                                                            notif.isGrouped
+                                                        ) {
+                                                            navigate('/admin/mission', { state: { subMenu: 'approval' } });
                                                             setShowNotifications(false);
                                                             return;
                                                         }

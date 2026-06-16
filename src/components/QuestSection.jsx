@@ -5,7 +5,7 @@ import styled, { keyframes } from 'styled-components';
 import { useClassStore, useLeagueStore } from '../store/leagueStore';
 import {
   auth, listenQuests, acceptQuest,
-  cancelQuestAcceptance, requestQuestCompletion,
+  cancelQuestAcceptance, requestQuestCompletion, completeQuestForPlayer,
 } from '../api/firebase';
 
 // ─────────────────────────────────────────────
@@ -311,6 +311,11 @@ export default function QuestSection({ onQuestCountChange }) {
     return players.find(p => p.authUid === currentUser.uid) || null;
   }, [players, currentUser]);
 
+  const isAdmin = useMemo(() => {
+    if (!myPlayer) return false;
+    return myPlayer.role === 'admin' || myPlayer.role === 'recorder';
+  }, [myPlayer]);
+
   useEffect(() => {
     if (!classId) return;
     return listenQuests(classId, (data) => {
@@ -391,6 +396,18 @@ export default function QuestSection({ onQuestCountChange }) {
     try {
       await cancelQuestAcceptance(classId, questId, myPlayer.id);
     } catch (e) { alert(`취소 중 오류: ${e.message}`); }
+  };
+
+  // ── 관리자: 수락자 이름 클릭 → 즉시 완료 처리 ──
+  const handleForceComplete = async (quest, acceptor) => {
+    if (acceptor.completionStatus === 'completed') return;
+    const heartMsg = quest.heartReward > 0 ? ` + ❤️ ${quest.heartReward}` : '';
+    if (!window.confirm(`[관리자] ${acceptor.playerName} 학생의 퀘스트를 즉시 완료 처리하고 ${quest.reward}P${heartMsg}를 지급할까요?`)) return;
+    try {
+      await completeQuestForPlayer(classId, quest.id, acceptor.playerId, acceptor.playerName, quest.reward, quest.heartReward || 0);
+    } catch (e) {
+      alert(`완료 처리 실패: ${e.message}`);
+    }
   };
 
   // ── 완료 요청 (학생) ──
@@ -528,9 +545,24 @@ export default function QuestSection({ onQuestCountChange }) {
                     <AcceptorRow>
                       <MetaChip style={{ marginRight: 2 }}>수락:</MetaChip>
                       {(quest.acceptors || []).map(a => (
-                        <AcceptorChip key={a.playerId} $status={a.completionStatus}>
+                        <AcceptorChip
+                          key={a.playerId}
+                          $status={a.completionStatus}
+                          style={{
+                            cursor: isAdmin && a.completionStatus !== 'completed' ? 'pointer' : 'default',
+                            transition: 'filter 0.15s',
+                          }}
+                          title={isAdmin && a.completionStatus !== 'completed' ? '클릭하여 즉시 완료 처리' : undefined}
+                          onClick={isAdmin && a.completionStatus !== 'completed'
+                            ? (e) => { e.stopPropagation(); handleForceComplete(quest, a); }
+                            : undefined
+                          }
+                          onMouseOver={e => { if (isAdmin && a.completionStatus !== 'completed') e.currentTarget.style.filter = 'brightness(0.88)'; }}
+                          onMouseOut={e => { e.currentTarget.style.filter = 'none'; }}
+                        >
                           <StatusDot $status={a.completionStatus} />
                           {a.playerName}
+                          {isAdmin && a.completionStatus !== 'completed' && <span style={{ fontSize: '0.68rem', opacity: 0.7 }}> ✓</span>}
                         </AcceptorChip>
                       ))}
                     </AcceptorRow>

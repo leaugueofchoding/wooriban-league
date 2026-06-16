@@ -100,6 +100,12 @@ function AdminPage() {
             setActiveSubMenu('reports');
             window.history.replaceState({}, document.title);
         }
+        // [추가] 퀘스트/미션 승인 알림 클릭 시 미션 승인 탭으로 이동
+        if (location.state?.subMenu === 'approval') {
+            setActiveMenu('mission');
+            setMissionSubMenu('approval');
+            window.history.replaceState({}, document.title);
+        }
     }, [location.state]);
 
     // ?tab=xxx URL 파라미터로 직접 탭 진입
