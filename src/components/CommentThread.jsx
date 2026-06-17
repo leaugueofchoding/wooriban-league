@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
-import { auth, db, addMissionReply, updateMissionComment, deleteMissionComment, toggleCommentLike, toggleReplyLike } from '../api/firebase';
+import { auth, db, addMissionReply, updateMissionComment, deleteMissionComment, updateMissionReply, deleteMissionReply, toggleCommentLike, toggleReplyLike } from '../api/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { filterProfanity } from '../utils/profanityFilter'; // [추가] 필터 함수 import
 import CommentReportModal from './CommentReportModal'; // [추가] 신고 모달
@@ -85,7 +85,7 @@ const ReportButton = styled.button`
     title { display: none; }
 `;
 
-function ReplyItem({ submissionId, commentId, reply, permissions, targetType, roomId }) {
+function ReplyItem({ classId, submissionId, commentId, reply, permissions, targetType, roomId }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const [isEditing, setIsEditing] = useState(false);
@@ -94,7 +94,7 @@ function ReplyItem({ submissionId, commentId, reply, permissions, targetType, ro
 
     const handleLike = () => {
         if (!myPlayerData || !permissions.canLike) return;
-        toggleReplyLike(submissionId, commentId, reply.id, myPlayerData.id);
+        toggleReplyLike(classId, submissionId, commentId, reply.id, myPlayerData.id);
     };
 
     const handleUpdate = () => {
@@ -102,17 +102,17 @@ function ReplyItem({ submissionId, commentId, reply, permissions, targetType, ro
         // [수정] 필터링 적용
         const cleanText = filterProfanity(editedText.trim());
 
-        updateMissionComment(submissionId, commentId, cleanText, reply.id)
+        updateMissionReply(classId, submissionId, commentId, reply.id, cleanText)
             .then(() => {
                 setIsEditing(false);
-                setEditedText(cleanText); // 화면에도 반영
+                setEditedText(cleanText);
             })
             .catch(e => alert("답글 수정 실패: " + e.message));
     };
 
     const handleDelete = () => {
         if (window.confirm("이 답글을 삭제하시겠습니까?")) {
-            deleteMissionComment(submissionId, commentId, reply.id)
+            deleteMissionReply(classId, submissionId, commentId, reply.id)
                 .catch(e => alert("답글 삭제 실패: " + e.message));
         }
     };
@@ -158,7 +158,7 @@ function ReplyItem({ submissionId, commentId, reply, permissions, targetType, ro
     );
 }
 
-function CommentThread({ submissionId, comment, missionTitle, permissions, targetType, roomId }) {
+function CommentThread({ classId, submissionId, comment, missionTitle, permissions, targetType, roomId }) {
     const { players } = useLeagueStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
     const [replies, setReplies] = useState([]);
@@ -171,7 +171,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions, targe
     const MIN_COMMENT_LENGTH = 8;
 
     useEffect(() => {
-        const repliesRef = collection(db, "missionSubmissions", submissionId, "comments", comment.id, "replies");
+        const repliesRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments", comment.id, "replies");
         const q = query(repliesRef, orderBy("createdAt", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setReplies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -181,7 +181,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions, targe
 
     const handleLike = () => {
         if (!myPlayerData || !permissions.canLike) return;
-        toggleCommentLike(submissionId, comment.id, myPlayerData.id);
+        toggleCommentLike(classId, submissionId, comment.id, myPlayerData.id);
     };
 
     const handleUpdateComment = () => {
@@ -189,7 +189,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions, targe
         // [수정] 필터링 적용
         const cleanText = filterProfanity(editedText.trim());
 
-        updateMissionComment(submissionId, comment.id, cleanText)
+        updateMissionComment(classId, submissionId, comment.id, cleanText)
             .then(() => {
                 setIsEditing(false);
                 setEditedText(cleanText);
@@ -199,7 +199,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions, targe
 
     const handleDeleteComment = () => {
         if (window.confirm("이 댓글과 모든 답글을 삭제하시겠습니까?")) {
-            deleteMissionComment(submissionId, comment.id)
+            deleteMissionComment(classId, submissionId, comment.id)
                 .catch(e => alert("댓글 삭제 실패: " + e.message));
         }
     };
@@ -217,6 +217,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions, targe
 
         const originalCommenter = players.find(p => p.id === comment.commenterId);
         addMissionReply(
+            classId,
             submissionId,
             comment.id,
             { replierId: myPlayerData.id, replierName: myPlayerData.name, text: cleanText, likes: [] }, // cleanText 전송
@@ -272,7 +273,7 @@ function CommentThread({ submissionId, comment, missionTitle, permissions, targe
             {replies.length > 0 && (
                 <ReplyList>
                     {replies.map(reply => (
-                        <ReplyItem key={reply.id} submissionId={submissionId} commentId={comment.id} reply={reply} permissions={permissions} targetType={targetType} roomId={roomId} />
+                        <ReplyItem key={reply.id} classId={classId} submissionId={submissionId} commentId={comment.id} reply={reply} permissions={permissions} targetType={targetType} roomId={roomId} />
                     ))}
                 </ReplyList>
             )}
