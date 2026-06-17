@@ -3572,7 +3572,10 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     }
     // ▲▲▲ [버프 적용 끝] ▲▲▲
 
-    // ▼▼▼ [추가] 레벨 차 보상/패널티 스케일링 (쩔·패작 어뷰징 방지) ▼▼▼
+    // ▼▼▼ [완화] 레벨 차 보상/패널티 스케일링 (쩔 어뷰징은 막되, 대전 회피 유발 방지) ▼▼▼
+    // 레벨갭 기준(±5, ±10)은 유지하되 배율을 완화하고,
+    // 역전승(저레벨이 고레벨을 이긴 경우) 보너스/추가 패널티는 완전히 제거해
+    // 고레벨 학생도 안심하고 대전에 응할 수 있도록 함.
     const winnerPetLevel = finalWinnerPet?.level || 1;
     const loserPetLevel = finalLoserPet?.level || 1;
     const levelGap = winnerPetLevel - loserPetLevel; // 양수 = 승자가 레벨 높음, 음수 = 승자가 레벨 낮음
@@ -3581,25 +3584,16 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     let loseExpMultiplier = 1.0;  // 패자 펫 경험치 배율
 
     if (levelGap >= 10) {
-      // 10레벨 이상 높은 펫이 이긴 경우 → 사실상 쩔 행위
-      victoryReward = 0;                          // 승리 포인트 없음
-      winExpMultiplier = 0.1;                      // 경험치 10%만
+      // 10레벨 이상 높은 펫이 이긴 경우 → 쩔 행위 의심, 보상은 절반만 지급
+      victoryReward = Math.floor(victoryReward * 0.5); // 75P
+      winExpMultiplier = 0.5;                            // 경험치 50%
     } else if (levelGap >= 5) {
-      // 5~9레벨 차이
-      victoryReward = Math.floor(victoryReward * 0.5);
-      winExpMultiplier = 0.25;
-    } else if (levelGap <= -10) {
-      // 10레벨 이상 낮은 펫이 이긴 경우 → 대역전! 3배 보상
-      victoryReward = Math.floor(victoryReward * 3);  // 150 * 3 = 450P
-      defeatPenalty = defeatPenalty + Math.floor(victoryReward - 150); // 기존 -50 + 추가 -300 = -350P
-      winExpMultiplier = 2.0;
-      loseExpMultiplier = 1.2; // 패자도 선전 보너스
-    } else if (levelGap <= -5) {
-      // 5~9레벨 낮은 펫이 이긴 경우 → 2배 보상
-      victoryReward = Math.floor(victoryReward * 2);  // 150 * 2 = 300P
-      defeatPenalty = defeatPenalty + Math.floor(victoryReward - 150); // 기존 -50 + 추가 -150 = -200P
-      winExpMultiplier = 1.5;
+      // 5~9레벨 차이 → 약하게만 감소
+      victoryReward = Math.floor(victoryReward * 0.75); // 112P
+      winExpMultiplier = 0.75;
     }
+    // 역전승(levelGap이 음수, 즉 저레벨이 고레벨을 이긴 경우)은
+    // 추가 보너스나 패자 추가 페널티 없이 기본 보상과 동일하게 처리한다.
     // ▲▲▲ [레벨 차 스케일링 끝] ▲▲▲
 
     let winnerPets = winnerData.pets || [];
@@ -3656,7 +3650,7 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
-    const levelScaleNote = levelGap >= 10 ? ' (레벨 차 패널티)' : levelGap <= -10 ? ' (대역전 보너스🎉)' : levelGap <= -5 ? ' (역전 보너스⬆️)' : '';
+    const levelScaleNote = levelGap >= 10 ? ' (레벨 차 보상 감소)' : levelGap >= 5 ? ' (레벨 차 보상 약간 감소)' : '';
     await addPointHistory(classId, winnerData.authUid, winnerData.name, victoryReward, "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote);
     if (defeatPenalty > 0) {
       await addPointHistory(classId, loserData.authUid, loserData.name, -defeatPenalty, "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : ''));
