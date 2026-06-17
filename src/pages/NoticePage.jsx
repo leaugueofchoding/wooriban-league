@@ -8,7 +8,7 @@ import {
   markNoticeRead, listenNoticeReaders,
   addNoticeComment, deleteNoticeComment, listenNoticeComments,
   toggleNoticeHeart, listenNoticeHearts,
-  listenNoticeVotes, toggleNoticeVote, finalizeNoticeVote // ✅ 추가됨
+  listenNoticeVotes, toggleNoticeVote, finalizeNoticeVote
 } from '../api/firebase';
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
@@ -132,11 +132,9 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
   const commentOn = tabConfig?.comment !== false;
   const myId = myPlayerData?.id;
 
-  // 기한 초과 여부 확인 (현재 시간과 비교)
   const isTimeOver = notice.poll?.deadline ? new Date() > new Date(notice.poll.deadline) : false;
   const isPollClosed = notice.poll?.isClosed || isTimeOver;
 
-  // 내가 낸 표 찾기
   const myVote = votes.find(v => v.playerId === myId);
   const isVoterFinalized = myVote?.isFinalized || false;
 
@@ -201,7 +199,6 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
 
   const iHearted = hearts.includes(myId);
 
-  // 투표 집계 로직
   const totalVotes = votes.length;
   const voteCounts = {};
   if (notice.poll) {
@@ -284,7 +281,6 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
             })}
           </PollOptionList>
 
-          {/* 학생 투표 완료 처리 영역 */}
           {!isTeacher && !isPollClosed && (
             <div style={{ marginTop: '1rem', textAlign: 'center' }}>
               {isVoterFinalized ? (
@@ -367,7 +363,6 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
         </CommentsArea>
       )}
 
-      {/* 읽은 사람 명단 모달 */}
       {showReaders && (
         <ModalOverlay onClick={() => setShowReaders(false)}>
           <ModalCard onClick={e => e.stopPropagation()}>
@@ -390,7 +385,6 @@ function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeac
         </ModalOverlay>
       )}
 
-      {/* 투표자 명단 모달 */}
       {showVotersOptionIdx !== null && notice.poll && (
         <ModalOverlay onClick={() => setShowVotersOptionIdx(null)}>
           <ModalCard onClick={e => e.stopPropagation()}>
@@ -439,7 +433,9 @@ function NoticePage() {
   const [previews, setPreviews] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
 
-  // 투표 폼 상태
+  const [movingNotice, setMovingNotice] = useState(null);
+  const [moveTargetTab, setMoveTargetTab] = useState('');
+
   const [includePoll, setIncludePoll] = useState(false);
   const [pollForm, setPollForm] = useState({ title: '', options: ['', ''], multiple: false, anonymous: false, deadline: '', isClosed: false });
 
@@ -447,7 +443,6 @@ function NoticePage() {
   const [editingTabConfigs, setEditingTabConfigs] = useState({});
   const fileRef = useRef();
 
-  // 탭 + 설정 로드
   useEffect(() => {
     if (!classId) return;
     getDoc(doc(db, 'classes', classId)).then(snap => {
@@ -459,19 +454,21 @@ function NoticePage() {
     });
   }, [classId]);
 
-  // 공지 구독
   useEffect(() => {
     if (!classId) return;
     return listenNotices(classId, setNotices);
   }, [classId]);
 
-  // 탭 변경 시 최신 글 자동 펼침
+  // [수정] 탭 변경이나 전체 로드 시, 해당 필터 리스트에서 가장 최신(첫 번째) 게시물을 자동으로 열린 상태로 셋팅
   useEffect(() => {
-    const list = activeTab === '전체' ? notices : notices.filter(n => n.tab === activeTab);
-    setExpandedId(list.length > 0 ? list[0].id : null);
+    const currentList = activeTab === '전체' ? notices : notices.filter(n => n.tab === activeTab);
+    if (currentList.length > 0) {
+      setExpandedId(currentList[0].id); // 가장 최신 글 ID 자동 활성화
+    } else {
+      setExpandedId(null);
+    }
   }, [activeTab, notices]);
 
-  // 펼칠 때 읽음 처리
   useEffect(() => {
     if (!expandedId || !myPlayerData?.id) return;
     markNoticeRead(classId, expandedId, myPlayerData.id, myPlayerData.name);
@@ -508,7 +505,18 @@ function NoticePage() {
     setEditingNotice(notice); setModalMode('edit');
   };
 
-  const closeModal = () => { setModalMode(null); setEditingNotice(null); };
+  const openMoveModal = (notice, e) => {
+    e.stopPropagation();
+    setMovingNotice(notice);
+    setMoveTargetTab(notice.tab || tabs[0] || '');
+    setModalMode('move');
+  };
+
+  const closeModal = () => {
+    setModalMode(null);
+    setEditingNotice(null);
+    setMovingNotice(null);
+  };
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -565,15 +573,36 @@ function NoticePage() {
     finally { setIsSubmitting(false); }
   };
 
+  const handleMoveSubmit = async () => {
+    if (!moveTargetTab) return alert('이동할 메뉴(탭)를 선택해주세요.');
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'classes', classId, 'notices', movingNotice.id), {
+        tab: moveTargetTab,
+        updatedAt: serverTimestamp(),
+      });
+      alert(`"${movingNotice.title}" 게시물이 [${moveTargetTab}] 메뉴로 이동되었습니다.`);
+      closeModal();
+    } catch (e) {
+      alert('이동 실패: ' + e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDelete = async (notice, e) => {
     e.stopPropagation();
     if (!window.confirm(`"${notice.title}" 공지를 삭제하시겠습니까?`)) return;
     try { await deleteNotice(classId, notice.id); } catch (e) { alert('삭제 실패: ' + e.message); }
   };
 
+  // 상호작용성 최적화: 이미 열려있는 카드를 누르면 닫히고(null), 다른걸 누르면 그것이 열립니다.
   const handleCardClick = (notice) => {
-    if (expandedId === notice.id) setFullscreenNotice(notice);
-    else setExpandedId(notice.id);
+    if (expandedId === notice.id) {
+      setExpandedId(null);
+    } else {
+      setExpandedId(notice.id);
+    }
   };
 
   const openTabManager = () => {
@@ -635,11 +664,19 @@ function NoticePage() {
                     <span>{formatDate(notice.createdAt)}</span>
                     {(notice.imageUrls || []).length > 0 && <MetaTag>📎 {notice.imageUrls.length}장</MetaTag>}
                     {notice.poll && <MetaTag style={{ background: '#fff9db', color: '#f08c00' }}>📊 투표</MetaTag>}
-                    {isExpanded && <MetaTag style={{ background: '#f3f0ff', color: '#7048e8', cursor: 'pointer' }}>🔍 전체화면</MetaTag>}
+                    {isExpanded && (
+                      <MetaTag
+                        style={{ background: '#f3f0ff', color: '#7048e8', cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); setFullscreenNotice(notice); }}
+                      >
+                        🔍 전체화면
+                      </MetaTag>
+                    )}
                   </MetaRow>
                 </div>
                 {isTeacher && (
                   <ActionRow onClick={e => e.stopPropagation()}>
+                    <IconBtn onClick={e => openMoveModal(notice, e)} title="게시물 메뉴 이동">📦</IconBtn>
                     <IconBtn onClick={e => openEdit(notice, e)}>✏️</IconBtn>
                     <IconBtn $danger onClick={e => handleDelete(notice, e)}>🗑️</IconBtn>
                   </ActionRow>
@@ -695,6 +732,29 @@ function NoticePage() {
         </LightboxOverlay>
       )}
 
+      {/* 게시물 전용 퀵 이동 모달 */}
+      {modalMode === 'move' && movingNotice && (
+        <ModalOverlay onClick={closeModal}>
+          <WriteModal onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <ModalTitleH2>📦 게시물 이동</ModalTitleH2>
+            <p style={{ fontSize: '0.92rem', color: '#495057', margin: '0 0 1.2rem', lineHeight: 1.5 }}>
+              선택한 <strong>"{movingNotice.title}"</strong> 게시물을 어느 게시판(탭)으로 이동시킬까요?
+            </p>
+            <Label>이동할 메뉴 선택</Label>
+            <select value={moveTargetTab} onChange={e => setMoveTargetTab(e.target.value)}
+              style={{ width: '100%', padding: '0.72rem 1rem', border: '2px solid #dee2e6', borderRadius: '10px', fontSize: '0.97rem', boxSizing: 'border-box', fontWeight: 700 }}>
+              {tabs.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <BtnRow>
+              <CancelBtn onClick={closeModal}>취소</CancelBtn>
+              <SubmitBtn onClick={handleMoveSubmit} disabled={isSubmitting}>
+                {isSubmitting ? '이동 중...' : '이동 완료'}
+              </SubmitBtn>
+            </BtnRow>
+          </WriteModal>
+        </ModalOverlay>
+      )}
+
       {/* 작성/수정 모달 */}
       {(modalMode === 'create' || modalMode === 'edit') && (
         <ModalOverlay onClick={closeModal}>
@@ -710,7 +770,6 @@ function NoticePage() {
             <Label>내용</Label>
             <Textarea placeholder="공지 내용 (선택)" value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} />
 
-            {/* 투표 설정 영역 */}
             <div style={{ marginTop: '1.2rem', borderTop: '1px dashed #dee2e6', paddingTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Label style={{ margin: 0 }}>📊 투표 첨부</Label>
@@ -723,7 +782,6 @@ function NoticePage() {
                 <PollSetupCard>
                   <Input placeholder="투표 제목 (예: 회장 선거, 체육대회 종목)" value={pollForm.title} onChange={e => setPollForm({ ...pollForm, title: e.target.value })} style={{ marginBottom: '0.8rem', padding: '0.6rem', fontSize: '0.9rem' }} />
 
-                  {/* 기한 설정 (날짜/시간 선택) */}
                   <Input type="datetime-local" value={pollForm.deadline || ''} onChange={e => setPollForm({ ...pollForm, deadline: e.target.value })} style={{ marginBottom: '0.8rem', padding: '0.6rem', fontSize: '0.9rem', color: pollForm.deadline ? '#1c1c1e' : '#adb5bd' }} />
 
                   {pollForm.options.map((opt, i) => (
@@ -764,7 +822,7 @@ function NoticePage() {
         <ModalOverlay onClick={() => setModalMode(null)}>
           <WriteModal onClick={e => e.stopPropagation()}>
             <ModalTitleH2>⚙️ 탭 관리</ModalTitleH2>
-            <p style={{ margin: '0 0 1rem', fontSize: '0.88rem', color: '#868e96' }}>탭별 댓글·하트 기능을 ON/OFF할 수 있습니다.</p>
+            <p style={{ margin: '0 0 1rem', fontSize: '0.88rem', color: '#868e96' }}>탭별 댓글·하트 기능을 ON/OFF하거나 순서를 변경할 수 있습니다.</p>
             {editingTabs.map((tab, i) => {
               const cfg = editingTabConfigs[tab] || DEFAULT_TAB_CONFIG;
               return (
@@ -780,6 +838,34 @@ function NoticePage() {
                       setEditingTabConfigs(newCfgs);
                     }
                   }} />
+
+                  <div style={{ display: 'flex', gap: '2px' }}>
+                    <button
+                      disabled={i === 0}
+                      onClick={() => {
+                        if (i === 0) return;
+                        const newTabs = [...editingTabs];
+                        const temp = newTabs[i];
+                        newTabs[i] = newTabs[i - 1];
+                        newTabs[i - 1] = temp;
+                        setEditingTabs(newTabs);
+                      }}
+                      style={{ background: '#e9ecef', border: 'none', borderRadius: '4px', padding: '0.2rem 0.4rem', fontSize: '0.72rem', cursor: i === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                    >▲</button>
+                    <button
+                      disabled={i === editingTabs.length - 1}
+                      onClick={() => {
+                        if (i === editingTabs.length - 1) return;
+                        const newTabs = [...editingTabs];
+                        const temp = newTabs[i];
+                        newTabs[i] = newTabs[i + 1];
+                        newTabs[i + 1] = temp;
+                        setEditingTabs(newTabs);
+                      }}
+                      style={{ background: '#e9ecef', border: 'none', borderRadius: '4px', padding: '0.2rem 0.4rem', fontSize: '0.72rem', cursor: i === editingTabs.length - 1 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                    >▼</button>
+                  </div>
+
                   <ToggleSwitch $on={cfg.comment !== false} onClick={() => setEditingTabConfigs(c => ({ ...c, [tab]: { ...cfg, comment: cfg.comment === false } }))}>
                     💬{cfg.comment !== false ? 'ON' : 'OFF'}
                   </ToggleSwitch>

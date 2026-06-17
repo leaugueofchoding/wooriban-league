@@ -56,6 +56,7 @@ const MainLayout = styled.div`
 const PetDashboard = styled.div`
   display: grid;
   grid-template-columns: 280px 1fr;
+  align-items: start; /* [수정] 좌/우 컬럼이 서로의 높이에 맞춰 늘어나지 않도록 고정 */
   gap: 2rem;
   background-color: white;
   padding: 2.5rem;
@@ -201,7 +202,7 @@ const InventoryItem = styled.p`
 
 const ActionButtonGroup = styled.div`
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 1rem; margin-top: auto;
+  gap: 1rem; margin-top: 1rem; /* [수정] auto에서 1rem으로 변경하여 밀림 방지 */
 `;
 
 const StyledButton = styled.button`
@@ -219,7 +220,6 @@ const FeedButton = styled(StyledButton)` background-color: #ff6b6b; &:hover:not(
 const PetCenterButton = styled(StyledButton)` background-color: #22b8cf; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #15aabf; } `;
 const BattleRequestButton = styled(StyledButton)` background-color: #fa5252; grid-column: 1 / -1; box-shadow: 0 4px 0 #c92a2a; &:hover:not(:disabled) { background-color: #e03131; } `;
 
-// --- 대전 상대 목록 (세로형 디자인) ---
 const OpponentList = styled.div`
   display: flex;
   flex-direction: column;
@@ -416,7 +416,6 @@ const TooltipWrapper = styled.div`
   &:hover::after { opacity: 1; }
 `;
 
-// [추가] 통일된 하단 버튼 스타일
 const ButtonGroup = styled.div`
   display: flex; justify-content: center; gap: 1rem; margin-top: 3rem;
 `;
@@ -446,6 +445,7 @@ function PetPage() {
   const [hatchState, setHatchState] = useState({ step: 'start', hatchedPet: null });
   const [exchangeAmount, setExchangeAmount] = useState(1);
   const [activeAccordion, setActiveAccordion] = useState(null);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [equippedSkills, setEquippedSkills] = useState([]);
   const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
@@ -510,7 +510,6 @@ function PetPage() {
     } catch (error) { alert("이름 저장 중 오류가 발생했습니다: " + error.message); }
   };
 
-  // ▼ [추가] 이름 편집 버튼 클릭 시 변경권 보유 여부 선제 확인
   const handleEditNameClick = () => {
     const renameCount = myPlayerData?.petInventory?.pet_rename || 0;
     if (renameCount <= 0) {
@@ -623,7 +622,6 @@ function PetPage() {
       await createBattleChallenge(classId, myPlayerData, opponent);
       navigate(`/battle/${opponent.id}`);
     } catch (error) {
-      // 배틀 횟수 10회 초과 에러인지 확인
       if (error.message?.includes('오늘 너무 지쳤어요')) {
         const vitaminCount = myPlayerData?.petInventory?.vitamin_jelly || 0;
         setVitaminJellyPopup({ show: true, pendingOpponent: opponent, vitaminCount });
@@ -633,13 +631,11 @@ function PetPage() {
     }
   };
 
-  // 비타민 젤리 사용 후 배틀 재신청
   const handleUseVitaminAndBattle = async () => {
     const { pendingOpponent } = vitaminJellyPopup;
     setVitaminJellyPopup({ show: false, pendingOpponent: null });
     try {
       await usePetItem('vitamin_jelly', selectedPet.id);
-      // 아이템 사용 후 잠깐 대기 (DB 반영 시간)
       await new Promise(resolve => setTimeout(resolve, 500));
       await createBattleChallenge(classId, myPlayerData, pendingOpponent);
       navigate(`/battle/${pendingOpponent.id}`);
@@ -654,6 +650,11 @@ function PetPage() {
 
   const { petInventory, totalLikes, partnerPetId } = myPlayerData;
   const currentStage = parseInt(selectedPet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
+
+  const currentPetInfo = currentStage === 3 ? PET_DATA[selectedPet.species]?.evolution?.lv20
+    : currentStage === 2 ? PET_DATA[selectedPet.species]?.evolution?.lv10
+      : PET_DATA[selectedPet.species];
+
   const skillSlotsCount = currentStage + 1;
   const learnedSkills = selectedPet.skills || PET_DATA[selectedPet.species].initialSkills;
   const unequippedSkills = learnedSkills.filter(id => !(equippedSkills || []).includes(id));
@@ -662,7 +663,6 @@ function PetPage() {
   const spPercent = Math.min(100, Math.max(0, (selectedPet.sp / selectedPet.maxSp) * 100));
   const expPercent = (selectedPet.exp / selectedPet.maxExp) * 100;
 
-  // [밸런스] 진화 레벨 상한 도달 여부 표시
   const evoCapLevel = currentStage === 1 ? 10 : currentStage === 2 ? 20 : Infinity;
   const isLevelCapped = currentStage < 3 && selectedPet.level >= evoCapLevel && PET_DATA[selectedPet.species]?.evolution;
 
@@ -689,7 +689,8 @@ function PetPage() {
                 <button onClick={handleEditNameClick} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem' }} title={`이름 변경 (변경권 ${myPlayerData?.petInventory?.pet_rename || 0}개)`}>✏️</button>
               </>)}
             </PetNameContainer>
-            <PetLevel>Lv. {selectedPet.level} {PET_DATA[selectedPet.species].name}</PetLevel>
+
+            <PetLevel>Lv. {selectedPet.level} {currentPetInfo?.name || PET_DATA[selectedPet.species].name}</PetLevel>
             {isFainted && <p style={{ color: '#fa5252', fontWeight: '800', margin: 0 }}>⚠️ 전투 불능!</p>}
 
             <AccordionContainer>
@@ -703,10 +704,9 @@ function PetPage() {
                   {activeAccordion === 'stats' && (
                     <StatGrid>
                       <InfoCard style={{ padding: '0.8rem', border: 'none', background: '#fff' }}>
-                        <p>{PET_DATA[selectedPet.species].description}</p>
+                        <p>{currentPetInfo?.description || PET_DATA[selectedPet.species].description}</p>
                       </InfoCard>
                       <StatItem><p>공격력</p><p>{selectedPet.atk || 0}</p></StatItem>
-                      {/* ▼ [추가] 배틀 전적 */}
                       <StatItem style={{ gridColumn: '1 / -1', background: 'linear-gradient(135deg,#f8f9fa,#e9ecef)', borderRadius: '10px', padding: '0.7rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                         <p style={{ fontWeight: 800, color: '#495057', marginBottom: '0.2rem' }}>⚔️ 배틀 전적</p>
                         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
@@ -729,7 +729,6 @@ function PetPage() {
                           );
                         })()}
                       </StatItem>
-                      {/* ▲ [추가 끝] */}
                     </StatGrid>
                   )}
                   {activeAccordion === 'skills' && (
@@ -800,11 +799,32 @@ function PetPage() {
             )}
 
             <InfoCard>
-              <h4>🎒 인벤토리</h4>
-              {Object.values(PET_ITEMS).map(item => (
-                <InventoryItem key={item.id}><img src={item.icon} alt={item.name} />{item.name}: {petInventory?.[item.id] || 0}개</InventoryItem>
-              ))}
-              {/* 오늘의 배틀 횟수 현황 */}
+              <div
+                onClick={() => setIsInventoryOpen(!isInventoryOpen)}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', paddingBottom: '4px' }}
+              >
+                <h4 style={{ margin: 0 }}>🎒 인벤토리</h4>
+                <span style={{ fontSize: '0.85rem', color: '#868e96', fontWeight: 'bold' }}>{isInventoryOpen ? '▲ 닫기' : '▼ 열기'}</span>
+              </div>
+
+              {isInventoryOpen && (
+                <div style={{ marginTop: '1rem', padding: '0.4rem 0 0 0', borderTop: '1px dashed #e9ecef' }}>
+                  {Object.values(PET_ITEMS)
+                    .filter(item => (petInventory?.[item.id] || 0) > 0)
+                    .map(item => (
+                      <InventoryItem key={item.id}>
+                        <img src={item.icon} alt={item.name} />
+                        {item.name}: {petInventory[item.id]}개
+                      </InventoryItem>
+                    ))}
+                  {Object.values(PET_ITEMS).filter(item => (petInventory?.[item.id] || 0) > 0).length === 0 && (
+                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem', color: '#adb5bd', fontWeight: '600' }}>현재 가방에 보유 중인 아이템이 없습니다.</p>
+                  )}
+                </div>
+              )}
+
+              <div style={{ borderTop: '1px solid #e9ecef', margin: '1rem 0 0.6rem 0' }}></div>
+
               {(() => {
                 const todayStr = new Date().toLocaleDateString();
                 const dailyCount = selectedPet.lastBattleDate === todayStr ? (selectedPet.dailyBattleCount || 0) : 0;
@@ -885,7 +905,6 @@ function PetPage() {
                 <h2 style={{ color: 'white' }}>와!</h2>
                 <img src={petImageMap[`${hatchState.hatchedPet.appearanceId}_idle`]} alt="부화한 펫" className="pet" />
                 <h3 style={{ color: 'white' }}>{hatchState.hatchedPet.name}이(가) 태어났습니다!</h3>
-                {/* ▼ [추가] 새 종류 발견 메시지 */}
                 {(() => {
                   const beforeHatch = myPlayerData?.pets?.filter(p => p.id !== hatchState.hatchedPet.id) || [];
                   const isNew = !beforeHatch.some(p => p.species === hatchState.hatchedPet.species);
@@ -910,7 +929,6 @@ function PetPage() {
                     </div>
                   );
                 })()}
-                {/* ▲ [추가 끝] */}
                 <button onClick={() => setIsHatching(false)} style={{ padding: '0.8rem 2rem', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>확인</button>
               </div>
             )}
@@ -950,7 +968,6 @@ function PetPage() {
         </ModalBackground>
       )}
 
-      {/* ▼ [수정 완료] 비타민 젤리 팝업 모달: 상점 리디렉션을 펫센터로 수정했습니다 */}
       {vitaminJellyPopup.show && (
         <ModalBackground onClick={() => setVitaminJellyPopup({ show: false, pendingOpponent: null })}>
           <ModalContent onClick={e => e.stopPropagation()} style={{ textAlign: 'center', maxWidth: '360px' }}>
@@ -988,7 +1005,6 @@ function PetPage() {
                 <p style={{ color: '#868e96', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>
                   비타민 젤리가 없어요. 펫센터 상점에서 구매하거나 내일 다시 도전해보세요!
                 </p>
-                {/* 🛒 상점 가기 버튼 클릭 시 /pet-center 로 이동하도록 경로 변경 */}
                 <button
                   onClick={() => navigate('/pet-center')}
                   style={{ padding: '0.9rem', background: 'linear-gradient(135deg, #339af0, #1c7ed6)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer' }}
@@ -1007,7 +1023,6 @@ function PetPage() {
         </ModalBackground>
       )}
 
-      {/* [수정] 통일된 스타일의 하단 버튼 */}
       <ButtonGroup>
         <ActionButton onClick={() => navigate(-1)}>뒤로 가기</ActionButton>
         <ActionButton $primary onClick={() => navigate('/')}>홈으로</ActionButton>

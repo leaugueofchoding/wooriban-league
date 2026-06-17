@@ -11,6 +11,52 @@ import { SKILLS } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect, { DotDamageEffect } from './BattleSkillEffect';
 
+// --- Web Audio API 기반 자체 효과음 생성기 (외부 파일 필요 없음) ---
+const playSound = (type) => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        if (type === 'hit') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.15);
+            gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.15);
+        } else if (type === 'skill') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(250, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.1);
+            osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.3);
+            gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.3);
+        } else if (type === 'heal') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, ctx.currentTime);
+            osc.frequency.linearRampToValueAtTime(500, ctx.currentTime + 0.1);
+            osc.frequency.linearRampToValueAtTime(700, ctx.currentTime + 0.2);
+            gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.3);
+        }
+    } catch (e) {
+        console.log('Web Audio API 지원되지 않음');
+    }
+};
+
 // --- Styled Components & Keyframes ---
 
 const rotate = keyframes`
@@ -245,7 +291,6 @@ const dragonClawLeft = keyframes`
   100% { transform: translateX(0) translateY(0) scale(1) rotate(0deg); filter: brightness(1); }
 `;
 
-// --- 🐸 개구리 스킬 전용 애니메이션 ---
 const waterBallRight = keyframes`
   0% { transform: translateX(0) scale(1); }
   20% { transform: translateX(-15px) scale(0.9); }
@@ -302,6 +347,77 @@ const reedBowLeft = keyframes`
   100% { transform: translateX(0) scale(1); filter: brightness(1); }
 `;
 
+// --- UI Components ---
+const ProfileWrapper = styled.div`
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 5;
+`;
+
+const OpponentProfileWrapper = styled(ProfileWrapper)`
+  left: 20px; top: 20px;
+  flex-direction: row;
+`;
+
+const MyProfileWrapper = styled(ProfileWrapper)`
+  right: 20px; bottom: 20px;
+  flex-direction: row;
+`;
+
+const AvatarBox = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+
+  img {
+    width: 65px;
+    height: 65px;
+    border-radius: 16px;
+    border: 3px solid white;
+    background-color: #f1f3f5;
+    object-fit: cover;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  }
+
+  .name-badge {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    white-space: nowrap;
+  }
+
+  .name-badge.mine { background-color: #339af0; }
+  .name-badge.opponent { background-color: #fa5252; }
+
+  @media (max-width: 768px) {
+    img { width: 50px; height: 50px; border-radius: 12px; }
+    .name-badge { font-size: 0.7rem; padding: 3px 8px; }
+  }
+`;
+
+const InfoBox = styled.div`
+  width: 240px; 
+  padding: 1rem; 
+  border: 2px solid;
+  border-radius: 16px; 
+  background-color: rgba(255,255,255,0.9); 
+  backdrop-filter: blur(5px);
+  display: flex; 
+  flex-direction: column; 
+  gap: 0.5rem;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  
+  span { font-weight: 800; color: #343a40; font-size: 1.05rem; margin-bottom: 0.2rem; }
+  @media (max-width: 768px) { width: 170px; padding: 0.8rem; span { font-size: 0.9rem; } }
+`;
+const MyInfoBox = styled(InfoBox)` border-color: #339af0; `;
+const OpponentInfoBox = styled(InfoBox)` border-color: #fa5252; `;
 
 const StunEffect = styled.div`
   position: absolute;
@@ -392,18 +508,6 @@ const PetImage = styled.img`
   filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'}; 
   transition: filter 0.3s;
 `;
-
-const InfoBox = styled.div`
-  position: absolute; width: 280px; padding: 1rem; border: 2px solid #339af0;
-  border-radius: 16px; background-color: rgba(255,255,255,0.9); backdrop-filter: blur(5px);
-  display: flex; flex-direction: column; gap: 0.5rem; z-index: 5;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  
-  span { font-weight: 800; color: #343a40; font-size: 1.1rem; }
-  @media (max-width: 768px) { width: 200px; padding: 0.8rem; span { font-size: 0.9rem; } }
-`;
-const MyInfoBox = styled(InfoBox)` right: 20px; bottom: 20px; `;
-const OpponentInfoBox = styled(InfoBox)` left: 20px; top: 20px; `;
 
 const StatBar = styled.div`
   width: 100%; height: 18px; background-color: #e9ecef; border-radius: 10px; overflow: hidden; position: relative;
@@ -741,6 +845,20 @@ function BattlePage() {
         return () => unsubscribe();
     }, [myPlayerData, battleId, classId, navigate]);
 
+    // --- Web Audio 타격음 효과 리스너 ---
+    useEffect(() => {
+        if (hitState.my || hitState.opponent) {
+            playSound('hit');
+        }
+    }, [hitState.my, hitState.opponent]);
+
+    // --- Web Audio 스킬 효과음 리스너 ---
+    useEffect(() => {
+        if (animState.my || animState.opponent) {
+            playSound('skill');
+        }
+    }, [animState.my, animState.opponent]);
+
     useEffect(() => {
         if (!battleState || !myPlayerData) return;
 
@@ -1002,7 +1120,6 @@ function BattlePage() {
                         handleResolution(battleRef);
                     }, 1200);
 
-                    // --- 개구리 스킬 애니메이션 분기 ---
                 } else if (actionType === 'WATER_BALL') {
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'WATER_BALL' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'WATER_BALL' }));
@@ -1149,7 +1266,6 @@ function BattlePage() {
                 const updates = {};
                 if (!data.attackerAction) updates.attackerAction = 'TACKLE';
 
-                // 속박 상태인지 체크 후 자동 방어행동 분기
                 const isChallengerTurn = data.turn === data.challenger.id;
                 const defenderPet = isChallengerTurn ? data.opponent.pet : data.challenger.pet;
 
@@ -1451,6 +1567,9 @@ function BattlePage() {
 
                 const currentQty = playerData.petInventory?.[itemId] || 0;
                 if (currentQty <= 0) return;
+
+                // 회복 사운드 재생
+                playSound('heal');
 
                 const newInventory = { ...playerData.petInventory };
                 newInventory[itemId] -= 1;
@@ -1835,17 +1954,39 @@ function BattlePage() {
                                 />
                             )}
 
-                            <MyInfoBox>
-                                <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
-                                {renderHpBar(myInfo.pet.hp, myInfo.pet.maxHp)}
-                                {renderSpBar(myInfo.pet.sp, myInfo.pet.maxSp)}
-                            </MyInfoBox>
+                            {/* --- 상대 정보 표시 --- */}
+                            <OpponentProfileWrapper>
+                                <AvatarBox>
+                                    <img
+                                        src={opponentInfo.avatarSnapshot || opponentInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`}
+                                        alt="상대방 아바타"
+                                        onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`; }}
+                                    />
+                                    <div className="name-badge opponent">{opponentInfo.name}</div>
+                                </AvatarBox>
+                                <OpponentInfoBox>
+                                    <span>{opponentInfo.pet.name} (Lv.{opponentInfo.pet.level})</span>
+                                    {renderHpBar(opponentInfo.pet.hp, opponentInfo.pet.maxHp)}
+                                    {renderSpBar(opponentInfo.pet.sp, opponentInfo.pet.maxSp)}
+                                </OpponentInfoBox>
+                            </OpponentProfileWrapper>
 
-                            <OpponentInfoBox>
-                                <span>{opponentInfo.pet.name} (Lv.{opponentInfo.pet.level})</span>
-                                {renderHpBar(opponentInfo.pet.hp, opponentInfo.pet.maxHp)}
-                                {renderSpBar(opponentInfo.pet.sp, opponentInfo.pet.maxSp)}
-                            </OpponentInfoBox>
+                            {/* --- 나의 정보 표시 --- */}
+                            <MyProfileWrapper>
+                                <AvatarBox>
+                                    <img
+                                        src={myInfo.avatarSnapshot || myInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`}
+                                        alt="나의 아바타"
+                                        onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`; }}
+                                    />
+                                    <div className="name-badge mine">{myInfo.name}</div>
+                                </AvatarBox>
+                                <MyInfoBox>
+                                    <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
+                                    {renderHpBar(myInfo.pet.hp, myInfo.pet.maxHp)}
+                                    {renderSpBar(myInfo.pet.sp, myInfo.pet.maxSp)}
+                                </MyInfoBox>
+                            </MyProfileWrapper>
 
                             <OpponentPetContainerWrapper>
                                 <PetContainer $isHit={hitState.opponent} $animType={animState.opponent} $isMine={false}>
@@ -2011,7 +2152,6 @@ function BattlePage() {
                                                         </> : null
                                         )}
 
-                                        {/* ▼▼▼ 속박 당했을 때 방어/회피 행동 차단 ▼▼▼ */}
                                         {showDefenseMenu && (
                                             isBound ? (
                                                 <div style={{ textAlign: 'center', marginTop: '20px', gridColumn: 'span 2' }}>
