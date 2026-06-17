@@ -3635,12 +3635,17 @@ export async function processBattleResults(classId, winnerId, loserId, fled = fa
           battleLosses: (loserPets[idx].battleLosses || 0) + (fled ? 0 : 1),
           battleFlees: (loserPets[idx].battleFlees || 0) + (fled ? 1 : 0),
         };
-        if (loserPets[idx].hp > 0) {
-          const baseExp = fled ? 10 : 30;
-          loserPets[idx].exp += Math.round(baseExp * loseExpMultiplier);
-          const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
-          loserPets[idx] = leveledUpPet;
-        } else {
+        const wasFainted = loserPets[idx].hp <= 0;
+        if (wasFainted) {
+          loserPets[idx].hp = 0;
+        }
+        // 쓰러졌어도(HP 0) 패배 경험치는 지급한다.
+        const baseExp = fled ? 10 : 30;
+        loserPets[idx].exp += Math.round(baseExp * loseExpMultiplier);
+        const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
+        loserPets[idx] = leveledUpPet;
+        // 레벨업 시 HP가 maxHp로 풀회복되므로, 쓰러진 상태였다면 다시 0으로 되돌린다.
+        if (wasFainted) {
           loserPets[idx].hp = 0;
         }
       }
