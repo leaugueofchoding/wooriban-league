@@ -765,11 +765,19 @@ function BattlePage() {
         return saved ? parseFloat(saved) : 1.0;
     });
 
+    // 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
+    const qType = battleState?.question?.type ? String(battleState.question.type).toLowerCase() : '';
+    const qAns = battleState?.question?.answer ? String(battleState.question.answer).toUpperCase() : '';
+    const hasOptions = battleState?.question?.options && battleState.question.options.length > 0;
+    const isOXAnswer = (qAns === 'O' || qAns === 'X' || qAns === '○' || qAns === '×') && !hasOptions;
+    const isOXOptions = shuffledOptions.length === 2 && shuffledOptions.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
+    const isOX = qType === 'ox' || isOXAnswer || isOXOptions;
+
     useEffect(() => {
         const opts = battleState?.question?.options;
         if (!opts || opts.length === 0) { setShuffledOptions([]); return; }
-        const isOX = opts.length === 2 && opts.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
-        if (isOX) {
+        const isOXOpt = opts.length === 2 && opts.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
+        if (isOXOpt) {
             setShuffledOptions(['O', 'X']);
         } else {
             setShuffledOptions([...opts].sort(() => Math.random() - 0.5));
@@ -806,6 +814,17 @@ function BattlePage() {
         };
         loadQuizzes();
     }, [classId]);
+
+    // 한 번 낸 문제가 다시 나오지 않도록 퀴즈를 섞어서 뽑는 헬퍼 함수
+    const getNextQuizObj = (usedQuestions = []) => {
+        if (!quizPool || quizPool.length === 0) return { question: "퀴즈 로딩 중...", answer: "1" };
+        let available = quizPool.filter(q => !usedQuestions.includes(q.question));
+        if (available.length === 0) {
+            // 모든 퀴즈가 소모되었으면 쿨타임 초기화
+            available = quizPool;
+        }
+        return available[Math.floor(Math.random() * available.length)];
+    };
 
     const getPetImageSrc = (info, isMine) => {
         if (!info || !info.pet) return null;
@@ -883,7 +902,18 @@ function BattlePage() {
 
         if (iAmChallenger && battleState.status === 'starting') {
             timeoutRef.current = setTimeout(() => {
-                startNewTurn(battleRef, "대결 시작! 퀴즈를 풀어 선공을 차지하세요!");
+                const randomQuiz = getNextQuizObj([]);
+                updateDoc(battleRef, {
+                    status: 'quiz',
+                    log: "대결 시작! 퀴즈를 풀어 선공을 차지하세요!",
+                    question: randomQuiz,
+                    usedQuestions: [randomQuiz.question],
+                    turnStartTime: Date.now(),
+                    turn: null,
+                    attackerAction: null,
+                    defenderAction: null,
+                    chat: {}
+                });
             }, 1500);
             return;
         }
@@ -1249,23 +1279,6 @@ function BattlePage() {
         }
     };
 
-    const startNewTurn = async (battleRef, log) => {
-        const randomQuiz = (quizPool && quizPool.length > 0)
-            ? quizPool[Math.floor(Math.random() * quizPool.length)]
-            : { question: "퀴즈 로딩 중...", answer: "1" };
-
-        await updateDoc(battleRef, {
-            status: 'quiz',
-            log: log,
-            question: randomQuiz,
-            turnStartTime: Date.now(),
-            turn: null,
-            attackerAction: null,
-            defenderAction: null,
-            chat: {}
-        });
-    };
-
     const handleActionTimeout = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -1335,14 +1348,14 @@ function BattlePage() {
                     else if (opponent.pet.hp > 0) winnerId = opponent.id;
                 }
 
-                const nextQuiz = (quizPool && quizPool.length > 0)
-                    ? quizPool[Math.floor(Math.random() * quizPool.length)]
-                    : { question: "퀴즈 로딩 중...", answer: "1" };
+                const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                 const updateData = {
                     challenger,
                     opponent,
-                    log: isFinished ? `시간 초과! 펫이 지쳐 쓰러졌습니다!` : `시간 초과! 서로 눈치만 보다가 체력이 감소했습니다!`,
+                    log: isFinished
+                        ? `⏳ 시간 초과! 펫이 지쳐 쓰러졌습니다! (정답: ${data.question.answer})`
+                        : `⏳ 시간 초과! 서로 눈치만 보다가 체력이 감소했습니다! (정답: ${data.question.answer})`,
                     status: isFinished ? 'finished' : 'quiz',
                     winner: winnerId,
                     attackerAction: null,
@@ -1351,6 +1364,7 @@ function BattlePage() {
                     ...(!isFinished && {
                         turnStartTime: Date.now(),
                         question: nextQuiz,
+                        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
                         chat: {}
                     })
                 };
@@ -1375,11 +1389,14 @@ function BattlePage() {
     const processQuizAnswer = async (submittedAnswer) => {
         if (!battleState.question || !submittedAnswer || isProcessing) return;
 
-        const isObjective = (battleState.question.options && battleState.question.options.length > 0) || battleState.question.type === 'ox';
+        // 제출된 답과 무관하게 데이터의 속성을 기준으로 판별
+        const qType = battleState.question.type ? String(battleState.question.type).toLowerCase() : '';
+        const qAns = battleState.question.answer ? String(battleState.question.answer).toUpperCase() : '';
+        const hasOpts = battleState.question.options && battleState.question.options.length > 0;
+        const isOXAns = (qAns === 'O' || qAns === 'X' || qAns === '○' || qAns === '×') && !hasOpts;
+        const isQuestionObjective = hasOpts || qType === 'ox' || isOXAns;
 
-        const normalizeOX = (s) => s.replace('○', 'O').replace('×', 'X').trim().toLowerCase();
-
-        if (isObjective && battleState.chat?.[myPlayerData.id]) return;
+        if (isQuestionObjective && battleState.chat?.[myPlayerData.id]) return;
 
         setIsProcessing(true);
         const filteredAnswer = filterProfanity(submittedAnswer);
@@ -1392,9 +1409,15 @@ function BattlePage() {
 
                 const data = battleDoc.data();
                 const myId = myPlayerData.id;
-                const isQuestionObjective = data.question.options && data.question.options.length > 0;
 
-                if (isQuestionObjective && data.chat && data.chat[myId]) return null;
+                // 트랜잭션 내에서 최신 데이터로 객관식 여부 재판별
+                const txQType = data.question.type ? String(data.question.type).toLowerCase() : '';
+                const txQAns = data.question.answer ? String(data.question.answer).toUpperCase() : '';
+                const txHasOpts = data.question.options && data.question.options.length > 0;
+                const txIsOXAns = (txQAns === 'O' || txQAns === 'X' || txQAns === '○' || txQAns === '×') && !txHasOpts;
+                const txIsQuestionObjective = txHasOpts || txQType === 'ox' || txIsOXAns;
+
+                if (txIsQuestionObjective && data.chat && data.chat[myId]) return null;
 
                 const isChallenger = myId === data.challenger.id;
                 const myRole = isChallenger ? 'challenger' : 'opponent';
@@ -1415,16 +1438,15 @@ function BattlePage() {
 
                     if (newStatus.recharging) {
                         delete newStatus.recharging;
-                        const nextQuiz = (quizPool && quizPool.length > 0)
-                            ? quizPool[Math.floor(Math.random() * quizPool.length)]
-                            : { question: "퀴즈 로딩 중...", answer: "1" };
+                        const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                         transaction.update(battleRef, {
                             status: 'quiz',
                             turn: null,
                             [`${myRole}.pet.status`]: newStatus,
-                            log: `정답! ${myPet.name}은(는) 숨을 고르며 반동을 회복했습니다.`,
+                            log: `🎉 정답! ${myPet.name}은(는) 숨을 고르며 반동을 회복했습니다. (정답: ${data.question.answer})`,
                             question: nextQuiz,
+                            usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
                             turnStartTime: Date.now(),
                             chat: {}
                         });
@@ -1432,7 +1454,7 @@ function BattlePage() {
                         transaction.update(battleRef, {
                             status: 'action',
                             turn: winnerId,
-                            log: `정답! ${myPet.name}의 행동 선택!`,
+                            log: `🎉 정답! ${myPet.name}의 행동 선택! (정답: ${data.question.answer})`,
                             question: null,
                             turnStartTime: Date.now(),
                             chat: {}
@@ -1442,7 +1464,7 @@ function BattlePage() {
                 } else {
                     let shouldEndTurn = false;
 
-                    if (isQuestionObjective) {
+                    if (txIsQuestionObjective) {
                         if ((opponentChat && opponentChat.isCorrect === false) || opponentIsStunned) {
                             shouldEndTurn = true;
                         }
@@ -1471,13 +1493,11 @@ function BattlePage() {
                             else if (opponent.pet.hp > 0) winnerId = opponent.id;
                         }
 
-                        const nextQuiz = (quizPool && quizPool.length > 0)
-                            ? quizPool[Math.floor(Math.random() * quizPool.length)]
-                            : { question: "퀴즈 로딩 중...", answer: "1" };
+                        const nextQuiz = getNextQuizObj(data.usedQuestions);
 
-                        let logMessage = `둘 다 오답! 서로 틀려서 데미지를 입었습니다. 다음 문제!`;
+                        let logMessage = `❌ 둘 다 오답! 서로 틀려서 데미지를 입었습니다. (정답: ${data.question.answer})`;
                         if (opponent.equippedTitle === 'daily_helper' || challenger.equippedTitle === 'daily_helper') {
-                            logMessage = `💥 [일타강사 패시브] 일타강사의 날카로운 압박으로 오답 페널티가 2배로 증폭되었습니다! (-10%)`;
+                            logMessage = `💥 [일타강사 패시브] 오답 페널티가 2배로 증폭되었습니다! (정답: ${data.question.answer})`;
                         }
 
                         const updateData = {
@@ -1490,6 +1510,7 @@ function BattlePage() {
                             ...(!isFinished && {
                                 turnStartTime: Date.now(),
                                 question: nextQuiz,
+                                usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
                                 chat: {}
                             })
                         };
@@ -1515,7 +1536,7 @@ function BattlePage() {
                                     challenger,
                                     opponent,
                                     chat: updatedChat,
-                                    log: `💥 팩트 폭력! ${myPlayerData.name}님이 일타강사의 지적을 버티지 못하고 쓰러졌습니다!`,
+                                    log: `💥 팩트 폭력! ${myPlayerData.name}님이 일타강사의 지적을 버티지 못하고 쓰러졌습니다! (정답: ${data.question.answer})`,
                                     status: 'finished',
                                     winner: opponentId,
                                     turn: null
@@ -1597,9 +1618,7 @@ function BattlePage() {
                 myPet.hp = Math.min(myPet.maxHp, myPet.hp + healHp);
                 myPet.sp = Math.min(myPet.maxSp, myPet.sp + healSp);
 
-                const nextQuiz = (quizPool && quizPool.length > 0)
-                    ? quizPool[Math.floor(Math.random() * quizPool.length)]
-                    : { question: "퀴즈 로딩 중...", answer: "1" };
+                const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                 transaction.update(battleRef, {
                     [myRole]: { ...data[myRole], pet: myPet },
@@ -1609,6 +1628,7 @@ function BattlePage() {
                     attackerAction: null,
                     defenderAction: null,
                     question: nextQuiz,
+                    usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
                     turnStartTime: Date.now(),
                     chat: {}
                 });
@@ -1825,9 +1845,7 @@ function BattlePage() {
                     log += ` 펫이 지쳐 쓰러졌습니다! 전투 종료!`;
                 }
 
-                const nextQuiz = (quizPool && quizPool.length > 0)
-                    ? quizPool[Math.floor(Math.random() * quizPool.length)]
-                    : { question: "퀴즈 데이터 없음", answer: "1" };
+                const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                 const updateData = {
                     log,
@@ -1837,6 +1855,7 @@ function BattlePage() {
                     winner: winnerId,
                     ...(!isFinished && {
                         question: nextQuiz,
+                        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
                         turnStartTime: Date.now(),
                         turn: null,
                         attackerAction: null,
@@ -2064,11 +2083,6 @@ function BattlePage() {
                                         ) : (
                                             <>
                                                 {(() => {
-                                                    const isOXType = battleState.question.type === 'ox';
-                                                    const isOXOptions = shuffledOptions.length === 2 &&
-                                                        shuffledOptions.every(o => o === 'O' || o === 'X' || o === '○' || o === '×');
-                                                    const isOX = isOXType || isOXOptions;
-
                                                     if (isOX) {
                                                         return (
                                                             <OXGrid>
@@ -2116,7 +2130,7 @@ function BattlePage() {
                                                         </form>
                                                     );
                                                 })()}
-                                                {hasSubmitted && battleState.question.options && (
+                                                {hasSubmitted && (isOX || hasOptions) && (
                                                     <div style={{ textAlign: 'center', marginTop: '15px', color: '#666', fontWeight: 'bold' }}>
                                                         {battleState.chat?.[myPlayerData.id]?.isCorrect
                                                             ? "정답입니다! (처리 중...)"
