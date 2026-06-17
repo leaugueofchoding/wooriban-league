@@ -284,17 +284,21 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
 
     const handleAction = async (action, reward) => {
         if (!classId) return alert('학급 정보가 없습니다.');
+        // Firebase 호출 전에 미리 frozenSubmission을 설정해서
+        // onSnapshot이 pendingSubmissions를 업데이트해도 모달이 닫히지 않게 함
+        const targetStatus = action === 'approve' ? 'approved' : 'rejected';
+        onAction(submission.id, targetStatus);
         try {
             if (action === 'approve') {
                 await approveMissionsInBatch(classId, mission.id, [student.id], myPlayerData.authUid, reward);
                 setStatus('approved');
-                onAction(submission.id, 'approved');
             } else if (action === 'reject') {
                 await rejectMissionSubmission(classId, submission.id, student.authUid, mission.title);
                 setStatus('rejected');
-                onAction(submission.id, 'rejected');
             }
         } catch (error) {
+            // 실패하면 frozenSubmission 초기화 (모달 닫기)
+            onAction(submission.id, 'pending');
             alert(`처리 중 오류 발생: ${error.message}`);
         }
     };

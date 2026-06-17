@@ -361,7 +361,7 @@ function MissionCommentMonitor() {
                                     {/* ▼▼▼ [추가] 삭제 버튼 + 게시물 이동 버튼 */}
                                     <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                         <StyledButton
-                                            onClick={() => navigate(`/gallery?submissionId=${comment.submissionId}`)}
+                                            onClick={() => navigate(`/mission-gallery?submissionId=${comment.submissionId}`)}
                                             style={{ padding: '0.2rem 0.6rem', fontSize: '0.78rem', backgroundColor: '#228be6' }}
                                         >🔍 게시물 보기</StyledButton>
                                         <StyledButton

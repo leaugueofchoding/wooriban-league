@@ -59,9 +59,16 @@ function AdminPage() {
         return tab || 'mission';
     };
 
+    const getInitialStudentSubMenu = () => {
+        const params = new URLSearchParams(location.search);
+        const sub = params.get('sub');
+        if (sub && ['point', 'list', 'attendance'].includes(sub)) return sub;
+        return 'point';
+    };
+
     const [activeMenu, setActiveMenu] = useState(getInitialMenu);
     const [activeSubMenu, setActiveSubMenu] = useState('messages');
-    const [studentSubMenu, setStudentSubMenu] = useState('point');
+    const [studentSubMenu, setStudentSubMenu] = useState(getInitialStudentSubMenu);
     const [shopSubMenu, setShopSubMenu] = useState('avatar');
     const [preselectedStudentId, setPreselectedStudentId] = useState(null);
     const [modalImageSrc, setModalImageSrc] = useState(null);
@@ -122,6 +129,22 @@ function AdminPage() {
         }
     }, [location.search]);
 
+    // 브라우저 뒤로가기/앞으로가기 시 URL :tab 파라미터로 activeMenu 동기화
+    useEffect(() => {
+        if (!tab) return;
+        const validTabs = ['mission', 'social', 'student', 'shop', 'league', 'title', 'quiz', 'class'];
+        if (validTabs.includes(tab)) {
+            setActiveMenu(tab);
+        }
+        if (tab === 'student') {
+            const params = new URLSearchParams(location.search);
+            const sub = params.get('sub');
+            if (sub && ['point', 'list', 'attendance'].includes(sub)) {
+                setStudentSubMenu(sub);
+            }
+        }
+    }, [tab, location.search]);
+
     const handleSendMessageClick = (studentId) => {
         navigate('/admin', { state: { preselectedStudentId: studentId } });
     };
@@ -176,6 +199,13 @@ function AdminPage() {
         } else {
             setActiveSubMenu('');
         }
+        // URL을 업데이트해서 브라우저 뒤로가기가 올바르게 동작하도록 함
+        navigate(`/admin/${menu}`, { replace: false });
+    };
+
+    const handleStudentSubMenuClick = (subMenu) => {
+        setStudentSubMenu(subMenu);
+        navigate(`/admin/student?sub=${subMenu}`, { replace: false });
     };
 
     return (
@@ -229,9 +259,9 @@ function AdminPage() {
                             <NavButton $active={activeMenu === 'student'} onClick={() => handleMenuClick('student')}>학생 관리</NavButton>
                             {activeMenu === 'student' && (
                                 <SubNavList>
-                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'point'} onClick={() => setStudentSubMenu('point')}>포인트/역할</SubNavButton></SubNavItem>
-                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'list'} onClick={() => setStudentSubMenu('list')}>학생 목록</SubNavButton></SubNavItem>
-                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'attendance'} onClick={() => setStudentSubMenu('attendance')}>출석 확인</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'point'} onClick={() => handleStudentSubMenuClick('point')}>포인트/역할</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'list'} onClick={() => handleStudentSubMenuClick('list')}>학생 목록</SubNavButton></SubNavItem>
+                                    <SubNavItem><SubNavButton $active={studentSubMenu === 'attendance'} onClick={() => handleStudentSubMenuClick('attendance')}>출석 확인</SubNavButton></SubNavItem>
                                 </SubNavList>
                             )}
                         </NavItem>

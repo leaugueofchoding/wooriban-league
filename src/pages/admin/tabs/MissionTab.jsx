@@ -87,9 +87,17 @@ function PendingMissionWidget({ setModalImageSrc }) {
     };
 
     const handleActionInModal = (actedSubmissionId, actionStatus) => {
+        if (actionStatus === 'pending') {
+            // 오류 롤백: frozenSubmission 해제하여 목록에서 다시 찾도록 복원
+            setFrozenSubmission(null);
+            return;
+        }
         const sub = pendingSubmissions.find(s => s.id === actedSubmissionId);
         if (sub) {
             setFrozenSubmission({ ...sub, status: actionStatus });
+        } else {
+            // onSnapshot이 이미 목록에서 제거했을 경우를 대비해 frozenSubmission 유지
+            setFrozenSubmission(prev => prev ? { ...prev, status: actionStatus } : null);
         }
     };
 
