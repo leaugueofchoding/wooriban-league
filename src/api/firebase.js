@@ -4311,8 +4311,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj)
     id: battleId,
     status: 'pending',
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
-    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet, equippedTitle: challenger.equippedTitle || null },
-    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false, equippedTitle: opponent.equippedTitle || null },
+    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet, equippedTitle: challenger.equippedTitle || null, avatarSnapshotUrl: challenger.avatarSnapshotUrl || null, photoURL: challenger.photoURL || null },
+    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false, equippedTitle: opponent.equippedTitle || null, avatarSnapshotUrl: opponent.avatarSnapshotUrl || null, photoURL: opponent.photoURL || null },
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
     question: null,

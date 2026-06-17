@@ -372,14 +372,27 @@ const AvatarBox = styled.div`
   align-items: center;
   gap: 6px;
 
-  img {
+  .avatar-img-frame {
     width: 65px;
     height: 65px;
     border-radius: 16px;
     border: 3px solid white;
     background-color: #f1f3f5;
-    object-fit: cover;
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+    position: relative;
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  img.avatar-snapshot {
+    object-fit: contain;
+    transform: scale(1.5) translateY(10%);
   }
 
   .name-badge {
@@ -396,7 +409,7 @@ const AvatarBox = styled.div`
   .name-badge.opponent { background-color: #fa5252; }
 
   @media (max-width: 768px) {
-    img { width: 50px; height: 50px; border-radius: 12px; }
+    .avatar-img-frame { width: 50px; height: 50px; border-radius: 12px; }
     .name-badge { font-size: 0.7rem; padding: 3px 8px; }
   }
 `;
@@ -1957,11 +1970,14 @@ function BattlePage() {
                             {/* --- 상대 정보 표시 --- */}
                             <OpponentProfileWrapper>
                                 <AvatarBox>
-                                    <img
-                                        src={opponentInfo.avatarSnapshot || opponentInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`}
-                                        alt="상대방 아바타"
-                                        onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`; }}
-                                    />
+                                    <div className="avatar-img-frame">
+                                        <img
+                                            src={opponentInfo.avatarSnapshotUrl || opponentInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`}
+                                            alt="상대방 아바타"
+                                            className={opponentInfo.avatarSnapshotUrl ? 'avatar-snapshot' : ''}
+                                            onError={(e) => { e.target.classList.remove('avatar-snapshot'); e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`; }}
+                                        />
+                                    </div>
                                     <div className="name-badge opponent">{opponentInfo.name}</div>
                                 </AvatarBox>
                                 <OpponentInfoBox>
@@ -1974,11 +1990,14 @@ function BattlePage() {
                             {/* --- 나의 정보 표시 --- */}
                             <MyProfileWrapper>
                                 <AvatarBox>
-                                    <img
-                                        src={myInfo.avatarSnapshot || myInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`}
-                                        alt="나의 아바타"
-                                        onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`; }}
-                                    />
+                                    <div className="avatar-img-frame">
+                                        <img
+                                            src={myPlayerData.avatarSnapshotUrl || myInfo.avatarSnapshotUrl || myPlayerData.photoURL || myInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`}
+                                            alt="나의 아바타"
+                                            className={(myPlayerData.avatarSnapshotUrl || myInfo.avatarSnapshotUrl) ? 'avatar-snapshot' : ''}
+                                            onError={(e) => { e.target.classList.remove('avatar-snapshot'); e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`; }}
+                                        />
+                                    </div>
                                     <div className="name-badge mine">{myInfo.name}</div>
                                 </AvatarBox>
                                 <MyInfoBox>
