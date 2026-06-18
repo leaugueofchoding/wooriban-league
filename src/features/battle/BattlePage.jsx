@@ -10,52 +10,7 @@ import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect, { DotDamageEffect } from './BattleSkillEffect';
-
-// --- Web Audio API 기반 자체 효과음 생성기 (외부 파일 필요 없음) ---
-const playSound = (type) => {
-    try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        const ctx = new AudioContext();
-        if (ctx.state === 'suspended') ctx.resume();
-
-        const osc = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-
-        osc.connect(gainNode);
-        gainNode.connect(ctx.destination);
-
-        if (type === 'hit') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(150, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.15);
-            gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.15);
-        } else if (type === 'skill') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(250, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.1);
-            osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.3);
-            gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.3);
-        } else if (type === 'heal') {
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(300, ctx.currentTime);
-            osc.frequency.linearRampToValueAtTime(500, ctx.currentTime + 0.1);
-            osc.frequency.linearRampToValueAtTime(700, ctx.currentTime + 0.2);
-            gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.3);
-        }
-    } catch (e) {
-        console.log('Web Audio API 지원되지 않음');
-    }
-};
+import { playSkillSound, playHitSound, playHealSound } from './BattleSoundEngine';
 
 // --- Styled Components & Keyframes ---
 
@@ -877,19 +832,28 @@ function BattlePage() {
         return () => unsubscribe();
     }, [myPlayerData, battleId, classId, navigate]);
 
-    // --- Web Audio 타격음 효과 리스너 ---
+    // --- 속성별 타격음 리스너 (불/전기/바람/베기 등 actionType에 맞는 임팩트음) ---
     useEffect(() => {
+        const actionType = animState.my || animState.opponent || currentEffect?.type || null;
         if (hitState.my || hitState.opponent) {
-            playSound('hit');
+            playHitSound(actionType);
         }
     }, [hitState.my, hitState.opponent]);
 
-    // --- Web Audio 스킬 효과음 리스너 ---
+    // --- 속성별 스킬 발동음 리스너 (애니메이션이 시작되는 시점) ---
     useEffect(() => {
-        if (animState.my || animState.opponent) {
-            playSound('skill');
+        const actionType = animState.my || animState.opponent;
+        if (actionType) {
+            playSkillSound(actionType);
         }
     }, [animState.my, animState.opponent]);
+
+    // --- 방어/버프류 스킬(애니메이션 state 없이 currentEffect만 설정되는 액션)의 발동음 ---
+    useEffect(() => {
+        if (currentEffect?.type && !animState.my && !animState.opponent) {
+            playSkillSound(currentEffect.type);
+        }
+    }, [currentEffect]);
 
     useEffect(() => {
         if (!battleState || !myPlayerData) return;
@@ -1603,7 +1567,7 @@ function BattlePage() {
                 if (currentQty <= 0) return;
 
                 // 회복 사운드 재생
-                playSound('heal');
+                playHealSound();
 
                 const newInventory = { ...playerData.petInventory };
                 newInventory[itemId] -= 1;

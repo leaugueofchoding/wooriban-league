@@ -1,7 +1,7 @@
 // src/features/pet/PetPage.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
-import styled, { keyframes } from 'styled-components';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import styled, { keyframes, css } from 'styled-components';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
 import { auth, db, createBattleChallenge, renamePetWithItem, releasePet, getScaledSkillCost } from '../../api/firebase';
 import { doc, onSnapshot } from "firebase/firestore";
@@ -32,6 +32,72 @@ const shake = keyframes`
   100% { transform: translate(1px, -2px) rotate(-1deg); } 
 `;
 
+const glowGather = keyframes`
+  0% { box-shadow: 0 0 20px rgba(253, 224, 71, 0.2); transform: scale(1); }
+  50% { box-shadow: 0 0 60px rgba(253, 224, 71, 0.8); transform: scale(1.05); filter: brightness(1.3); }
+  100% { box-shadow: 0 0 100px rgba(253, 224, 71, 1); transform: scale(1.1); filter: brightness(2); }
+`;
+
+// 진화의 돌이 회전하면서 펫에게 흡수되는 이펙트 애니메이션
+const stoneAbsorb = keyframes`
+  0% { transform: translate(-50%, -150px) scale(1) rotate(0deg); opacity: 1; filter: drop-shadow(0 0 10px #fcc419); }
+  50% { transform: translate(-50%, -80px) scale(1.2) rotate(180deg); opacity: 1; filter: drop-shadow(0 0 25px #fab005); }
+  100% { transform: translate(-50%, -20px) scale(0) rotate(360deg); opacity: 0; filter: drop-shadow(0 0 5px #fff); }
+`;
+
+// --- Web Audio API 기반 진화 전용 효과음 기능 ---
+const playEvolutionSound = (phase) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    if (phase === 'absorb') {
+      // 진화의 돌 흡수음 (뾰로로롱 소리)
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.8);
+      gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.8);
+    } else if (phase === 'charge') {
+      // 진화 에너지 모으는 소리 (위잉 올라가는 소리)
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(150, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(900, ctx.currentTime + 1.5);
+      gainNode.gain.setValueAtTime(0.01, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 1.5);
+    } else if (phase === 'burst') {
+      // 진화 쾅! 터지는 소리
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(400, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.4);
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+    }
+  } catch (e) {
+    console.log('Audio API Error');
+  }
+};
+
 // --- Styled Components ---
 
 const PageWrapper = styled.div`
@@ -56,7 +122,7 @@ const MainLayout = styled.div`
 const PetDashboard = styled.div`
   display: grid;
   grid-template-columns: 280px 1fr;
-  align-items: start; /* [수정] 좌/우 컬럼이 서로의 높이에 맞춰 늘어나지 않도록 고정 */
+  align-items: start;
   gap: 2rem;
   background-color: white;
   padding: 2.5rem;
@@ -158,7 +224,7 @@ const PetNameInput = styled.input`
 `;
 
 const PetLevel = styled.h3` 
-  margin: 0 0 1.5rem 0; color: #868e96; font-size: 1rem; font-weight: 700;
+  margin: 0; font-size: 1rem; font-weight: 700; color: #868e96;
   background: #f8f9fa; padding: 0.4rem 1rem; border-radius: 20px;
 `;
 
@@ -202,7 +268,7 @@ const InventoryItem = styled.p`
 
 const ActionButtonGroup = styled.div`
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 1rem; margin-top: 1rem; /* [수정] auto에서 1rem으로 변경하여 밀림 방지 */
+  gap: 1rem; margin-top: 1rem; 
 `;
 
 const StyledButton = styled.button`
@@ -303,6 +369,25 @@ const ModalContent = styled.div`
   h3 { margin-top: 0; font-weight: 800; color: #343a40; }
   img.egg { animation: ${props => props.$isShaking ? shake : 'none'} 0.5s infinite; filter: drop-shadow(0 0 20px rgba(255,255,255,0.5)); }
   img.pet { max-width: 250px; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3)); }
+  
+  /* 진화 이펙트 애니메이션 프레임 설정 */
+  img.evo-charge {
+    max-width: 220px;
+    border-radius: 50%;
+    animation: ${shake} 0.5s infinite, ${glowGather} 1.5s forwards;
+    animation-delay: 0.8s, 0.8s; /* 진화의 돌이 흡수된 후부터 작동 시작 */
+  }
+
+  /* 흡수되는 진화의 돌 이미지 컴포넌트 */
+  img.evo-stone-asset {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 60px;
+    height: 60px;
+    z-index: 10;
+    animation: ${stoneAbsorb} 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
 `;
 
 const AccordionContainer = styled.div`
@@ -451,6 +536,10 @@ function PetPage() {
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
   const [vitaminJellyPopup, setVitaminJellyPopup] = useState({ show: false, pendingOpponent: null });
 
+  // 진화 애니메이션 관련 모달 상태 관리
+  const [isEvolving, setIsEvolving] = useState(false);
+  const [evolveState, setEvolveState] = useState({ step: 'start', targetPet: null, nextFormName: '' });
+
   useEffect(() => {
     if (myPlayerData?.id || !classId) return;
     const unsubscribe = onSnapshot(doc(db, 'classes', classId, 'players', myPlayerData.id), (docSnap) => {
@@ -531,10 +620,35 @@ function PetPage() {
   const handleEvolve = async () => {
     const evolutionStone = myPlayerData?.petInventory?.evolution_stone || 0;
     if (!canEvolve(evolutionStone)) return;
+
+    const nextFormName = currentStage === 1
+      ? PET_DATA[selectedPet.species].evolution.lv10.name
+      : PET_DATA[selectedPet.species].evolution.lv20.name;
+
     try {
-      await evolvePet(selectedPet.id, 'evolution_stone');
-      alert("펫이 진화했습니다!");
-    } catch (error) { alert(error.message); }
+      setIsEvolving(true);
+      setEvolveState({ step: 'charging', targetPet: selectedPet, nextFormName });
+
+      // 1단계: 진화의 돌 날아와서 흡수되는 소리
+      playEvolutionSound('absorb');
+
+      // 2단계: 흡수가 끝난 0.8초 후부터 기 모으기 연출 및 사운드 시작
+      setTimeout(() => {
+        playEvolutionSound('charge');
+      }, 800);
+
+      // 3단계: 기 모으기가 모두 끝난 2.3초(0.8s + 1.5s) 후 파이어베이스 진화 처리 및 펑!
+      setTimeout(async () => {
+        await evolvePet(selectedPet.id, 'evolution_stone');
+        playEvolutionSound('burst');
+        setEvolveState(prev => ({ ...prev, step: 'burst' }));
+        confetti({ particleCount: 250, spread: 100, origin: { y: 0.55 } });
+      }, 2300);
+
+    } catch (error) {
+      alert(error.message);
+      setIsEvolving(false);
+    }
   };
 
   const handleHatch = async () => {
@@ -760,7 +874,7 @@ function PetPage() {
                         <NotebookButton onClick={() => handleUseItem('secret_notebook')} disabled={secretNotebookCount <= 0}>
                           📖 비법 노트 사용 ({secretNotebookCount}개)
                         </NotebookButton>
-                        <h5>보유 스킬 (클릭하여 교체)</h5>
+                        <h5>보유 스킬 (클릭하여교체)</h5>
                         <SkillGrid>
                           {unequippedSkills.map(skillId => {
                             const skill = SKILLS[skillId.toUpperCase()];
@@ -893,6 +1007,36 @@ function PetPage() {
           </div>
         </PetListPanel>
       </MainLayout>
+
+      {/* 펫 진화 전용 이펙트 모달창 */}
+      {isEvolving && (
+        <ModalBackground>
+          <ModalContent>
+            {evolveState.step === 'charging' ? (
+              <div>
+                <h2 style={{ color: '#ffd43b', textShadow: '0 0 10px rgba(255,255,255,0.5)' }}>진화 에너지 충전 중...!!</h2>
+                <p style={{ color: 'white', fontWeight: 600 }}>진화의 돌을 흡수하여 에너지를 응축합니다!</p>
+                <div style={{ margin: '3.5rem 0', position: 'relative', height: '220px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  {/* [추가] 회전하며 흡수되는 진화의 돌 에셋 */}
+                  <img src={PET_ITEMS.evolution_stone.image} alt="진화의 돌" className="evo-stone-asset" />
+                  <img src={petImageMap[`${evolveState.targetPet.appearanceId}_idle`]} alt="진화 중" className="evo-charge" />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h2 style={{ color: '#51cf66', textShadow: '0 0 15px rgba(255,255,255,0.8)' }}>축하합니다! 진화 성공!</h2>
+                <div style={{ margin: '2rem 0' }}>
+                  <img src={petImageMap[`${myPlayerData?.pets?.find(p => p.id === selectedPetId)?.appearanceId}_idle`]} alt="진화 완료" className="pet" />
+                </div>
+                <h3 style={{ color: 'white', fontSize: '1.5rem', fontWeight: 900 }}>
+                  {evolveState.targetPet.name}이(가) 드디어 <span style={{ color: '#ffd43b' }}>{evolveState.nextFormName}</span>(으)로 성장했습니다! 🎉
+                </h3>
+                <button onClick={() => setIsEvolving(false)} style={{ padding: '0.8rem 2.5rem', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', marginTop: '1.5rem' }}>확인</button>
+              </div>
+            )}
+          </ModalContent>
+        </ModalBackground>
+      )}
 
       {isHatching && (
         <ModalBackground>
