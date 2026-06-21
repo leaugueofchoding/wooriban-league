@@ -4,11 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats } from '../api/firebase';
-import DashboardGameMode from '../components/dashboard/DashboardGameMode';
 import DashboardSimpleMode from '../components/dashboard/DashboardSimpleMode';
 import confetti from 'canvas-confetti';
 import baseAvatar from '../assets/base-avatar.png';
-import defaultForestBg from '../assets/Background_forest.png';
 import { useNavigate } from 'react-router-dom';
 
 const PageWrapper = styled.div`
@@ -49,54 +47,6 @@ const ModalCancelBtn = styled.button`
   &:hover { color: #343a40; }
 `;
 
-// 토글 버튼 위치: Auth 헤더 아래 왼쪽
-const ViewModeToggle = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 9050;
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-  height: 60px;
-  align-items: center;
-  padding: 0 12px;
-
-  @media (max-width: 768px) {
-    height: 56px;
-    padding: 0 8px;
-  }
-`;
-
-const ToggleBtn = styled.button`
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 20px;
-  padding: 7px 14px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #495057;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-
-  &:hover {
-    transform: translateY(-1px);
-    background: white;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.18);
-  }
-
-  @media (max-width: 768px) {
-    padding: 6px 10px;
-    font-size: 0.72rem;
-    border-radius: 16px;
-  }
-`;
 
 // --- Helper Functions ---
 const getAvatarUrls = (config, avatarParts) => {
@@ -129,9 +79,6 @@ function DashboardPage() {
     const [inputCode, setInputCode] = useState('');
     const [codeError, setCodeError] = useState('');
 
-    // 모드 상태 관리
-    const [viewMode, setViewMode] = useState(() => localStorage.getItem('dashboardViewMode') || 'simple');
-    const [bgMode, setBgMode] = useState(() => localStorage.getItem('dashboardBgMode') || 'default');
 
     // 심플 모드 배경색 상태 관리
     const [simpleBgColor, setSimpleBgColor] = useState(() => localStorage.getItem('simpleBgColor') || '#f8f9fa');
@@ -301,21 +248,7 @@ function DashboardPage() {
         }
     };
 
-    const toggleViewMode = () => {
-        const newMode = viewMode === 'game' ? 'simple' : 'game';
-        setViewMode(newMode);
-        localStorage.setItem('dashboardViewMode', newMode);
-    };
 
-    const toggleBgMode = () => {
-        if (!myPlayerData?.myRoomSnapshotUrl && bgMode === 'default') {
-            alert("저장된 마이룸 스냅샷이 없습니다. 마이룸에서 '저장'을 먼저 해주세요!");
-            return;
-        }
-        const newBgMode = bgMode === 'default' ? 'myroom' : 'default';
-        setBgMode(newBgMode);
-        localStorage.setItem('dashboardBgMode', newBgMode);
-    };
 
     const handleSimpleBgChange = (color) => {
         setSimpleBgColor(color);
@@ -378,62 +311,31 @@ function DashboardPage() {
         );
     }
 
-    const currentBgUrl = (bgMode === 'myroom' && myPlayerData.myRoomSnapshotUrl)
-        ? myPlayerData.myRoomSnapshotUrl
-        : defaultForestBg;
 
     return (
         <PageWrapper>
-            <ViewModeToggle>
-                <ToggleBtn onClick={toggleViewMode}>
-                    {viewMode === 'game' ? '🏠 마이룸 모드' : '📋 심플 모드'}
-                </ToggleBtn>
-                {viewMode === 'game' && (
-                    <ToggleBtn onClick={toggleBgMode} title="배경 변경 (기본/마이룸)">
-                        {bgMode === 'default' ? '🖼️ 기본 배경' : '📷 내 방 배경'}
-                    </ToggleBtn>
-                )}
-            </ViewModeToggle>
-
-            {viewMode === 'game' ? (
-                <DashboardGameMode
-                    myPlayerData={myPlayerDataWithWins}
-                    myAvatarUrls={myAvatarUrls}
-                    myPartnerPet={myPartnerPet}
-                    equippedTitle={equippedTitle} // 👈 이 부분을 꼭 추가해 주세요!
-                    todaysFriend={todaysFriendWithWins}
-                    friendAvatarUrls={friendAvatarUrls}
-                    friendPartnerPet={friendPartnerPet}
-                    activeGoal={activeGoal}
-                    activeMissions={activeMissions}
-                    recentMissions={recentMissions}
-                    bgUrl={currentBgUrl}
-                    onDonate={handleDonate}
-                />
-            ) : (
-                <DashboardSimpleMode
-                    myPlayerData={myPlayerDataWithWins}
-                    myAvatarUrls={myAvatarUrls}
-                    myPartnerPet={myPartnerPet}
-                    equippedTitle={equippedTitle}
-                    todaysFriend={todaysFriendWithWins}
-                    friendAvatarUrls={friendAvatarUrls}
-                    friendPartnerPet={friendPartnerPet}
-                    friendTitle={friendTitle}
-                    friendTeamName={friendTeamName}
-                    friendTeamInfo={friendTeamInfo}
-                    myTeam={myTeam}
-                    activeGoal={activeGoal}
-                    activeMissions={activeMissions}
-                    recentMissions={recentMissions}
-                    topRankedTeams={topRankedTeams}
-                    rankIcons={rankIcons}
-                    onDonate={handleDonate}
-                    mySubmissions={mySubmissions}
-                    simpleBgColor={simpleBgColor}
-                    onBgColorChange={handleSimpleBgChange}
-                />
-            )}
+            <DashboardSimpleMode
+                myPlayerData={myPlayerDataWithWins}
+                myAvatarUrls={myAvatarUrls}
+                myPartnerPet={myPartnerPet}
+                equippedTitle={equippedTitle}
+                todaysFriend={todaysFriendWithWins}
+                friendAvatarUrls={friendAvatarUrls}
+                friendPartnerPet={friendPartnerPet}
+                friendTitle={friendTitle}
+                friendTeamName={friendTeamName}
+                friendTeamInfo={friendTeamInfo}
+                myTeam={myTeam}
+                activeGoal={activeGoal}
+                activeMissions={activeMissions}
+                recentMissions={recentMissions}
+                topRankedTeams={topRankedTeams}
+                rankIcons={rankIcons}
+                onDonate={handleDonate}
+                mySubmissions={mySubmissions}
+                simpleBgColor={simpleBgColor}
+                onBgColorChange={handleSimpleBgChange}
+            />
         </PageWrapper>
     );
 }

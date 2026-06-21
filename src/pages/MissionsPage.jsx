@@ -668,14 +668,17 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
   };
 
 
-  const rewardText = useMemo(() => {
+    const rewardText = useMemo(() => {
+    const heartText = Number(mission.heartReward || 0) > 0 ? ` · ❤️ ${mission.heartReward}` : '';
+
     if (!mission.rewards || mission.rewards.length <= 1) {
-      return `💰 ${mission.reward} P`;
+      return `💰 ${mission.reward} P${heartText}`;
     }
+
     const minReward = Math.min(...mission.rewards);
     const maxReward = Math.max(...mission.rewards);
-    return `💰 ${minReward} ~ ${maxReward} P`;
-  }, [mission.rewards, mission.reward]);
+    return `💰 ${minReward} ~ ${maxReward} P${heartText}`;
+  }, [mission.rewards, mission.reward, mission.heartReward]);
 
   // 이 미션의 제출/승인 학생 목록 (미제출 제외)
   // 반복 미션(isFixed)은 오늘 제출/승인한 학생만 표시

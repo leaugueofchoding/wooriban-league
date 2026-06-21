@@ -209,6 +209,7 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
     throw new Error("미션을 찾을 수 없습니다.");
   }
   const missionData = missionSnap.data();
+  const heartReward = Number(missionData.heartReward || 0);
   const MISSION_EXP_REWARD = 100;
 
   // [수정] batch.commit() 이후에 실행할 작업들을 별도로 수집
@@ -234,7 +235,9 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
         batch.update(submissionDoc.ref, {
           status: 'approved',
           checkedBy: recorderId,
-          approvedAt: serverTimestamp()
+          approvedAt: serverTimestamp(),
+          approvedReward: reward,
+          approvedHeartReward: heartReward
         });
       } else {
         const newSubmissionRef = doc(collection(db, "classes", classId, "missionSubmissions"));
@@ -245,6 +248,8 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
           status: 'approved',
           requestedAt: serverTimestamp(),
           approvedAt: serverTimestamp(),
+          approvedReward: reward,
+          approvedHeartReward: heartReward,
           checkedBy: recorderId,
           text: '(관리자 직접 승인)',
           photoUrls: [],
@@ -252,7 +257,15 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
         });
       }
 
-      batch.update(playerRef, { points: increment(reward) });
+      const playerRewardUpdate = {
+        points: increment(reward)
+      };
+
+      if (heartReward > 0) {
+        playerRewardUpdate.totalLikes = increment(heartReward);
+      }
+
+      batch.update(playerRef, playerRewardUpdate);
 
       // [수정] addPointHistory, 펫 경험치, 알림, 칭호 체크는 batch.commit() 이후로 이동
       postCommitTasks.push(async () => {
@@ -266,14 +279,21 @@ export async function approveMissionsInBatch(classId, missionId, studentIds, rec
         if (playerData.pets && playerData.pets.length > 0) {
           await updatePetExperience(playerRef, MISSION_EXP_REWARD);
         }
+        const heartRewardText = heartReward > 0 ? ` · ❤️ ${heartReward}` : '';
         const missionNotifTitle = `✅ 미션 승인: ${missionData.title}`;
         createNotification(
           playerData.authUid,
-          `+${reward}P 포인트 조정`,
+          `+${reward}P${heartRewardText} 보상 획득`,
           `${missionData.title} 미션 완료`,
           'point',
           null,
-          { amount: reward, reason: `${missionData.title} 미션 완료`, title: `+${reward}P 포인트 조정`, questTitle: missionNotifTitle }
+          {
+            amount: reward,
+            heartReward,
+            reason: `${missionData.title} 미션 완료`,
+            title: `+${reward}P${heartRewardText} 보상 획득`,
+            questTitle: missionNotifTitle
+          }
         );
         await checkAndGrantAutoTitles(classId, studentId, playerData.authUid);
       });
@@ -476,6 +496,7 @@ export async function cancelMissionApproval(classId, submissionId, originalRewar
 
   const isCorrection = newReward !== null; // true: 차등 보상 정정, false: 전액 취소
   const pointDiff = isCorrection ? (newReward - originalReward) : -originalReward;
+  const originalHeartReward = Number(submissionData.approvedHeartReward || 0);
 
   const batch = writeBatch(db);
 
@@ -488,12 +509,24 @@ export async function cancelMissionApproval(classId, submissionId, originalRewar
       status: 'pending',
       approvedAt: null,
       checkedBy: null,
+      approvedReward: null,
+      approvedHeartReward: null,
       cancelledAt: serverTimestamp()
     });
   }
 
+  const playerUpdate = {};
+
   if (pointDiff !== 0) {
-    batch.update(playerRef, { points: increment(pointDiff) });
+    playerUpdate.points = increment(pointDiff);
+  }
+
+  if (!isCorrection && originalHeartReward > 0) {
+    playerUpdate.totalLikes = increment(-originalHeartReward);
+  }
+
+  if (Object.keys(playerUpdate).length > 0) {
+    batch.update(playerRef, playerUpdate);
   }
 
   await batch.commit();

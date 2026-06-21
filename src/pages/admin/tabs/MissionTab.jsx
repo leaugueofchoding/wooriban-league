@@ -298,7 +298,7 @@ function SortableListItem(props) {
             <div>
                 <strong>{mission.title}</strong>
                 <span style={{ marginLeft: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
-                    ({mission.reward}P)
+                    ({mission.reward}P{mission.heartReward > 0 ? ` · ❤️ ${mission.heartReward}` : ''})
                     {mission.submissionType?.includes('text') && ' [글]'}
                     {mission.submissionType?.includes('photo') && ' [사진]'}
                 </span>
@@ -744,6 +744,7 @@ function MissionManager({ onNavigate }) {
     const [title, setTitle] = useState('');
     const [placeholderText, setPlaceholderText] = useState('');
     const [rewards, setRewards] = useState(['100', '', '']);
+    const [heartReward, setHeartReward] = useState('0');
     const [submissionTypes, setSubmissionTypes] = useState({ text: false, photo: false });
     const [isFixed, setIsFixed] = useState(false);
     const [adminOnly, setAdminOnly] = useState(false);
@@ -783,6 +784,7 @@ function MissionManager({ onNavigate }) {
         setEditMode(mission); setTitle(mission.title); setPlaceholderText(mission.placeholderText || '');
         const missionRewards = Array.isArray(mission.rewards) ? mission.rewards : [mission.reward || ''];
         setRewards([missionRewards[0]?.toString() || '', missionRewards[1]?.toString() || '', missionRewards[2]?.toString() || '']);
+        setHeartReward(mission.heartReward?.toString() || '0');
         setSubmissionTypes({ text: mission.submissionType?.includes('text') || false, photo: mission.submissionType?.includes('photo') || false });
         setIsFixed(mission.isFixed || false); setAdminOnly(mission.adminOnly || false);
         setPrerequisiteMissionId(mission.prerequisiteMissionId || ''); setDefaultPrivate(mission.defaultPrivate || false);
@@ -791,6 +793,7 @@ function MissionManager({ onNavigate }) {
 
     const handleCancel = () => {
         setEditMode(null); setTitle(''); setPlaceholderText(''); setRewards(['100', '', '']);
+        setHeartReward('0');
         setSubmissionTypes({ text: false, photo: false }); setIsFixed(false); setAdminOnly(false);
         setPrerequisiteMissionId(''); setDefaultPrivate(false); setShowAdvanced({ rewards: false, prerequisite: false });
     };
@@ -804,10 +807,16 @@ function MissionManager({ onNavigate }) {
         const finalRewards = rewards.map(r => Number(r)).filter(r => r > 0);
 
         const missionData = {
-            title, rewards: finalRewards, reward: finalRewards[0] || 0,
-            submissionType: typeToSend, isFixed, adminOnly,
+            title,
+            rewards: finalRewards,
+            reward: finalRewards[0] || 0,
+            heartReward: Number(heartReward) || 0,
+            submissionType: typeToSend,
+            isFixed,
+            adminOnly,
             prerequisiteMissionId: prerequisiteMissionId || null,
-            placeholderText: placeholderText.trim(), defaultPrivate,
+            placeholderText: placeholderText.trim(),
+            defaultPrivate,
         };
 
         try {
@@ -832,6 +841,24 @@ function MissionManager({ onNavigate }) {
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                     <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="미션 이름" style={{ flex: 1, minWidth: '200px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} />
                     <ScoreInput type="number" value={rewards[0]} onChange={(e) => setRewards(prev => [e.target.value, prev[1], prev[2]])} style={{ width: '100px', padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid #ced4da', fontSize: '0.95rem' }} placeholder="기본 보상" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fa5252' }}>❤️</span>
+                        <ScoreInput
+                            type="number"
+                            min={0}
+                            value={heartReward}
+                            onChange={(e) => setHeartReward(e.target.value)}
+                            style={{
+                                width: '70px',
+                                padding: '0.7rem 0.8rem',
+                                borderRadius: '8px',
+                                border: '1px solid #ffc9c9',
+                                fontSize: '0.95rem',
+                                background: '#fff5f5'
+                            }}
+                            placeholder="하트"
+                        />
+                    </div>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0 0.5rem' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.text} onChange={() => handleSubmissionTypeChange('text')} style={{ width: '16px', height: '16px' }} /> 글</label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, color: '#495057' }}><input type="checkbox" checked={submissionTypes.photo} onChange={() => handleSubmissionTypeChange('photo')} style={{ width: '16px', height: '16px' }} /> 사진</label>
