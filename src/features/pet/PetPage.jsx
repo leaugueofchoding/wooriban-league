@@ -998,9 +998,22 @@ function PetPage() {
             ))}
           </PetListWrapper>
           <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-            <StyledButton onClick={() => setPartnerPet(selectedPetId)} disabled={selectedPetId === partnerPetId} style={{ width: '100%', backgroundColor: '#7048e8' }}>
-              파트너로 지정
-            </StyledButton>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+              <StyledButton
+                onClick={() => setPartnerPet(selectedPetId)}
+                disabled={selectedPetId === partnerPetId}
+                style={{ width: '100%', backgroundColor: '#7048e8', marginTop: 0 }}
+              >
+                파트너 지정
+              </StyledButton>
+              <StyledButton
+                onClick={() => navigate('/pet-dex')}
+                style={{ width: '100%', backgroundColor: '#845ef7', marginTop: 0 }}
+              >
+                📖 도감
+              </StyledButton>
+            </div>
             <StyledButton onClick={handleHatch} disabled={!petInventory?.pet_egg} style={{ width: '100%', marginTop: '0.8rem', backgroundColor: '#20c997' }}>
               알 부화시키기 ({petInventory?.pet_egg || 0}개)
             </StyledButton>

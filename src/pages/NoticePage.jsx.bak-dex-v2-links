@@ -116,49 +116,6 @@ const ToggleSwitch = styled.button`padding:0.25rem 0.55rem;font-size:0.75rem;fon
 const PollSetupCard = styled.div`background:#f8f9fa;border:1px solid #dee2e6;border-radius:12px;padding:1rem;margin-top:0.5rem;`;
 const OptionInputRow = styled.div`display:flex;gap:0.4rem;margin-bottom:0.4rem;`;
 
-
-const NOTICE_URL_REGEX = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
-
-function LinkifiedText({ text }) {
-  const value = text || '';
-  const parts = value.split(NOTICE_URL_REGEX);
-
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (!part || !part.match(NOTICE_URL_REGEX)) {
-          return <React.Fragment key={index}>{part}</React.Fragment>;
-        }
-
-        const trailingMatch = part.match(/^(.+?)([.,!?;:)\]\}]+)?$/);
-        const rawUrl = trailingMatch?.[1] || part;
-        const trailing = trailingMatch?.[2] || '';
-        const href = rawUrl.startsWith('www.') ? 'https://' + rawUrl : rawUrl;
-
-        return (
-          <React.Fragment key={index}>
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              style={{
-                color: '#1971c2',
-                fontWeight: 900,
-                textDecoration: 'underline',
-                wordBreak: 'break-all',
-              }}
-            >
-              {rawUrl}
-            </a>
-            {trailing}
-          </React.Fragment>
-        );
-      })}
-    </>
-  );
-}
-
 /* ─── 인라인 소셜/투표 서브컴포넌트 ──────────────────────────── */
 function NoticeInlineFeatures({ classId, notice, myPlayerData, tabConfig, isTeacher, players }) {
   const [hearts, setHearts] = useState([]);
@@ -771,7 +728,7 @@ function NoticePage() {
 
               {isExpanded && (
                 <CardBody>
-                  {notice.content && <ContentText><LinkifiedText text={notice.content} /></ContentText>}
+                  {notice.content && <ContentText>{notice.content}</ContentText>}
                   {(notice.imageUrls || []).length > 0 && (
                     <ImgGrid $count={notice.imageUrls.length}>
                       {notice.imageUrls.map((url, i) => (
@@ -803,7 +760,7 @@ function NoticePage() {
             </div>
           </FullscreenHeader>
           <FullscreenBody>
-            {fullscreenNotice.content && <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '1rem', lineHeight: 1.75, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxWidth: '820px', width: '100%', background: 'rgba(255,255,255,0.06)', borderRadius: '12px', padding: '1rem 1.2rem', margin: 0 }}><LinkifiedText text={fullscreenNotice.content} /></p>}
+            {fullscreenNotice.content && <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '1rem', lineHeight: 1.75, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxWidth: '820px', width: '100%', background: 'rgba(255,255,255,0.06)', borderRadius: '12px', padding: '1rem 1.2rem', margin: 0 }}>{fullscreenNotice.content}</p>}
             {(fullscreenNotice.imageUrls || []).map((url, i) => (
               <FullscreenImg key={i} src={url} onClick={e => { e.stopPropagation(); setLightboxSrc(url); }} />
             ))}

@@ -28,6 +28,7 @@ import MissionGalleryPage from './pages/MissionGalleryPage';
 import LandingPage from './pages/LandingPage.jsx';
 import JoinPage from './pages/JoinPage.jsx';
 import PetPage from './features/pet/PetPage.jsx';
+import PetDexPage from './features/pet/PetDexPage.jsx';
 import PetSelectionPage from './features/pet/PetSelectionPage.jsx';
 import PetCenterPage from './features/pet/PetCenterPage.jsx';
 
@@ -235,6 +236,7 @@ function App() {
             <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
 
             <Route path="/pet" element={<ProtectedRoute><PetPage /></ProtectedRoute>} />
+            <Route path="/pet-dex" element={<ProtectedRoute><PetDexPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
             <Route path="/pet-center" element={<ProtectedRoute><PetCenterPage /></ProtectedRoute>} />
             <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} />
