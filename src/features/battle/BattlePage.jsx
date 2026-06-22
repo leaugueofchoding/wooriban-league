@@ -11,7 +11,7 @@ import { SKILLS } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect, { DotDamageEffect } from './BattleSkillEffect';
 import { playSkillSound, playHitSound, playHealSound } from './BattleSoundEngine';
-
+import BattleStatusEffect from './BattleStatusEffect';
 // --- Styled Components & Keyframes ---
 
 const rotate = keyframes`
@@ -302,6 +302,24 @@ const reedBowLeft = keyframes`
   100% { transform: translateX(0) scale(1); filter: brightness(1); }
 `;
 
+const previewStyleSkillRight = keyframes`
+  0% { transform: translate(0, 0) scale(1); filter: brightness(1); }
+  18% { transform: translate(-28px, 14px) scale(0.9); filter: brightness(1.05); }
+  42% { transform: translate(75px, -38px) scale(1.16); filter: brightness(1.9) drop-shadow(0 0 20px #74c0fc); }
+  62% { transform: translate(115px, -18px) scale(1.22) rotate(4deg); filter: brightness(2.3) drop-shadow(0 0 24px #4dabf7); }
+  78% { transform: translate(45px, -4px) scale(1.08); filter: brightness(1.45); }
+  100% { transform: translate(0, 0) scale(1); filter: brightness(1); }
+`;
+
+const previewStyleSkillLeft = keyframes`
+  0% { transform: translate(0, 0) scale(1); filter: brightness(1); }
+  18% { transform: translate(28px, 14px) scale(0.9); filter: brightness(1.05); }
+  42% { transform: translate(-75px, -38px) scale(1.16); filter: brightness(1.9) drop-shadow(0 0 20px #74c0fc); }
+  62% { transform: translate(-115px, -18px) scale(1.22) rotate(-4deg); filter: brightness(2.3) drop-shadow(0 0 24px #4dabf7); }
+  78% { transform: translate(-45px, -4px) scale(1.08); filter: brightness(1.45); }
+  100% { transform: translate(0, 0) scale(1); filter: brightness(1); }
+`;
+
 // --- UI Components ---
 const ProfileWrapper = styled.div`
   position: absolute;
@@ -467,7 +485,8 @@ const PetContainer = styled.div`
                                                             props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
                                                                 props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 1.6s ease-in-out` :
                                                                     props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
-                                                                        'none'};
+                                                                        props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
+                                                                            'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -1192,15 +1211,33 @@ function BattlePage() {
                     }, 1500);
 
                 } else {
+                    if (isAttackerMe) {
+                        setAnimState(prev => ({ ...prev, my: actionType }));
+                    } else {
+                        setAnimState(prev => ({ ...prev, opponent: actionType }));
+                    }
+
                     setCurrentEffect({
                         type: actionType,
                         isMine: isAttackerMe
                     });
+
+                    setTimeout(() => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    }, 520);
+
+                    setTimeout(() => {
+                        setHitState({ my: false, opponent: false });
+                    }, 820);
+
                     setTimeout(() => {
                         setCurrentEffect(null);
+                        setAnimState({ my: null, opponent: null });
+                        setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
                         handleResolution(battleRef);
-                    }, 2000);
+                    }, 1450);
                 }
             }
         }
@@ -1679,6 +1716,7 @@ function BattlePage() {
     const handleResolution = async (battleRef) => {
         if (isProcessing) return;
         setIsProcessing(true);
+
         try {
             const result = await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
@@ -1693,6 +1731,9 @@ function BattlePage() {
                 const isChallengerAttacker = turn === challenger.id;
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
+
+                if (!attacker.pet.status) attacker.pet.status = {};
+                if (!defender.pet.status) defender.pet.status = {};
 
                 if (defender.pet.status?.stunned) {
                     delete defender.pet.status.stunned;
@@ -1716,16 +1757,38 @@ function BattlePage() {
                 }
 
                 let log = "";
-                const preHp = defender.pet.hp; // 스킬 발동 전 체력 저장 (반격 반사 데미지 계산용)
+                const preHp = defender.pet.hp;
 
-                if (skill && skill.effect) {
+                // ☀️ 눈부심: 다음 공격 1회 무조건 빗나감
+                // 스킬 effect 실행 전에 처리해야 모든 스킬이 확실히 미스 처리됩니다.
+                if (attacker.pet.status?.dazzled) {
+                    delete attacker.pet.status.dazzled;
+
+                    const missedActionName = skill?.name || '공격';
+                    log = `☀️ ${attacker.pet.name}은(는) 눈부심 때문에 ${missedActionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
+
+                    if (isSpInsufficient) {
+                        log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
+                    }
+                } else if (skill && skill.effect) {
                     log = skill.effect(attacker, defender, defenderAction);
+
                     if (isSpInsufficient) {
                         log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                     }
                 } else {
                     let damage = 20 + attacker.pet.atk * 2;
+
+                    if (attacker.pet.status?.aching) {
+                        damage *= 0.7;
+                    }
+
                     if (defenderAction === 'BRACE') damage *= 0.7;
+
+                    if (defender.pet.status?.aching) {
+                        damage *= 1.3;
+                    }
+
                     damage = Math.round(damage);
                     defender.pet.hp = Math.max(0, defender.pet.hp - damage);
                     log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
@@ -1741,7 +1804,7 @@ function BattlePage() {
                     const reflectDamage = Math.round(damageTaken * defender.pet.status.counterReady);
                     attacker.pet.hp = Math.max(0, attacker.pet.hp - reflectDamage);
                     log += ` \n⚔️ [반격 발동!] 상대의 공격을 쳐내어 ${reflectDamage}의 피해를 돌려주었습니다!`;
-                    delete defender.pet.status.counterReady; // 반격은 1회 발동 후 해제됩니다.
+                    delete defender.pet.status.counterReady;
                 }
 
                 // --- 상태이상 도트딜 및 턴 감소 처리 ---
@@ -1753,6 +1816,7 @@ function BattlePage() {
                     const burnDmg = Math.round(defender.pet.maxHp * 0.08);
                     defender.pet.hp = Math.max(0, defender.pet.hp - burnDmg);
                     log += ` 🔥 [화상 도트] ${burnDmg}의 피해!`;
+
                     setTimeout(() => {
                         setDotEffect({ target: isChallengerAttacker ? 'opponent' : 'my', type: 'burn' });
                         setTimeout(() => setDotEffect(null), 900);
@@ -1763,6 +1827,7 @@ function BattlePage() {
                     const poisonDmg = Math.round(defender.pet.maxHp * 0.06);
                     defender.pet.hp = Math.max(0, defender.pet.hp - poisonDmg);
                     log += ` ☠️ [중독 도트] ${poisonDmg}의 독 피해!`;
+
                     setTimeout(() => {
                         setDotEffect({ target: isChallengerAttacker ? 'opponent' : 'my', type: 'poison' });
                         setTimeout(() => setDotEffect(null), 900);
@@ -1786,6 +1851,27 @@ function BattlePage() {
                     }
                 }
 
+                // 💢 욱신욱신(Aching) 지속 턴 처리
+                // 방금 덩굴 채찍으로 새로 걸린 욱신욱신은 바로 1턴 차감하지 않고, 다음 행동부터 차감합니다.
+                if (defender.pet.status?.aching && skillId !== 'VINE_WHIP') {
+                    defender.pet.status.achingTurns = (defender.pet.status.achingTurns ?? 2) - 1;
+                    if (defender.pet.status.achingTurns <= 0) {
+                        delete defender.pet.status.aching;
+                        delete defender.pet.status.achingTurns;
+                        log += ` (욱신욱신한 통증이 가라앉았습니다.)`;
+                    }
+                }
+
+                // 공격자가 이미 욱신욱신 상태였다면, 이번 공격에 약화가 적용된 뒤 1턴 차감
+                if (attacker.pet.status?.aching) {
+                    attacker.pet.status.achingTurns = (attacker.pet.status.achingTurns ?? 2) - 1;
+                    if (attacker.pet.status.achingTurns <= 0) {
+                        delete attacker.pet.status.aching;
+                        delete attacker.pet.status.achingTurns;
+                        log += ` (${attacker.pet.name}의 욱신욱신한 통증이 가라앉았습니다.)`;
+                    }
+                }
+
                 if (attacker.pet.status?.defenseUp) {
                     attacker.pet.status.defenseUpTurns = (attacker.pet.status.defenseUpTurns ?? 2) - 1;
                     if (attacker.pet.status.defenseUpTurns <= 0) {
@@ -1803,6 +1889,7 @@ function BattlePage() {
 
                 const isFinished = defender.pet.hp <= 0 || attacker.pet.hp <= 0;
                 let winnerId = null;
+
                 if (isFinished) {
                     if (attacker.pet.hp > 0) winnerId = attacker.id;
                     else if (defender.pet.hp > 0) winnerId = defender.id;
@@ -1829,13 +1916,26 @@ function BattlePage() {
                 };
 
                 transaction.update(battleRef, updateData);
-                return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
+                return {
+                    isFinished,
+                    winnerId,
+                    finalChallenger: updateData.challenger,
+                    finalOpponent: updateData.opponent,
+                };
             });
 
             if (result && result.isFinished) {
-                const winnerPet = result.winnerId === result.finalChallenger.id ? result.finalChallenger.pet : result.finalOpponent.pet;
-                const loserPet = result.winnerId === result.finalChallenger.id ? result.finalOpponent.pet : result.finalChallenger.pet;
-                const loserId = result.winnerId === result.finalChallenger.id ? result.finalOpponent.id : result.finalChallenger.id;
+                const winnerPet = result.winnerId === result.finalChallenger.id
+                    ? result.finalChallenger.pet
+                    : result.finalOpponent.pet;
+
+                const loserPet = result.winnerId === result.finalChallenger.id
+                    ? result.finalOpponent.pet
+                    : result.finalChallenger.pet;
+
+                const loserId = result.winnerId === result.finalChallenger.id
+                    ? result.finalOpponent.id
+                    : result.finalChallenger.id;
 
                 await processBattleResults(classId, result.winnerId, loserId, false, winnerPet, loserPet);
             }
@@ -1992,15 +2092,11 @@ function BattlePage() {
 
                             <OpponentPetContainerWrapper>
                                 <PetContainer $isHit={hitState.opponent} $animType={animState.opponent} $isMine={false}>
-                                    {opponentInfo.pet.status?.stunned && <StunEffect />}
-                                    {opponentInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
-                                    {opponentInfo.pet.status?.burned && <RechargeEffect style={{ color: '#ff6b35' }}>🔥 화상</RechargeEffect>}
-                                    {opponentInfo.pet.status?.poisoned && <RechargeEffect style={{ color: '#9775fa', top: 'auto', bottom: '36px' }}>☠️ 중독</RechargeEffect>}
-                                    {opponentInfo.pet.status?.defenseUp && <RechargeEffect style={{ color: '#339af0', top: 'auto', bottom: '60px' }}>🛡️ 방어↑</RechargeEffect>}
-                                    {opponentInfo.pet.status?.blind && <RechargeEffect style={{ color: '#868e96', top: 'auto', bottom: '84px' }}>🙈 실명</RechargeEffect>}
-                                    {opponentInfo.pet.status?.bound && <RechargeEffect style={{ color: '#2b8a3e', top: 'auto', bottom: '108px' }}>🌿 속박</RechargeEffect>}
-                                    {opponentInfo.pet.status?.counterReady && <RechargeEffect style={{ color: '#fcc419', top: 'auto', bottom: '132px' }}>⚔️ 반격준비</RechargeEffect>}
-
+                                    <BattleStatusEffect
+                                        petStatus={opponentInfo.pet.status}
+                                        variant="battle"
+                                        sizeScale={3.4}
+                                    />
                                     {dotEffect?.target === 'opponent' && (
                                         <DotDamageEffect $type={dotEffect.type} $top="15%" $left="55%">
                                             {dotEffect.type === 'burn' ? '🔥' : '☠️'}
@@ -2013,15 +2109,11 @@ function BattlePage() {
 
                             <MyPetContainerWrapper>
                                 <PetContainer $isHit={hitState.my} $animType={animState.my} $isMine={true}>
-                                    {myInfo.pet.status?.stunned && <StunEffect />}
-                                    {myInfo.pet.status?.recharging && <RechargeEffect>💤 지침...</RechargeEffect>}
-                                    {myInfo.pet.status?.burned && <RechargeEffect style={{ color: '#ff6b35' }}>🔥 화상</RechargeEffect>}
-                                    {myInfo.pet.status?.poisoned && <RechargeEffect style={{ color: '#9775fa', top: 'auto', bottom: '36px' }}>☠️ 중독</RechargeEffect>}
-                                    {myInfo.pet.status?.defenseUp && <RechargeEffect style={{ color: '#339af0', top: 'auto', bottom: '60px' }}>🛡️ 방어↑</RechargeEffect>}
-                                    {myInfo.pet.status?.blind && <RechargeEffect style={{ color: '#868e96', top: 'auto', bottom: '84px' }}>🙈 실명</RechargeEffect>}
-                                    {myInfo.pet.status?.bound && <RechargeEffect style={{ color: '#2b8a3e', top: 'auto', bottom: '108px' }}>🌿 속박</RechargeEffect>}
-                                    {myInfo.pet.status?.counterReady && <RechargeEffect style={{ color: '#fcc419', top: 'auto', bottom: '132px' }}>⚔️ 반격준비</RechargeEffect>}
-
+                                    <BattleStatusEffect
+                                        petStatus={myInfo.pet.status}
+                                        variant="battle"
+                                        sizeScale={3.4}
+                                    />
                                     {dotEffect?.target === 'my' && (
                                         <DotDamageEffect $type={dotEffect.type} $top="15%" $left="45%">
                                             {dotEffect.type === 'burn' ? '🔥' : '☠️'}

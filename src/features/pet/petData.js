@@ -61,7 +61,14 @@ const calculateDamage = (basePower, attackerPlayer, defenderPlayer, skillElement
     }
 
     if (attacker.status?.focusCharge) multiplier *= 2.0;
+
+    // 💢 욱신욱신: 공격력 30% 감소
+    if (attacker.status?.aching) multiplier *= 0.7;
+
     if (defender.status?.defenseUp) multiplier *= 0.7;
+
+    // 💢 욱신욱신: 방어력 30% 감소 = 받는 피해 30% 증가
+    if (defender.status?.aching) multiplier *= 1.3;
     if (attackerPlayer.equippedTitle === 'goal_machine') multiplier *= 1.05;
     if (defenderPlayer.equippedTitle === 'icon_of_diligence') multiplier *= 0.95;
     if (defenderPlayer.equippedTitle === 'star_of_compliments') multiplier *= 0.97;
@@ -86,6 +93,30 @@ export const PREVIEW_STATUS = {
                 label: '방어 상승',
                 detail: '받는 피해 감소',
                 tone: '#845ef7',
+            },
+        ],
+    },
+
+    SOLAR_BLIND: {
+        target: [
+            {
+                kind: 'blind',
+                icon: '☀️',
+                label: '눈부심',
+                detail: '30% 확률 · 다음 공격 빗나감',
+                tone: '#f59f00',
+            },
+        ],
+    },
+
+    ACHING: {
+        target: [
+            {
+                kind: 'aching',
+                icon: '💢',
+                label: '욱신욱신',
+                detail: '2턴간 공격/방어 30% 감소',
+                tone: '#e03131',
             },
         ],
     },
@@ -838,17 +869,24 @@ export const SKILLS = {
         type: 'signature',
         element: '풀',
         basePower: 35,
-        description: '질기고 억센 덩굴을 휘둘러 상대에게 강력한 찰과상을 입힙니다.',
+        description: '질기고 억센 덩굴을 휘둘러 상대에게 강력한 찰과상을 입힙니다. 2턴간 상대를 욱신욱신 상태로 만들어 공격력과 방어력을 30% 낮춥니다.',
+        previewStatus: PREVIEW_STATUS.ACHING,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
+
+            if (!defender.status) defender.status = {};
+
             let { damage, isEffective, isCritical: vineCrit } = calculateDamage(35, attackerPlayer, defenderPlayer, '풀', 3.4, 0.55);
             if (defenderAction === 'BRACE') damage *= 0.7;
 
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
-            return `${vineCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 덩굴 채찍! 🌿 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${damage}의 찰진 피해!`;
+            defender.status.aching = true;
+            defender.status.achingTurns = 2;
+
+            return `${vineCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 덩굴 채찍! 🌿 ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${damage}의 찰진 피해! 💢 상대의 몸이 욱신욱신합니다! (2턴간 공격/방어 30% 감소)`;
         }
     },
 
@@ -858,18 +896,29 @@ export const SKILLS = {
         cost: 65,
         type: 'signature',
         element: '풀',
-        basePower: 65,
-        description: '태양의 에너지를 압축하여 파괴적인 빛의 광선을 발사합니다.',
+        basePower: 75,
+        description: '태양의 에너지를 압축하여 파괴적인 빛의 광선을 발사합니다. 40% 확률로 상대를 눈부심 상태로 만들어 다음 공격을 반드시 빗나가게 합니다.',
+        previewStatus: PREVIEW_STATUS.SOLAR_BLIND,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
-            let { damage, isEffective, isCritical: solarCrit } = calculateDamage(65, attackerPlayer, defenderPlayer, '풀', 5.0, 0.55);
+
+            if (!defender.status) defender.status = {};
+
+            let { damage, isEffective, isCritical: solarCrit } = calculateDamage(75, attackerPlayer, defenderPlayer, '풀', 6.2, 0.7);
             if (defenderAction === 'BRACE') damage *= 0.7;
 
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
-            return `${solarCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 솔라 빔! ☀️ ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${damage}의 엄청난 빛의 일격!`;
+            let log = `${solarCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 솔라 빔! ☀️ ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}${damage}의 엄청난 빛의 일격!`;
+
+            if (Math.random() < 0.4) {
+                defender.status.dazzled = true;
+                log += ` ☀️ 강렬한 빛에 눈이 부셔 다음 공격이 반드시 빗나갑니다!`;
+            }
+
+            return log;
         }
     },
 
@@ -1229,9 +1278,9 @@ export const PET_DATA = {
             lv20: {
                 appearanceId: 'bird_lv3',
                 name: '열매치',
-                statBoost: { hp: 2.3, sp: 1.5, atk: 2.0 },
+                statBoost: { hp: 2.45, sp: 1.75, atk: 2.35 },
                 newSkill: SKILLS.SOLAR_BEAM,
-                description: "태양의 에너지를 가득 머금은 생명의 결실을 품고 파괴적인 빛을 쏘는 열매치입니다. (🌿풀 속성)"
+                description: "태양의 에너지를 가득 머금은 생명의 결실을 품고 파괴적인 빛을 쏘는 열매치입니다. 강렬한 빛으로 상대를 눈부심 상태에 빠뜨립니다. (🌿풀 속성)"
             },
         }
     },

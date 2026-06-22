@@ -2,6 +2,7 @@
 
 import React from 'react';
 import BattleSkillEffect from '../battle/BattleSkillEffect';
+import BattleStatusEffect from '../battle/BattleStatusEffect';
 
 function getSkillType(skill) {
     return String(skill?.id || '').toUpperCase();
@@ -204,6 +205,103 @@ function SkillPreview({
             40% { transform: translate(-6px, 5px) rotate(-3deg); filter: brightness(1.25) drop-shadow(0 0 12px rgba(250,82,82,0.45)); }
             65% { transform: translate(4px, -2px) rotate(1deg); }
             100% { transform: translate(0, 0) rotate(0deg); filter: drop-shadow(0 10px 10px rgba(0,0,0,0.16)); }
+          }
+           .dexStatusAura--aching {
+            background:
+              radial-gradient(circle, rgba(255,107,107,0.42) 0%, rgba(224,49,49,0.18) 42%, rgba(224,49,49,0.03) 72%),
+              repeating-radial-gradient(circle, rgba(224,49,49,0.32) 0 2px, transparent 2px 8px);
+            border: 4px dashed rgba(224,49,49,0.95);
+            box-shadow:
+              0 0 24px rgba(224,49,49,0.55),
+              inset 0 0 22px rgba(255,107,107,0.35);
+            overflow: visible;
+            animation:
+              dexAuraPulse 0.45s ease-out forwards,
+              dexAcheThrob 0.34s ease-in-out infinite;
+          }
+
+          .dexStatusAura--aching::before,
+          .dexStatusAura--aching::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 128px;
+            height: 128px;
+            border-radius: 44% 56% 48% 52%;
+            border: 3px solid rgba(224,49,49,0.62);
+            transform: translate(-50%, -50%) scale(0.75);
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          .dexStatusAura--aching::before {
+            animation: dexAcheRipple 0.75s ease-out infinite;
+          }
+
+          .dexStatusAura--aching::after {
+            animation: dexAcheRipple 0.75s ease-out infinite;
+            animation-delay: 0.22s;
+            border-color: rgba(255,135,135,0.58);
+          }
+
+          .dexStatusAura--aching span {
+            animation: dexAcheIconShake 0.26s ease-in-out infinite;
+            filter:
+              drop-shadow(0 0 8px rgba(255,255,255,0.9))
+              drop-shadow(0 0 10px rgba(224,49,49,0.9));
+          }
+
+          @keyframes dexAcheThrob {
+            0% {
+              transform: translate(-50%, -50%) scale(0.94) rotate(-4deg);
+              filter: brightness(1);
+              border-radius: 54% 46% 52% 48%;
+            }
+            35% {
+              transform: translate(-50%, -50%) scale(1.12) rotate(3deg);
+              filter: brightness(1.45);
+              border-radius: 42% 58% 45% 55%;
+            }
+            70% {
+              transform: translate(-50%, -50%) scale(0.98) rotate(-2deg);
+              filter: brightness(1.12);
+              border-radius: 58% 42% 55% 45%;
+            }
+            100% {
+              transform: translate(-50%, -50%) scale(0.94) rotate(-4deg);
+              filter: brightness(1);
+              border-radius: 54% 46% 52% 48%;
+            }
+          }
+
+          @keyframes dexAcheRipple {
+            0% {
+              opacity: 0;
+              transform: translate(-50%, -50%) scale(0.55) rotate(-8deg);
+            }
+            22% {
+              opacity: 0.85;
+            }
+            100% {
+              opacity: 0;
+              transform: translate(-50%, -50%) scale(1.32) rotate(10deg);
+            }
+          }
+
+          @keyframes dexAcheIconShake {
+            0%, 100% {
+              transform: translate(0, 0) rotate(0deg) scale(1);
+            }
+            25% {
+              transform: translate(-2px, 1px) rotate(-8deg) scale(1.08);
+            }
+            50% {
+              transform: translate(2px, -1px) rotate(7deg) scale(1.16);
+            }
+            75% {
+              transform: translate(-1px, -2px) rotate(-5deg) scale(1.08);
+            }
           }
 
           @keyframes dexStatusPop {
@@ -420,13 +518,13 @@ function SkillPreview({
                     alignItems: 'center',
                     justifyContent: 'center',
                 }}>
-                    {showStatuses && casterStatuses.map((status, index) => (
-                        <React.Fragment key={`caster-status-${status.kind}-${index}`}>
-                            <StatusAura status={status} />
-                            <StatusBadge status={status} side="caster" />
-                        </React.Fragment>
-                    ))}
-
+                    {showStatuses && (
+                        <BattleStatusEffect
+                            statuses={casterStatuses}
+                            showAura
+                            showBadges
+                        />
+                    )}
                     {casterImageSrc ? (
                         <img
                             className="dexPreviewCaster"
@@ -463,13 +561,13 @@ function SkillPreview({
                     alignItems: 'center',
                     justifyContent: 'center',
                 }}>
-                    {showStatuses && targetStatuses.map((status, index) => (
-                        <React.Fragment key={`target-status-${status.kind}-${index}`}>
-                            <StatusAura status={status} />
-                            <StatusBadge status={status} side="target" />
-                        </React.Fragment>
-                    ))}
-
+                    {showStatuses && (
+                        <BattleStatusEffect
+                            statuses={targetStatuses}
+                            showAura
+                            showBadges
+                        />
+                    )}
                     {targetImageSrc ? (
                         <img
                             className={isTargetHit ? 'dexPreviewTargetHit' : ''}
