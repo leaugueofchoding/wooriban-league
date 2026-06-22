@@ -5190,7 +5190,7 @@ export function listenClassSchedules(classId, callback) {
 
 /// 1. 기존 createNotice 함수를 아래 코드로 덮어쓰기 해주세요.
 // (파라미터 맨 끝에 poll = null 이 추가되었고, 저장 객체에 poll이 들어갑니다.)
-export const createNotice = async (classId, authorName, title, content, imageUrls, tab, poll = null) => {
+export const createNotice = async (classId, authorName, title, content, imageUrls, tab, poll = null, publishAt = null) => {
   const docRef = await addDoc(collection(db, 'classes', classId, 'notices'), {
     authorName,
     title,
@@ -5198,6 +5198,7 @@ export const createNotice = async (classId, authorName, title, content, imageUrl
     imageUrls,
     tab,
     poll, // ✅ 투표 데이터 서버 저장 완료!
+    publishAt, // 예약 게시 시간. null이면 즉시 게시
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

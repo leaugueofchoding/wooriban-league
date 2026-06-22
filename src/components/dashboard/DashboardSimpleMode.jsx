@@ -43,40 +43,8 @@ const NameTitle = styled.h2` margin: 0; font-size: 1.8rem; font-weight: 900; col
 const StarContainer = styled.span` display: inline-flex; align-items: center; gap: 2px; font-size: 0.6em; margin-left: 6px; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); `;
 const StatBadges = styled.div` display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; align-items: center; @media (max-width: 768px) { justify-content: center; } `;
 const Badge = styled.div` background: ${props => props.$bg || 'white'}; color: ${props => props.$color || '#495057'}; padding: 0.4rem 0.8rem; border-radius: 12px; font-size: 0.9rem; font-weight: 800; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); img.pet-icon { width: 22px; height: 22px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2)); } `;
-const QuickMenuGrid = styled.div` flex: 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(76px, 1fr)); gap: 0.8rem; `;
+const QuickMenuGrid = styled.div` flex: 2; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.8rem; `;
 const QuickBtn = styled(Link)` background: rgba(255, 255, 255, 0.9); border-radius: 20px; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; padding-left: 1.2rem; text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; border: 2px solid transparent; &:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); background: white; border-color: ${props => props.$themeColor}; } .icon-emoji { font-size: 1.5rem; margin-right: 0.5rem; z-index: 2; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1)); } .label { font-size: 1rem; font-weight: 800; color: #495057; z-index: 2; } .icon-bg { position: absolute; right: -5px; bottom: -10px; font-size: 3.5rem; opacity: 0.15; transform: rotate(-15deg); transition: all 0.3s ease; } &:hover .icon-bg { transform: rotate(0deg) scale(1.1); opacity: 0.25; } `;
-
-const DashboardUtilityLinks = styled.div`
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -0.65rem;
-  padding-right: 0.2rem;
-
-  @media (max-width: 768px) {
-    justify-content: center;
-    margin-top: -0.35rem;
-  }
-`;
-
-const UtilityLink = styled(Link)`
-  text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 900;
-  color: #748ffc;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(116, 143, 252, 0.18);
-  border-radius: 999px;
-  padding: 0.45rem 0.8rem;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.04);
-  transition: all 0.2s;
-
-  &:hover {
-    transform: translateY(-2px);
-    background: white;
-    color: #4c6ef5;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
-  }
-`;
 
 const MainGrid = styled.div` display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; @media (max-width: 768px) { grid-template-columns: 1fr; } `;
 const WidgetCard = styled(CommonCardStyle)` display: flex; flex-direction: column; height: 100%; min-height: 140px; border: 2px solid transparent; &:hover { border-color: ${props => props.$color || 'transparent'}; } `;
@@ -256,16 +224,12 @@ function DashboardSimpleMode({
           </IDCard>
 
           <QuickMenuGrid>
-            <QuickBtn to="/garden" $themeColor="#51cf66"><span className="icon-emoji">🌱</span><span className="label">텃밭</span><span className="icon-bg">🌱</span></QuickBtn>
             <QuickBtn to="/pet" $themeColor="#20c997"><span className="icon-emoji">🥚</span><span className="label">펫 센터</span><span className="icon-bg">🥚</span></QuickBtn>
             <QuickBtn to="/shop" $themeColor="#fcc419"><span className="icon-emoji">🛒</span><span className="label">상점</span><span className="icon-bg">🛒</span></QuickBtn>
             <QuickBtn to="/mission-gallery" $themeColor="#ff6b6b"><span className="icon-emoji">🖼️</span><span className="label">갤러리</span><span className="icon-bg">🖼️</span></QuickBtn>
+            <QuickBtn to="/suggestions" $themeColor="#339af0"><span className="icon-emoji">💌</span><span className="label">건의함</span><span className="icon-bg">💌</span></QuickBtn>
           </QuickMenuGrid>
         </HeroSection>
-
-        <DashboardUtilityLinks>
-          <UtilityLink to="/suggestions" data-role="dashboard-suggestion-link">💌 건의함</UtilityLink>
-        </DashboardUtilityLinks>
 
         <MainGrid>
           {/* ▼ 미션 + 퀘스트 동적 분할 적용 위젯 ▼ */}

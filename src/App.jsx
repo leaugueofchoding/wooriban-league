@@ -31,7 +31,6 @@ import PetPage from './features/pet/PetPage.jsx';
 import PetSelectionPage from './features/pet/PetSelectionPage.jsx';
 import PetCenterPage from './features/pet/PetCenterPage.jsx';
 
-import GardenPage from './pages/GardenPage.jsx';
 
 // Common Components
 import Auth from './components/Auth';
@@ -234,7 +233,6 @@ function App() {
             <Route path="/suggestions" element={<ProtectedRoute><SuggestionPage /></ProtectedRoute>} />
             <Route path="/my-room/:playerId" element={<ProtectedRoute><MyRoomPage /></ProtectedRoute>} />
             <Route path="/mission-gallery" element={<ProtectedRoute><MissionGalleryPage /></ProtectedRoute>} />
-            <Route path="/garden" element={<ProtectedRoute><GardenPage /></ProtectedRoute>} />
 
             <Route path="/pet" element={<ProtectedRoute><PetPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />

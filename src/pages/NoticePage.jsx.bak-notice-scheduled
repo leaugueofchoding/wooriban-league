@@ -428,7 +428,7 @@ function NoticePage() {
   const [modalMode, setModalMode] = useState(null);
   const [editingNotice, setEditingNotice] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', tab: '', publishAt: '' });
+  const [form, setForm] = useState({ title: '', content: '', tab: '' });
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
@@ -442,7 +442,6 @@ function NoticePage() {
   const [editingTabs, setEditingTabs] = useState([]);
   const [editingTabConfigs, setEditingTabConfigs] = useState({});
   const fileRef = useRef();
-  const [nowTick, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     if (!classId) return;
@@ -460,58 +459,22 @@ function NoticePage() {
     return listenNotices(classId, setNotices);
   }, [classId]);
 
-
-  // notice-schedule-helpers: 예약 게시 표시/숨김 처리
-  const getPublishDate = (noticeItem) => {
-    if (!noticeItem?.publishAt) return null;
-    if (noticeItem.publishAt.toDate) return noticeItem.publishAt.toDate();
-    const d = new Date(noticeItem.publishAt);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-
-  const isScheduledNotice = (noticeItem) => {
-    const publishDate = getPublishDate(noticeItem);
-    return !!publishDate && publishDate.getTime() > nowTick;
-  };
-
-  const toDatetimeLocalValue = (value) => {
-    if (!value) return '';
-    const d = value.toDate ? value.toDate() : new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return '';
-    const d = value.toDate ? value.toDate() : new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-
-  const visibleNotices = isTeacher ? notices : notices.filter(n => !isScheduledNotice(n));
-
-  useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), 30 * 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // [수정] 탭 변경이나 전체 로드 시, 해당 필터 리스트에서 가장 최신(첫 번째) 게시물을 자동으로 열린 상태로 셋팅
   useEffect(() => {
-    const currentList = activeTab === '전체' ? visibleNotices : visibleNotices.filter(n => n.tab === activeTab);
+    const currentList = activeTab === '전체' ? notices : notices.filter(n => n.tab === activeTab);
     if (currentList.length > 0) {
       setExpandedId(currentList[0].id); // 가장 최신 글 ID 자동 활성화
     } else {
       setExpandedId(null);
     }
-  }, [activeTab, notices, isTeacher, nowTick]);
+  }, [activeTab, notices]);
 
   useEffect(() => {
     if (!expandedId || !myPlayerData?.id) return;
     markNoticeRead(classId, expandedId, myPlayerData.id, myPlayerData.name);
   }, [expandedId, classId, myPlayerData?.id]);
 
-  const filteredNotices = activeTab === '전체' ? visibleNotices : visibleNotices.filter(n => n.tab === activeTab);
+  const filteredNotices = activeTab === '전체' ? notices : notices.filter(n => n.tab === activeTab);
   const formatDate = (ts) => {
     if (!ts) return '';
     const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -520,7 +483,7 @@ function NoticePage() {
 
   const openCreate = () => {
     const defaultTab = activeTab === '전체' ? (tabs[0] || '') : activeTab;
-    setForm({ title: '', content: '', tab: defaultTab, publishAt: '' });
+    setForm({ title: '', content: '', tab: defaultTab });
     setSelectedFiles([]); setPreviews([]); setExistingUrls([]);
     setIncludePoll(false);
     setPollForm({ title: '', options: ['', ''], multiple: false, anonymous: false, deadline: '', isClosed: false });
@@ -529,7 +492,7 @@ function NoticePage() {
 
   const openEdit = (notice, e) => {
     e.stopPropagation();
-    setForm({ title: notice.title, content: notice.content || '', tab: notice.tab || tabs[0] || '', publishAt: toDatetimeLocalValue(notice.publishAt) });
+    setForm({ title: notice.title, content: notice.content || '', tab: notice.tab || tabs[0] || '' });
     setExistingUrls(notice.imageUrls || []);
     setSelectedFiles([]); setPreviews([]);
     if (notice.poll) {
@@ -583,7 +546,6 @@ function NoticePage() {
   const handleSubmit = async () => {
     if (!form.content.trim() && selectedFiles.length === 0 && existingUrls.length === 0 && !includePoll) return alert('내용, 이미지 또는 투표를 추가해주세요.');
     const finalTitle = form.title.trim() || '제목없음';
-    const finalPublishAt = form.publishAt || null;
 
     let finalPoll = null;
     if (includePoll) {
@@ -600,10 +562,10 @@ function NoticePage() {
       const finalUrls = [...existingUrls, ...newUrls];
 
       if (modalMode === 'create') {
-        await createNotice(classId, myPlayerData.name, finalTitle, form.content.trim(), finalUrls, form.tab, finalPoll, finalPublishAt);
+        await createNotice(classId, myPlayerData.name, finalTitle, form.content.trim(), finalUrls, form.tab, finalPoll);
       } else {
         await updateDoc(doc(db, 'classes', classId, 'notices', editingNotice.id), {
-          title: finalTitle, content: form.content.trim(), imageUrls: finalUrls, tab: form.tab, poll: finalPoll, publishAt: finalPublishAt, updatedAt: serverTimestamp(),
+          title: finalTitle, content: form.content.trim(), imageUrls: finalUrls, tab: form.tab, poll: finalPoll, updatedAt: serverTimestamp(),
         });
       }
       closeModal();
@@ -675,7 +637,7 @@ function NoticePage() {
               {tab}
               {tab !== '전체' && (
                 <span style={{ marginLeft: '0.3rem', fontSize: '0.72rem', background: activeTab === tab ? '#d0ebff' : '#f1f3f5', color: activeTab === tab ? '#1971c2' : '#adb5bd', borderRadius: '10px', padding: '0.05rem 0.4rem', fontWeight: 800 }}>
-                  {visibleNotices.filter(n => n.tab === tab).length}
+                  {notices.filter(n => n.tab === tab).length}
                 </span>
               )}
             </TabBtn>
@@ -702,11 +664,6 @@ function NoticePage() {
                     <span>{formatDate(notice.createdAt)}</span>
                     {(notice.imageUrls || []).length > 0 && <MetaTag>📎 {notice.imageUrls.length}장</MetaTag>}
                     {notice.poll && <MetaTag style={{ background: '#fff9db', color: '#f08c00' }}>📊 투표</MetaTag>}
-                    {isScheduledNotice(notice) && (
-                      <MetaTag style={{ background: '#fff4e6', color: '#f76707' }}>
-                        ⏰ 예약 게시: {formatDateTime(notice.publishAt)}
-                      </MetaTag>
-                    )}
                     {isExpanded && (
                       <MetaTag
                         style={{ background: '#f3f0ff', color: '#7048e8', cursor: 'pointer' }}
@@ -812,16 +769,6 @@ function NoticePage() {
             <Input placeholder="제목 (비워두면 '제목없음'으로 저장)" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
             <Label>내용</Label>
             <Textarea placeholder="공지 내용 (선택)" value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} />
-
-             <Label>예약 게시 시간</Label>
-             <Input
-               type="datetime-local"
-               value={form.publishAt || ''}
-               onChange={e => setForm(f => ({ ...f, publishAt: e.target.value }))}
-             />
-             <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: '#868e96', fontWeight: 700 }}>
-               비워두면 즉시 게시됩니다. 미래 시간을 선택하면 학생 화면에서는 해당 시간 전까지 숨겨집니다.
-             </p>
 
             <div style={{ marginTop: '1.2rem', borderTop: '1px dashed #dee2e6', paddingTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
