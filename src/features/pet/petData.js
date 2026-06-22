@@ -184,7 +184,7 @@ export const PREVIEW_STATUS = {
                 kind: 'blind',
                 icon: '🙈',
                 label: '실명',
-                detail: '30% 확률 · 다음 공격 빗나감',
+                detail: '70% 확률 · 다음 공격 50% 빗나감',
                 tone: '#868e96',
             },
         ],
@@ -543,23 +543,28 @@ export const SKILLS = {
         cost: 10,
         type: 'common',
         element: null,
-        description: '약한 피해를 주고, 30% 확률로 흙먼지를 일으켜 상대를 다음 공격이 50% 빗나가는 실명 상태로 만듭니다.',
+        description: '약한 피해를 주고, 70% 확률로 흙먼지를 일으켜 상대를 다음 공격이 50% 빗나가는 실명 상태로 만듭니다.',
         basePower: 15,
         previewStatus: PREVIEW_STATUS.SAND_THROW,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
+
+            if (!defender.status) defender.status = {};
+
             let { damage } = calculateDamage(15, attackerPlayer, defenderPlayer, null);
             if (defenderAction === 'BRACE') damage *= 0.7;
-            damage = Math.round(damage);
 
+            damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
+
             let log = `'${attacker.name}'의 모래 뿌리기! 적에게 ${damage}의 피해!`;
 
-            if (Math.random() < 0.3) {
-                if (!defender.status) defender.status = {};
+            if (Math.random() < 0.7) {
                 defender.status.blind = true;
-                log += ` 🙈 모래가 눈에 들어가 상대의 시야가 가려졌습니다!`;
+                log += ` 🙈 모래가 눈에 들어가 상대의 시야가 가려졌습니다! 다음 공격이 50% 확률로 빗나갑니다!`;
+            } else {
+                log += ` 하지만 상대가 가까스로 눈을 피했습니다.`;
             }
 
             return log;

@@ -1739,17 +1739,34 @@ function BattlePage() {
                     delete defender.pet.status.stunned;
                 }
 
-                let skillId = attackerAction.toUpperCase();
+                let skillId = String(attackerAction || '').toUpperCase();
                 let skill = SKILLS[skillId];
                 let isSpInsufficient = false;
                 const originalSkillName = skill?.name;
 
-                let actualCost = skill ? getScaledSkillCost(skill.cost, attacker.pet.level) : 0;
-                if (skill && attacker.equippedTitle === 'classroom_intellectual') {
-                    actualCost = Math.floor(actualCost * 0.8);
-                }
+                const getResolvedSkillCost = (targetSkill, targetPet, targetPlayer) => {
+                    if (!targetSkill) return 0;
 
-                if (skill && actualCost > attacker.pet.sp) {
+                    const baseCost = Number(targetSkill.cost ?? 0);
+                    if (baseCost <= 0) return 0;
+
+                    const scaledCost = Number(getScaledSkillCost(baseCost, targetPet?.level));
+
+                    // getScaledSkillCost가 0/NaN/undefined를 반환해도 기본 cost로 복구
+                    let resolvedCost = Number.isFinite(scaledCost) && scaledCost > 0
+                        ? scaledCost
+                        : baseCost;
+
+                    if (targetPlayer?.equippedTitle === 'classroom_intellectual') {
+                        resolvedCost = Math.floor(resolvedCost * 0.8);
+                    }
+
+                    return Math.max(0, resolvedCost);
+                };
+
+                let actualCost = getResolvedSkillCost(skill, attacker.pet, attacker);
+
+                if (skill && actualCost > Number(attacker.pet.sp ?? 0)) {
                     skillId = 'TACKLE';
                     skill = SKILLS.TACKLE;
                     isSpInsufficient = true;
@@ -1758,44 +1775,68 @@ function BattlePage() {
 
                 let log = "";
                 const preHp = defender.pet.hp;
+                const actionName = skill?.name || '공격';
+
+                const resolveNormalAction = () => {
+                    if (skill && skill.effect) {
+                        log = skill.effect(attacker, defender, defenderAction);
+
+                        if (isSpInsufficient) {
+                            log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
+                        }
+                    } else {
+                        let damage = 20 + attacker.pet.atk * 2;
+
+                        if (attacker.pet.status?.aching) {
+                            damage *= 0.7;
+                        }
+
+                        if (defenderAction === 'BRACE') damage *= 0.7;
+
+                        if (defender.pet.status?.aching) {
+                            damage *= 1.3;
+                        }
+
+                        damage = Math.round(damage);
+                        defender.pet.hp = Math.max(0, defender.pet.hp - damage);
+                        log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
+                    }
+                };
 
                 // ☀️ 눈부심: 다음 공격 1회 무조건 빗나감
-                // 스킬 effect 실행 전에 처리해야 모든 스킬이 확실히 미스 처리됩니다.
-                if (attacker.pet.status?.dazzled) {
+                // 🙈 실명/도발: 다음 공격 1회 50% 확률로 빗나감
+                // 둘 다 skill.effect 실행 전에 전역 처리해야 기본공격/스킬 모두에 동일하게 적용됩니다.
+                const isDazzled = !!attacker.pet.status?.dazzled;
+                const isBlinded = !!attacker.pet.status?.blind;
+
+                if (isDazzled) {
                     delete attacker.pet.status.dazzled;
 
-                    const missedActionName = skill?.name || '공격';
-                    log = `☀️ ${attacker.pet.name}은(는) 눈부심 때문에 ${missedActionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
+                    log = `☀️ ${attacker.pet.name}은(는) 눈부심 때문에 ${actionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
 
                     if (isSpInsufficient) {
                         log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                     }
-                } else if (skill && skill.effect) {
-                    log = skill.effect(attacker, defender, defenderAction);
+                } else if (isBlinded) {
+                    delete attacker.pet.status.blind;
 
-                    if (isSpInsufficient) {
-                        log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
+                    if (Math.random() < 0.5) {
+                        log = `🙈 ${attacker.pet.name}은(는) 시야가 흔들려 ${actionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
+
+                        if (isSpInsufficient) {
+                            log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
+                        }
+                    } else {
+                        resolveNormalAction();
                     }
                 } else {
-                    let damage = 20 + attacker.pet.atk * 2;
-
-                    if (attacker.pet.status?.aching) {
-                        damage *= 0.7;
-                    }
-
-                    if (defenderAction === 'BRACE') damage *= 0.7;
-
-                    if (defender.pet.status?.aching) {
-                        damage *= 1.3;
-                    }
-
-                    damage = Math.round(damage);
-                    defender.pet.hp = Math.max(0, defender.pet.hp - damage);
-                    log += `${attacker.pet.name}의 공격! ${damage}의 피해!`;
+                    resolveNormalAction();
                 }
 
-                if (skill) {
-                    attacker.pet.sp = Math.max(0, attacker.pet.sp - actualCost);
+                // SP 소모는 명중/빗나감과 관계없이 스킬을 선택했다면 여기서 확정 처리합니다.
+                // 단, SP 부족으로 기본공격으로 대체된 경우 actualCost는 0입니다.
+                if (skill && actualCost > 0) {
+                    attacker.pet.sp = Math.max(0, Number(attacker.pet.sp ?? 0) - actualCost);
                 }
 
                 // --- ⚔️ 반격 (Counter) 시스템 처리 ---
@@ -1945,6 +1986,7 @@ function BattlePage() {
             setIsProcessing(false);
         }
     };
+
 
     const getSkillCost = (skill) => {
         const scaled = getScaledSkillCost(skill.cost, myInfo?.pet?.level);
