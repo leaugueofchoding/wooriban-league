@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { useClassStore } from '../store/leagueStore';
-import { auth, db, listenCommentReports } from '../api/firebase.js';
+import { auth, listenCommentReports, giftPetEventItemsToAllStudents } from '../api/firebase.js';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ImageModal from '../components/ImageModal';
 import QuizManager from '../components/QuizManager';
@@ -18,7 +18,7 @@ import ShopTab from './admin/tabs/ShopTab';
 import LeagueTab from './admin/tabs/LeagueTab';
 import TitleTab from './admin/tabs/TitleTab';
 import ClassTab from './admin/tabs/ClassTab';
-import ReportTab from './admin/tabs/ReportTab'; // [추가] 댓글 신고 탭
+import ReportTab from './admin/tabs/ReportTab';
 
 // --- Styled Components ---
 const AdminWrapper = styled.div`
@@ -44,6 +44,227 @@ const SubNavButton = styled.button`
 `;
 const Title = styled.h1`margin-top: 0; margin-bottom: 2rem; text-align: center;`;
 
+const GiftWrapper = styled.div`
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+  padding: 2rem;
+`;
+
+const GiftHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+
+  h2 {
+    margin: 0 0 0.45rem;
+    color: #212529;
+    font-size: 1.7rem;
+  }
+
+  p {
+    margin: 0;
+    color: #495057;
+    font-weight: 700;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
+`;
+
+const GiftCards = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const GiftCard = styled.div`
+  border-radius: 18px;
+  border: 2px solid ${props => props.$border || '#dee2e6'};
+  background: ${props => props.$bg || '#f8f9fa'};
+  padding: 1.4rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+
+  .gift-icon {
+    width: 62px;
+    height: 62px;
+    border-radius: 18px;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+  }
+
+  h3 {
+    margin: 0 0 0.25rem;
+    color: #212529;
+  }
+
+  p {
+    margin: 0;
+    color: #495057;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+`;
+
+const GiftActionBox = styled.div`
+  border-radius: 18px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  padding: 1.2rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+
+  strong {
+    color: #1864ab;
+  }
+
+  p {
+    margin: 0.2rem 0 0;
+    color: #868e96;
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+`;
+
+const GiftButton = styled.button`
+  border: none;
+  border-radius: 14px;
+  padding: 0.95rem 1.4rem;
+  background: ${props => props.disabled ? '#adb5bd' : 'linear-gradient(135deg, #ff922b, #f76707)'};
+  color: white;
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  box-shadow: ${props => props.disabled ? 'none' : '0 8px 18px rgba(247,103,7,0.28)'};
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+`;
+
+const ResultBox = styled.div`
+  margin-top: 1rem;
+  padding: 1rem 1.2rem;
+  border-radius: 14px;
+  background: #e6fcf5;
+  border: 1px solid #96f2d7;
+  color: #087f5b;
+  font-weight: 900;
+`;
+
+function GiftTab({ classId, players }) {
+    const [isGifting, setIsGifting] = useState(false);
+    const [lastResult, setLastResult] = useState(null);
+
+    const eligibleStudents = players.filter(player => (
+        player.role !== 'admin' &&
+        player.status !== 'inactive'
+    ));
+
+    const handleGiftAll = async () => {
+        if (!classId) {
+            alert('학급 정보가 아직 로딩되지 않았습니다.');
+            return;
+        }
+
+        if (eligibleStudents.length === 0) {
+            alert('선물을 지급할 학생이 없습니다.');
+            return;
+        }
+
+        const ok = window.confirm(
+            `전체 학생 ${eligibleStudents.length}명에게 진화의 돌 1개와 펫 알 1개를 지급할까요?\n\n이미 지급한 학생에게도 1개씩 추가 지급됩니다.`
+        );
+
+        if (!ok) return;
+
+        try {
+            setIsGifting(true);
+            const result = await giftPetEventItemsToAllStudents(classId);
+            const count = result?.count ?? eligibleStudents.length;
+            setLastResult({ count, giftedAt: new Date() });
+            alert(`선물 지급 완료! ${count}명에게 진화의 돌 1개와 펫 알 1개를 지급했습니다.`);
+        } catch (error) {
+            console.error(error);
+            alert(`선물 지급 실패: ${error.message || error}`);
+        } finally {
+            setIsGifting(false);
+        }
+    };
+
+    return (
+        <GiftWrapper>
+            <GiftHeader>
+                <div>
+                    <h2>🎁 전체 선물 지급</h2>
+                    <p>
+                        학급 학생들에게 펫 아이템을 한 번에 지급합니다.<br />
+                        지급 후 학생이 접속하면 선물 도착 모달이 나타납니다.
+                    </p>
+                </div>
+            </GiftHeader>
+
+            <GiftCards>
+                <GiftCard $border="#ffd43b" $bg="#fff9db">
+                    <div className="gift-icon">✨</div>
+                    <div>
+                        <h3>진화의 돌 × 1</h3>
+                        <p>펫을 다음 단계로 진화시킬 수 있는 신비한 돌입니다.</p>
+                    </div>
+                </GiftCard>
+
+                <GiftCard $border="#91a7ff" $bg="#edf2ff">
+                    <div className="gift-icon">🥚</div>
+                    <div>
+                        <h3>펫 알 × 1</h3>
+                        <p>새로운 펫을 만날 수 있는 특별한 알입니다.</p>
+                    </div>
+                </GiftCard>
+            </GiftCards>
+
+            <GiftActionBox>
+                <div>
+                    <strong>지급 대상: {eligibleStudents.length}명</strong>
+                    <p>관리자 계정과 비활성 학생은 제외합니다.</p>
+                </div>
+
+                <GiftButton onClick={handleGiftAll} disabled={isGifting}>
+                    {isGifting ? '지급 중...' : '전체 학생에게 선물 지급'}
+                </GiftButton>
+            </GiftActionBox>
+
+            {lastResult && (
+                <ResultBox>
+                    ✅ 최근 지급 완료: {lastResult.count}명 · {lastResult.giftedAt.toLocaleTimeString()}
+                </ResultBox>
+            )}
+        </GiftWrapper>
+    );
+}
+
 function AdminPage() {
     const { players } = useLeagueStore();
     const { classId } = useClassStore();
@@ -55,7 +276,7 @@ function AdminPage() {
     const getInitialMenu = () => {
         const params = new URLSearchParams(location.search);
         if (params.get('tab') === 'messages') return 'social';
-        if (params.get('tab') === 'reports') return 'social'; // 소셜 하위 탭으로 변경됨
+        if (params.get('tab') === 'reports') return 'social';
         return tab || 'mission';
     };
 
@@ -107,7 +328,7 @@ function AdminPage() {
             setActiveSubMenu('reports');
             window.history.replaceState({}, document.title);
         }
-        // [추가] 퀘스트/미션 승인 알림 클릭 시 미션 승인 탭으로 이동
+        // 퀘스트/미션 승인 알림 클릭 시 미션 승인 탭으로 이동
         if (location.state?.subMenu === 'approval') {
             setActiveMenu('mission');
             setMissionSubMenu('approval');
@@ -132,7 +353,7 @@ function AdminPage() {
     // 브라우저 뒤로가기/앞으로가기 시 URL :tab 파라미터로 activeMenu 동기화
     useEffect(() => {
         if (!tab) return;
-        const validTabs = ['mission', 'social', 'student', 'shop', 'league', 'title', 'quiz', 'class'];
+        const validTabs = ['mission', 'social', 'student', 'shop', 'league', 'title', 'quiz', 'class', 'gift'];
         if (validTabs.includes(tab)) {
             setActiveMenu(tab);
         }
@@ -179,6 +400,9 @@ function AdminPage() {
         if (activeMenu === 'quiz') {
             const myPlayer = players.find(p => p.authUid === auth.currentUser?.uid);
             return <QuizManager userRole={myPlayer?.role} />;
+        }
+        if (activeMenu === 'gift') {
+            return <GiftTab classId={classId} players={players} />;
         }
         if (activeMenu === 'class') {
             return <ClassTab />;
@@ -234,7 +458,6 @@ function AdminPage() {
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'messages'} onClick={() => setActiveSubMenu('messages')}>1:1 메시지</SubNavButton></SubNavItem>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'myroom_comments'} onClick={() => setActiveSubMenu('myroom_comments')}>마이룸 댓글</SubNavButton></SubNavItem>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'mission_comments'} onClick={() => setActiveSubMenu('mission_comments')}>미션 갤러리 댓글</SubNavButton></SubNavItem>
-                                    {/* 댓글 신고 탭을 소셜 관리 맨 하단으로 이동 */}
                                     <SubNavItem>
                                         <SubNavButton
                                             $active={activeSubMenu === 'reports'}
@@ -275,11 +498,13 @@ function AdminPage() {
                             )}
                         </NavItem>
                         <NavItem>
+                            <NavButton $active={activeMenu === 'gift'} onClick={() => handleMenuClick('gift')}>🎁 전체 선물 지급</NavButton>
+                        </NavItem>
+                        <NavItem>
                             <NavButton $active={activeMenu === 'league'} onClick={() => handleMenuClick('league')}>가가볼 리그 관리</NavButton>
                             {activeMenu === 'league' && (
                                 <SubNavList>
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'league_manage'} onClick={() => setActiveSubMenu('league_manage')}>시즌/팀/경기 관리</SubNavButton></SubNavItem>
-                                    {/* 기록원 화면 및 방송 송출 화면을 하위 탭으로 이동 */}
                                     <SubNavItem><SubNavButton $active={activeSubMenu === 'recorder'} onClick={() => setActiveSubMenu('recorder')}>📝 기록원 화면</SubNavButton></SubNavItem>
                                     <SubNavItem>
                                         <SubNavButton as={Link} to="/broadcast" target="_blank" style={{ textDecoration: 'none', display: 'block', color: 'inherit' }}>

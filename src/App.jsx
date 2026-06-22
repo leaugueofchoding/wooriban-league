@@ -39,6 +39,7 @@ import AttendanceModal from './components/AttendanceModal';
 import PointAdjustmentModal from './components/PointAdjustmentModal';
 import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
+import PetGiftModal from './components/PetGiftModal';
 import BattlePage from './features/battle/BattlePage.jsx';
 import NoticePage from './pages/NoticePage.jsx';
 import TermsPage from './pages/TermsPage';
@@ -205,6 +206,7 @@ function App() {
       <AppWrapper>
         {currentUser && <Auth user={currentUser} />}
         <AttendanceModal />
+        <PetGiftModal />
         {pointAdjustmentNotification && <PointAdjustmentModal />}
         <PatchNoteModal isOpen={isPatchNoteModalOpen} onClose={() => setIsPatchNoteModalOpen(false)} />
         <MainContent>

@@ -5263,3 +5263,67 @@ export const finalizeNoticeVote = async (classId, noticeId, playerId) => {
   const voteDocRef = doc(db, 'classes', classId, 'notices', noticeId, 'votes', playerId);
   await updateDoc(voteDocRef, { isFinalized: true });
 };
+
+export async function giftPetEventItemsToAllStudents(classId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+
+  const playersRef = collection(db, "classes", classId, "players");
+  const snapshot = await getDocs(playersRef);
+
+  const targets = snapshot.docs.filter(playerDoc => {
+    const player = playerDoc.data();
+
+    // 관리자 계정 제외, 학생/기록원 등은 포함
+    if (player.role === "admin") return false;
+
+    // 비활성 학생이 있다면 제외
+    if (player.status === "inactive") return false;
+
+    return true;
+  });
+
+  if (targets.length === 0) {
+    return { count: 0 };
+  }
+
+  let batch = writeBatch(db);
+  let opCount = 0;
+  let giftedCount = 0;
+
+  const commitAndReset = async () => {
+    if (opCount > 0) {
+      await batch.commit();
+      batch = writeBatch(db);
+      opCount = 0;
+    }
+  };
+
+  for (const playerDoc of targets) {
+    batch.update(playerDoc.ref, {
+      "petInventory.evolution_stone": increment(1),
+      "petInventory.pet_egg": increment(1),
+      latestGift: {
+        id: `pet_gift_${Date.now()}`,
+        title: "🎁 선물이 도착했어요!",
+        message: "진화의 돌 1개와 펫 알 1개를 받았어요!",
+        items: [
+          { id: "evolution_stone", name: "진화의 돌", amount: 1 },
+          { id: "pet_egg", name: "펫 알", amount: 1 },
+        ],
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    giftedCount += 1;
+    opCount += 1;
+
+    // Firestore batch 제한 대비
+    if (opCount >= 450) {
+      await commitAndReset();
+    }
+  }
+
+  await commitAndReset();
+
+  return { count: giftedCount };
+}
