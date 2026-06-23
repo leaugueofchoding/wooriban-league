@@ -12,6 +12,8 @@ import { PET_ITEMS } from './petItems';
 import confetti from 'canvas-confetti';
 import { filterProfanity } from '../../utils/profanityFilter';
 
+const MAX_PET_LEVEL = 30;
+
 // --- Animations ---
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -541,7 +543,7 @@ function PetPage() {
   const [evolveState, setEvolveState] = useState({ step: 'start', targetPet: null, nextFormName: '' });
 
   useEffect(() => {
-    if (myPlayerData?.id || !classId) return;
+    if (!myPlayerData?.id || !classId) return;
     const unsubscribe = onSnapshot(doc(db, 'classes', classId, 'players', myPlayerData.id), (docSnap) => {
       if (docSnap.exists()) {
         const updatedPlayer = { id: docSnap.id, ...docSnap.data() };
@@ -775,10 +777,17 @@ function PetPage() {
 
   const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp) * 100));
   const spPercent = Math.min(100, Math.max(0, (selectedPet.sp / selectedPet.maxSp) * 100));
-  const expPercent = (selectedPet.exp / selectedPet.maxExp) * 100;
+  const isMaxLevel = selectedPet.level >= MAX_PET_LEVEL || selectedPet.isMaxLevel === true;
+  const expPercent = isMaxLevel
+    ? 100
+    : Math.min(100, Math.max(0, (selectedPet.exp / selectedPet.maxExp) * 100));
 
   const evoCapLevel = currentStage === 1 ? 10 : currentStage === 2 ? 20 : Infinity;
-  const isLevelCapped = currentStage < 3 && selectedPet.level >= evoCapLevel && PET_DATA[selectedPet.species]?.evolution;
+  const isLevelCapped =
+    !isMaxLevel &&
+    currentStage < 3 &&
+    selectedPet.level >= evoCapLevel &&
+    PET_DATA[selectedPet.species]?.evolution;
 
   const isFainted = selectedPet.hp <= 0;
   const evolutionStoneCount = petInventory?.evolution_stone || 0;
@@ -804,7 +813,10 @@ function PetPage() {
               </>)}
             </PetNameContainer>
 
-            <PetLevel>Lv. {selectedPet.level} {currentPetInfo?.name || PET_DATA[selectedPet.species].name}</PetLevel>
+            <PetLevel>
+              Lv. {selectedPet.level} {currentPetInfo?.name || PET_DATA[selectedPet.species].name}
+              {isMaxLevel ? ' · MAX' : ''}
+            </PetLevel>
             {isFainted && <p style={{ color: '#fa5252', fontWeight: '800', margin: 0 }}>⚠️ 전투 불능!</p>}
 
             <AccordionContainer>
@@ -905,10 +917,26 @@ function PetPage() {
           <PetInfo>
             <StatBarContainer><StatBar $percent={hpPercent} $barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
             <StatBarContainer><StatBar $percent={spPercent} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
-            <StatBarContainer><StatBar $percent={expPercent} $barColor="linear-gradient(90deg, #ffc107, #ff9800)" /><StatText>EXP: {selectedPet.exp} / {selectedPet.maxExp}</StatText></StatBarContainer>
+            <StatBarContainer>
+              <StatBar
+                $percent={expPercent}
+                $barColor={isMaxLevel
+                  ? "linear-gradient(90deg, #845ef7, #5f3dc4)"
+                  : "linear-gradient(90deg, #ffc107, #ff9800)"
+                }
+              />
+              <StatText>
+                {isMaxLevel ? "MAX LEVEL" : `EXP: ${selectedPet.exp} / ${selectedPet.maxExp}`}
+              </StatText>
+            </StatBarContainer>
             {isLevelCapped && (
               <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#856404', marginTop: '4px' }}>
                 ⚠️ <strong>Lv.{evoCapLevel} 상한 도달!</strong> 진화하지 않으면 레벨업할 수 없습니다. 경험치는 누적되고 있으니 진화 후 한꺼번에 반영됩니다.
+              </div>
+            )}
+            {isMaxLevel && (
+              <div style={{ background: '#f3f0ff', border: '1px solid #b197fc', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#5f3dc4', marginTop: '4px', fontWeight: 700 }}>
+                👑 <strong>Lv.{MAX_PET_LEVEL} 만렙 달성!</strong> 이 펫은 최고 레벨에 도달했습니다. 이제 배틀과 수집에서 멋지게 활약시켜 주세요!
               </div>
             )}
 
@@ -992,13 +1020,13 @@ function PetPage() {
                 <img src={petImageMap[`${pet.appearanceId}_idle`]} alt={pet.name} />
                 <div>
                   <strong>{pet.name}</strong>
-                  <p>Lv.{pet.level} {pet.id === partnerPetId && '⭐'}</p>
+                  <p>Lv.{pet.level}{pet.level >= MAX_PET_LEVEL || pet.isMaxLevel ? ' MAX' : ''} {pet.id === partnerPetId && '⭐'}</p>
                 </div>
               </PetListItem>
             ))}
           </PetListWrapper>
           <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
               <StyledButton
                 onClick={() => setPartnerPet(selectedPetId)}

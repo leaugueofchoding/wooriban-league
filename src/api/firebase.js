@@ -3346,22 +3346,47 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     const petIndex = pets.findIndex(p => p.id === petId);
 
     if (petIndex === -1) throw new Error("진화할 펫을 찾을 수 없습니다.");
-    const pet = pets[petIndex];
 
-    // 알림 메시지용 진화 전 이름 미리 저장
+    let pet = { ...pets[petIndex] };
+
     const oldPetName = pet.name;
 
-    if (!inventory[evolutionStoneId] || inventory[evolutionStoneId] <= 0) throw new Error("진화 아이템이 없습니다.");
+    if (!inventory[evolutionStoneId] || inventory[evolutionStoneId] <= 0) {
+      throw new Error("진화 아이템이 없습니다.");
+    }
 
     const currentStage = parseInt(pet.appearanceId.match(/_lv(\d)/)?.[1] || '1');
     const evolutionLevel = currentStage === 1 ? 10 : 20;
 
-    if (pet.level < evolutionLevel) throw new Error(`레벨 ${evolutionLevel} 이상만 진화할 수 있습니다.`);
-    if (currentStage >= 3) throw new Error("이미 최종 단계로 진화했습니다.");
+    if (pet.level < evolutionLevel) {
+      throw new Error(`레벨 ${evolutionLevel} 이상만 진화할 수 있습니다.`);
+    }
 
-    const evolutionData = PET_DATA[pet.species].evolution[`lv${evolutionLevel}`];
+    if (currentStage >= 3) {
+      throw new Error("이미 최종 단계로 진화했습니다.");
+    }
+
+    const speciesData = PET_DATA[pet.species];
+    const evolutionData = speciesData.evolution[`lv${evolutionLevel}`];
+
+    // 사용자가 직접 이름을 바꾼 펫인지 확인
+    // customName 필드가 없는 기존 펫도 고려해서,
+    // 현재 이름이 공식 진화 이름 목록에 없으면 커스텀 이름으로 판단합니다.
+    const officialNames = [
+      speciesData.name,
+      ...Object.values(speciesData.evolution || {}).map(evo => evo.name),
+    ].filter(Boolean);
+
+    const hasCustomName =
+      pet.customName === true ||
+      (pet.name && !officialNames.includes(pet.name));
+
+    const preservedName = hasCustomName ? pet.name : evolutionData.name;
+    const evolvedSpeciesName = evolutionData.name;
+
     pet.appearanceId = evolutionData.appearanceId;
-    pet.name = evolutionData.name;
+    pet.name = preservedName;
+    pet.customName = hasCustomName;
 
     // 진화 보너스 스탯 적용
     pet.maxHp = Math.floor(pet.maxHp * evolutionData.statBoost.hp);
@@ -3372,46 +3397,46 @@ export async function evolvePet(classId, playerId, petId, evolutionStoneId) {
     pet.hp = pet.maxHp;
     pet.sp = pet.maxSp;
 
-    // [밸런스] 진화 전까지 누적된 경험치로 즉시 레벨업 처리
-    // (진화 상한 중 쌓인 exp가 있으면 진화 직후 한꺼번에 반영)
+    // 진화 전까지 누적된 경험치로 즉시 레벨업 처리
     const { leveledUpPet, levelUps } = calculateLevelUp(pet);
-    pets[petIndex] = leveledUpPet;
     const finalPet = leveledUpPet;
 
-    // ▼▼▼ [신규] 진화 시 고유 스킬 자동 습득 로직 추가 ▼▼▼
+    // 진화 시 고유 스킬 자동 습득
     if (!finalPet.skills) finalPet.skills = [];
 
-    // 기존 1개짜리 스킬 (객체 형태) 처리
     if (evolutionData.newSkill) {
-      if (!finalPet.skills.includes(evolutionData.newSkill.id)) {
-        finalPet.skills.push(evolutionData.newSkill.id);
+      const newSkillId = evolutionData.newSkill.id || evolutionData.newSkill;
+      if (!finalPet.skills.includes(newSkillId)) {
+        finalPet.skills.push(newSkillId);
       }
     }
 
-    // 신규 추가: 배열 형태의 복수 스킬 (newSkills) 처리
     if (evolutionData.newSkills && Array.isArray(evolutionData.newSkills)) {
-      evolutionData.newSkills.forEach(skillId => {
+      evolutionData.newSkills.forEach(skill => {
+        const skillId = skill.id || skill;
         if (!finalPet.skills.includes(skillId)) {
           finalPet.skills.push(skillId);
         }
       });
     }
-    // ▲▲▲ [신규 끝] ▲▲▲
 
     const newInventory = { ...inventory };
     newInventory[evolutionStoneId] -= 1;
 
     pets[petIndex] = finalPet;
+
     transaction.update(playerRef, {
-      pets: pets,
-      petInventory: newInventory
+      pets,
+      petInventory: newInventory,
     });
 
     const levelUpMsg = levelUps > 0 ? ` 누적 경험치로 ${levelUps}레벨 상승!` : '';
+    const nameKeepMsg = hasCustomName ? ` 이름은 '${finalPet.name}' 그대로 유지됩니다.` : '';
+
     createNotification(
       playerData.authUid,
       `🎉 펫 진화 성공!`,
-      `${oldPetName}(이)가 ${finalPet.name}(으)로 진화했습니다! 신규 스킬을 획득했습니다.${levelUpMsg}`,
+      `${oldPetName}(이)가 ${evolvedSpeciesName}(으)로 진화했습니다!${nameKeepMsg} 신규 스킬을 획득했습니다.${levelUpMsg}`,
       'pet_evolution',
       '/pet'
     );
@@ -3495,6 +3520,7 @@ export async function updatePetName(classId, playerId, petId, newName) {
   if (!newName || newName.length > 10) {
     throw new Error("이름은 1자 이상 10자 이하로 입력해주세요.");
   }
+
   const playerRef = doc(db, "classes", classId, "players", playerId);
 
   return await runTransaction(db, async (transaction) => {
@@ -3507,11 +3533,18 @@ export async function updatePetName(classId, playerId, petId, newName) {
 
     if (petIndex === -1) throw new Error("펫을 찾을 수 없습니다.");
 
-    pets[petIndex].name = newName;
-    transaction.update(playerRef, { pets: pets });
+    pets[petIndex] = {
+      ...pets[petIndex],
+      name: newName,
+      customName: true,
+    };
 
-    const updatedPlayerSnap = await transaction.get(playerRef);
-    return updatedPlayerSnap.data();
+    transaction.update(playerRef, { pets });
+
+    return {
+      ...playerData,
+      pets,
+    };
   });
 }
 
@@ -4471,49 +4504,94 @@ export function getScaledSkillCost(baseCost, petLevel) {
   return Math.round(baseCost * scale);
 }
 
+const MAX_PET_LEVEL = 30;
+
+const getRequiredExpForLevel = (level) => {
+  // Lv.1 기준 270부터 시작
+  return 200 + (level * 70);
+};
+
+const getPetStage = (pet) => {
+  return parseInt(pet.appearanceId?.match(/_lv(\d)/)?.[1] || '1', 10);
+};
+
+const getLevelCapByStage = (pet) => {
+  const stage = getPetStage(pet);
+
+  if (stage === 1) return 10;
+  if (stage === 2) return 20;
+  return MAX_PET_LEVEL;
+};
+
 function calculateLevelUp(pet) {
-  let leveledUpPet = { ...pet };
+  const leveledUpPet = { ...pet };
   let levelUps = 0;
-  const growth = PET_DATA[pet.species] ? PET_DATA[pet.species].growth : { hp: 10, sp: 5, atk: 2 };
 
-  // [밸런스] 진화 레벨 상한 체크: 진화 가능 레벨 달성 후 미진화 시 레벨업 중단
-  // 1단계(Lv1) → 진화 필요 레벨: 10, 2단계(Lv10 진화 후) → 진화 필요 레벨: 20
-  const getEvoCap = (p) => {
-    if (!PET_DATA[p.species]?.evolution) return Infinity;
-    const stage = parseInt(p.appearanceId?.match(/_lv(\d)/)?.[1] || '1');
-    if (stage === 1) return 10;  // 1차 진화 미완료
-    if (stage === 2) return 20;  // 2차 진화 미완료
-    return Infinity;             // 최종 진화 완료, 무제한
-  };
+  leveledUpPet.level = Number(leveledUpPet.level || 1);
+  leveledUpPet.exp = Number(leveledUpPet.exp || 0);
+  leveledUpPet.maxExp = Number(
+    leveledUpPet.maxExp || getRequiredExpForLevel(leveledUpPet.level)
+  );
 
-  while (leveledUpPet.exp >= leveledUpPet.maxExp) {
-    // [밸런스] 진화 미완료 레벨 상한 도달 시 레벨업만 중단, 경험치는 계속 누적
-    // → 진화 후 calculateLevelUp 재호출 시 누적 경험치로 한꺼번에 레벨업 처리됨
-    const evoCap = getEvoCap(leveledUpPet);
-    if (leveledUpPet.level >= evoCap) break;
+  const levelCap = getLevelCapByStage(leveledUpPet);
 
-    leveledUpPet.level++;
+  // 현재 진화 단계의 상한에 도달한 경우:
+  // 레벨업은 막지만 exp는 보존한다.
+  // 그래야 진화 후 calculateLevelUp이 다시 호출될 때 한꺼번에 반영된다.
+  if (leveledUpPet.level >= levelCap) {
+    leveledUpPet.level = levelCap;
+    leveledUpPet.maxExp = getRequiredExpForLevel(levelCap);
+    leveledUpPet.isLevelCapped = levelCap < MAX_PET_LEVEL;
+    leveledUpPet.isMaxLevel = levelCap >= MAX_PET_LEVEL;
+    return { leveledUpPet, levelUps };
+  }
+
+  while (
+    leveledUpPet.level < levelCap &&
+    leveledUpPet.exp >= leveledUpPet.maxExp
+  ) {
     leveledUpPet.exp -= leveledUpPet.maxExp;
+    leveledUpPet.level += 1;
+    levelUps += 1;
 
-    const nextLevel = leveledUpPet.level;
+    const petData = PET_DATA[leveledUpPet.species];
 
-    // [핵심 변경] 공식: 200 + (70 * Level)
-    // - Lv 1->2 필요량: 270 XP
-    // - Lv 29->30 필요량: 2,230 XP
-    // - 총 누적: 36,250 XP (미션 경험치 상향에 맞춘 밸런스)
-    leveledUpPet.maxExp = 200 + (70 * nextLevel);
+    if (petData?.growth) {
+      leveledUpPet.maxHp += petData.growth.hp;
+      leveledUpPet.maxSp += petData.growth.sp;
+      leveledUpPet.atk += petData.growth.atk;
 
-    // 스탯 성장
-    leveledUpPet.maxHp += growth.hp;
-    leveledUpPet.maxSp += growth.sp;
-    leveledUpPet.atk += growth.atk;
+      leveledUpPet.hp = Math.min(
+        leveledUpPet.maxHp,
+        Number(leveledUpPet.hp || 0) + petData.growth.hp
+      );
 
-    levelUps++;
+      leveledUpPet.sp = Math.min(
+        leveledUpPet.maxSp,
+        Number(leveledUpPet.sp || 0) + petData.growth.sp
+      );
+    }
+
+    leveledUpPet.maxExp = getRequiredExpForLevel(leveledUpPet.level);
   }
-  if (levelUps > 0) {
-    leveledUpPet.hp = leveledUpPet.maxHp;
-    leveledUpPet.sp = leveledUpPet.maxSp;
+
+  // 레벨업 결과 상한에 도달했을 때
+  if (leveledUpPet.level >= levelCap) {
+    leveledUpPet.level = levelCap;
+    leveledUpPet.maxExp = getRequiredExpForLevel(levelCap);
+    leveledUpPet.isLevelCapped = levelCap < MAX_PET_LEVEL;
+    leveledUpPet.isMaxLevel = levelCap >= MAX_PET_LEVEL;
+
+    // 30 만렙일 때만 남은 경험치 제거
+    // 10/20 진화 대기 상태에서는 경험치를 남겨야 진화 후 한꺼번에 반영됨
+    if (levelCap >= MAX_PET_LEVEL) {
+      leveledUpPet.exp = 0;
+    }
+  } else {
+    leveledUpPet.isLevelCapped = false;
+    leveledUpPet.isMaxLevel = false;
   }
+
   return { leveledUpPet, levelUps };
 }
 

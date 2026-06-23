@@ -394,9 +394,10 @@ const ApprovalModal = ({ submission, onClose, onNext, onPrev, currentIndex, tota
                             {comments.map(comment => (
                                 <CommentThread
                                     key={comment.id}
+                                    classId={classId}
                                     submissionId={submission.id}
                                     comment={comment}
-                                    missionTitle={mission.title}
+                                    missionTitle={mission?.title || '미션'}
                                     permissions={{ canLike: true, canReply: true, canEdit: myPlayerData?.role === 'admin' }}
                                 />
                             ))}

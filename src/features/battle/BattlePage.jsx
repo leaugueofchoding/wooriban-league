@@ -916,8 +916,16 @@ function BattlePage() {
 
                 if (isProcessing) return;
 
-                if (elapsed > limitSeconds * 1000) {
+                const limitMs = limitSeconds * 1000;
+                const timeoutBufferMs = 800;
+
+                // 턴 자동 진행은 방장(challenger) 브라우저 하나만 담당합니다.
+                // 양쪽 브라우저가 동시에 시간초과를 처리하면 공격/방어 선택 전에 턴이 넘어가는 레이스가 생길 수 있습니다.
+                if (elapsed > limitMs + timeoutBufferMs) {
                     clearInterval(timerRef.current);
+
+                    if (!iAmChallenger) return;
+
                     if (battleState.status === 'quiz') handleTimeout(battleRef);
                     else handleActionTimeout(battleRef);
                 }
@@ -952,7 +960,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 600);
 
                 } else if (actionType === 'WIND_BLADE') {
@@ -978,7 +986,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1400);
 
                 } else if (actionType === 'TORNADO_SWEEP') {
@@ -999,7 +1007,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 2200);
 
                 } else if (actionType === 'QUICK_DISTURBANCE') {
@@ -1024,7 +1032,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1600);
 
                 } else if (actionType === 'FLAME_DASH') {
@@ -1042,7 +1050,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1300);
 
                 } else if (actionType === 'THUNDER_PUNCH') {
@@ -1058,7 +1066,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 900);
 
                 } else if (actionType === 'THUNDERSTORM') {
@@ -1074,7 +1082,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1800);
 
                 } else if (actionType === 'UPHWA') {
@@ -1090,7 +1098,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1900);
 
                 } else if (actionType === 'SOLAR_BEAM') {
@@ -1106,7 +1114,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1900);
 
                 } else if (actionType === 'STELLAR_BLAST') {
@@ -1122,7 +1130,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 2000);
 
                 } else if (actionType === 'DRAGON_CLAW') {
@@ -1143,7 +1151,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1200);
 
                 } else if (actionType === 'WATER_BALL') {
@@ -1159,7 +1167,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1200);
 
                 } else if (actionType === 'COUNTER_STANCE') {
@@ -1175,7 +1183,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1000);
 
                 } else if (actionType === 'ULTIMATE_SECRET') {
@@ -1191,7 +1199,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1600);
 
                 } else if (actionType === 'REED_BOW') {
@@ -1207,7 +1215,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1500);
 
                 } else {
@@ -1236,7 +1244,7 @@ function BattlePage() {
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        handleResolution(battleRef);
+                        if (iAmChallenger) handleResolution(battleRef);
                     }, 1450);
                 }
             }
@@ -1288,7 +1296,7 @@ function BattlePage() {
                 const battleDoc = await transaction.get(battleRef);
                 if (!battleDoc.exists() || battleDoc.data().status !== 'action') return;
                 const data = battleDoc.data();
-                if (Date.now() - data.turnStartTime < 9500) return;
+                if (Date.now() - data.turnStartTime < 10800) return;
 
                 const updates = {};
                 if (!data.attackerAction) updates.attackerAction = 'TACKLE';
@@ -1325,7 +1333,7 @@ function BattlePage() {
 
                 const data = battleDoc.data();
                 if (data.status === 'finished' || data.status !== 'quiz') return null;
-                if (Date.now() - data.turnStartTime < 14500) return null;
+                if (Date.now() - data.turnStartTime < 15800) return null;
 
                 let { challenger, opponent } = data;
 
@@ -1723,7 +1731,7 @@ function BattlePage() {
                 if (!battleDoc.exists()) return null;
 
                 const data = battleDoc.data();
-                if (data.status === 'finished') return null;
+                if (data.status !== 'action' || data.status === 'finished') return null;
 
                 let { challenger, opponent, turn, attackerAction, defenderAction } = data;
                 if (!attackerAction || !defenderAction) return null;

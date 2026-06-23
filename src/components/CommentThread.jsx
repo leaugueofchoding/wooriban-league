@@ -171,13 +171,26 @@ function CommentThread({ classId, submissionId, comment, missionTitle, permissio
     const MIN_COMMENT_LENGTH = 8;
 
     useEffect(() => {
-        const repliesRef = collection(db, "classes", classId, "missionSubmissions", submissionId, "comments", comment.id, "replies");
+        if (!classId || !submissionId || !comment?.id) return;
+
+        const repliesRef = collection(
+            db,
+            "classes",
+            classId,
+            "missionSubmissions",
+            submissionId,
+            "comments",
+            comment.id,
+            "replies"
+        );
+
         const q = query(repliesRef, orderBy("createdAt", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setReplies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
+
         return () => unsubscribe();
-    }, [submissionId, comment.id]);
+    }, [classId, submissionId, comment?.id]);
 
     const handleLike = () => {
         if (!myPlayerData || !permissions.canLike) return;
