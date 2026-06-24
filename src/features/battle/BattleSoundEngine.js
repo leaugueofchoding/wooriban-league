@@ -410,3 +410,309 @@ export const playHealSound = () => {
         console.log('battleSoundEngine: heal sound unavailable', e);
     }
 };
+
+// M1_BATTLE_BGM_PATCH
+// M1_BATTLE_BGM_UPGRADE_PATCH: 외부 음원 없는 8비트풍 배틀 BGM 합성 엔진 v2
+let bgmTimer = null;
+let bgmStep = 0;
+let bgmMaster = null;
+let currentBgmTrackId = 'battle_road';
+
+const BGM_TEMPO = 142;
+const BGM_STEP_SECONDS = 60 / BGM_TEMPO / 2;
+const BGM_MASTER_VOLUME = 0.34; // M1_BATTLE_BGM_RANDOM_LOUD_PATCH
+
+const BGM_NOTES = {
+    C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
+    C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00
+};
+
+const BGM_TRACKS = {
+    battle_road: {
+        label: '배틀길',
+        tempo: 142,
+        masterVolume: 0.34,
+        leadGain: 0.145,
+        bassGain: 0.100,
+        clickGain: 0.082,
+        kickGain: 0.128,
+        melody: [
+            'E4', null, 'G4', null, 'A4', 'G4', 'E4', null,
+            'D4', null, 'E4', 'G4', 'A4', null, 'G4', null,
+            'C5', null, 'B4', 'G4', 'A4', null, 'E4', null,
+            'D4', 'E4', 'G4', null, 'E4', null, null, null,
+        ],
+        bass: [
+            'A3', null, null, null, 'G3', null, null, null,
+            'F3', null, null, null, 'G3', null, null, null,
+            'A3', null, null, null, 'C4', null, null, null,
+            'F3', null, 'G3', null, 'A3', null, null, null,
+        ],
+    },
+    school_champion: {
+        label: '챔피언',
+        tempo: 150,
+        masterVolume: 0.36,
+        leadGain: 0.152,
+        bassGain: 0.108,
+        clickGain: 0.086,
+        kickGain: 0.132,
+        melody: [
+            'C5', null, 'E5', null, 'G5', 'E5', 'C5', null,
+            'B4', null, 'D5', null, 'G5', null, 'E5', null,
+            'A4', null, 'C5', 'E5', 'A5', null, 'G5', null,
+            'E5', 'D5', 'C5', null, 'D5', null, null, null,
+        ],
+        bass: [
+            'C4', null, null, null, 'G3', null, null, null,
+            'A3', null, null, null, 'F3', null, null, null,
+            'C4', null, null, null, 'A3', null, null, null,
+            'F3', null, 'G3', null, 'C4', null, null, null,
+        ],
+    },
+    night_duel: {
+        label: '밤의결투',
+        tempo: 132,
+        masterVolume: 0.35,
+        leadGain: 0.140,
+        bassGain: 0.110,
+        clickGain: 0.078,
+        kickGain: 0.120,
+        melody: [
+            'A4', null, 'C5', null, 'B4', null, 'G4', null,
+            'E4', null, 'G4', null, 'A4', null, 'C5', null,
+            'B4', null, 'A4', null, 'G4', 'E4', 'D4', null,
+            'E4', null, 'G4', null, 'A4', null, null, null,
+        ],
+        bass: [
+            'A3', null, null, null, 'E3', null, null, null,
+            'F3', null, null, null, 'G3', null, null, null,
+            'A3', null, null, null, 'G3', null, null, null,
+            'F3', null, 'E3', null, 'A3', null, null, null,
+        ],
+    },
+    tiny_boss: {
+        label: '작은보스',
+        tempo: 158,
+        masterVolume: 0.37,
+        leadGain: 0.158,
+        bassGain: 0.115,
+        clickGain: 0.092,
+        kickGain: 0.138,
+        melody: [
+            'E5', 'D5', 'E5', null, 'B4', null, 'C5', 'D5',
+            'E5', null, 'G5', null, 'E5', 'D5', 'C5', null,
+            'A4', null, 'C5', null, 'E5', null, 'G5', null,
+            'F5', 'E5', 'D5', null, 'B4', null, null, null,
+        ],
+        bass: [
+            'E3', null, null, null, 'E3', null, null, null,
+            'C3', null, null, null, 'D3', null, null, null,
+            'A3', null, null, null, 'G3', null, null, null,
+            'F3', null, 'D3', null, 'E3', null, null, null,
+        ],
+    },
+};
+
+export const getBattleBgmTrackIds = () => Object.keys(BGM_TRACKS);
+
+const getCurrentBgmTrack = () => BGM_TRACKS[currentBgmTrackId] || BGM_TRACKS.battle_road;
+
+const pickRandomBgmTrackId = () => {
+    const trackIds = Object.keys(BGM_TRACKS);
+    if (trackIds.length === 0) return 'battle_road';
+    if (trackIds.length === 1) return trackIds[0];
+
+    const candidates = trackIds.filter(id => id !== currentBgmTrackId);
+    return candidates[Math.floor(Math.random() * candidates.length)];
+};
+
+const getStepSeconds = () => {
+    const track = getCurrentBgmTrack();
+    return 60 / (track.tempo || BGM_TEMPO) / 2;
+};
+
+const ensureBgmMaster = (ctx) => {
+    const track = getCurrentBgmTrack();
+    if (!bgmMaster) {
+        bgmMaster = ctx.createGain();
+        bgmMaster.gain.setValueAtTime(0.0001, ctx.currentTime);
+        bgmMaster.gain.linearRampToValueAtTime(track.masterVolume || BGM_MASTER_VOLUME, ctx.currentTime + 0.25);
+        bgmMaster.connect(ctx.destination);
+    }
+    return bgmMaster;
+};
+
+const playBgmTone = (ctx, {
+    freq,
+    startTime = 0,
+    duration = 0.12,
+    type = 'square',
+    gain = 0.12,
+    detune = 0,
+}) => {
+    if (!freq || !bgmMaster) return;
+
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    osc.type = type;
+    osc.detune.value = detune;
+    osc.frequency.setValueAtTime(freq, t0);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1900, t0);
+    filter.Q.setValueAtTime(0.65, t0);
+
+    gainNode.gain.setValueAtTime(0.0001, t0);
+    gainNode.gain.linearRampToValueAtTime(gain, t0 + 0.015);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+
+    osc.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(bgmMaster);
+
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.03);
+};
+
+const playBgmClick = (ctx, startTime = 0, gain = 0.04) => {
+    if (!bgmMaster) return;
+
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(2200, t0);
+
+    gainNode.gain.setValueAtTime(gain, t0);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.035);
+
+    osc.connect(gainNode);
+    gainNode.connect(bgmMaster);
+
+    osc.start(t0);
+    osc.stop(t0 + 0.045);
+};
+
+const playBgmKick = (ctx, startTime = 0, gain = 0.08) => {
+    if (!bgmMaster) return;
+
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, t0);
+    osc.frequency.exponentialRampToValueAtTime(45, t0 + 0.09);
+
+    gainNode.gain.setValueAtTime(gain, t0);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+
+    osc.connect(gainNode);
+    gainNode.connect(bgmMaster);
+
+    osc.start(t0);
+    osc.stop(t0 + 0.12);
+};
+
+const playBattleBgmStep = (ctx) => {
+    const track = getCurrentBgmTrack();
+    const step = bgmStep % 32;
+    const stepSeconds = getStepSeconds();
+
+    const melodyNote = track.melody[step];
+    const bassNote = track.bass[step];
+
+    if (melodyNote) {
+        playBgmTone(ctx, {
+            freq: BGM_NOTES[melodyNote],
+            duration: stepSeconds * 0.82,
+            type: step % 8 === 0 ? 'square' : 'triangle',
+            gain: track.leadGain || 0.075,
+            detune: step % 4 === 0 ? -3 : 3,
+        });
+    }
+
+    if (bassNote) {
+        playBgmTone(ctx, {
+            freq: BGM_NOTES[bassNote],
+            duration: stepSeconds * 1.45,
+            type: 'triangle',
+            gain: track.bassGain || 0.055,
+        });
+    }
+
+    if (step % 4 === 0) {
+        playBgmKick(ctx, 0, track.kickGain || 0.08);
+    }
+
+    if (step % 2 === 1) {
+        playBgmClick(ctx, 0.01, step % 8 === 3 ? (track.clickGain || 0.048) : (track.clickGain || 0.04) * 0.75);
+    }
+
+    bgmStep += 1;
+};
+
+export const startBattleBgm = (trackId = 'random') => {
+    try {
+        // 이미 재생 중이면 같은 배틀 중에는 곡을 유지합니다.
+        if (bgmTimer) return;
+
+        const nextTrackId =
+            trackId === 'random'
+                ? pickRandomBgmTrackId()
+                : (BGM_TRACKS[trackId] ? trackId : pickRandomBgmTrackId());
+
+        currentBgmTrackId = nextTrackId;
+
+        const ctx = getCtx();
+        if (!ctx) return;
+
+        ensureBgmMaster(ctx);
+        playBattleBgmStep(ctx);
+
+        bgmTimer = window.setInterval(() => {
+            const liveCtx = getCtx();
+            if (!liveCtx) return;
+            ensureBgmMaster(liveCtx);
+            playBattleBgmStep(liveCtx);
+        }, getStepSeconds() * 1000);
+    } catch (e) {
+        console.log('battleSoundEngine: bgm unavailable', e);
+    }
+};
+
+export const stopBattleBgm = () => {
+    try {
+        if (bgmTimer) {
+            window.clearInterval(bgmTimer);
+            bgmTimer = null;
+        }
+
+        const ctx = sharedCtx;
+        if (ctx && bgmMaster) {
+            bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
+            bgmMaster.gain.setValueAtTime(Math.max(0.0001, bgmMaster.gain.value), ctx.currentTime);
+            bgmMaster.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+
+            const oldMaster = bgmMaster;
+            window.setTimeout(() => {
+                try {
+                    oldMaster.disconnect();
+                } catch (_) {
+                    // 이미 끊긴 경우 무시
+                }
+            }, 320);
+        }
+
+        bgmMaster = null;
+        bgmStep = 0;
+    } catch (e) {
+        console.log('battleSoundEngine: bgm stop unavailable', e);
+    }
+};

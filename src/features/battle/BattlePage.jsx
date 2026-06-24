@@ -10,8 +10,12 @@ import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect, { DotDamageEffect } from './BattleSkillEffect';
-import { playSkillSound, playHitSound, playHealSound } from './BattleSoundEngine';
+import { playSkillSound, playHitSound, playHealSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
 import BattleStatusEffect from './BattleStatusEffect';
+import { BattleHpBar, BattleSpBar } from './BattleStatBars';
+
+// M1_BATTLE_BGM_RANDOM_LOUD_PATCH
+
 // --- Styled Components & Keyframes ---
 
 const rotate = keyframes`
@@ -25,6 +29,50 @@ const float = keyframes`
   100% { transform: translateY(0px); }
 `;
 
+
+
+// M1_BATTLE_BG_INTRO_PATCH: 전투 시작 시 펫 등장 연출
+const petIntroMine = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(-90px, 35px) scale(0.72);
+    filter: brightness(1.35) drop-shadow(0 0 0 rgba(255,255,255,0));
+  }
+  55% {
+    opacity: 1;
+    transform: translate(12px, -8px) scale(1.08);
+    filter: brightness(1.18) drop-shadow(0 0 14px rgba(255,255,255,0.9));
+  }
+  75% {
+    transform: translate(-4px, 4px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: brightness(1) drop-shadow(0 10px 10px rgba(0,0,0,0.1));
+  }
+`;
+
+const petIntroOpponent = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(90px, -35px) scale(0.72);
+    filter: brightness(1.35) drop-shadow(0 0 0 rgba(255,255,255,0));
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-12px, 8px) scale(1.08);
+    filter: brightness(1.18) drop-shadow(0 0 14px rgba(255,255,255,0.9));
+  }
+  75% {
+    transform: translate(4px, -4px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: brightness(1) drop-shadow(0 10px 10px rgba(0,0,0,0.1));
+  }
+`;
 const shakeDamage = keyframes`
   0% { transform: translateX(0); }
   25% { transform: translateX(-6px) rotate(-6deg); }
@@ -453,10 +501,65 @@ const ScaleSlider = styled.input`
 `;
 
 const BattleField = styled.div`
-  height: 550px; position: relative; margin-bottom: 2rem; 
-  background: radial-gradient(circle, #ffffff 0%, #e7f5ff 100%);
+  height: 550px;
+  position: relative;
+  margin-bottom: 2rem;
+  overflow: visible;
   border-radius: 20px;
-  border: 2px solid #d0ebff;
+  border: 3px solid #8ce99a;
+  background:
+    linear-gradient(
+      to bottom,
+      #a5d8ff 0%,
+      #d0ebff 38%,
+      #b2f2bb 39%,
+      #8ce99a 100%
+    );
+  box-shadow:
+    inset 0 0 0 4px rgba(255,255,255,0.45),
+    inset 0 -18px 0 rgba(47, 158, 68, 0.18),
+    0 8px 20px rgba(0,0,0,0.08);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+        border-radius: 17px;
+opacity: 0.45;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.42) 2px, transparent 2px),
+      linear-gradient(90deg, rgba(255,255,255,0.32) 2px, transparent 2px);
+    background-size: 24px 24px;
+    image-rendering: pixelated;
+    z-index: 0;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 38px;
+    width: 78%;
+    height: 120px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(43, 138, 62, 0.22) 0 8px,
+        rgba(81, 207, 102, 0.22) 8px 16px
+      );
+    border: 4px solid rgba(47, 158, 68, 0.35);
+    box-shadow:
+      inset 0 0 0 6px rgba(255,255,255,0.25),
+      0 12px 0 rgba(47, 158, 68, 0.15);
+    z-index: 0;
+  }
+
+  > * {
+    z-index: 1;
+  }
 `;
 
 const PetContainerWrapper = styled.div`
@@ -486,45 +589,21 @@ const PetContainer = styled.div`
                                                                 props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 1.6s ease-in-out` :
                                                                     props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
                                                                         props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
-                                                                            'none'};
+                                                                            props.$intro ? css`${props.$isMine ? petIntroMine : petIntroOpponent} 1.05s cubic-bezier(.18,.89,.32,1.28)` :
+                                                                                    'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
 const PetImage = styled.img`
-  width: 100%; height: 100%; object-fit: contain;
-  filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'}; 
-  transition: filter 0.3s;
-`;
-
-const StatBar = styled.div`
-  width: 100%; height: 18px; background-color: #e9ecef; border-radius: 10px; overflow: hidden; position: relative;
-  display: flex;
-`;
-const BarFill = styled.div`
-  width: ${props => props.$percent}%; height: 100%; background-color: ${props => props.color}; transition: width 0.5s ease;
-`;
-
-const ShieldFill = styled.div`
-  width: ${props => props.$percent}%; height: 100%; 
-  background-color: #845ef7; 
-  transition: width 0.5s ease;
-  border-left: 1px solid rgba(255,255,255,0.6);
-  box-shadow: inset 0 0 10px rgba(255,255,255,0.4);
-`;
-
-const SpOverflowFill = styled.div`
-  width: ${props => props.$percent}%; height: 100%; 
-  background-color: #fcc419; 
-  transition: width 0.5s ease;
-  border-left: 1px solid rgba(255,255,255,0.6);
-  box-shadow: inset 0 0 10px rgba(255,255,255,0.6);
-`;
-
-const BarText = styled.div`
-  position: absolute; width: 100%; height: 100%; top: 0; left: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.75rem; color: #fff; font-weight: 800; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: ${props => props.$isFainted
+        ? 'grayscale(100%) brightness(0.75)'
+        : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'};
+  opacity: ${props => props.$isFainted ? 0.55 : 1};
+  transform: ${props => props.$isFainted ? 'translateY(18px) rotate(-4deg) scale(0.92)' : 'none'};
+  transition: filter 0.3s, opacity 0.3s, transform 0.35s ease;
 `;
 
 const QuizArea = styled.div`
@@ -708,13 +787,6 @@ const OptionButton = styled.button`
 
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 
-const getHpColor = (current, max) => {
-    const percentage = (current / max) * 100;
-    if (percentage <= 25) return '#fa5252';
-    if (percentage <= 50) return '#fab005';
-    return '#20c997';
-};
-
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -728,7 +800,14 @@ function BattlePage() {
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const [hitState, setHitState] = useState({ my: false, opponent: false });
+            const [bgmEnabled, setBgmEnabled] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        const saved = localStorage.getItem('battleBgmEnabled');
+        return saved === null ? true : saved === 'true';
+    });
+const [introActive, setIntroActive] = useState(false);
+    const introPlayedRef = useRef(false);
+const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
@@ -851,7 +930,66 @@ function BattlePage() {
         return () => unsubscribe();
     }, [myPlayerData, battleId, classId, navigate]);
 
-    // --- 속성별 타격음 리스너 (불/전기/바람/베기 등 actionType에 맞는 임팩트음) ---
+
+    useEffect(() => {
+        if (!battleState) return;
+
+        const isBattleVisible =
+            battleState.status !== 'pending' &&
+            battleState.status !== 'starting';
+
+        if (!isBattleVisible || introPlayedRef.current) return;
+
+        introPlayedRef.current = true;
+        setIntroActive(true);
+
+        const timer = setTimeout(() => {
+            setIntroActive(false);
+        }, 1150);
+
+        return () => clearTimeout(timer);
+    }, [battleState?.status]);
+
+
+    // M1_BATTLE_BGM_PATCH: 배틀 BGM ON/OFF 및 화면 이탈 시 정지
+    useEffect(() => {
+        if (!battleState) {
+            stopBattleBgm();
+            return;
+        }
+
+        const shouldPlayBgm =
+            bgmEnabled &&
+            battleState.status !== 'pending' &&
+            battleState.status !== 'starting' &&
+            battleState.status !== 'finished' &&
+            battleState.status !== 'rejected' &&
+            battleState.status !== 'cancelled';
+
+        if (shouldPlayBgm) {
+            startBattleBgm('random');
+        } else {
+            stopBattleBgm();
+        }
+    }, [bgmEnabled, battleState?.status]);
+
+    useEffect(() => {
+        return () => stopBattleBgm();
+    }, []);
+
+    const handleToggleBgm = () => {
+        const next = !bgmEnabled;
+        setBgmEnabled(next);
+        localStorage.setItem('battleBgmEnabled', String(next));
+
+        if (next) {
+            startBattleBgm('random');
+        } else {
+            stopBattleBgm();
+        }
+    };
+
+// --- 속성별 타격음 리스너 (불/전기/바람/베기 등 actionType에 맞는 임팩트음) ---
     useEffect(() => {
         const actionType = animState.my || animState.opponent || currentEffect?.type || null;
         if (hitState.my || hitState.opponent) {
@@ -2002,33 +2140,11 @@ function BattlePage() {
     };
 
     const renderHpBar = (hp, maxHp) => {
-        const interstateShield = hp > maxHp;
-        const displayMax = interstateShield ? hp : maxHp;
-        const baseHpPercent = interstateShield ? (maxHp / displayMax) * 100 : (hp / maxHp) * 100;
-        const shieldPercent = interstateShield ? ((hp - maxHp) / displayMax) * 100 : 0;
-
-        return (
-            <StatBar>
-                <BarFill $percent={Math.max(0, baseHpPercent)} color={getHpColor(Math.min(hp, maxHp), maxHp)} />
-                {interstateShield && <ShieldFill $percent={shieldPercent} />}
-                <BarText>HP: {hp} / {maxHp}</BarText>
-            </StatBar>
-        );
+        return <BattleHpBar hp={hp} maxHp={maxHp} />;
     };
 
     const renderSpBar = (sp, maxSp) => {
-        const hasOverflow = sp > maxSp;
-        const displayMax = hasOverflow ? sp : maxSp;
-        const baseSpPercent = hasOverflow ? (maxSp / displayMax) * 100 : (sp / maxSp) * 100;
-        const overflowPercent = hasOverflow ? ((sp - maxSp) / displayMax) * 100 : 0;
-
-        return (
-            <StatBar>
-                <BarFill $percent={Math.max(0, baseSpPercent)} color="#007bff" />
-                {hasOverflow && <SpOverflowFill $percent={overflowPercent} />}
-                <BarText>SP: {sp} / {maxSp}</BarText>
-            </StatBar>
-        );
+        return <BattleSpBar sp={sp} maxSp={maxSp} />;
     };
 
     if (!myPlayerData) return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
@@ -2085,6 +2201,23 @@ function BattlePage() {
                     onClick={() => { setBattleScale(1.0); localStorage.removeItem('battleScale'); }}
                     style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #dee2e6', background: '#f8f9fa', cursor: 'pointer' }}
                 >초기화</button>
+
+                <button
+                    onClick={handleToggleBgm}
+                    title={bgmEnabled ? '배틀 배경음악 끄기' : '배틀 배경음악 켜기'}
+                    style={{
+                        padding: '0.2rem 0.7rem',
+                        fontSize: '0.8rem',
+                        borderRadius: '6px',
+                        border: bgmEnabled ? '1px solid #51cf66' : '1px solid #dee2e6',
+                        background: bgmEnabled ? '#ebfbee' : '#f8f9fa',
+                        color: bgmEnabled ? '#2b8a3e' : '#495057',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                    }}
+                >
+                    {bgmEnabled ? '🎵 BGM ON' : '🎵 BGM OFF'}
+                </button>
             </ScaleControlBar>
             <Arena $scale={battleScale}>
                 {battleState.status === 'pending' || battleState.status === 'starting' ? (
@@ -2141,11 +2274,11 @@ function BattlePage() {
                             </MyProfileWrapper>
 
                             <OpponentPetContainerWrapper>
-                                <PetContainer $isHit={hitState.opponent} $animType={animState.opponent} $isMine={false}>
+                                <PetContainer $isHit={hitState.opponent} $animType={animState.opponent} $isMine={false} $intro={introActive}>
                                     <BattleStatusEffect
                                         petStatus={opponentInfo.pet.status}
                                         variant="battle"
-                                        sizeScale={3.4}
+                                        sizeScale={3.1}
                                     />
                                     {dotEffect?.target === 'opponent' && (
                                         <DotDamageEffect $type={dotEffect.type} $top="15%" $left="55%">
@@ -2158,11 +2291,11 @@ function BattlePage() {
                             </OpponentPetContainerWrapper>
 
                             <MyPetContainerWrapper>
-                                <PetContainer $isHit={hitState.my} $animType={animState.my} $isMine={true}>
+                                <PetContainer $isHit={hitState.my} $animType={animState.my} $isMine={true} $intro={introActive}>
                                     <BattleStatusEffect
                                         petStatus={myInfo.pet.status}
                                         variant="battle"
-                                        sizeScale={3.4}
+                                        sizeScale={3.1}
                                     />
                                     {dotEffect?.target === 'my' && (
                                         <DotDamageEffect $type={dotEffect.type} $top="15%" $left="45%">
