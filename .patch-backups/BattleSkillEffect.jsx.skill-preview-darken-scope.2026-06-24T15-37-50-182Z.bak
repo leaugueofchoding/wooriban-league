@@ -644,16 +644,10 @@ const giantExplosionBlast = keyframes`
 `;
 
 const DarkenOverlay = styled.div`
-  /* M2_SKILL_PREVIEW_DARKEN_SCOPE_PATCH
-     fixed를 쓰면 스킬 도감 프리뷰에서도 브라우저 전체가 암전됩니다.
-     absolute로 두어 BattleSkillEffect가 놓인 부모 영역 안에서만 암전되게 합니다. */
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
   pointer-events: none;
-  z-index: 1;
-  border-radius: inherit;
+  z-index: 2000;
   animation: ${darkenFlashAnim} 2.2s forwards;
 `;
 

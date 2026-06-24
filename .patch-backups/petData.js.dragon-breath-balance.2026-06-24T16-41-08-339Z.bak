@@ -637,7 +637,7 @@ export const SKILLS = {
         type: 'signature',
         element: '불',
         basePower: 55,
-        description: '맹렬한 화염을 뿜어 강한 피해를 주지만, 반동으로 다음 턴 행동 불가 상태가 됩니다.',
+        description: '맹렬한 화염을 뿜어 엄청난 피해를 주지만, 반동으로 다음 턴 행동 불가 상태가 됩니다.',
         previewStatus: PREVIEW_STATUS.RECHARGE,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
@@ -652,8 +652,8 @@ export const SKILLS = {
                 attackerPlayer,
                 defenderPlayer,
                 SKILLS.FIERY_BREATH.element,
-                /* M4_DRAGON_BREATH_BALANCE_PATCH_V2 */ 1.45,
-                0.8
+                5.5,
+                1.2
             );
 
             let log = `'${attacker.name}'의 용의 숨결! 🔥`;

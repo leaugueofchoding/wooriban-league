@@ -14,94 +14,6 @@ import { playSkillSound, playHitSound, playHealSound, startBattleBgm, stopBattle
 import BattleStatusEffect from './BattleStatusEffect';
 import { BattleHpBar, BattleSpBar } from './BattleStatBars';
 import BattlePetSlot from './BattlePetSlot';
-import BattleTeamMiniBar from './BattleTeamMiniBar';
-import BattlePlayerPanel from './BattlePlayerPanel';
-import BattleActionMenu from './BattleActionMenu';
-import { normalizeBattleParticipantForBattle, replaceActiveBattlePet } from './battlePetUtils';
-
-
-const syncBattleParticipantActivePet = (participant) => {
-    // M3_ACTIVE_PET_SYNC_PATCH
-    // 기존 로직은 participant.pet을 갱신합니다.
-    // 복수 펫 구조에서는 같은 내용을 team[activePetIndex]에도 반영해야 합니다.
-    if (!participant?.pet) return participant;
-    return replaceActiveBattlePet(participant, participant.pet);
-};
-
-
-const switchToNextAlivePetIfNeeded = (participant) => {
-    // M4_AUTO_SWITCH_PATCH
-    // active pet이 쓰러졌을 때 team 안의 살아있는 대기 펫으로 자동 교체합니다.
-    if (!participant?.pet) {
-        return { participant, switched: false, switchedPetName: null };
-    }
-
-    const currentPet = {
-        ...participant.pet,
-        hp: Math.max(0, Number(participant.pet.hp ?? 0)),
-        status: { ...(participant.pet.status || {}) },
-    };
-
-    const rawTeam = Array.isArray(participant.team) && participant.team.length > 0
-        ? participant.team
-        : [currentPet];
-
-    const currentIndexById = participant.activePetId
-        ? rawTeam.findIndex(pet => pet?.id === participant.activePetId)
-        : -1;
-
-    const fallbackIndex = Number(participant.activePetIndex ?? 0);
-    const activePetIndex = currentIndexById >= 0
-        ? currentIndexById
-        : Math.min(Math.max(Number.isFinite(fallbackIndex) ? fallbackIndex : 0, 0), rawTeam.length - 1);
-
-    const syncedTeam = rawTeam.map((pet, index) => (
-        index === activePetIndex
-            ? currentPet
-            : { ...pet, status: { ...(pet?.status || {}) } }
-    ));
-
-    const syncedParticipant = {
-        ...participant,
-        pet: currentPet,
-        team: syncedTeam,
-        activePetIndex,
-        activePetId: currentPet.id || participant.activePetId || null,
-    };
-
-    if (Number(currentPet.hp ?? 0) > 0) {
-        return { participant: syncedParticipant, switched: false, switchedPetName: null };
-    }
-
-    const nextIndex = syncedTeam.findIndex((pet, index) => (
-        index !== activePetIndex && Number(pet?.hp ?? 0) > 0
-    ));
-
-    if (nextIndex < 0) {
-        return { participant: syncedParticipant, switched: false, switchedPetName: null };
-    }
-
-    const nextPet = {
-        ...syncedTeam[nextIndex],
-        status: { ...(syncedTeam[nextIndex]?.status || {}) },
-    };
-
-    const nextTeam = syncedTeam.map((pet, index) => (
-        index === nextIndex ? nextPet : pet
-    ));
-
-    return {
-        participant: {
-            ...participant,
-            pet: nextPet,
-            team: nextTeam,
-            activePetIndex: nextIndex,
-            activePetId: nextPet.id || null,
-        },
-        switched: true,
-        switchedPetName: nextPet.name || '다음 펫',
-    };
-};
 
 // M1_BATTLE_BGM_RANDOM_LOUD_PATCH
 
@@ -467,29 +379,13 @@ const ProfileWrapper = styled.div`
 `;
 
 const OpponentProfileWrapper = styled(ProfileWrapper)`
-  /* M2_STATUS_PANEL_VERTICAL_SWAP_PATCH: 상대 상태창을 오른쪽 아래로 이동 */
-  right: 20px;
-  bottom: 20px;
-  flex-direction: row-reverse;
-  z-index: 12;
-
-  @media (max-width: 768px) {
-    right: 10px;
-    bottom: 10px;
-  }
+  left: 20px; top: 20px;
+  flex-direction: row;
 `;
 
 const MyProfileWrapper = styled(ProfileWrapper)`
-  /* M2_STATUS_PANEL_VERTICAL_SWAP_PATCH: 내 상태창을 왼쪽 위로 이동 */
-  left: 20px;
-  top: 20px;
+  right: 20px; bottom: 20px;
   flex-direction: row;
-  z-index: 12;
-
-  @media (max-width: 768px) {
-    left: 10px;
-    top: 10px;
-  }
 `;
 
 const AvatarBox = styled.div`
@@ -691,7 +587,7 @@ const PetContainer = styled.div`
                                                     props.$animType === 'DRAGON_CLAW' ? css`${props.$isMine ? dragonClawRight : dragonClawLeft} 1.0s ease-in-out` :
                                                         props.$animType === 'WATER_BALL' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.2s ease-in-out` :
                                                             props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
-                                                                props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 2.2s ease-in-out` :
+                                                                props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 1.6s ease-in-out` :
                                                                     props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
                                                                         props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
                                                                             props.$intro ? css`${props.$isMine ? petIntroMine : petIntroOpponent} 1.05s cubic-bezier(.18,.89,.32,1.28)` :
@@ -1430,41 +1326,20 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     }, 1000);
 
                 } else if (actionType === 'ULTIMATE_SECRET') {
-                    // M2_ULTIMATE_PREVIEW_SYNC_PATCH
-                    // BattleSkillEffect의 오의필살 이펙트는 2.2초짜리입니다.
-                    // 기존 1.6초 종료는 마지막 폭발/충격파를 잘라 먹어서 프리뷰보다 약하게 보였습니다.
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'ULTIMATE_SECRET' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'ULTIMATE_SECRET' }));
-
                     setCurrentEffect({ type: 'ULTIMATE_SECRET', isMine: isAttackerMe });
-
-                    const triggerUltimateHit = () => {
+                    setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
-                    };
-
-                    const clearUltimateHit = () => {
-                        setHitState({ my: false, opponent: false });
-                    };
-
-                    // 고속 참격 구간
-                    setTimeout(triggerUltimateHit, 760);
-                    setTimeout(clearUltimateHit, 900);
-
-                    setTimeout(triggerUltimateHit, 1120);
-                    setTimeout(clearUltimateHit, 1260);
-
-                    // 거대 폭발/충격파 구간
-                    setTimeout(triggerUltimateHit, 1640);
-                    setTimeout(clearUltimateHit, 1900);
-
+                    }, 800);
                     setTimeout(() => {
                         setCurrentEffect(null);
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
                         if (iAmChallenger) handleResolution(battleRef);
-                    }, 2350);
+                    }, 1600);
 
                 } else if (actionType === 'REED_BOW') {
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'REED_BOW' }));
@@ -1613,20 +1488,6 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                 if (challenger.pet.status?.stunned) delete challenger.pet.status.stunned;
                 if (opponent.pet.status?.stunned) delete opponent.pet.status.stunned;
 
-                let switchMessages = [];
-
-                const challengerSwitch = switchToNextAlivePetIfNeeded(challenger);
-                challenger = challengerSwitch.participant;
-                if (challengerSwitch.switched) {
-                    switchMessages.push(`${challenger.name}의 다음 펫 ${challengerSwitch.switchedPetName}이(가) 등장!`);
-                }
-
-                const opponentSwitch = switchToNextAlivePetIfNeeded(opponent);
-                opponent = opponentSwitch.participant;
-                if (opponentSwitch.switched) {
-                    switchMessages.push(`${opponent.name}의 다음 펫 ${opponentSwitch.switchedPetName}이(가) 등장!`);
-                }
-
                 const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
                 let winnerId = null;
 
@@ -1638,8 +1499,8 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                 const updateData = {
-                    challenger: syncBattleParticipantActivePet(challenger),
-                    opponent: syncBattleParticipantActivePet(opponent),
+                    challenger,
+                    opponent,
                     log: isFinished
                         ? `⏳ 시간 초과! 펫이 지쳐 쓰러졌습니다! (정답: ${data.question.answer})`
                         : `⏳ 시간 초과! 서로 눈치만 보다가 체력이 감소했습니다! (정답: ${data.question.answer})`,
@@ -1730,7 +1591,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         transaction.update(battleRef, {
                             status: 'quiz',
                             turn: null,
-                            [myRole]: syncBattleParticipantActivePet({ ...data[myRole], pet: { ...data[myRole].pet, status: newStatus } }),
+                            [`${myRole}.pet.status`]: newStatus,
                             log: `🎉 정답! ${myPet.name}은(는) 숨을 고르며 반동을 회복했습니다. (정답: ${data.question.answer})`,
                             question: nextQuiz,
                             usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
@@ -1772,41 +1633,24 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         if (challenger.pet.status?.stunned) delete challenger.pet.status.stunned;
                         if (opponent.pet.status?.stunned) delete opponent.pet.status.stunned;
 
-                        let switchMessages = [];
+                        const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
+                        let winnerId = null;
 
-                const challengerSwitch = switchToNextAlivePetIfNeeded(challenger);
-                challenger = challengerSwitch.participant;
-                if (challengerSwitch.switched) {
-                    switchMessages.push(`${challenger.name}의 다음 펫 ${challengerSwitch.switchedPetName}이(가) 등장!`);
-                }
+                        if (isFinished) {
+                            if (challenger.pet.hp > 0) winnerId = challenger.id;
+                            else if (opponent.pet.hp > 0) winnerId = opponent.id;
+                        }
 
-                const opponentSwitch = switchToNextAlivePetIfNeeded(opponent);
-                opponent = opponentSwitch.participant;
-                if (opponentSwitch.switched) {
-                    switchMessages.push(`${opponent.name}의 다음 펫 ${opponentSwitch.switchedPetName}이(가) 등장!`);
-                }
-
-                const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
-                let winnerId = null;
-
-                if (isFinished) {
-                    if (challenger.pet.hp > 0) winnerId = challenger.id;
-                    else if (opponent.pet.hp > 0) winnerId = opponent.id;
-                }
-
-                const nextQuiz = getNextQuizObj(data.usedQuestions);
+                        const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                         let logMessage = `❌ 둘 다 오답! 서로 틀려서 데미지를 입었습니다. (정답: ${data.question.answer})`;
                         if (opponent.equippedTitle === 'daily_helper' || challenger.equippedTitle === 'daily_helper') {
                             logMessage = `💥 [일타강사 패시브] 오답 페널티가 2배로 증폭되었습니다! (정답: ${data.question.answer})`;
                         }
-                        if (typeof switchMessages !== 'undefined' && switchMessages.length > 0) {
-                            logMessage += ` ${switchMessages.join(' ')}`;
-                        }
 
                         const updateData = {
-                            challenger: syncBattleParticipantActivePet(challenger),
-                            opponent: syncBattleParticipantActivePet(opponent),
+                            challenger,
+                            opponent,
                             log: logMessage,
                             status: isFinished ? 'finished' : 'quiz',
                             winner: winnerId,
@@ -1837,8 +1681,8 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                                 opponent.pet = myRole === 'opponent' ? myPet : data.opponent.pet;
 
                                 transaction.update(battleRef, {
-                                    challenger: syncBattleParticipantActivePet(challenger),
-                                    opponent: syncBattleParticipantActivePet(opponent),
+                                    challenger,
+                                    opponent,
                                     chat: updatedChat,
                                     log: `💥 팩트 폭력! ${myPlayerData.name}님이 일타강사의 지적을 버티지 못하고 쓰러졌습니다! (정답: ${data.question.answer})`,
                                     status: 'finished',
@@ -1849,7 +1693,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                             } else {
                                 transaction.update(battleRef, {
                                     chat: updatedChat,
-                                    [myRole]: syncBattleParticipantActivePet({ ...data[myRole], pet: myPet }),
+                                    [`${myRole}.pet.hp`]: myPet.hp,
                                     log: `💥 [일타강사 압박] 틀렸습니다! 날카로운 지적에 데미지를 입었습니다! (-5%)`
                                 });
                             }
@@ -1890,60 +1734,42 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     };
 
     const handleUseItem = async (itemId) => {
-        // M4_ITEM_ACTIVE_TEAM_SYNC_PATCH
-        // 전투 아이템 사용 시 participant.pet과 team[activePetIndex]를 즉시 함께 갱신합니다.
         if (isProcessing) return;
         setIsProcessing(true);
-
-        let didUseItem = false;
-
         try {
             const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-
-            didUseItem = await runTransaction(db, async (transaction) => {
+            await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists()) return false;
-
+                if (!battleDoc.exists()) return;
                 const data = battleDoc.data();
-                if (data.status !== 'action') return false;
 
                 const playerRef = doc(db, 'classes', classId, 'players', myPlayerData.id);
                 const playerDoc = await transaction.get(playerRef);
-                if (!playerDoc.exists()) return false;
-
                 const playerData = playerDoc.data();
+
                 const currentQty = playerData.petInventory?.[itemId] || 0;
-                if (currentQty <= 0) return false;
+                if (currentQty <= 0) return;
+
+                // 회복 사운드 재생
+                playHealSound();
+
+                const newInventory = { ...playerData.petInventory };
+                newInventory[itemId] -= 1;
+                transaction.update(playerRef, { petInventory: newInventory });
 
                 const myRole = myPlayerData.id === data.challenger.id ? 'challenger' : 'opponent';
-                const myParticipant = data[myRole];
+                const myPet = { ...data[myRole].pet };
 
-                if (!myParticipant?.pet) return false;
+                const healHp = Math.floor(myPet.maxHp * 0.30);
+                const healSp = Math.floor(myPet.maxSp * 0.30);
 
-                const myPet = {
-                    ...myParticipant.pet,
-                    status: { ...(myParticipant.pet.status || {}) },
-                };
-
-                const healHp = Math.floor(Number(myPet.maxHp || 0) * 0.30);
-                const healSp = Math.floor(Number(myPet.maxSp || 0) * 0.30);
-
-                myPet.hp = Math.min(Number(myPet.maxHp || 0), Number(myPet.hp || 0) + healHp);
-                myPet.sp = Math.min(Number(myPet.maxSp || 0), Number(myPet.sp || 0) + healSp);
-
-                const healedParticipant = syncBattleParticipantActivePet({
-                    ...myParticipant,
-                    pet: myPet,
-                });
-
-                const newInventory = { ...(playerData.petInventory || {}) };
-                newInventory[itemId] = Math.max(0, Number(newInventory[itemId] || 0) - 1);
+                myPet.hp = Math.min(myPet.maxHp, myPet.hp + healHp);
+                myPet.sp = Math.min(myPet.maxSp, myPet.sp + healSp);
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
 
-                transaction.update(playerRef, { petInventory: newInventory });
                 transaction.update(battleRef, {
-                    [myRole]: healedParticipant,
+                    [myRole]: { ...data[myRole], pet: myPet },
                     log: `${playerData.name}의 펫이 두뇌 간식을 먹었습니다! (HP/SP +30% 회복)`,
                     status: 'quiz',
                     turn: null,
@@ -1954,13 +1780,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     turnStartTime: Date.now(),
                     chat: {}
                 });
-
-                return true;
             });
-
-            if (didUseItem) {
-                playHealSound();
-            }
         } catch (error) {
             console.error("아이템 사용 오류:", error);
             alert("아이템 사용 중 오류가 발생했습니다.");
@@ -2255,20 +2075,6 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     log += ` 🌳 [성실한 나무 효과로 HP +${heal} 회복]`;
                 }
 
-                let switchMessages = [];
-
-                const attackerSwitch = switchToNextAlivePetIfNeeded(attacker);
-                attacker = attackerSwitch.participant;
-                if (attackerSwitch.switched) {
-                    switchMessages.push(`${attacker.name}의 다음 펫 ${attackerSwitch.switchedPetName}이(가) 등장!`);
-                }
-
-                const defenderSwitch = switchToNextAlivePetIfNeeded(defender);
-                defender = defenderSwitch.participant;
-                if (defenderSwitch.switched) {
-                    switchMessages.push(`${defender.name}의 다음 펫 ${defenderSwitch.switchedPetName}이(가) 등장!`);
-                }
-
                 const isFinished = defender.pet.hp <= 0 || attacker.pet.hp <= 0;
                 let winnerId = null;
 
@@ -2276,16 +2082,14 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     if (attacker.pet.hp > 0) winnerId = attacker.id;
                     else if (defender.pet.hp > 0) winnerId = defender.id;
                     log += ` 펫이 지쳐 쓰러졌습니다! 전투 종료!`;
-                } else if (switchMessages.length > 0) {
-                    log += ` ${switchMessages.join(' ')}`;
                 }
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
 
                 const updateData = {
                     log,
-                    challenger: syncBattleParticipantActivePet(isChallengerAttacker ? attacker : defender),
-                    opponent: syncBattleParticipantActivePet(isChallengerAttacker ? defender : attacker),
+                    challenger: isChallengerAttacker ? attacker : defender,
+                    opponent: isChallengerAttacker ? defender : attacker,
                     status: isFinished ? 'finished' : 'quiz',
                     winner: winnerId,
                     ...(!isFinished && {
@@ -2360,20 +2164,14 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
     const IamChallenger = myPlayerData.id === battleState.challenger.id;
     const myRole = IamChallenger ? 'challenger' : 'opponent';
-    const opponentRole = IamChallenger ? 'opponent' : 'challenger';
-
-    // M3_ACTIVE_PET_COMPAT_PATCH
-    // 지금은 단일 펫 구조를 그대로 쓰고, 나중에 team/activePetIndex가 생기면 여기서 active pet으로 정규화합니다.
-    const rawMyInfo = battleState[myRole];
-    const rawOpponentInfo = battleState[opponentRole];
-    const myInfo = normalizeBattleParticipantForBattle(rawMyInfo);
-    const opponentInfo = normalizeBattleParticipantForBattle(rawOpponentInfo);
+    const myInfo = battleState[myRole];
+    const opponentInfo = battleState[IamChallenger ? 'opponent' : 'challenger'];
 
     const isAttacker = battleState.turn === myPlayerData.id;
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
 
-    const myEquippedSkills = (myInfo.pet.equippedSkills || [])
+    const myEquippedSkills = myInfo.pet.equippedSkills
         .filter(id => id.toLowerCase() !== 'tackle')
         .map(id => {
             const skill = SKILLS[id.toUpperCase()];
@@ -2437,38 +2235,44 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                             )}
 
                             {/* --- 상대 정보 표시 --- */}
-                            <BattlePlayerPanel
-                                isMine={false}
-                                info={opponentInfo}
-                                avatarSourceInfo={opponentInfo}
-                                WrapperComponent={OpponentProfileWrapper}
-                                AvatarBoxComponent={AvatarBox}
-                                InfoBoxComponent={OpponentInfoBox}
-                                renderHpBar={renderHpBar}
-                                renderSpBar={renderSpBar}
-                            />
-                            <BattleTeamMiniBar
-                                isMine={false}
-                                info={opponentInfo}
-                                getPetImageSrc={getPetImageSrc}
-                            />
+                            <OpponentProfileWrapper>
+                                <AvatarBox>
+                                    <div className="avatar-img-frame">
+                                        <img
+                                            src={opponentInfo.avatarSnapshotUrl || opponentInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`}
+                                            alt="상대방 아바타"
+                                            className={opponentInfo.avatarSnapshotUrl ? 'avatar-snapshot' : ''}
+                                            onError={(e) => { e.target.classList.remove('avatar-snapshot'); e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentInfo.id}`; }}
+                                        />
+                                    </div>
+                                    <div className="name-badge opponent">{opponentInfo.name}</div>
+                                </AvatarBox>
+                                <OpponentInfoBox>
+                                    <span>{opponentInfo.pet.name} (Lv.{opponentInfo.pet.level})</span>
+                                    {renderHpBar(opponentInfo.pet.hp, opponentInfo.pet.maxHp)}
+                                    {renderSpBar(opponentInfo.pet.sp, opponentInfo.pet.maxSp)}
+                                </OpponentInfoBox>
+                            </OpponentProfileWrapper>
 
                             {/* --- 나의 정보 표시 --- */}
-                            <BattlePlayerPanel
-                                isMine={true}
-                                info={myInfo}
-                                avatarSourceInfo={myPlayerData}
-                                WrapperComponent={MyProfileWrapper}
-                                AvatarBoxComponent={AvatarBox}
-                                InfoBoxComponent={MyInfoBox}
-                                renderHpBar={renderHpBar}
-                                renderSpBar={renderSpBar}
-                            />
-                            <BattleTeamMiniBar
-                                isMine={true}
-                                info={myInfo}
-                                getPetImageSrc={getPetImageSrc}
-                            />
+                            <MyProfileWrapper>
+                                <AvatarBox>
+                                    <div className="avatar-img-frame">
+                                        <img
+                                            src={myPlayerData.avatarSnapshotUrl || myInfo.avatarSnapshotUrl || myPlayerData.photoURL || myInfo.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`}
+                                            alt="나의 아바타"
+                                            className={(myPlayerData.avatarSnapshotUrl || myInfo.avatarSnapshotUrl) ? 'avatar-snapshot' : ''}
+                                            onError={(e) => { e.target.classList.remove('avatar-snapshot'); e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${myInfo.id}`; }}
+                                        />
+                                    </div>
+                                    <div className="name-badge mine">{myInfo.name}</div>
+                                </AvatarBox>
+                                <MyInfoBox>
+                                    <span>{myInfo.pet.name} (Lv.{myInfo.pet.level})</span>
+                                    {renderHpBar(myInfo.pet.hp, myInfo.pet.maxHp)}
+                                    {renderSpBar(myInfo.pet.sp, myInfo.pet.maxSp)}
+                                </MyInfoBox>
+                            </MyProfileWrapper>
                             <BattlePetSlot
                                 isMine={false}
                                 info={opponentInfo}
@@ -2572,23 +2376,64 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                                     </>
                                 )}
                             </div>
-                            <BattleActionMenu
-                                isStunned={isStunned}
-                                isBound={isBound}
-                                showActionMenu={showActionMenu}
-                                showDefenseMenu={showDefenseMenu}
-                                actionSubMenu={actionSubMenu}
-                                setActionSubMenu={setActionSubMenu}
-                                myEquippedSkills={myEquippedSkills}
-                                myInfo={myInfo}
-                                usableItems={usableItems}
-                                getSkillCost={getSkillCost}
-                                handleActionSelect={handleActionSelect}
-                                handleUseItem={handleUseItem}
-                                DEFENSE_ACTIONS={DEFENSE_ACTIONS}
-                                ActionMenuComponent={ActionMenu}
-                                MenuItemComponent={MenuItem}
-                            />
+                            <ActionMenu>
+                                {!isStunned && (
+                                    <>
+                                        {showActionMenu && (
+                                            !actionSubMenu ?
+                                                <>
+                                                    <MenuItem onClick={() => handleActionSelect('TACKLE')}>기본 공격</MenuItem>
+                                                    <MenuItem onClick={() => setActionSubMenu('skills')}>특수 공격</MenuItem>
+                                                    <MenuItem
+                                                        onClick={() => setActionSubMenu('items')}
+                                                        style={{ backgroundColor: '#e2f0d9', borderColor: '#51cf66', color: '#2b8a3e' }}
+                                                    >
+                                                        🎒 간식 가방
+                                                    </MenuItem>
+                                                </> :
+                                                actionSubMenu === 'skills' ?
+                                                    <>
+                                                        {myEquippedSkills.map(skill => (
+                                                            <MenuItem key={skill.id} onClick={() => handleActionSelect(skill.id)} disabled={myInfo.pet.sp < getSkillCost(skill)}>
+                                                                {skill.name} ({getSkillCost(skill)}SP)
+                                                            </MenuItem>
+                                                        ))}
+                                                        <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
+                                                    </> :
+                                                    actionSubMenu === 'items' ?
+                                                        <>
+                                                            {usableItems.length > 0 ? (
+                                                                usableItems.map(([id, qty]) => (
+                                                                    <MenuItem
+                                                                        key={id}
+                                                                        onClick={() => handleUseItem(id)}
+                                                                        style={{ backgroundColor: '#fff3bf', borderColor: '#fcc419', color: '#e67700' }}
+                                                                    >
+                                                                        두뇌 간식 먹기 ({qty}개)
+                                                                    </MenuItem>
+                                                                ))
+                                                            ) : (
+                                                                <MenuItem disabled>쓸 수 있는 간식이 없습니다.</MenuItem>
+                                                            )}
+                                                            <MenuItem onClick={() => setActionSubMenu(null)}>뒤로가기</MenuItem>
+                                                        </> : null
+                                        )}
+
+                                        {showDefenseMenu && (
+                                            isBound ? (
+                                                <div style={{ textAlign: 'center', marginTop: '20px', gridColumn: 'span 2' }}>
+                                                    <p style={{ color: '#2b8a3e', fontWeight: 'bold', fontSize: '1.2rem' }}>🌿 속박 상태!</p>
+                                                    <p style={{ fontSize: '0.9rem' }}>덩굴에 묶여 방어/도망 행동을 할 수 없습니다.</p>
+                                                </div>
+                                            ) : (
+                                                Object.entries(DEFENSE_ACTIONS).map(([key, name]) => (
+                                                    <MenuItem key={key} onClick={() => handleActionSelect(key)}>{name}</MenuItem>
+                                                ))
+                                            )
+                                        )}
+                                    </>
+                                )}
+                            </ActionMenu>
                         </QuizArea>
                     </>
                 )}

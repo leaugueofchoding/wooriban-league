@@ -1890,60 +1890,42 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     };
 
     const handleUseItem = async (itemId) => {
-        // M4_ITEM_ACTIVE_TEAM_SYNC_PATCH
-        // 전투 아이템 사용 시 participant.pet과 team[activePetIndex]를 즉시 함께 갱신합니다.
         if (isProcessing) return;
         setIsProcessing(true);
-
-        let didUseItem = false;
-
         try {
             const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-
-            didUseItem = await runTransaction(db, async (transaction) => {
+            await runTransaction(db, async (transaction) => {
                 const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists()) return false;
-
+                if (!battleDoc.exists()) return;
                 const data = battleDoc.data();
-                if (data.status !== 'action') return false;
 
                 const playerRef = doc(db, 'classes', classId, 'players', myPlayerData.id);
                 const playerDoc = await transaction.get(playerRef);
-                if (!playerDoc.exists()) return false;
-
                 const playerData = playerDoc.data();
+
                 const currentQty = playerData.petInventory?.[itemId] || 0;
-                if (currentQty <= 0) return false;
+                if (currentQty <= 0) return;
+
+                // 회복 사운드 재생
+                playHealSound();
+
+                const newInventory = { ...playerData.petInventory };
+                newInventory[itemId] -= 1;
+                transaction.update(playerRef, { petInventory: newInventory });
 
                 const myRole = myPlayerData.id === data.challenger.id ? 'challenger' : 'opponent';
-                const myParticipant = data[myRole];
+                const myPet = { ...data[myRole].pet };
 
-                if (!myParticipant?.pet) return false;
+                const healHp = Math.floor(myPet.maxHp * 0.30);
+                const healSp = Math.floor(myPet.maxSp * 0.30);
 
-                const myPet = {
-                    ...myParticipant.pet,
-                    status: { ...(myParticipant.pet.status || {}) },
-                };
-
-                const healHp = Math.floor(Number(myPet.maxHp || 0) * 0.30);
-                const healSp = Math.floor(Number(myPet.maxSp || 0) * 0.30);
-
-                myPet.hp = Math.min(Number(myPet.maxHp || 0), Number(myPet.hp || 0) + healHp);
-                myPet.sp = Math.min(Number(myPet.maxSp || 0), Number(myPet.sp || 0) + healSp);
-
-                const healedParticipant = syncBattleParticipantActivePet({
-                    ...myParticipant,
-                    pet: myPet,
-                });
-
-                const newInventory = { ...(playerData.petInventory || {}) };
-                newInventory[itemId] = Math.max(0, Number(newInventory[itemId] || 0) - 1);
+                myPet.hp = Math.min(myPet.maxHp, myPet.hp + healHp);
+                myPet.sp = Math.min(myPet.maxSp, myPet.sp + healSp);
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
 
-                transaction.update(playerRef, { petInventory: newInventory });
                 transaction.update(battleRef, {
-                    [myRole]: healedParticipant,
+                    [myRole]: syncBattleParticipantActivePet({ ...data[myRole], pet: myPet }),
                     log: `${playerData.name}의 펫이 두뇌 간식을 먹었습니다! (HP/SP +30% 회복)`,
                     status: 'quiz',
                     turn: null,
@@ -1954,13 +1936,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     turnStartTime: Date.now(),
                     chat: {}
                 });
-
-                return true;
             });
-
-            if (didUseItem) {
-                playHealSound();
-            }
         } catch (error) {
             console.error("아이템 사용 오류:", error);
             alert("아이템 사용 중 오류가 발생했습니다.");

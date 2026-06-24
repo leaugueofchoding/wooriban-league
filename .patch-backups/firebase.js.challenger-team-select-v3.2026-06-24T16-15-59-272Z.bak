@@ -4156,21 +4156,8 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
 // M3_BATTLE_TEAM_DATA_ON_CREATE_PATCH
 // 현재는 1펫 배틀을 유지하되, 배틀 문서에 team/activePetIndex/activePetId 구조를 함께 저장합니다.
 // 이후 2펫/3펫 선택 기능이 들어오면 이 helper의 team 인자만 확장하면 됩니다.
-const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets = null) => {
-  // M4_CHALLENGER_TEAM_SELECT_PATCH
-  // battlePet은 선발 펫, teamPets는 선발+대기 펫 목록입니다.
-  const rawTeam = Array.isArray(teamPets) && teamPets.length > 0 ? teamPets : [battlePet];
-
-  const safeTeam = rawTeam
-    .filter(Boolean)
-    .map(pet => ({
-      ...pet,
-      status: { ...(pet?.status || {}) },
-    }));
-
-  const activeIndexById = safeTeam.findIndex(pet => pet?.id === battlePet?.id);
-  const activePetIndex = activeIndexById >= 0 ? activeIndexById : 0;
-  const safePet = safeTeam[activePetIndex] || {
+const createBattleParticipantSnapshot = (player, battlePet, extra = {}) => {
+  const safePet = {
     ...battlePet,
     status: { ...(battlePet?.status || {}) },
   };
@@ -4179,8 +4166,8 @@ const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets
     id: player.id,
     name: player.name,
     pet: safePet,
-    team: safeTeam.length > 0 ? safeTeam : [safePet],
-    activePetIndex,
+    team: [safePet],
+    activePetIndex: 0,
     activePetId: safePet.id || null,
     equippedTitle: player.equippedTitle || null,
     avatarSnapshotUrl: player.avatarSnapshotUrl || null,
@@ -4189,7 +4176,8 @@ const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets
   };
 };
 
-export async function createBattleChallenge(classId, challengerObj, opponentObj, options = {}) {
+
+export async function createBattleChallenge(classId, challengerObj, opponentObj) {
   if (!classId || !challengerObj?.id || !opponentObj?.id) {
     throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
   }
@@ -4334,58 +4322,11 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // ▼▼▼ [수정] 펫 정보 가져오기 및 숨은 영웅 쉴드 버프 부여 ▼▼▼
   // =========================================================
   let challengerPets = challenger.pets || [];
-  let opponentPets = opponent.pets || [];
-
-  // M4_CHALLENGER_TEAM_SELECT_PATCH
-  // 신청자가 선택한 선발/대기 펫을 battle team으로 구성합니다.
-  // 아직 수락자 쪽 선택 플로우는 없으므로 opponent는 기존 파트너 펫 1마리만 사용합니다.
-  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 2) => {
-    const alivePets = (pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
-    const byId = new Map(alivePets.map(pet => [pet.id, pet]));
-
-    const normalizedIds = Array.isArray(requestedPetIds)
-      ? requestedPetIds.filter(Boolean)
-      : [];
-
-    const picked = [];
-    normalizedIds.forEach(id => {
-      const pet = byId.get(id);
-      if (pet && !picked.some(existing => existing.id === pet.id)) {
-        picked.push(pet);
-      }
-    });
-
-    if (picked.length === 0 && fallbackPetId && byId.has(fallbackPetId)) {
-      picked.push(byId.get(fallbackPetId));
-    }
-
-    if (picked.length === 0 && alivePets[0]) {
-      picked.push(alivePets[0]);
-    }
-
-    return picked.slice(0, maxTeamSize).map(pet => ({
-      ...pet,
-      status: { ...(pet.status || {}) },
-    }));
-  };
-
-  const challengerRequestedTeamIds = Array.isArray(options?.challengerTeamPetIds)
-    ? options.challengerTeamPetIds
-    : [];
-
-  const opponentRequestedTeamIds = Array.isArray(options?.opponentTeamPetIds)
-    ? options.opponentTeamPetIds
-    : [];
-
-  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, 2);
-  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 1);
+  const petIndex = challengerPets.findIndex(p => p.id === challenger.partnerPetId);
 
   // (중요) DB에 영구적으로 체력이 늘어나지 않도록 얕은 복사(...)를 사용합니다.
-  let challengerPet = { ...(challengerBattleTeam[0] || {}) };
-  let opponentPet = { ...(opponentBattleTeam[0] || {}) };
-
-  if (!challengerPet?.id) throw new Error("나의 출전 가능한 펫을 찾을 수 없습니다.");
-  if (!opponentPet?.id) throw new Error("상대방의 출전 가능한 펫을 찾을 수 없습니다.");
+  let challengerPet = { ...challengerPets[petIndex] };
+  let opponentPet = { ...opponent.pets.find(p => p.id === opponent.partnerPetId) };
 
   // [버프 적용] 숨은 영웅(god_of_tidiness): 배틀 스탯 생성 시 최대 HP 5% 쉴드 보너스 부여
   if (challenger.equippedTitle === 'god_of_tidiness') {
@@ -4456,20 +4397,15 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   }
 
   // 새 배틀 생성 (덮어쓰기)
-  const battleTeamSize = Math.max(challengerBattleTeam.length, opponentBattleTeam.length);
-  const battleMode = battleTeamSize > 1 ? 'team-preview' : 'single';
-
   const battleData = {
     id: battleId,
     status: 'pending',
     battleSchemaVersion: 2,
-    battleMode,
-    teamSize: battleTeamSize,
     battleMode: 'single',
     teamSize: 1,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
-    challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeam),
-    opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeam),
+    challenger: createBattleParticipantSnapshot(challenger, challengerPet),
+    opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }),
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
     question: null,
