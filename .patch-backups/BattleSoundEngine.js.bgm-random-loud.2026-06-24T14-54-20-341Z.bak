@@ -1,0 +1,709 @@
+// src/features/battle/battleSoundEngine.js
+//
+// Web Audio API로 속성별 배틀 효과음을 직접 합성하는 엔진입니다.
+// 외부 음원 파일이나 네트워크 요청 없이, 오실레이터/노이즈 버퍼를 조합해
+// 불/전기/바람/물/풀/베기 등 스킬 속성에 맞는 사운드를 즉석에서 만들어냅니다.
+
+let sharedCtx = null;
+
+const getCtx = () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!sharedCtx) {
+        sharedCtx = new AudioContextClass();
+    }
+    if (sharedCtx.state === 'suspended') {
+        sharedCtx.resume();
+    }
+    return sharedCtx;
+};
+
+// 화이트 노이즈 버퍼 생성 (바람, 불, 모래 등 질감이 있는 소리의 재료)
+const createNoiseBuffer = (ctx, duration = 1) => {
+    const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+};
+
+// 노이즈 기반 사운드 한 조각 재생 (필터링된 화이트 노이즈)
+const playNoise = (ctx, {
+    duration = 0.3,
+    startTime = 0,
+    filterType = 'bandpass',
+    freqStart = 1000,
+    freqEnd = null,
+    Q = 1,
+    gainStart = 0.3,
+    gainEnd = 0.001,
+    gainAttack = 0.01,
+}) => {
+    const t0 = ctx.currentTime + startTime;
+    const noise = ctx.createBufferSource();
+    noise.buffer = createNoiseBuffer(ctx, duration);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = filterType;
+    filter.Q.value = Q;
+    filter.frequency.setValueAtTime(freqStart, t0);
+    if (freqEnd !== null) {
+        filter.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t0 + duration);
+    }
+
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(0.0001, t0);
+    gainNode.gain.linearRampToValueAtTime(gainStart, t0 + gainAttack);
+    gainNode.gain.exponentialRampToValueAtTime(gainEnd, t0 + duration);
+
+    noise.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    noise.start(t0);
+    noise.stop(t0 + duration);
+};
+
+// 오실레이터 기반 사운드 한 조각 재생 (전기, 물, 베기, 버프 등 톤이 있는 소리)
+const playTone = (ctx, {
+    duration = 0.2,
+    startTime = 0,
+    type = 'sine',
+    freqStart = 440,
+    freqEnd = null,
+    freqCurve = 'exponential', // 'exponential' | 'linear'
+    gainStart = 0.2,
+    gainEnd = 0.001,
+    gainAttack = 0.005,
+    detune = 0,
+}) => {
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.detune.value = detune;
+    osc.frequency.setValueAtTime(freqStart, t0);
+    if (freqEnd !== null) {
+        if (freqCurve === 'linear') {
+            osc.frequency.linearRampToValueAtTime(freqEnd, t0 + duration);
+        } else {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqEnd), t0 + duration);
+        }
+    }
+
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(0.0001, t0);
+    gainNode.gain.linearRampToValueAtTime(gainStart, t0 + gainAttack);
+    gainNode.gain.exponentialRampToValueAtTime(gainEnd, t0 + duration);
+
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    osc.start(t0);
+    osc.stop(t0 + duration);
+};
+
+// 짧은 스파크/지직 노이즈 (전기 계열에 섞는 텍스처)
+const playCrackle = (ctx, { startTime = 0, count = 4, spread = 0.12, baseGain = 0.12 }) => {
+    for (let i = 0; i < count; i++) {
+        const t = startTime + Math.random() * spread;
+        playTone(ctx, {
+            startTime: t,
+            duration: 0.04 + Math.random() * 0.03,
+            type: 'square',
+            freqStart: 2500 + Math.random() * 3500,
+            freqEnd: 400 + Math.random() * 300,
+            gainStart: baseGain * (0.6 + Math.random() * 0.6),
+            gainAttack: 0.002,
+        });
+    }
+};
+
+// ============================================================
+// 속성별 사운드 레시피
+// ============================================================
+
+const SOUND_RECIPES = {
+    // ---------- 물리 / 베기 ----------
+    TACKLE: (ctx) => {
+        playTone(ctx, { type: 'square', freqStart: 180, freqEnd: 40, duration: 0.16, gainStart: 0.28, gainAttack: 0.002 });
+        playNoise(ctx, { duration: 0.12, filterType: 'lowpass', freqStart: 800, freqEnd: 150, gainStart: 0.18, Q: 0.7 });
+    },
+    SLASH: (ctx, startTime = 0) => {
+        // 칼날이 공기를 가르는 "쉭" + 임팩트
+        playNoise(ctx, { startTime, duration: 0.18, filterType: 'highpass', freqStart: 2500, freqEnd: 6000, gainStart: 0.16, gainAttack: 0.003, Q: 0.8 });
+        playTone(ctx, { startTime: startTime + 0.07, type: 'triangle', freqStart: 900, freqEnd: 120, duration: 0.14, gainStart: 0.2, gainAttack: 0.002 });
+    },
+    DRAGON_CLAW: (ctx) => {
+        // 발톱으로 두 번 베는 느낌 + 불씨
+        SOUND_RECIPES.SLASH(ctx, 0);
+        SOUND_RECIPES.SLASH(ctx, 0.12);
+        playNoise(ctx, { startTime: 0.05, duration: 0.3, filterType: 'lowpass', freqStart: 1200, freqEnd: 300, gainStart: 0.12, Q: 0.6 });
+    },
+    ULTIMATE_SECRET: (ctx) => {
+        // 묵직한 검기 - 여러 번의 빠른 슬래시 후 거대한 임팩트
+        for (let i = 0; i < 7; i++) {
+            SOUND_RECIPES.SLASH(ctx, 0.6 + i * 0.15);
+        }
+        playTone(ctx, { startTime: 1.6, type: 'sawtooth', freqStart: 90, freqEnd: 25, duration: 0.5, gainStart: 0.35, gainAttack: 0.005 });
+        playNoise(ctx, { startTime: 1.6, duration: 0.5, filterType: 'lowpass', freqStart: 600, freqEnd: 80, gainStart: 0.25, Q: 0.5 });
+    },
+
+    // ---------- 불 ----------
+    FIRE_WHOOSH: (ctx, startTime = 0, { duration = 0.6, intensity = 0.25 } = {}) => {
+        playNoise(ctx, { startTime, duration, filterType: 'lowpass', freqStart: 2500, freqEnd: 200, gainStart: intensity, gainAttack: 0.02, Q: 0.5 });
+        playTone(ctx, { startTime, type: 'sawtooth', freqStart: 140, freqEnd: 50, duration: duration * 0.8, gainStart: intensity * 0.7, gainAttack: 0.02 });
+    },
+    FLAME_DASH: (ctx) => {
+        SOUND_RECIPES.FIRE_WHOOSH(ctx, 0, { duration: 0.45, intensity: 0.28 });
+        playTone(ctx, { startTime: 0.3, type: 'square', freqStart: 200, freqEnd: 40, duration: 0.15, gainStart: 0.2, gainAttack: 0.002 });
+    },
+    REM_FIRE: (ctx) => {
+        SOUND_RECIPES.FIRE_WHOOSH(ctx, 0, { duration: 0.5, intensity: 0.2 });
+        playCrackle(ctx, { startTime: 0.15, count: 3, baseGain: 0.06 });
+    },
+    FIERY_BREATH: (ctx) => {
+        // 길게 뿜어내는 불의 숨결
+        SOUND_RECIPES.FIRE_WHOOSH(ctx, 0, { duration: 1.0, intensity: 0.3 });
+        playCrackle(ctx, { startTime: 0.2, count: 5, spread: 0.6, baseGain: 0.07 });
+    },
+    UPHWA: (ctx) => {
+        // 화산 폭발급 거대한 불 - 저음 우르릉 + 폭발
+        playTone(ctx, { type: 'sawtooth', freqStart: 60, freqEnd: 25, duration: 1.3, gainStart: 0.3, gainAttack: 0.05 });
+        playNoise(ctx, { duration: 1.4, filterType: 'lowpass', freqStart: 3000, freqEnd: 100, gainStart: 0.32, gainAttack: 0.05, Q: 0.4 });
+        playNoise(ctx, { startTime: 0.5, duration: 0.5, filterType: 'lowpass', freqStart: 1500, freqEnd: 150, gainStart: 0.3, gainAttack: 0.01, Q: 0.6 });
+        playCrackle(ctx, { startTime: 0.6, count: 8, spread: 0.8, baseGain: 0.06 });
+    },
+    STELLAR_BLAST: (ctx) => {
+        // 별빛이 응축됐다가 폭발하는 느낌 (차징 + 빛나는 고음 + 폭발)
+        playTone(ctx, { type: 'sine', freqStart: 300, freqEnd: 1400, duration: 0.5, gainStart: 0.0001, gainEnd: 0.18, gainAttack: 0.45, freqCurve: 'linear' });
+        playTone(ctx, { startTime: 0.55, type: 'sawtooth', freqStart: 1500, freqEnd: 60, duration: 0.5, gainStart: 0.3, gainAttack: 0.005 });
+        playNoise(ctx, { startTime: 0.55, duration: 0.55, filterType: 'lowpass', freqStart: 4000, freqEnd: 200, gainStart: 0.28, gainAttack: 0.005, Q: 0.5 });
+    },
+
+    // ---------- 전기 ----------
+    SHOCK_SCRATCH: (ctx) => {
+        SOUND_RECIPES.SLASH(ctx, 0);
+        playCrackle(ctx, { startTime: 0.02, count: 4, spread: 0.15, baseGain: 0.1 });
+    },
+    THUNDER_PUNCH: (ctx) => {
+        playTone(ctx, { type: 'square', freqStart: 90, freqEnd: 30, duration: 0.18, gainStart: 0.3, gainAttack: 0.002 });
+        playCrackle(ctx, { startTime: 0, count: 6, spread: 0.2, baseGain: 0.12 });
+    },
+    THUNDERSTORM: (ctx) => {
+        // 번쩍이는 섬광 + 묵직한 천둥 크랙
+        playTone(ctx, { type: 'sine', freqStart: 1800, freqEnd: 3200, duration: 0.08, gainStart: 0.12, gainAttack: 0.002 });
+        playCrackle(ctx, { startTime: 0.05, count: 10, spread: 0.5, baseGain: 0.14 });
+        playTone(ctx, { startTime: 0.4, type: 'sawtooth', freqStart: 110, freqEnd: 20, duration: 0.6, gainStart: 0.32, gainAttack: 0.01 });
+        playNoise(ctx, { startTime: 0.4, duration: 0.7, filterType: 'lowpass', freqStart: 2000, freqEnd: 100, gainStart: 0.25, gainAttack: 0.01, Q: 0.5 });
+    },
+    STATIC_SHOCK: (ctx) => {
+        playCrackle(ctx, { startTime: 0, count: 5, spread: 0.2, baseGain: 0.1 });
+        playTone(ctx, { type: 'triangle', freqStart: 600, freqEnd: 100, duration: 0.15, gainStart: 0.15, gainAttack: 0.003 });
+    },
+
+    // ---------- 바람 ----------
+    WIND_WHOOSH: (ctx, startTime = 0, { duration = 0.5, intensity = 0.22 } = {}) => {
+        playNoise(ctx, { startTime, duration, filterType: 'bandpass', freqStart: 600, freqEnd: 2200, gainStart: intensity, gainAttack: 0.03, Q: 1.4 });
+    },
+    QUICK_DISTURBANCE: (ctx) => {
+        SOUND_RECIPES.WIND_WHOOSH(ctx, 0, { duration: 0.35, intensity: 0.2 });
+        SOUND_RECIPES.WIND_WHOOSH(ctx, 0.1, { duration: 0.3, intensity: 0.14 });
+    },
+    WIND_BLADE: (ctx) => {
+        // 세 번의 바람 칼날
+        SOUND_RECIPES.WIND_WHOOSH(ctx, 0, { duration: 0.3, intensity: 0.22 });
+        SOUND_RECIPES.WIND_WHOOSH(ctx, 0.15, { duration: 0.3, intensity: 0.18 });
+        SOUND_RECIPES.WIND_WHOOSH(ctx, 0.3, { duration: 0.3, intensity: 0.16 });
+    },
+    TORNADO_SWEEP: (ctx) => {
+        // 휘몰아치는 토네이도 - 피치가 빙글빙글 도는 긴 바람
+        playNoise(ctx, { duration: 1.6, filterType: 'bandpass', freqStart: 400, freqEnd: 1800, gainStart: 0.26, gainAttack: 0.15, Q: 2.2 });
+        playTone(ctx, { type: 'sine', freqStart: 150, freqEnd: 450, duration: 1.2, gainStart: 0.08, gainAttack: 0.1, freqCurve: 'linear' });
+        playTone(ctx, { startTime: 1.0, type: 'sine', freqStart: 450, freqEnd: 120, duration: 0.5, gainStart: 0.1, gainAttack: 0.01, freqCurve: 'linear' });
+    },
+
+    // ---------- 물 ----------
+    WATER_DROP: (ctx, startTime = 0, { gainStart = 0.18 } = {}) => {
+        playTone(ctx, { startTime, type: 'sine', freqStart: 700, freqEnd: 200, duration: 0.22, gainStart, gainAttack: 0.005 });
+        playNoise(ctx, { startTime: startTime + 0.04, duration: 0.12, filterType: 'highpass', freqStart: 3000, freqEnd: 5000, gainStart: gainStart * 0.4, gainAttack: 0.002, Q: 0.6 });
+    },
+    WATER_BALL: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.2 });
+    },
+    COUNTER_STANCE: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.16 });
+        playTone(ctx, { startTime: 0.18, type: 'triangle', freqStart: 500, freqEnd: 700, duration: 0.2, gainStart: 0.12, gainAttack: 0.02, freqCurve: 'linear' });
+    },
+    REED_BOW: (ctx) => {
+        // 활시위 튕기는 소리 + 화살이 물기를 머금고 나가는 소리
+        playTone(ctx, { type: 'triangle', freqStart: 1200, freqEnd: 300, duration: 0.12, gainStart: 0.18, gainAttack: 0.002 });
+        SOUND_RECIPES.WATER_DROP(ctx, 0.15, { gainStart: 0.14 });
+    },
+
+    // ---------- 풀 / 채찍 ----------
+    VINE_WHIP: (ctx) => {
+        playNoise(ctx, { duration: 0.15, filterType: 'highpass', freqStart: 1800, freqEnd: 4500, gainStart: 0.16, gainAttack: 0.002, Q: 0.7 });
+        playTone(ctx, { startTime: 0.12, type: 'triangle', freqStart: 250, freqEnd: 70, duration: 0.18, gainStart: 0.22, gainAttack: 0.002 });
+    },
+    LEECH_SEED: (ctx) => {
+        playNoise(ctx, { duration: 0.2, filterType: 'bandpass', freqStart: 900, freqEnd: 1600, gainStart: 0.14, gainAttack: 0.01, Q: 1 });
+        playTone(ctx, { startTime: 0.1, type: 'sine', freqStart: 300, freqEnd: 500, duration: 0.3, gainStart: 0.1, gainAttack: 0.03, freqCurve: 'linear' });
+    },
+    SOLAR_BEAM: (ctx) => {
+        // 차징 후 광선 발사
+        playTone(ctx, { type: 'sine', freqStart: 400, freqEnd: 1200, duration: 0.45, gainStart: 0.0001, gainEnd: 0.14, gainAttack: 0.4, freqCurve: 'linear' });
+        playTone(ctx, { startTime: 0.5, type: 'sawtooth', freqStart: 1300, freqEnd: 500, duration: 0.35, gainStart: 0.22, gainAttack: 0.005 });
+        playNoise(ctx, { startTime: 0.5, duration: 0.4, filterType: 'highpass', freqStart: 2000, freqEnd: 4000, gainStart: 0.1, gainAttack: 0.005, Q: 0.7 });
+    },
+
+    // ---------- 흙/모래 ----------
+    SAND_THROW: (ctx) => {
+        playNoise(ctx, { duration: 0.35, filterType: 'lowpass', freqStart: 1500, freqEnd: 300, gainStart: 0.18, gainAttack: 0.01, Q: 0.6 });
+    },
+
+    // ---------- 독 ----------
+    POISON_STING: (ctx) => {
+        SOUND_RECIPES.SLASH(ctx, 0);
+        playTone(ctx, { startTime: 0.08, type: 'sine', freqStart: 500, freqEnd: 250, duration: 0.25, gainStart: 0.1, gainAttack: 0.02, detune: -20 });
+    },
+
+    // ---------- 방어 / 버프 ----------
+    BUFF_RISE: (ctx, { freqStart = 300, freqEnd = 700, duration = 0.35, gainStart = 0.14 } = {}) => {
+        playTone(ctx, { type: 'sine', freqStart, freqEnd, duration, gainStart, gainAttack: 0.02, freqCurve: 'linear' });
+        playTone(ctx, { type: 'sine', freqStart: freqStart * 1.5, freqEnd: freqEnd * 1.5, duration, gainStart: gainStart * 0.5, gainAttack: 0.02, freqCurve: 'linear', detune: 5 });
+    },
+    HARDEN: (ctx) => {
+        playTone(ctx, { type: 'square', freqStart: 220, freqEnd: 180, duration: 0.2, gainStart: 0.18, gainAttack: 0.005 });
+        playNoise(ctx, { duration: 0.15, filterType: 'lowpass', freqStart: 700, freqEnd: 300, gainStart: 0.12, Q: 0.6 });
+    },
+    HEALING_PRAYER: (ctx) => {
+        SOUND_RECIPES.BUFF_RISE(ctx, { freqStart: 300, freqEnd: 700, duration: 0.5, gainStart: 0.13 });
+        playTone(ctx, { startTime: 0.15, type: 'sine', freqStart: 700, freqEnd: 900, duration: 0.35, gainStart: 0.08, gainAttack: 0.05, freqCurve: 'linear' });
+    },
+    MIND_FOCUS: (ctx) => {
+        SOUND_RECIPES.BUFF_RISE(ctx, { freqStart: 250, freqEnd: 650, duration: 0.4, gainStart: 0.15 });
+        playCrackle(ctx, { startTime: 0.3, count: 2, spread: 0.05, baseGain: 0.06 });
+    },
+    TAUNT: (ctx) => {
+        playTone(ctx, { type: 'sawtooth', freqStart: 150, freqEnd: 90, duration: 0.3, gainStart: 0.2, gainAttack: 0.01 });
+    },
+    SHIELD_BASH: (ctx) => {
+        SOUND_RECIPES.TACKLE(ctx);
+        playTone(ctx, { startTime: 0.05, type: 'square', freqStart: 300, freqEnd: 200, duration: 0.12, gainStart: 0.12, gainAttack: 0.002 });
+    },
+    ENERGY_SIPHON: (ctx) => {
+        playTone(ctx, { type: 'sine', freqStart: 800, freqEnd: 200, duration: 0.4, gainStart: 0.15, gainAttack: 0.02 });
+        playNoise(ctx, { duration: 0.35, filterType: 'bandpass', freqStart: 600, freqEnd: 1200, gainStart: 0.1, gainAttack: 0.02, Q: 1.5 });
+    },
+};
+
+// 액션 타입(animState/currentEffect의 값) → 사운드 레시피 매핑
+// petData.js의 SKILLS 키와 1:1로 대응됩니다.
+const ACTION_SOUND_MAP = {
+    TACKLE: 'TACKLE',
+    HARDEN: 'HARDEN',
+    HEALING_PRAYER: 'HEALING_PRAYER',
+    TAUNT: 'TAUNT',
+    MIND_FOCUS: 'MIND_FOCUS',
+    SHIELD_BASH: 'SHIELD_BASH',
+    ENERGY_SIPHON: 'ENERGY_SIPHON',
+    SAND_THROW: 'SAND_THROW',
+    POISON_STING: 'POISON_STING',
+    STATIC_SHOCK: 'STATIC_SHOCK',
+    FIERY_BREATH: 'FIERY_BREATH',
+    DRAGON_CLAW: 'DRAGON_CLAW',
+    STELLAR_BLAST: 'STELLAR_BLAST',
+    QUICK_DISTURBANCE: 'QUICK_DISTURBANCE',
+    WIND_BLADE: 'WIND_BLADE',
+    TORNADO_SWEEP: 'TORNADO_SWEEP',
+    LEECH_SEED: 'LEECH_SEED',
+    VINE_WHIP: 'VINE_WHIP',
+    SOLAR_BEAM: 'SOLAR_BEAM',
+    SHOCK_SCRATCH: 'SHOCK_SCRATCH',
+    THUNDER_PUNCH: 'THUNDER_PUNCH',
+    THUNDERSTORM: 'THUNDERSTORM',
+    REM_FIRE: 'REM_FIRE',
+    FLAME_DASH: 'FLAME_DASH',
+    UPHWA: 'UPHWA',
+    WATER_BALL: 'WATER_BALL',
+    COUNTER_STANCE: 'COUNTER_STANCE',
+    ULTIMATE_SECRET: 'ULTIMATE_SECRET',
+    REED_BOW: 'REED_BOW',
+};
+
+// 타격(hit) 시 속성별 임팩트음 — animState 값을 그대로 받아 어울리는 "퍽/지직/촬싹" 소리를 냅니다.
+const HIT_SOUND_MAP = {
+    TACKLE: (ctx) => playTone(ctx, { type: 'square', freqStart: 150, freqEnd: 20, duration: 0.15, gainStart: 0.3, gainAttack: 0.002 }),
+    FIERY_BREATH: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 130, freqEnd: 30, duration: 0.18, gainStart: 0.28, gainAttack: 0.002 }); playCrackle(ctx, { count: 2, spread: 0.05, baseGain: 0.06 }); },
+    DRAGON_CLAW: (ctx) => playTone(ctx, { type: 'square', freqStart: 160, freqEnd: 30, duration: 0.14, gainStart: 0.26, gainAttack: 0.002 }),
+    STELLAR_BLAST: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 200, freqEnd: 25, duration: 0.3, gainStart: 0.32, gainAttack: 0.003 }); playNoise(ctx, { duration: 0.25, filterType: 'lowpass', freqStart: 3000, freqEnd: 150, gainStart: 0.2, Q: 0.5 }); },
+    REM_FIRE: (ctx) => playTone(ctx, { type: 'square', freqStart: 140, freqEnd: 30, duration: 0.14, gainStart: 0.24, gainAttack: 0.002 }),
+    FLAME_DASH: (ctx) => playTone(ctx, { type: 'square', freqStart: 160, freqEnd: 25, duration: 0.16, gainStart: 0.28, gainAttack: 0.002 }),
+    UPHWA: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 90, freqEnd: 20, duration: 0.4, gainStart: 0.35, gainAttack: 0.005 }); playNoise(ctx, { duration: 0.3, filterType: 'lowpass', freqStart: 2000, freqEnd: 100, gainStart: 0.25, Q: 0.4 }); },
+    QUICK_DISTURBANCE: (ctx) => playTone(ctx, { type: 'triangle', freqStart: 500, freqEnd: 150, duration: 0.12, gainStart: 0.18, gainAttack: 0.002 }),
+    WIND_BLADE: (ctx) => playTone(ctx, { type: 'triangle', freqStart: 550, freqEnd: 180, duration: 0.12, gainStart: 0.2, gainAttack: 0.002 }),
+    TORNADO_SWEEP: (ctx) => playTone(ctx, { type: 'sawtooth', freqStart: 250, freqEnd: 50, duration: 0.25, gainStart: 0.26, gainAttack: 0.003 }),
+    LEECH_SEED: (ctx) => playTone(ctx, { type: 'triangle', freqStart: 260, freqEnd: 100, duration: 0.16, gainStart: 0.18, gainAttack: 0.003 }),
+    VINE_WHIP: (ctx) => playTone(ctx, { type: 'square', freqStart: 220, freqEnd: 60, duration: 0.13, gainStart: 0.22, gainAttack: 0.002 }),
+    SOLAR_BEAM: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 280, freqEnd: 60, duration: 0.25, gainStart: 0.28, gainAttack: 0.003 }); playNoise(ctx, { duration: 0.2, filterType: 'highpass', freqStart: 2500, freqEnd: 4000, gainStart: 0.1, Q: 0.6 }); },
+    SHOCK_SCRATCH: (ctx) => { playTone(ctx, { type: 'square', freqStart: 200, freqEnd: 40, duration: 0.12, gainStart: 0.22, gainAttack: 0.002 }); playCrackle(ctx, { count: 2, spread: 0.05, baseGain: 0.08 }); },
+    THUNDER_PUNCH: (ctx) => { playTone(ctx, { type: 'square', freqStart: 180, freqEnd: 30, duration: 0.15, gainStart: 0.28, gainAttack: 0.002 }); playCrackle(ctx, { count: 3, spread: 0.08, baseGain: 0.1 }); },
+    THUNDERSTORM: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 200, freqEnd: 25, duration: 0.3, gainStart: 0.32, gainAttack: 0.003 }); playCrackle(ctx, { count: 4, spread: 0.1, baseGain: 0.12 }); },
+    STATIC_SHOCK: (ctx) => playCrackle(ctx, { count: 3, spread: 0.08, baseGain: 0.1 }),
+    WATER_BALL: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.22 }),
+    COUNTER_STANCE: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.2 }),
+    REED_BOW: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.18 }),
+    ULTIMATE_SECRET: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 100, freqEnd: 20, duration: 0.4, gainStart: 0.36, gainAttack: 0.005 }); playNoise(ctx, { duration: 0.35, filterType: 'lowpass', freqStart: 1500, freqEnd: 100, gainStart: 0.22, Q: 0.5 }); },
+    SAND_THROW: (ctx) => playNoise(ctx, { duration: 0.2, filterType: 'lowpass', freqStart: 1000, freqEnd: 250, gainStart: 0.18, Q: 0.6 }),
+    POISON_STING: (ctx) => playTone(ctx, { type: 'square', freqStart: 170, freqEnd: 30, duration: 0.13, gainStart: 0.22, gainAttack: 0.002 }),
+};
+
+const DEFAULT_HIT = (ctx) => playTone(ctx, { type: 'square', freqStart: 150, freqEnd: 20, duration: 0.15, gainStart: 0.3, gainAttack: 0.002 });
+
+/**
+ * 스킬/액션 발동 시점에 호출합니다. actionType은 SKILLS의 키
+ * (예: 'FLAME_DASH', 'WIND_BLADE', 'TACKLE' 등)를 그대로 받습니다.
+ */
+export const playSkillSound = (actionType) => {
+    try {
+        const ctx = getCtx();
+        if (!ctx) return;
+        const recipeKey = ACTION_SOUND_MAP[actionType];
+        const recipe = recipeKey ? SOUND_RECIPES[recipeKey] : null;
+        if (recipe) {
+            recipe(ctx);
+        } else {
+            // 매핑되지 않은 액션(방어 행동 등)은 기본 합성음으로 대체
+            playTone(ctx, { type: 'sawtooth', freqStart: 250, freqEnd: 100, duration: 0.3, gainStart: 0.15, gainAttack: 0.01 });
+        }
+    } catch (e) {
+        console.log('battleSoundEngine: skill sound unavailable', e);
+    }
+};
+
+/**
+ * 타격(피격) 시점에 호출합니다. actionType을 알고 있으면 속성에 맞는 임팩트음을,
+ * 모르면 기본 타격음을 재생합니다.
+ */
+export const playHitSound = (actionType) => {
+    try {
+        const ctx = getCtx();
+        if (!ctx) return;
+        const fn = (actionType && HIT_SOUND_MAP[actionType]) || DEFAULT_HIT;
+        fn(ctx);
+    } catch (e) {
+        console.log('battleSoundEngine: hit sound unavailable', e);
+    }
+};
+
+/**
+ * 두뇌 간식 등 회복 아이템 사용 시 재생되는 사운드입니다.
+ */
+export const playHealSound = () => {
+    try {
+        const ctx = getCtx();
+        if (!ctx) return;
+        SOUND_RECIPES.HEALING_PRAYER(ctx);
+    } catch (e) {
+        console.log('battleSoundEngine: heal sound unavailable', e);
+    }
+};
+
+// M1_BATTLE_BGM_PATCH
+// M1_BATTLE_BGM_UPGRADE_PATCH: 외부 음원 없는 8비트풍 배틀 BGM 합성 엔진 v2
+let bgmTimer = null;
+let bgmStep = 0;
+let bgmMaster = null;
+let currentBgmTrackId = 'battle_road';
+
+const BGM_TEMPO = 142;
+const BGM_STEP_SECONDS = 60 / BGM_TEMPO / 2;
+const BGM_MASTER_VOLUME = 0.12;
+
+const BGM_NOTES = {
+    C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
+    C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00
+};
+
+const BGM_TRACKS = {
+    battle_road: {
+        label: '배틀길',
+        tempo: 142,
+        masterVolume: 0.12,
+        leadGain: 0.072,
+        bassGain: 0.052,
+        clickGain: 0.046,
+        kickGain: 0.08,
+        melody: [
+            'E4', null, 'G4', null, 'A4', 'G4', 'E4', null,
+            'D4', null, 'E4', 'G4', 'A4', null, 'G4', null,
+            'C5', null, 'B4', 'G4', 'A4', null, 'E4', null,
+            'D4', 'E4', 'G4', null, 'E4', null, null, null,
+        ],
+        bass: [
+            'A3', null, null, null, 'G3', null, null, null,
+            'F3', null, null, null, 'G3', null, null, null,
+            'A3', null, null, null, 'C4', null, null, null,
+            'F3', null, 'G3', null, 'A3', null, null, null,
+        ],
+    },
+    school_champion: {
+        label: '챔피언',
+        tempo: 150,
+        masterVolume: 0.13,
+        leadGain: 0.078,
+        bassGain: 0.056,
+        clickGain: 0.048,
+        kickGain: 0.082,
+        melody: [
+            'C5', null, 'E5', null, 'G5', 'E5', 'C5', null,
+            'B4', null, 'D5', null, 'G5', null, 'E5', null,
+            'A4', null, 'C5', 'E5', 'A5', null, 'G5', null,
+            'E5', 'D5', 'C5', null, 'D5', null, null, null,
+        ],
+        bass: [
+            'C4', null, null, null, 'G3', null, null, null,
+            'A3', null, null, null, 'F3', null, null, null,
+            'C4', null, null, null, 'A3', null, null, null,
+            'F3', null, 'G3', null, 'C4', null, null, null,
+        ],
+    },
+    night_duel: {
+        label: '밤의결투',
+        tempo: 132,
+        masterVolume: 0.125,
+        leadGain: 0.07,
+        bassGain: 0.058,
+        clickGain: 0.04,
+        kickGain: 0.075,
+        melody: [
+            'A4', null, 'C5', null, 'B4', null, 'G4', null,
+            'E4', null, 'G4', null, 'A4', null, 'C5', null,
+            'B4', null, 'A4', null, 'G4', 'E4', 'D4', null,
+            'E4', null, 'G4', null, 'A4', null, null, null,
+        ],
+        bass: [
+            'A3', null, null, null, 'E3', null, null, null,
+            'F3', null, null, null, 'G3', null, null, null,
+            'A3', null, null, null, 'G3', null, null, null,
+            'F3', null, 'E3', null, 'A3', null, null, null,
+        ],
+    },
+    tiny_boss: {
+        label: '작은보스',
+        tempo: 158,
+        masterVolume: 0.135,
+        leadGain: 0.082,
+        bassGain: 0.06,
+        clickGain: 0.052,
+        kickGain: 0.086,
+        melody: [
+            'E5', 'D5', 'E5', null, 'B4', null, 'C5', 'D5',
+            'E5', null, 'G5', null, 'E5', 'D5', 'C5', null,
+            'A4', null, 'C5', null, 'E5', null, 'G5', null,
+            'F5', 'E5', 'D5', null, 'B4', null, null, null,
+        ],
+        bass: [
+            'E3', null, null, null, 'E3', null, null, null,
+            'C3', null, null, null, 'D3', null, null, null,
+            'A3', null, null, null, 'G3', null, null, null,
+            'F3', null, 'D3', null, 'E3', null, null, null,
+        ],
+    },
+};
+
+export const getBattleBgmTrackIds = () => Object.keys(BGM_TRACKS);
+
+const getCurrentBgmTrack = () => BGM_TRACKS[currentBgmTrackId] || BGM_TRACKS.battle_road;
+
+const getStepSeconds = () => {
+    const track = getCurrentBgmTrack();
+    return 60 / (track.tempo || BGM_TEMPO) / 2;
+};
+
+const ensureBgmMaster = (ctx) => {
+    const track = getCurrentBgmTrack();
+    if (!bgmMaster) {
+        bgmMaster = ctx.createGain();
+        bgmMaster.gain.setValueAtTime(0.0001, ctx.currentTime);
+        bgmMaster.gain.linearRampToValueAtTime(track.masterVolume || BGM_MASTER_VOLUME, ctx.currentTime + 0.25);
+        bgmMaster.connect(ctx.destination);
+    }
+    return bgmMaster;
+};
+
+const playBgmTone = (ctx, {
+    freq,
+    startTime = 0,
+    duration = 0.12,
+    type = 'square',
+    gain = 0.12,
+    detune = 0,
+}) => {
+    if (!freq || !bgmMaster) return;
+
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    osc.type = type;
+    osc.detune.value = detune;
+    osc.frequency.setValueAtTime(freq, t0);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1900, t0);
+    filter.Q.setValueAtTime(0.65, t0);
+
+    gainNode.gain.setValueAtTime(0.0001, t0);
+    gainNode.gain.linearRampToValueAtTime(gain, t0 + 0.015);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+
+    osc.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(bgmMaster);
+
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.03);
+};
+
+const playBgmClick = (ctx, startTime = 0, gain = 0.04) => {
+    if (!bgmMaster) return;
+
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(2200, t0);
+
+    gainNode.gain.setValueAtTime(gain, t0);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.035);
+
+    osc.connect(gainNode);
+    gainNode.connect(bgmMaster);
+
+    osc.start(t0);
+    osc.stop(t0 + 0.045);
+};
+
+const playBgmKick = (ctx, startTime = 0, gain = 0.08) => {
+    if (!bgmMaster) return;
+
+    const t0 = ctx.currentTime + startTime;
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, t0);
+    osc.frequency.exponentialRampToValueAtTime(45, t0 + 0.09);
+
+    gainNode.gain.setValueAtTime(gain, t0);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+
+    osc.connect(gainNode);
+    gainNode.connect(bgmMaster);
+
+    osc.start(t0);
+    osc.stop(t0 + 0.12);
+};
+
+const playBattleBgmStep = (ctx) => {
+    const track = getCurrentBgmTrack();
+    const step = bgmStep % 32;
+    const stepSeconds = getStepSeconds();
+
+    const melodyNote = track.melody[step];
+    const bassNote = track.bass[step];
+
+    if (melodyNote) {
+        playBgmTone(ctx, {
+            freq: BGM_NOTES[melodyNote],
+            duration: stepSeconds * 0.82,
+            type: step % 8 === 0 ? 'square' : 'triangle',
+            gain: track.leadGain || 0.075,
+            detune: step % 4 === 0 ? -3 : 3,
+        });
+    }
+
+    if (bassNote) {
+        playBgmTone(ctx, {
+            freq: BGM_NOTES[bassNote],
+            duration: stepSeconds * 1.45,
+            type: 'triangle',
+            gain: track.bassGain || 0.055,
+        });
+    }
+
+    if (step % 4 === 0) {
+        playBgmKick(ctx, 0, track.kickGain || 0.08);
+    }
+
+    if (step % 2 === 1) {
+        playBgmClick(ctx, 0.01, step % 8 === 3 ? (track.clickGain || 0.048) : (track.clickGain || 0.04) * 0.75);
+    }
+
+    bgmStep += 1;
+};
+
+export const startBattleBgm = (trackId = 'battle_road') => {
+    try {
+        const nextTrackId = BGM_TRACKS[trackId] ? trackId : 'battle_road';
+
+        if (bgmTimer && currentBgmTrackId === nextTrackId) return;
+
+        if (bgmTimer && currentBgmTrackId !== nextTrackId) {
+            stopBattleBgm();
+        }
+
+        currentBgmTrackId = nextTrackId;
+
+        const ctx = getCtx();
+        if (!ctx) return;
+
+        ensureBgmMaster(ctx);
+        playBattleBgmStep(ctx);
+
+        bgmTimer = window.setInterval(() => {
+            const liveCtx = getCtx();
+            if (!liveCtx) return;
+            ensureBgmMaster(liveCtx);
+            playBattleBgmStep(liveCtx);
+        }, getStepSeconds() * 1000);
+    } catch (e) {
+        console.log('battleSoundEngine: bgm unavailable', e);
+    }
+};
+
+export const stopBattleBgm = () => {
+    try {
+        if (bgmTimer) {
+            window.clearInterval(bgmTimer);
+            bgmTimer = null;
+        }
+
+        const ctx = sharedCtx;
+        if (ctx && bgmMaster) {
+            bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
+            bgmMaster.gain.setValueAtTime(Math.max(0.0001, bgmMaster.gain.value), ctx.currentTime);
+            bgmMaster.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+
+            const oldMaster = bgmMaster;
+            window.setTimeout(() => {
+                try {
+                    oldMaster.disconnect();
+                } catch (_) {
+                    // 이미 끊긴 경우 무시
+                }
+            }, 320);
+        }
+
+        bgmMaster = null;
+        bgmStep = 0;
+    } catch (e) {
+        console.log('battleSoundEngine: bgm stop unavailable', e);
+    }
+};
