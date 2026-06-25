@@ -346,9 +346,32 @@ export const useLeagueStore = create((set, get) => ({
         return { expGained };
     },
 
-    processBattleResults: async (classIdArg, winnerId, loserId, fled, finalWinnerPet, finalLoserPet) => {
+    processBattleResults: async (
+        classIdArg,
+        winnerId,
+        loserId,
+        fled,
+        finalWinnerPet,
+        finalLoserPet,
+        finalWinnerTeam = null,
+        finalLoserTeam = null,
+        finalWinnerParticipatedPetIds = null,
+        finalLoserParticipatedPetIds = null
+    ) => {
+        // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH_FIX_AFTER_V2
         try {
-            await firebaseProcessBattleResults(classIdArg, winnerId, loserId, fled, finalWinnerPet, finalLoserPet);
+            await firebaseProcessBattleResults(
+                classIdArg,
+                winnerId,
+                loserId,
+                fled,
+                finalWinnerPet,
+                finalLoserPet,
+                finalWinnerTeam,
+                finalLoserTeam,
+                finalWinnerParticipatedPetIds,
+                finalLoserParticipatedPetIds
+            );
             const updatedPlayers = await getPlayers(classIdArg);
             set({ players: updatedPlayers });
         } catch (error) {
@@ -356,9 +379,10 @@ export const useLeagueStore = create((set, get) => ({
         }
     },
 
-    processBattleDraw: async (classIdArg, p1Id, p2Id, p1Pet, p2Pet) => {
+    processBattleDraw: async (classIdArg, p1Id, p2Id, p1Pet, p2Pet, p1Team = null, p2Team = null) => {
+        // M5_DRAW_TEAM_STATE_PERSIST_PATCH_COMMA_FIX
         try {
-            await firebaseProcessBattleDraw(classIdArg, p1Id, p2Id, p1Pet, p2Pet);
+            await firebaseProcessBattleDraw(classIdArg, p1Id, p2Id, p1Pet, p2Pet, p1Team, p2Team);
             const updatedPlayers = await getPlayers(classIdArg);
             set({ players: updatedPlayers });
         } catch (error) {

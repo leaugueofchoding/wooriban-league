@@ -300,7 +300,12 @@ function Auth({ user }) {
     const navigate = useNavigate();
     const [showNotifications, setShowNotifications] = useState(false);
     const [battleChallenge, setBattleChallenge] = useState(null);
-    const notificationRef = useRef(null);
+    
+    const [acceptBattleTeamDraft, setAcceptBattleTeamDraft] = useState({
+        leadPetId: null,
+        benchPetId: null,
+    }); // M4_ACCEPTOR_TEAM_SELECT_PATCH
+const notificationRef = useRef(null);
 
     // ─── 시계 + 수업시간 알림 ───────────────────────────────
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -411,7 +416,13 @@ function Auth({ user }) {
     }, [myPlayerData, classId]);
 
 
-    const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
+    
+
+    useEffect(() => {
+        // M4_ACCEPTOR_TEAM_SELECT_PATCH
+        setAcceptBattleTeamDraft({ leadPetId: null, benchPetId: null });
+    }, [battleChallenge?.id]);
+const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
 
     const groupedNotifications = useMemo(() => {
         if (!notifications) return [];
@@ -494,14 +505,82 @@ function Auth({ user }) {
         removeAllNotifications(user.uid);
     };
 
+    const getAliveBattlePetsForAccept = () => {
+        // M4_ACCEPTOR_TEAM_SELECT_PATCH
+        return (myPlayerData?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
+    };
+
+    const shouldSelectBenchForAccept = () => {
+        const challengerTeamSize = Array.isArray(battleChallenge?.challenger?.team)
+            ? battleChallenge.challenger.team.length
+            : 1;
+        return challengerTeamSize > 1 && getAliveBattlePetsForAccept().length >= 2;
+    };
+
+    const getAcceptBattleTeamPetIds = () => {
+        const alivePets = getAliveBattlePetsForAccept();
+        if (alivePets.length === 0) return [];
+
+        const aliveIds = new Set(alivePets.map(pet => pet.id));
+        const preferredLeadId = aliveIds.has(acceptBattleTeamDraft.leadPetId)
+            ? acceptBattleTeamDraft.leadPetId
+            : aliveIds.has(myPlayerData?.partnerPetId)
+                ? myPlayerData.partnerPetId
+                : alivePets[0].id;
+
+        if (!shouldSelectBenchForAccept()) {
+            return [preferredLeadId];
+        }
+
+        const preferredBenchId = aliveIds.has(acceptBattleTeamDraft.benchPetId) && acceptBattleTeamDraft.benchPetId !== preferredLeadId
+            ? acceptBattleTeamDraft.benchPetId
+            : alivePets.find(pet => pet.id !== preferredLeadId)?.id || null;
+
+        return [preferredLeadId, preferredBenchId].filter(Boolean);
+    };
+
+    const createOpponentBattleSnapshotForAccept = (selectedTeam) => {
+        const safeTeam = selectedTeam
+            .filter(Boolean)
+            .map(pet => ({
+                ...pet,
+                status: { ...(pet?.status || {}) },
+            }));
+
+        const safePet = safeTeam[0];
+
+        return {
+            ...(battleChallenge?.opponent || {}),
+            id: myPlayerData.id,
+            name: myPlayerData.name,
+            pet: safePet,
+            team: safeTeam,
+            activePetIndex: 0,
+            activePetId: safePet?.id || null,
+            participatedPetIds: safePet?.id ? [safePet.id] : [],
+            accepted: true,
+            equippedTitle: myPlayerData.equippedTitle || null,
+            avatarSnapshotUrl: myPlayerData.avatarSnapshotUrl || null,
+            photoURL: myPlayerData.photoURL || null,
+        };
+    };
+
     const handleAcceptBattle = async () => {
         if (!battleChallenge || !classId) return;
 
-        // [수정] 내 펫 기절 상태 체크 (안전하게 처리)
-        const myPet = myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
+        const alivePets = getAliveBattlePetsForAccept();
+        const selectedPetIds = getAcceptBattleTeamPetIds();
+        const selectedTeam = selectedPetIds
+            .map(id => alivePets.find(pet => pet.id === id))
+            .filter(Boolean);
 
-        if (!myPet || myPet.hp <= 0) {
-            alert("나의 펫이 기절 상태라 대결을 수락할 수 없습니다.\n펫 센터에서 치료해주세요.");
+        if (selectedTeam.length === 0) {
+            alert("나의 펫이 모두 기절 상태라 대결을 수락할 수 없습니다.\n펫 센터에서 치료해주세요.");
+            return;
+        }
+
+        if (shouldSelectBenchForAccept() && selectedTeam.length < 2) {
+            alert("선발 펫과 대기 펫을 선택해주세요.");
             return;
         }
 
@@ -509,29 +588,47 @@ function Auth({ user }) {
             const battleRef = doc(db, 'classes', classId, 'battles', battleChallenge.id);
             const todayStr = new Date().toLocaleDateString();
 
-            // 배틀 카운트 증가 헬퍼 (challenger / opponent 공통)
-            const incrementBattleCount = async (playerId) => {
+            // 배틀 카운트 증가 헬퍼
+            const incrementBattleCount = async (playerId, targetPetId = null) => {
                 const playerRef = doc(db, 'classes', classId, 'players', playerId);
                 const snap = await getDoc(playerRef);
                 if (!snap.exists()) return;
+
                 const data = snap.data();
                 const pets = JSON.parse(JSON.stringify(data.pets || []));
-                const idx = pets.findIndex(p => p.id === data.partnerPetId);
+                const battlePetId = targetPetId || data.partnerPetId;
+                const idx = pets.findIndex(p => p.id === battlePetId);
+
                 if (idx === -1) return;
+
                 const pet = pets[idx];
                 const count = pet.lastBattleDate === todayStr ? (pet.dailyBattleCount || 0) : 0;
                 pets[idx] = { ...pet, lastBattleDate: todayStr, dailyBattleCount: count + 1 };
                 await updateDoc(playerRef, { pets });
             };
 
-            // ★ 신청자(challenger) + 수락자(opponent) 모두 배틀 횟수 증가
+            const challengerLeadPetId = battleChallenge.challenger?.activePetId || battleChallenge.challenger?.pet?.id || null;
+            const opponentSnapshot = createOpponentBattleSnapshotForAccept(selectedTeam);
+            const challengerTeamSize = Array.isArray(battleChallenge.challenger?.team)
+                ? battleChallenge.challenger.team.length
+                : 1;
+            const battleTeamSize = Math.max(challengerTeamSize, opponentSnapshot.team?.length || 1);
+            const battleMode = battleTeamSize > 1 ? 'team-preview' : 'single';
+
+            // 신청자 + 수락자 모두 배틀 횟수 증가
             await Promise.all([
-                incrementBattleCount(battleChallenge.challenger.id),
-                incrementBattleCount(myPlayerData.id),
+                incrementBattleCount(battleChallenge.challenger.id, challengerLeadPetId),
+                incrementBattleCount(myPlayerData.id, opponentSnapshot.activePetId),
             ]);
 
-            // DB 상태를 starting으로 전환 → 게임 시작
-            await updateDoc(battleRef, { "opponent.accepted": true, status: 'starting' });
+            // 수락자의 팀 정보를 battle 문서에 반영한 뒤 starting으로 전환
+            await updateDoc(battleRef, {
+                opponent: opponentSnapshot,
+                status: 'starting',
+                battleMode,
+                teamSize: battleTeamSize,
+            });
+
             navigate(`/battle/${battleChallenge.challenger.id}`);
             setBattleChallenge(null);
         } catch (error) {
@@ -668,12 +765,78 @@ function Auth({ user }) {
 
                 {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
                 {battleChallenge && (() => {
-                    // [버그 수정] 내 파트너펫 기절 상태 미리 확인
-                    const myPetForBattle = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
-                    const myPetFainted = !myPetForBattle || myPetForBattle.hp <= 0;
+                    // M4_ACCEPTOR_TEAM_SELECT_PATCH
+                    const alivePets = getAliveBattlePetsForAccept();
+                    const challengerTeamSize = Array.isArray(battleChallenge.challenger?.team)
+                        ? battleChallenge.challenger.team.length
+                        : 1;
+                    const needsBenchSelect = challengerTeamSize > 1 && alivePets.length >= 2;
+
+                    const aliveIds = new Set(alivePets.map(pet => pet.id));
+                    const selectedLeadId = aliveIds.has(acceptBattleTeamDraft.leadPetId)
+                        ? acceptBattleTeamDraft.leadPetId
+                        : aliveIds.has(myPlayerData?.partnerPetId)
+                            ? myPlayerData.partnerPetId
+                            : alivePets[0]?.id || null;
+
+                    const selectedBenchId = needsBenchSelect
+                        ? (
+                            aliveIds.has(acceptBattleTeamDraft.benchPetId) && acceptBattleTeamDraft.benchPetId !== selectedLeadId
+                                ? acceptBattleTeamDraft.benchPetId
+                                : alivePets.find(pet => pet.id !== selectedLeadId)?.id || null
+                        )
+                        : null;
+
+                    const myPetFainted = alivePets.length === 0;
+                    const acceptDisabled = myPetFainted || (needsBenchSelect && (!selectedLeadId || !selectedBenchId || selectedLeadId === selectedBenchId));
+
+                    const renderPetChoice = (slotLabel, selectedId, onSelect, blockedId = null) => (
+                        <div style={{ marginBottom: '0.8rem', textAlign: 'left' }}>
+                            <h4 style={{ margin: '0 0 0.45rem', color: '#343a40', fontSize: '0.95rem' }}>{slotLabel}</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '0.55rem' }}>
+                                {alivePets.map(pet => {
+                                    const isSelected = selectedId === pet.id;
+                                    const isBlocked = blockedId === pet.id;
+                                    return (
+                                        <button
+                                            key={pet.id}
+                                            type="button"
+                                            onClick={() => !isBlocked && onSelect(pet.id)}
+                                            disabled={isBlocked}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem',
+                                                padding: '0.55rem',
+                                                borderRadius: '12px',
+                                                border: isSelected ? '3px solid #20c997' : '2px solid #e9ecef',
+                                                background: isSelected ? '#e6fcf5' : isBlocked ? '#f1f3f5' : 'white',
+                                                opacity: isBlocked ? 0.45 : 1,
+                                                cursor: isBlocked ? 'not-allowed' : 'pointer',
+                                                textAlign: 'left',
+                                            }}
+                                        >
+                                            <img
+                                                src={petImageMap[`${pet.appearanceId}_idle`]}
+                                                alt={pet.name}
+                                                style={{ width: 42, height: 42, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa' }}
+                                            />
+                                            <div>
+                                                <strong style={{ display: 'block', color: '#343a40', fontSize: '0.86rem' }}>{pet.name}</strong>
+                                                <span style={{ display: 'block', color: '#868e96', fontSize: '0.74rem', fontWeight: 800 }}>
+                                                    Lv.{pet.level} · HP {pet.hp}/{pet.maxHp}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+
                     return (
                         <ModalBackground>
-                            <ModalContent>
+                            <ModalContent style={{ maxWidth: needsBenchSelect ? '560px' : '400px' }}>
                                 <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
 
                                 <OpponentItem>
@@ -684,22 +847,52 @@ function Auth({ user }) {
                                         />
                                         <div>
                                             <strong>{battleChallenge.challenger?.name}</strong>
-                                            <span>{battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})</span>
+                                            <span>
+                                                {battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})
+                                                {challengerTeamSize > 1 ? ` 외 ${challengerTeamSize - 1}마리` : ''}
+                                            </span>
                                         </div>
                                     </div>
                                 </OpponentItem>
 
                                 {myPetFainted && (
                                     <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center' }}>
-                                        ⚠️ 내 펫이 기절 상태입니다. 펫 센터에서 치료 후 수락할 수 있습니다.
+                                        ⚠️ 내 펫이 모두 기절 상태입니다. 펫 센터에서 치료 후 수락할 수 있습니다.
+                                    </div>
+                                )}
+
+                                {!myPetFainted && needsBenchSelect && (
+                                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '14px', padding: '0.8rem', marginBottom: '0.9rem' }}>
+                                        <p style={{ margin: '0 0 0.8rem', color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
+                                            상대가 2펫 팀으로 신청했습니다. 나도 선발 펫과 대기 펫을 선택하세요.
+                                        </p>
+
+                                        {renderPetChoice('1번 선발 펫', selectedLeadId, (petId) => {
+                                            const fallbackBenchId = selectedBenchId === petId
+                                                ? alivePets.find(p => p.id !== petId)?.id || null
+                                                : selectedBenchId;
+                                            setAcceptBattleTeamDraft(prev => ({ ...prev, leadPetId: petId, benchPetId: fallbackBenchId }));
+                                        })}
+
+                                        {renderPetChoice('2번 대기 펫', selectedBenchId, (petId) => {
+                                            setAcceptBattleTeamDraft(prev => ({ ...prev, benchPetId: petId }));
+                                        }, selectedLeadId)}
+                                    </div>
+                                )}
+
+                                {!myPetFainted && !needsBenchSelect && (
+                                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#495057', textAlign: 'center', fontWeight: 700 }}>
+                                        {alivePets.length === 1
+                                            ? `내 펫이 1마리뿐이라 ${alivePets[0].name}이(가) 바로 참가합니다.`
+                                            : '기존 파트너 펫으로 참가합니다.'}
                                     </div>
                                 )}
 
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                     <StyledButton
                                         onClick={handleAcceptBattle}
-                                        disabled={myPetFainted}
-                                        style={{ flex: 1, backgroundColor: myPetFainted ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1.1rem', cursor: myPetFainted ? 'not-allowed' : 'pointer' }}
+                                        disabled={acceptDisabled}
+                                        style={{ flex: 1, backgroundColor: acceptDisabled ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1.1rem', cursor: acceptDisabled ? 'not-allowed' : 'pointer' }}
                                     >
                                         ⚔️ 수락
                                     </StyledButton>

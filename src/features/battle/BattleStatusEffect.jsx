@@ -14,7 +14,7 @@ export function getBattleStatusList(petStatus = {}) {
             kind: 'stun',
             icon: '💫',
             label: '행동 불가',
-            detail: '이번 턴 행동 불가',
+            detail: `${petStatus.stunnedTurns ?? 1}턴 행동 불가`,
             tone: '#f08c00',
         });
     }
@@ -24,7 +24,7 @@ export function getBattleStatusList(petStatus = {}) {
             kind: 'blind',
             icon: '☀️',
             label: '눈부심',
-            detail: '다음 공격 무조건 빗나감',
+            detail: `${petStatus.dazzledTurns ?? 1}턴/1회 눈부심`,
             tone: '#f59f00',
         });
     }
@@ -54,7 +54,7 @@ export function getBattleStatusList(petStatus = {}) {
             kind: 'blind',
             icon: '🙈',
             label: '실명',
-            detail: '다음 공격 50% 빗나감',
+            detail: `${petStatus.blindTurns ?? 1}턴/1회 실명`,
             tone: '#868e96',
         });
     }
@@ -104,7 +104,7 @@ export function getBattleStatusList(petStatus = {}) {
             kind: 'burn',
             icon: '🔥',
             label: '화상',
-            detail: '매 턴 피해',
+            detail: `${petStatus.burnedTurns ?? 3}턴 화상 피해`,
             tone: '#f03e3e',
         });
     }

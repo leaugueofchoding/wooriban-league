@@ -637,9 +637,10 @@ export const SKILLS = {
         type: 'signature',
         element: '불',
         basePower: 55,
-        description: '맹렬한 화염을 뿜어 강한 피해를 주지만, 반동으로 다음 턴 행동 불가 상태가 됩니다.',
+        description: '맹렬한 화염을 뿜어 강한 피해를 주지만, 반동으로 다음 턴 지침 상태가 됩니다.',
         previewStatus: PREVIEW_STATUS.RECHARGE,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            // DRAGON_BREATH_MID_BUFF_V1
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
             if (!attacker.status) attacker.status = {};
@@ -647,13 +648,23 @@ export const SKILLS = {
 
             if (checkBlindMiss(attacker)) return `'${attacker.name}'의 용의 숨결! ...하지만 엉뚱한 방향으로 뿜었습니다! 💨`;
 
+            const dragonBreathLevel = Number(attacker.level ?? 1);
+
+            // Lv.1 구간 폭증을 막고, Lv.30 전후에서는 반동 스킬답게 체감 화력을 올립니다.
+            // Lv.1: scale 1.00
+            // Lv.30: scale 약 1.21, 상한 1.22
+            const dragonBreathLevelScale = Math.min(
+                1.22,
+                1 + Math.max(0, dragonBreathLevel - 1) * 0.0075
+            );
+
             let { damage, isEffective, isCritical: breathCrit } = calculateDamage(
                 SKILLS.FIERY_BREATH.basePower,
                 attackerPlayer,
                 defenderPlayer,
                 SKILLS.FIERY_BREATH.element,
-                /* M4_DRAGON_BREATH_BALANCE_PATCH_V2 */ 1.45,
-                0.8
+                1.65 * dragonBreathLevelScale,
+                0.95 * dragonBreathLevelScale
             );
 
             let log = `'${attacker.name}'의 용의 숨결! 🔥`;
