@@ -348,8 +348,7 @@ const myPartnerPet = useMemo(() => {
                 friendPartnerPet={friendPartnerPet}
                 friendTitle={friendTitle}
                 friendTeamName={friendTeamName}
-                friendTeamInfo={friendTeamInfo}
-                myTeam={myTeam}
+                friendTeamInfo={friendTeamInfo}
                 activeGoal={activeGoal}
                 activeMissions={activeMissions}
                 recentMissions={recentMissions}

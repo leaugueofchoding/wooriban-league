@@ -136,7 +136,7 @@ const PALETTE = ['#f8f9fa', '#e3fafc', '#eebefa', '#fff3bf', '#d3f9d8'];
 
 // --- Main Component ---
 function DashboardSimpleMode({
-  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName, friendTeamInfo, myTeam,
+  myPlayerData, myAvatarUrls, myPartnerPet, equippedTitle, todaysFriend, friendAvatarUrls, friendPartnerPet, friendTitle, friendTeamName, friendTeamInfo,
   activeGoal, activeMissions, recentMissions, topRankedTeams, rankIcons, onDonate, mySubmissions,
 }) {
   const [donationAmount, setDonationAmount] = useState('');
@@ -163,6 +163,11 @@ function DashboardSimpleMode({
 
   const handleDonateClick = () => { onDonate(donationAmount); setDonationAmount(''); };
   const handleCustomColorChange = (e) => { const newColor = e.target.value; setCustomColor(newColor); setThemeColor(newColor); };
+
+
+  const friendTeamEmblemSrc = friendTeamInfo
+    ? (friendTeamInfo.emblemId && emblemMap[friendTeamInfo.emblemId] ? emblemMap[friendTeamInfo.emblemId] : friendTeamInfo.emblemUrl || defaultEmblem)
+    : defaultEmblem;
 
   const topContributionEntry = React.useMemo(() => {
     if (!activeGoal?.contributions) return null;
@@ -347,7 +352,12 @@ function DashboardSimpleMode({
                     </InfoBadge>
                   )}
                   <InfoBadge>
-                    <span style={{ fontSize: '0.9rem' }}>🛡️</span>
+                    <img
+                      src={friendTeamEmblemSrc}
+                      alt="친구 팀 엠블렘"
+                      style={{ width: '18px', height: '18px', objectFit: 'contain', flexShrink: 0, display: 'block' }}
+                      onError={e => { e.currentTarget.src = defaultEmblem; }}
+                    />
                     {friendTeamInfo ? (
                       <span>
                         {friendTeamInfo.teamName}
@@ -359,18 +369,7 @@ function DashboardSimpleMode({
                     ) : (
                       <span>{friendTeamName}</span>
                     )}
-                  </InfoBadge>
-                  {myTeam && (
-                    <InfoBadge style={{ marginTop: '0.3rem', background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <img
-                        src={myTeam.emblemId && emblemMap[myTeam.emblemId] ? emblemMap[myTeam.emblemId] : myTeam.emblemUrl || defaultEmblem}
-                        alt="팀 엠블렘"
-                        style={{ width: '18px', height: '18px', objectFit: 'contain', flexShrink: 0, display: 'block' }}
-                        onError={e => { e.target.src = defaultEmblem; }}
-                      />
-                      <span style={{ fontWeight: 900 }}>내 팀: {myTeam.teamName}</span>
-                    </InfoBadge>
-                  )}
+                  </InfoBadge>
                 </FriendInfo>
               </FriendCardContent>
             </FriendSection>

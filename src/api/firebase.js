@@ -1398,11 +1398,22 @@ export async function updateMatchScores(classId, matchId, scores, scorers, recor
   }
   const matchData = matchSnap.data();
 
+  const RECORDER_REWARD = 100;
+  const VICTORY_REWARD = 100;
+  const DEFEAT_REWARD = 50;
+  const GOAL_REWARD = 20;
+
   batch.update(matchRef, {
     teamA_score: scores.a,
     teamB_score: scores.b,
     status: '완료',
-    scorers: scorers || {}
+    scorers: scorers || {},
+    rewardPolicy: {
+      recorder: RECORDER_REWARD,
+      victory: VICTORY_REWARD,
+      participation: DEFEAT_REWARD,
+      goal: GOAL_REWARD,
+    }
   });
 
   if (recorderId) {
@@ -1413,14 +1424,11 @@ export async function updateMatchScores(classId, matchId, scores, scorers, recor
     if (!recorderSnapshot.empty) {
       const recorderDoc = recorderSnapshot.docs[0];
       const recorderData = recorderDoc.data();
-      batch.update(recorderDoc.ref, { points: increment(30) });
-      addPointHistory(classId, recorderId, recorderData.name, 30, `보너스 (경기 결과 기록)`);
+      batch.update(recorderDoc.ref, { points: increment(RECORDER_REWARD) });
+      addPointHistory(classId, recorderId, recorderData.name, RECORDER_REWARD, `보너스 (경기 결과 기록)`);
     }
   }
-
-  const VICTORY_REWARD = 50;
-  const DEFEAT_REWARD = 15;
-  let winningTeamId = null;
+let winningTeamId = null;
   let losingTeamId = null;
 
   if (scores.a > scores.b) {
@@ -1487,14 +1495,21 @@ export async function updateMatchStatus(classId, matchId, newStatus) {
 export async function updateMatchScoresWithPointAdjust(classId, matchId, newScores, newScorers) {
   if (!classId) return;
 
-  const VICTORY_REWARD = 50;
-  const DEFEAT_REWARD = 15;
+  const VICTORY_REWARD = 100;
+  const DEFEAT_REWARD = 50;
   const DRAW_REWARD = 0;
+  const GOAL_REWARD = 20;
 
   const matchRef = doc(db, 'classes', classId, 'matches', matchId);
   const matchSnap = await getDoc(matchRef);
   if (!matchSnap.exists()) throw new Error('경기를 찾을 수 없습니다.');
   const matchData = matchSnap.data();
+
+  const previousRewardPolicy = matchData.rewardPolicy || {};
+  const PREVIOUS_VICTORY_REWARD = Number(previousRewardPolicy.victory ?? 50);
+  const PREVIOUS_DEFEAT_REWARD = Number(previousRewardPolicy.participation ?? 15);
+  const PREVIOUS_DRAW_REWARD = Number(previousRewardPolicy.draw ?? 0);
+  const PREVIOUS_GOAL_REWARD = Number(previousRewardPolicy.goal ?? 0);
 
   const batch = writeBatch(db);
 
@@ -1503,6 +1518,12 @@ export async function updateMatchScoresWithPointAdjust(classId, matchId, newScor
     teamA_score: newScores.a,
     teamB_score: newScores.b,
     scorers: newScorers || {},
+    rewardPolicy: {
+      victory: VICTORY_REWARD,
+      participation: DEFEAT_REWARD,
+      draw: DRAW_REWARD,
+      goal: GOAL_REWARD,
+    },
   });
 
   // 2. 기존 결과 기반 포인트 회수
@@ -3856,21 +3877,18 @@ export async function processBattleResults(
       defeatPenalty = Math.floor(defeatPenalty * 0.5);
     }
 
-    // 레벨 차 보상 스케일링은 대표 active 펫 기준으로 1회 계산
-    const winnerPetLevel = finalWinnerPet?.level || 1;
-    const loserPetLevel = finalLoserPet?.level || 1;
-    const levelGap = winnerPetLevel - loserPetLevel;
-
+    // M9_EFFECTIVE_TEAM_LEVEL_SCALE_PATCH
+    // 레벨 차 보상/패널티는 마지막 active 펫 1마리가 아니라,
+    // 선택/편성된 팀 배열(finalTeam) 전체의 실질 팀 레벨 기준으로 계산합니다.
+    // 실질 팀 레벨 = 최고 레벨 70% + 평균 레벨 30%
+    // 예: 30 + 2 팀은 평균 16이지만 실질 레벨은 약 26으로 계산되어,
+    // 16 + 16 팀보다 강한 팀으로 판정됩니다.
+    let levelGap = 0;
+    let levelScaleNote = '';
+    let lossExpScaleNote = '';
+    let defeatPenaltyLevelNote = '';
     let winExpMultiplier = 1.0;
     let loseExpMultiplier = 1.0;
-
-    if (levelGap >= 10) {
-      victoryReward = Math.floor(victoryReward * 0.5);
-      winExpMultiplier = 0.5;
-    } else if (levelGap >= 5) {
-      victoryReward = Math.floor(victoryReward * 0.75);
-      winExpMultiplier = 0.75;
-    }
 
     let winnerPets = [...(winnerData.pets || [])];
     let loserPets = [...(loserData.pets || [])];
@@ -3905,6 +3923,86 @@ export async function processBattleResults(
 
       return Array.from(map.values());
     };
+
+    const getEffectiveTeamLevel = (finalTeam, fallbackPet) => {
+      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
+
+      if (battleTeam.length === 0) {
+        const fallbackLevel = Number(fallbackPet?.level ?? 1);
+        return Number.isFinite(fallbackLevel) && fallbackLevel > 0 ? fallbackLevel : 1;
+      }
+
+      const levels = battleTeam
+        .map(pet => Number(pet?.level ?? 1))
+        .filter(level => Number.isFinite(level) && level > 0);
+
+      if (levels.length === 0) return 1;
+
+      const maxLevel = Math.max(...levels);
+      const averageLevel = levels.reduce((sum, level) => sum + level, 0) / levels.length;
+
+      // 3 vs 3에서도 그대로 작동:
+      // 최고 레벨은 원맨 캐리 위협을 반영하고, 평균 레벨은 나머지 팀 전력을 반영합니다.
+      return Math.max(1, Math.round(maxLevel * 0.7 + averageLevel * 0.3));
+    };
+
+    const getTeamMaxLevel = (finalTeam, fallbackPet) => {
+      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
+
+      if (battleTeam.length === 0) {
+        const fallbackLevel = Number(fallbackPet?.level ?? 1);
+        return Number.isFinite(fallbackLevel) && fallbackLevel > 0 ? fallbackLevel : 1;
+      }
+
+      const levels = battleTeam
+        .map(pet => Number(pet?.level ?? 1))
+        .filter(level => Number.isFinite(level) && level > 0);
+
+      return levels.length > 0 ? Math.max(...levels) : 1;
+    };
+
+    const winnerEffectiveLevel = getEffectiveTeamLevel(finalWinnerTeam, finalWinnerPet);
+    const loserEffectiveLevel = getEffectiveTeamLevel(finalLoserTeam, finalLoserPet);
+    const winnerMaxLevel = getTeamMaxLevel(finalWinnerTeam, finalWinnerPet);
+    const loserMaxLevel = getTeamMaxLevel(finalLoserTeam, finalLoserPet);
+    const maxLevelGap = winnerMaxLevel - loserMaxLevel;
+
+    levelGap = winnerEffectiveLevel - loserEffectiveLevel;
+
+    if (levelGap >= 10) {
+      victoryReward = Math.floor(victoryReward * 0.5);
+      winExpMultiplier = 0.5;
+      loseExpMultiplier = 1.5;
+      levelScaleNote = ` (실질 팀 레벨 +${levelGap}: 보상 크게 감소)`;
+      lossExpScaleNote = ` (상대 실질 팀 레벨 +${levelGap}: 패배 경험치 보정)`;
+    } else if (levelGap >= 5) {
+      victoryReward = Math.floor(victoryReward * 0.75);
+      winExpMultiplier = 0.75;
+      loseExpMultiplier = 1.25;
+      levelScaleNote = ` (실질 팀 레벨 +${levelGap}: 보상 약간 감소)`;
+      lossExpScaleNote = ` (상대 실질 팀 레벨 +${levelGap}: 패배 경험치 보정)`;
+    } else if (levelGap <= -10) {
+      victoryReward = Math.floor(victoryReward * 1.5);
+      winExpMultiplier = 1.5;
+      loseExpMultiplier = 0.5;
+      levelScaleNote = ` (실질 팀 레벨 ${Math.abs(levelGap)} 낮은 팀 승리 보너스)`;
+      lossExpScaleNote = ` (높은 팀 패배: 패배 경험치 감소)`;
+    } else if (levelGap <= -5) {
+      victoryReward = Math.floor(victoryReward * 1.25);
+      winExpMultiplier = 1.25;
+      loseExpMultiplier = 0.75;
+      levelScaleNote = ` (실질 팀 레벨 ${Math.abs(levelGap)} 낮은 팀 승리 보너스)`;
+      lossExpScaleNote = ` (높은 팀 패배: 패배 경험치 약간 감소)`;
+    }
+
+    // M9B_STRONG_OPPONENT_DEFEAT_PENALTY_PATCH
+    // 패배 포인트는 "팀 실질 레벨"보다 상대 최고레벨 격차를 더 민감하게 봅니다.
+    // 예: 11+1 vs 5+6은 실질 팀 레벨 차이는 작지만, 최고레벨 차이는 +5이므로
+    // 낮은 최고레벨 팀이 졌을 때 패배 페널티를 50P → 25P로 줄입니다.
+    if (!fled && maxLevelGap >= 5 && defeatPenalty > 25) {
+      defeatPenalty = 25;
+      defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
+    }
 
     const getParticipatedIds = (explicitIds, battleTeam, fallbackPet) => {
       const ids = new Set();
@@ -4002,7 +4100,6 @@ export async function processBattleResults(
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
-    const levelScaleNote = levelGap >= 10 ? ' (레벨 차 보상 감소)' : levelGap >= 5 ? ' (레벨 차 보상 약간 감소)' : '';
     await addPointHistory(
       classId,
       winnerData.authUid,
@@ -4017,7 +4114,7 @@ export async function processBattleResults(
         loserData.authUid,
         loserData.name,
         -defeatPenalty,
-        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '')
+        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '') + defeatPenaltyLevelNote + lossExpScaleNote
       );
     }
   });
