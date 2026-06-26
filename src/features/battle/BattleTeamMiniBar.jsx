@@ -1,7 +1,22 @@
 // src/features/battle/BattleTeamMiniBar.jsx
 
 import React from 'react';
-import styled from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
+
+const activePetPulse = keyframes`
+    0% {
+        transform: translateY(0) scale(0.96);
+        box-shadow: 0 0 0 0 rgba(255, 212, 59, 0.8), 0 2px 5px rgba(0,0,0,0.12);
+    }
+    45% {
+        transform: translateY(-5px) scale(1.16);
+        box-shadow: 0 0 0 7px rgba(255, 212, 59, 0.28), 0 0 18px rgba(255, 212, 59, 0.95);
+    }
+    100% {
+        transform: translateY(-2px) scale(1.06);
+        box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.45), 0 0 12px rgba(255, 212, 59, 0.8);
+    }
+`;
 
 const TeamMiniBarWrapper = styled.div`
     position: absolute;
@@ -50,6 +65,7 @@ const MiniPetSlot = styled.div`
     opacity: ${props => props.$fainted ? 0.45 : 1};
     transform: ${props => props.$active ? 'translateY(-2px) scale(1.06)' : 'none'};
     transition: all 0.2s ease;
+    animation: ${props => props.$active ? css`${activePetPulse} 0.75s ease-out` : 'none'};
 
     img {
         width: 100%;
@@ -62,19 +78,36 @@ const MiniPetSlot = styled.div`
     }
 
     &::after {
-        content: '${props => props.$active ? '●' : ''}';
+        content: '${props => props.$active ? '출전' : ''}';
         position: absolute;
         left: 50%;
-        bottom: -10px;
+        bottom: -16px;
         transform: translateX(-50%);
+        min-width: 26px;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: rgba(255, 243, 191, 0.96);
+        border: ${props => props.$active ? '1px solid #ffd43b' : '0'};
         font-size: 9px;
+        line-height: 1.2;
         color: #f08c00;
+        font-weight: 900;
+        text-align: center;
         text-shadow: 0 1px 2px rgba(255,255,255,0.9);
+        pointer-events: none;
+        opacity: ${props => props.$active ? 1 : 0};
     }
 
     @media (max-width: 768px) {
         width: 34px;
         height: 34px;
+
+        &::after {
+            bottom: -14px;
+            min-width: 22px;
+            padding: 1px 4px;
+            font-size: 8px;
+        }
     }
 `;
 
@@ -100,6 +133,20 @@ const HpMiniBar = styled.div`
     @media (max-width: 768px) {
         width: 24px;
     }
+`;
+
+const FaintedBadge = styled.span`
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%) rotate(-12deg);
+    padding: 2px 4px;
+    border-radius: 6px;
+    background: rgba(33, 37, 41, 0.78);
+    color: white;
+    font-size: 8px;
+    font-weight: 900;
+    line-height: 1;
+    pointer-events: none;
 `;
 
 const getBattleTeam = (info) => {
@@ -144,6 +191,13 @@ const getActiveIndex = (info, team) => {
     return Math.min(Math.max(rawIndex, 0), team.length - 1);
 };
 
+const getSlotStateLabel = ({ active, fainted }) => {
+    if (active && fainted) return '현재 출전 중이지만 쓰러진 펫';
+    if (active) return '현재 출전 중';
+    if (fainted) return '쓰러짐';
+    return '대기 중';
+};
+
 export default function BattleTeamMiniBar({
     isMine,
     info,
@@ -156,7 +210,11 @@ export default function BattleTeamMiniBar({
     if (team.length <= 1) return null;
 
     return (
-        <TeamMiniBarWrapper $isMine={isMine} aria-label={isMine ? '내 배틀 펫 목록' : '상대 배틀 펫 목록'}>
+        <TeamMiniBarWrapper
+            $isMine={isMine}
+            aria-label={isMine ? '내 배틀 펫 목록' : '상대 배틀 펫 목록'}
+            role="list"
+        >
             {team.map((pet, index) => {
                 const active = index === activeIndex;
                 const fainted = Number(pet?.hp ?? 0) <= 0;
@@ -168,14 +226,21 @@ export default function BattleTeamMiniBar({
                     ? Math.max(0, Math.min(100, Math.round((Number(pet.hp || 0) / Number(pet.maxHp || 1)) * 100)))
                     : 0;
 
+                const stateLabel = getSlotStateLabel({ active, fainted });
+                const petName = pet?.name || '펫';
+                const hpText = `HP ${pet?.hp ?? 0}/${pet?.maxHp ?? 0}`;
+
                 return (
                     <MiniPetSlot
-                        key={pet?.id || `${pet?.name || 'pet'}-${index}`}
+                        key={pet?.id || `${petName}-${index}`}
                         $active={active}
                         $fainted={fainted}
-                        title={`${active ? '선발' : '대기'}: ${pet?.name || '펫'} / HP ${pet?.hp ?? 0}/${pet?.maxHp ?? 0}`}
+                        title={`${stateLabel}: ${petName} / ${hpText}`}
+                        aria-label={`${stateLabel}: ${petName}, ${hpText}`}
+                        role="listitem"
                     >
-                        {imageSrc && <img src={imageSrc} alt={pet?.name || '펫'} />}
+                        {imageSrc && <img src={imageSrc} alt={petName} />}
+                        {fainted && <FaintedBadge>기절</FaintedBadge>}
                         <HpMiniBar $percent={hpPercent}>
                             <span />
                         </HpMiniBar>
