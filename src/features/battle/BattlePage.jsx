@@ -913,6 +913,8 @@ const OptionButton = styled.button`
 
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 
+const SWITCH_RESUME_DELAY_MS = 2200;
+
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -1010,6 +1012,27 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         }
         return available[Math.floor(Math.random() * available.length)];
     };
+
+    const buildNextQuizUpdate = (data, nextQuiz, now = Date.now()) => ({
+        question: nextQuiz,
+        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
+        turnStartTime: now,
+        chat: {},
+        pendingNextQuestion: null,
+        pendingUsedQuestions: null,
+        switchResumeAt: null,
+    });
+
+    const buildSwitchPauseUpdate = (data, nextQuiz, now = Date.now()) => ({
+        // M8_SWITCH_PAUSE_RESUME_PATCH
+        // 펫 교체 직후에는 바로 다음 문제를 띄우지 않고, 짧은 교체 안내 시간을 둡니다.
+        question: null,
+        pendingNextQuestion: nextQuiz,
+        pendingUsedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
+        turnStartTime: now,
+        switchResumeAt: now + SWITCH_RESUME_DELAY_MS,
+        chat: {},
+    });
 
     const getPetImageSrc = (info, isMine) => {
         if (!info || !info.pet) return null;
@@ -1188,6 +1211,64 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         battleState?.challenger?.pet?.id,
         battleState?.opponent?.pet?.id,
         myPlayerData?.id,
+    ]);
+
+    useEffect(() => {
+        // M8_SWITCH_PAUSE_RESUME_PATCH
+        // status가 switching일 때는 퀴즈 타이머를 멈추고, 교체 안내 시간이 지난 뒤 다음 문제를 시작합니다.
+        if (!battleState || !myPlayerData || !classId) return;
+        if (battleState.status !== 'switching') return;
+
+        const iAmChallenger = myPlayerData.id === battleState.challenger?.id;
+        if (!iAmChallenger) return;
+
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+        const resumeAt = Number(battleState.switchResumeAt || Date.now() + SWITCH_RESUME_DELAY_MS);
+        const delayMs = Math.max(0, resumeAt - Date.now());
+
+        const timer = setTimeout(async () => {
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const battleDoc = await transaction.get(battleRef);
+                    if (!battleDoc.exists()) return;
+
+                    const data = battleDoc.data();
+                    if (data.status !== 'switching') return;
+
+                    const nextQuiz = data.pendingNextQuestion || getNextQuizObj(data.usedQuestions || []);
+                    const usedQuestions = Array.isArray(data.pendingUsedQuestions)
+                        ? data.pendingUsedQuestions
+                        : [...(data.usedQuestions || []), nextQuiz.question];
+
+                    transaction.update(battleRef, {
+                        status: 'quiz',
+                        question: nextQuiz,
+                        usedQuestions,
+                        turnStartTime: Date.now(),
+                        turn: null,
+                        attackerAction: null,
+                        attackerActionPayload: null,
+                        defenderAction: null,
+                        pendingNextQuestion: null,
+                        pendingUsedQuestions: null,
+                        switchResumeAt: null,
+                        chat: {},
+                    });
+                });
+            } catch (error) {
+                console.error('Switch pause resume error:', error);
+            }
+        }, delayMs);
+
+        return () => clearTimeout(timer);
+    }, [
+        battleState?.status,
+        battleState?.switchResumeAt,
+        battleState?.pendingNextQuestion?.question,
+        battleState?.challenger?.id,
+        myPlayerData?.id,
+        classId,
+        battleId,
     ]);
 
     // --- 속성별 타격음 리스너 (불/전기/바람/베기 등 actionType에 맞는 임팩트음) ---
@@ -1777,24 +1858,27 @@ const handleCancel = async () => {
                 }
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
+                const hasSwitchPause = !isFinished && switchMessages.length > 0;
+                const nextTurnUpdate = hasSwitchPause
+                    ? buildSwitchPauseUpdate(data, nextQuiz)
+                    : buildNextQuizUpdate(data, nextQuiz);
+
+                const baseLog = isFinished
+                    ? `⏳ 시간 초과! 펫이 지쳐 쓰러졌습니다! (정답: ${data.question.answer})`
+                    : `⏳ 시간 초과! 서로 눈치만 보다가 체력이 감소했습니다! (정답: ${data.question.answer})`;
 
                 const updateData = {
                     challenger: syncBattleParticipantActivePet(challenger),
                     opponent: syncBattleParticipantActivePet(opponent),
-                    log: isFinished
-                        ? `⏳ 시간 초과! 펫이 지쳐 쓰러졌습니다! (정답: ${data.question.answer})`
-                        : `⏳ 시간 초과! 서로 눈치만 보다가 체력이 감소했습니다! (정답: ${data.question.answer})`,
-                    status: isFinished ? 'finished' : 'quiz',
+                    log: switchMessages.length > 0
+                        ? `${baseLog} ${switchMessages.join(' ')}`
+                        : baseLog,
+                    status: isFinished ? 'finished' : hasSwitchPause ? 'switching' : 'quiz',
                     winner: winnerId,
                     attackerAction: null,
                     defenderAction: null,
                     turn: null,
-                    ...(!isFinished && {
-                        turnStartTime: Date.now(),
-                        question: nextQuiz,
-                        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
-                        chat: {}
-                    })
+                    ...(!isFinished && nextTurnUpdate)
                 };
                 transaction.update(battleRef, updateData);
                 return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
@@ -1957,6 +2041,10 @@ const handleCancel = async () => {
                 }
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
+                const hasSwitchPause = !isFinished && switchMessages.length > 0;
+                const nextTurnUpdate = hasSwitchPause
+                    ? buildSwitchPauseUpdate(data, nextQuiz)
+                    : buildNextQuizUpdate(data, nextQuiz);
 
                         let logMessage = `❌ 둘 다 오답! 서로 틀려서 데미지를 입었습니다. (정답: ${data.question.answer})`;
                         if (opponent.equippedTitle === 'daily_helper' || challenger.equippedTitle === 'daily_helper') {
@@ -1970,15 +2058,10 @@ const handleCancel = async () => {
                             challenger: syncBattleParticipantActivePet(challenger),
                             opponent: syncBattleParticipantActivePet(opponent),
                             log: logMessage,
-                            status: isFinished ? 'finished' : 'quiz',
+                            status: isFinished ? 'finished' : hasSwitchPause ? 'switching' : 'quiz',
                             winner: winnerId,
                             turn: null,
-                            ...(!isFinished && {
-                                turnStartTime: Date.now(),
-                                question: nextQuiz,
-                                usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
-                                chat: {}
-                            })
+                            ...(!isFinished && nextTurnUpdate)
                         };
                         transaction.update(battleRef, updateData);
 
@@ -2426,6 +2509,10 @@ const handleUseItem = async (itemId) => {
                     : null;
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
+                const hasSwitchPause = !isFinished && (myResolved.switched || opponentResolved.switched);
+                const nextTurnUpdate = hasSwitchPause
+                    ? buildSwitchPauseUpdate(data, nextQuiz)
+                    : buildNextQuizUpdate(data, nextQuiz);
 
                 const baseLog = `${playerData.name}의 펫이 두뇌 간식을 먹었습니다! (HP/SP +30% 회복)`;
 
@@ -2446,18 +2533,13 @@ const handleUseItem = async (itemId) => {
                     [myRole]: nextMyParticipant,
                     [opponentRole]: nextOpponentParticipant,
                     log,
-                    status: isFinished ? 'finished' : 'quiz',
+                    status: isFinished ? 'finished' : hasSwitchPause ? 'switching' : 'quiz',
                     winner: winnerId,
                     turn: null,
                     attackerAction: null,
                     attackerActionPayload: null,
                     defenderAction: null,
-                    ...(isFinished ? {} : {
-                        question: nextQuiz,
-                        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
-                        turnStartTime: Date.now(),
-                        chat: {}
-                    })
+                    ...(isFinished ? {} : nextTurnUpdate)
                 };
 
                 transaction.update(battleRef, updateData);
@@ -2684,7 +2766,7 @@ const handleUseItem = async (itemId) => {
                 const updateData = {
                     [myRole]: nextParticipantBeforeResolve,
                     [opponentRole]: nextOpponentParticipant,
-                    status: isFinished ? 'finished' : 'quiz',
+                    status: isFinished ? 'finished' : 'switching',
                     winner: winnerId,
                     turn: null,
                     attackerAction: null,
@@ -2692,11 +2774,7 @@ const handleUseItem = async (itemId) => {
                     defenderAction: null,
                     chat: {},
                     log,
-                    ...(isFinished ? {} : {
-                        question: nextQuiz,
-                        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
-                        turnStartTime: Date.now(),
-                    })
+                    ...(isFinished ? {} : buildSwitchPauseUpdate(data, nextQuiz))
                 };
 
                 transaction.update(battleRef, updateData);
@@ -3060,21 +3138,22 @@ if (defender.pet.status?.stunned) {
                 }
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
+                const hasSwitchPause = !isFinished && switchMessages.length > 0;
+                const nextTurnUpdate = hasSwitchPause
+                    ? buildSwitchPauseUpdate(data, nextQuiz)
+                    : buildNextQuizUpdate(data, nextQuiz);
 
                 const updateData = {
                     log,
                     challenger: syncBattleParticipantActivePet(isChallengerAttacker ? attacker : defender),
                     opponent: syncBattleParticipantActivePet(isChallengerAttacker ? defender : attacker),
-                    status: isFinished ? 'finished' : 'quiz',
+                    status: isFinished ? 'finished' : hasSwitchPause ? 'switching' : 'quiz',
                     winner: winnerId,
                     ...(!isFinished && {
-                        question: nextQuiz,
-                        usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
-                        turnStartTime: Date.now(),
+                        ...nextTurnUpdate,
                         turn: null,
                         attackerAction: null,
                         defenderAction: null,
-                        chat: {}
                     })
                 };
 
@@ -3339,6 +3418,22 @@ if (defender.pet.status?.stunned) {
                         <QuizArea>
                             <div>
                                 <LogText>{battleState.log}</LogText>
+                                {battleState.status === 'switching' && (
+                                    <div style={{
+                                        marginTop: '1rem',
+                                        padding: '1rem',
+                                        borderRadius: '16px',
+                                        background: '#fff9db',
+                                        border: '2px solid #ffd43b',
+                                        color: '#5f3dc4',
+                                        fontWeight: 900,
+                                        textAlign: 'center',
+                                        lineHeight: 1.6,
+                                    }}>
+                                        <div style={{ fontSize: '1.25rem' }}>🔁 펫 교체 중!</div>
+                                        <div>새 펫이 등장했습니다. 잠시 후 다음 문제가 시작됩니다.</div>
+                                    </div>
+                                )}
                                 {battleState.status === 'quiz' && battleState.question && (
                                     <>
                                         <h3>Q. {battleState.question.question}</h3>
