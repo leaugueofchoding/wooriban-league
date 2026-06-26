@@ -1,4 +1,57 @@
-// src/components/PetGiftModal.jsx
+#!/usr/bin/env node
+/**
+ * patch-reset-petgiftmodal-clean-v1.cjs
+ *
+ * 증상:
+ * - Identifier 'auth' has already been declared
+ * - Identifier 'getSeenKey' has already been declared
+ *
+ * 원인:
+ * - PetGiftModal.jsx에 여러 부분 패치가 누적되면서 import/helper/component가 중복됨.
+ *
+ * 해결:
+ * - src/components/PetGiftModal.jsx 전체를 깨끗한 단일 버전으로 교체.
+ * - 기능:
+ *   1) 같은 선물 모달은 localStorage + Firestore 서버 마커로 중복 표시 방지
+ *   2) 확인 버튼 클릭 시 players/{playerId}에 seenGiftIds / giftConfirmations / latestGift.confirmedAt 저장
+ *   3) 다른 브라우저에서도 같은 선물 모달이 다시 뜨지 않게 처리
+ *
+ * 실행:
+ *   node patch-reset-petgiftmodal-clean-v1.cjs
+ *   npm run dev
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const root = process.cwd();
+const filePath = path.join(root, 'src', 'components', 'PetGiftModal.jsx');
+
+function fail(message) {
+  console.error(`\n❌ ${message}`);
+  process.exit(1);
+}
+
+function ok(message) {
+  console.log(`✅ ${message}`);
+}
+
+function backupFile(filePath, suffix) {
+  const backupDir = path.join(root, '.patch-backups');
+  fs.mkdirSync(backupDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(backupDir, `${path.basename(filePath)}.${suffix}.${timestamp}.bak`);
+  fs.writeFileSync(backupPath, fs.readFileSync(filePath, 'utf8'), 'utf8');
+  return backupPath;
+}
+
+if (!fs.existsSync(filePath)) {
+  fail(`파일을 찾지 못했습니다: ${filePath}`);
+}
+
+const backup = backupFile(filePath, 'reset-clean-v1');
+
+const cleanCode = `// src/components/PetGiftModal.jsx
 
 import React, { useEffect, useMemo, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
@@ -7,12 +60,12 @@ import { auth, db } from '../api/firebase';
 import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import { PET_ITEMS } from '../features/pet/petItems';
 
-const pop = keyframes`
+const pop = keyframes\`
   from { opacity: 0; transform: translateY(18px) scale(0.92); }
   to { opacity: 1; transform: translateY(0) scale(1); }
-`;
+\`;
 
-const Backdrop = styled.div`
+const Backdrop = styled.div\`
   position: fixed;
   inset: 0;
   z-index: 3500;
@@ -22,9 +75,9 @@ const Backdrop = styled.div`
   justify-content: center;
   padding: 1.5rem;
   backdrop-filter: blur(5px);
-`;
+\`;
 
-const Modal = styled.div`
+const Modal = styled.div\`
   width: min(460px, 100%);
   border-radius: 28px;
   background:
@@ -34,11 +87,11 @@ const Modal = styled.div`
   box-shadow: 0 24px 70px rgba(0,0,0,0.30);
   padding: 2rem;
   text-align: center;
-  animation: ${pop} 0.28s ease-out;
+  animation: \${pop} 0.28s ease-out;
   border: 4px solid #fff3bf;
-`;
+\`;
 
-const GiftIcon = styled.div`
+const GiftIcon = styled.div\`
   width: 92px;
   height: 92px;
   margin: 0 auto 0.8rem;
@@ -49,29 +102,29 @@ const GiftIcon = styled.div`
   justify-content: center;
   font-size: 3.6rem;
   box-shadow: 0 12px 28px rgba(255,146,43,0.35);
-`;
+\`;
 
-const Title = styled.h2`
+const Title = styled.h2\`
   margin: 0 0 0.5rem;
   color: #212529;
   font-size: 1.85rem;
   font-weight: 1000;
-`;
+\`;
 
-const Message = styled.p`
+const Message = styled.p\`
   margin: 0 0 1.4rem;
   color: #495057;
   line-height: 1.6;
   font-weight: 800;
-`;
+\`;
 
-const ItemList = styled.div`
+const ItemList = styled.div\`
   display: grid;
   gap: 0.8rem;
   margin: 1.2rem 0 1.6rem;
-`;
+\`;
 
-const ItemRow = styled.div`
+const ItemRow = styled.div\`
   display: flex;
   align-items: center;
   gap: 0.85rem;
@@ -112,9 +165,9 @@ const ItemRow = styled.div`
     font-weight: 800;
     font-size: 0.88rem;
   }
-`;
+\`;
 
-const ConfirmButton = styled.button`
+const ConfirmButton = styled.button\`
   width: 100%;
   border: none;
   border-radius: 16px;
@@ -129,10 +182,10 @@ const ConfirmButton = styled.button`
   &:hover {
     transform: translateY(-2px);
   }
-`;
+\`;
 
 function getSeenKey(classId, giftId, userId) {
-  return `seen-pet-gift:${classId || 'default'}:${userId || 'unknown'}:${giftId}`;
+  return \`seen-pet-gift:\${classId || 'default'}:\${userId || 'unknown'}:\${giftId}\`;
 }
 
 function getSafeGiftKey(giftId) {
@@ -225,7 +278,7 @@ function PetGiftModal() {
 
     await updateDoc(playerRef, {
       seenGiftIds: arrayUnion(latestGift.id),
-      [`giftConfirmations.${safeGiftKey}`]: {
+      [\`giftConfirmations.\${safeGiftKey}\`]: {
         id: latestGift.id,
         confirmedAt: new Date().toISOString(),
         confirmedBy: myPlayerData.authUid,
@@ -265,7 +318,7 @@ function PetGiftModal() {
             const image = itemInfo?.image || itemInfo?.icon;
 
             return (
-              <ItemRow key={`${item.id}-${index}`}>
+              <ItemRow key={\`\${item.id}-\${index}\`}>
                 {image ? (
                   <img src={image} alt={item.name || itemInfo?.name || item.id} />
                 ) : (
@@ -290,3 +343,19 @@ function PetGiftModal() {
 }
 
 export default PetGiftModal;
+`;
+
+fs.writeFileSync(filePath, cleanCode, 'utf8');
+
+ok(`백업 생성: ${path.relative(root, backup)}`);
+ok('PetGiftModal.jsx 전체를 깨끗한 단일 버전으로 교체 완료');
+
+console.log('\n다음 명령으로 확인하세요:\n');
+console.log('  npm run dev\n');
+console.log('확인 명령:');
+console.log('  Select-String -Path .\\src\\components\\PetGiftModal.jsx -Pattern "function getSeenKey|function isGiftConfirmedForPlayer|import \\{ auth, db \\}" -Context 1,1\n');
+console.log('테스트:');
+console.log('  1. 빈 화면 에러가 사라지는지');
+console.log('  2. 선물 모달 확인 후 player 문서에 seenGiftIds / giftConfirmations / latestGift.confirmedAt 저장되는지');
+console.log('  3. 새 브라우저에서 같은 학생으로 접속해도 같은 선물 모달이 다시 뜨지 않는지');
+console.log('');

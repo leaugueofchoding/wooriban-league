@@ -2,8 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
-import {
-  useLeagueStore, useClassStore } from '../store/leagueStore';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
 import {
   auth, db, updatePlayerProfile, equipTitle,
   createBattleChallenge, rejectBattleChallenge, storage, getTitles // <- 추가
@@ -15,7 +14,6 @@ import {
 } from 'firebase/firestore';
 import PointHistoryModal from '../components/PointHistoryModal';
 import { petImageMap } from '../utils/petImageMap';
-import * as firebaseAutoTitleApi from '../api/firebase.js';
 
 // --- Animations ---
 const fadeIn = keyframes`
@@ -310,45 +308,7 @@ function ProfilePage() {
   const isMyProfile = myPlayerData?.id === playerData?.id;
   const isAdmin = myPlayerData?.role === 'admin';
 
-  
   useEffect(() => {
-    // AUTO_TITLE_PROFILE_RECHECK_V4
-    // 콘솔에서 correctQuizCount, totalAttendanceDays 등을 직접 수정한 경우에도
-    // 본인 또는 관리자가 해당 프로필에 들어오면 자동칭호를 재검사합니다.
-    if (!classId || !playerData?.id || !playerData?.authUid) return;
-    if (!isMyProfile && !isAdmin) return;
-
-    let cancelled = false;
-
-    Promise.resolve(
-      typeof firebaseAutoTitleApi.checkAndGrantAutoTitles === 'function'
-        ? firebaseAutoTitleApi.checkAndGrantAutoTitles(classId, playerData.id, playerData.authUid)
-        : 0
-    ).then((grantedCount) => {
-        if (!cancelled && grantedCount > 0) fetchInitialData();
-      })
-      .catch(error => console.error('자동칭호 재검사 오류:', error));
-
-    return () => { cancelled = true; };
-  }, [
-    classId,
-    playerData?.id,
-    playerData?.authUid,
-    playerData?.correctQuizCount,
-    playerData?.quizCorrectCount,
-    playerData?.totalCorrectQuizCount,
-    playerData?.totalAttendanceDays,
-    playerData?.cumulativeAttendanceDays,
-    playerData?.attendanceCount,
-    playerData?.consecutiveAttendanceDays,
-    playerData?.myRoomLikesTotal,
-    playerData?.myRoomLikesCount,
-    playerData?.points,
-    isMyProfile,
-    isAdmin,
-    fetchInitialData
-  ]);
-useEffect(() => {
     if (playerData) {
       setNewName(playerData.name);
       setSelectedGender(playerData.gender || '');

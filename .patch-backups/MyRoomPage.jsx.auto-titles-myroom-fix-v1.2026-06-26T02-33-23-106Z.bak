@@ -372,7 +372,7 @@ function MyRoomPage() {
   const { classId } = useClassStore();
   const { playerId } = useParams();
   const navigate = useNavigate();
-  const { players, myRoomItems, avatarParts, titles, fetchInitialData } = useLeagueStore();
+  const { players, myRoomItems, avatarParts, titles } = useLeagueStore();
   const currentUser = auth.currentUser;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -487,17 +487,7 @@ function MyRoomPage() {
     return likes.some(like => like.id === myPlayerData?.id && like.lastLikedMonth === currentMonth);
   }, [likes, myPlayerData]);
 
-  
-  const myRoomDisplayLikes = useMemo(() => {
-    // MYROOM_CUMULATIVE_LIKES_DISPLAY_V4
-    return Math.max(
-      Number(roomOwnerData?.myRoomLikesTotal || 0),
-      Number(roomOwnerData?.myRoomLikeCount || 0),
-      Number(roomOwnerData?.myRoomLikesCount || 0),
-      likes.length
-    );
-  }, [roomOwnerData, likes.length]);
-const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[item.itemId] = (acc[item.itemId] || 0) + 1; return acc; }, {}), [roomConfig.items]);
+  const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[item.itemId] = (acc[item.itemId] || 0) + 1; return acc; }, {}), [roomConfig.items]);
 
   const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin' ? myRoomItems : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
@@ -850,35 +840,10 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
     if (newComment.trim().length < MIN_COMMENT_LENGTH) return alert(`방명록은 ${MIN_COMMENT_LENGTH}자 이상 작성해주세요. (현재 ${newComment.trim().length}자)`);
     try { await addMyRoomComment(classId, playerId, { commenterId: myPlayerData.id, commenterName: myPlayerData.name, text: filterProfanity(newComment) }); setNewComment(""); fetchRoomSocialData(playerId); } catch (e) { alert(e.message); }
   };
-    const handleLikeRoom = async () => {
-    // MYROOM_LIKE_REFRESH_V4
+  const handleLikeRoom = async () => {
     if (!myPlayerData) return alert('로그인 후 이용해주세요.');
     if (hasLikedThisMonth) return;
-
-    try {
-      const result = await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name);
-
-      setLikes(prev => {
-        if (prev.some(like => like.id === myPlayerData.id)) return prev;
-        return [
-          ...prev,
-          {
-            id: myPlayerData.id,
-            likerName: myPlayerData.name,
-            lastLikedMonth: new Date().toISOString().slice(0, 7)
-          }
-        ];
-      });
-
-      if (result?.myRoomLikesTotal && roomOwnerData?.id === playerId) {
-        roomOwnerData.myRoomLikesTotal = result.myRoomLikesTotal;
-      }
-
-      await fetchRoomSocialData(playerId);
-      await fetchInitialData();
-    } catch (e) {
-      alert(`좋아요 처리 중 오류가 발생했습니다: ${e.message}`);
-    }
+    try { await likeMyRoom(classId, playerId, myPlayerData.id, myPlayerData.name); setLikes(prev => [...prev, { id: myPlayerData.id, lastLikedMonth: new Date().toISOString().slice(0, 7) }]); } catch (e) { alert(`좋아요 처리 중 오류가 발생했습니다: ${e.message}`); }
   };
 
   const handleRandomVisit = () => {
@@ -916,20 +881,20 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
           {!isMyRoom && (
             <>
               <LikeButton onClick={handleLikeRoom} disabled={hasLikedThisMonth} $active={hasLikedThisMonth}>
-                {hasLikedThisMonth ? '❤️' : '🤍'} 좋아요 {myRoomDisplayLikes}
+                {hasLikedThisMonth ? '❤️' : '🤍'} 좋아요 {likes.length}
               </LikeButton>
               <ActionButton onClick={handleRandomVisit}>🚀 랜덤 방문</ActionButton>
             </>
           )}
           {isMyRoom && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fa5252' }}>❤️ {myRoomDisplayLikes}</span>
+              <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fa5252' }}>❤️ {likes.length}</span>
               {/* ▼▼▼ [추가] 방 주인: 누가 좋아요 눌렀는지 확인 */}
               {likes.length > 0 && (
                 <button
                   onClick={() => {
                     const names = likes.map(l => l.likerName || l.name || l.id).join('\n');
-                    alert(`❤️ 이번 달 좋아요를 눌러준 친구들 (${likes.length}명):\n\n${names}`);
+                    alert(`❤️ 좋아요를 눌러준 친구들 (${likes.length}명):\n\n${names}`);
                   }}
                   style={{ background: 'none', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: '#fa5252', cursor: 'pointer', fontWeight: 700 }}
                 >👁️ 누가 눌렀나</button>

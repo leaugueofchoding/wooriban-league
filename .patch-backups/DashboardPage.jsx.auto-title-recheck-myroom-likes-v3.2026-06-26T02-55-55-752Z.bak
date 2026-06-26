@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import {
-  useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats, syncMissingAutoTitlesForClass
-} from '../api/firebase';
+import { useLeagueStore, useClassStore } from '../store/leagueStore';
+import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats } from '../api/firebase';
 import DashboardSimpleMode from '../components/dashboard/DashboardSimpleMode';
 import confetti from 'canvas-confetti';
 import baseAvatar from '../assets/base-avatar.png';
@@ -74,7 +72,7 @@ const getAvatarUrls = (config, avatarParts) => {
 function DashboardPage() {
     const { classId } = useClassStore();
     // ★ [핵심] currentUser를 store에서 가져와 React 상태 변화와 동기화시킵니다.
-    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, teams, isLoading, currentUser, fetchInitialData } = useLeagueStore();
+    const { players, missions, missionSubmissions, avatarParts, titles, standingsData, teams, isLoading, currentUser } = useLeagueStore();
     const navigate = useNavigate();
     const [activeGoal, setActiveGoal] = useState(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
@@ -90,29 +88,7 @@ function DashboardPage() {
 
     const myPlayerData = useMemo(() => currentUser ? players.find(p => p.authUid === currentUser.uid) : null, [players, currentUser]);
 
-    
-    useEffect(() => {
-        // AUTO_TITLE_DASHBOARD_BACKFILL_V4
-        // 관리자 대시보드에 들어오면 세션당 1회 전체 학생의 누락 자동칭호를 재검사합니다.
-        if (!classId || myPlayerData?.role !== 'admin' || players.length === 0) return;
-
-        const sessionKey = `auto-title-backfill-v4:${classId}`;
-        if (sessionStorage.getItem(sessionKey)) return;
-        sessionStorage.setItem(sessionKey, '1');
-
-        syncMissingAutoTitlesForClass(classId)
-            .then(result => {
-                if (result?.granted > 0) {
-                    console.log('[자동칭호 백필 완료]', result);
-                    fetchInitialData();
-                }
-            })
-            .catch(error => {
-                sessionStorage.removeItem(sessionKey);
-                console.error('자동칭호 전체 백필 오류:', error);
-            });
-    }, [classId, myPlayerData?.role, players.length, fetchInitialData]);
-const myPartnerPet = useMemo(() => {
+    const myPartnerPet = useMemo(() => {
         if (!myPlayerData) return null;
         if (myPlayerData.pets && myPlayerData.pets.length > 0) return myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
         if (myPlayerData.pet) return myPlayerData.pet;

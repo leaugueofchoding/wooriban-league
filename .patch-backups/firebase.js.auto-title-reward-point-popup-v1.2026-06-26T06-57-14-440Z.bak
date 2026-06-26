@@ -320,26 +320,14 @@ export async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid
     }
 
     if (result.rewardPaid && result.authUid) {
-      // AUTO_TITLE_REWARD_POINT_POPUP_V1
-      // 포인트는 transaction에서 이미 지급됨. 여기서는 모달/알림/내역만 생성합니다.
-      // PointAdjustmentModal은 type='point'이고 data.amount가 있는 알림만 감지합니다.
-      await addDoc(collection(db, 'notifications'), {
-        userId: result.authUid,
-        title: `+2000P 포인트 조정`,
-        body: `사유: ${rewardReason}`,
-        type: 'point',
-        link: null,
-        isRead: false,
-        createdAt: serverTimestamp(),
-        data: {
-          amount: 2000,
-          reason: rewardReason,
-          title: `+2000P 포인트 조정`,
-          autoTitleReward: true,
-          titleId: title.id,
-          titleName: title.name
-        }
-      });
+      createNotification(
+        result.authUid,
+        `+2000P 포인트 조정`,
+        `사유: ${rewardReason}`,
+        'point',
+        null,
+        { amount: 2000, reason: rewardReason, title: '+2000P 포인트 조정' }
+      );
 
       await addPointHistory(
         classId,
@@ -3816,19 +3804,7 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
 
 // src/api/firebase.js
 
-export async function processBattleResults(
-  classId,
-  winnerId,
-  loserId,
-  fled = false,
-  finalWinnerPet,
-  finalLoserPet,
-  finalWinnerTeam = null,
-  finalLoserTeam = null,
-  finalWinnerParticipatedPetIds = null,
-  finalLoserParticipatedPetIds = null
-) {
-  // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH_FIX_AFTER_V2
+export async function processBattleResults(classId, winnerId, loserId, fled = false, finalWinnerPet, finalLoserPet) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
   const loserRef = doc(db, "classes", classId, "players", loserId);
@@ -3842,191 +3818,116 @@ export async function processBattleResults(
     const winnerData = winnerDoc.data();
     const loserData = loserDoc.data();
 
+    // ▼▼▼ [버프 적용] 장착한 칭호 확인 ▼▼▼
     const winnerTitle = winnerData.equippedTitle;
     const loserTitle = loserData.equippedTitle;
 
-    // 포인트 보상/페널티는 플레이어 단위로 한 번만 적용
+    // 1. 포인트 부자 버프: 승리 보상 20% 증가
     let victoryReward = 150;
     if (winnerTitle === 'point_rich') {
-      victoryReward = Math.floor(victoryReward * 1.2);
+      victoryReward = Math.floor(victoryReward * 1.2); // 180P
     }
 
+    // 2. 기부천사 버프: 패배/도망 페널티 50% 면제
     let defeatPenalty = fled ? 0 : 50;
     if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
-      defeatPenalty = Math.floor(defeatPenalty * 0.5);
+      defeatPenalty = Math.floor(defeatPenalty * 0.5); // 25P 차감으로 감소
     }
+    // ▲▲▲ [버프 적용 끝] ▲▲▲
 
-    // 레벨 차 보상 스케일링은 대표 active 펫 기준으로 1회 계산
+    // ▼▼▼ [완화] 레벨 차 보상/패널티 스케일링 (쩔 어뷰징은 막되, 대전 회피 유발 방지) ▼▼▼
+    // 레벨갭 기준(±5, ±10)은 유지하되 배율을 완화하고,
+    // 역전승(저레벨이 고레벨을 이긴 경우) 보너스/추가 패널티는 완전히 제거해
+    // 고레벨 학생도 안심하고 대전에 응할 수 있도록 함.
     const winnerPetLevel = finalWinnerPet?.level || 1;
     const loserPetLevel = finalLoserPet?.level || 1;
-    const levelGap = winnerPetLevel - loserPetLevel;
+    const levelGap = winnerPetLevel - loserPetLevel; // 양수 = 승자가 레벨 높음, 음수 = 승자가 레벨 낮음
 
-    let winExpMultiplier = 1.0;
-    let loseExpMultiplier = 1.0;
+    let winExpMultiplier = 1.0;  // 승자 펫 경험치 배율
+    let loseExpMultiplier = 1.0;  // 패자 펫 경험치 배율
 
     if (levelGap >= 10) {
-      victoryReward = Math.floor(victoryReward * 0.5);
-      winExpMultiplier = 0.5;
+      // 10레벨 이상 높은 펫이 이긴 경우 → 쩔 행위 의심, 보상은 절반만 지급
+      victoryReward = Math.floor(victoryReward * 0.5); // 75P
+      winExpMultiplier = 0.5;                            // 경험치 50%
     } else if (levelGap >= 5) {
-      victoryReward = Math.floor(victoryReward * 0.75);
+      // 5~9레벨 차이 → 약하게만 감소
+      victoryReward = Math.floor(victoryReward * 0.75); // 112P
       winExpMultiplier = 0.75;
     }
+    // 역전승(levelGap이 음수, 즉 저레벨이 고레벨을 이긴 경우)은
+    // 추가 보너스나 패자 추가 페널티 없이 기본 보상과 동일하게 처리한다.
+    // ▲▲▲ [레벨 차 스케일링 끝] ▲▲▲
 
-    let winnerPets = [...(winnerData.pets || [])];
-    let loserPets = [...(loserData.pets || [])];
+    let winnerPets = winnerData.pets || [];
+    let loserPets = loserData.pets || [];
 
-    const clampBattleHp = (storedPet, battlePet) => {
-      const rawHp = Number(battlePet?.hp);
-      const fallbackHp = Number(storedPet?.hp ?? 0);
-      const hp = Number.isFinite(rawHp) ? rawHp : fallbackHp;
-      return Math.min(Number(storedPet?.maxHp ?? hp), Math.max(0, hp));
-    };
-
-    const normalizeBattleSp = (storedPet, battlePet) => {
-      const rawSp = Number(battlePet?.sp);
-      const fallbackSp = Number(storedPet?.sp ?? 0);
-      const sp = Number.isFinite(rawSp) ? rawSp : fallbackSp;
-      return Math.max(0, sp);
-    };
-
-    const dedupeBattleTeam = (team, fallbackPet) => {
-      const list = Array.isArray(team) && team.length > 0
-        ? team
-        : fallbackPet
-          ? [fallbackPet]
-          : [];
-
-      const map = new Map();
-      list.filter(Boolean).forEach(pet => {
-        if (pet?.id && !map.has(pet.id)) {
-          map.set(pet.id, pet);
-        }
-      });
-
-      return Array.from(map.values());
-    };
-
-    const getParticipatedIds = (explicitIds, battleTeam, fallbackPet) => {
-      const ids = new Set();
-
-      if (Array.isArray(explicitIds)) {
-        explicitIds.filter(Boolean).forEach(id => ids.add(id));
-      }
-
-      // 과거/부분 패치 문서 fallback:
-      // 선발 펫(team[0])과 마지막 active 펫은 최소 출전 처리
-      if (battleTeam?.[0]?.id) ids.add(battleTeam[0].id);
-      if (fallbackPet?.id) ids.add(fallbackPet.id);
-
-      return ids;
-    };
-
-    const applyTeamOutcome = (storedPets, finalTeam, fallbackPet, explicitParticipatedIds, outcome) => {
-      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
-      if (battleTeam.length === 0) return storedPets;
-
-      const participatedIds = getParticipatedIds(explicitParticipatedIds, battleTeam, fallbackPet);
-      const nextPets = [...storedPets];
-
-      battleTeam.forEach((battlePet) => {
-        if (!battlePet?.id) return;
-
-        const idx = nextPets.findIndex(p => p.id === battlePet.id);
-        if (idx === -1) return;
-
-        const nextHp = clampBattleHp(nextPets[idx], battlePet);
-        const nextSp = normalizeBattleSp(nextPets[idx], battlePet);
-        const wasFainted = nextHp <= 0;
-        const participated = participatedIds.has(battlePet.id);
-
-        let nextPet = {
-          ...nextPets[idx],
-          hp: nextHp,
-          sp: nextSp,
+    // 승자 펫 업데이트
+    if (finalWinnerPet) {
+      const idx = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
+      if (idx !== -1) {
+        winnerPets[idx] = {
+          ...winnerPets[idx],
+          hp: Math.min(winnerPets[idx].maxHp, finalWinnerPet.hp),
+          sp: finalWinnerPet.sp,
           status: {},
-          battleWins: nextPets[idx].battleWins || 0,
-          battleLosses: nextPets[idx].battleLosses || 0,
-          battleFlees: nextPets[idx].battleFlees || 0,
+          // ▼ [추가] 전적 카운터
+          battleWins: (winnerPets[idx].battleWins || 0) + 1,
+          battleLosses: winnerPets[idx].battleLosses || 0,
+          battleFlees: winnerPets[idx].battleFlees || 0,
         };
-
-        // 경험치/전적은 실제 필드에 나온 펫만 적용
-        if (participated) {
-          if (outcome === 'win') {
-            nextPet.battleWins = (nextPet.battleWins || 0) + 1;
-            nextPet.exp = (nextPet.exp || 0) + Math.round(100 * winExpMultiplier);
-          } else if (outcome === 'lose') {
-            nextPet.battleLosses = (nextPet.battleLosses || 0) + (fled ? 0 : 1);
-            nextPet.battleFlees = (nextPet.battleFlees || 0) + (fled ? 1 : 0);
-            const baseExp = fled ? 10 : 30;
-            nextPet.exp = (nextPet.exp || 0) + Math.round(baseExp * loseExpMultiplier);
-          }
-
-          const { leveledUpPet } = calculateLevelUp(nextPet);
-          nextPet = leveledUpPet;
+        if (winnerPets[idx].hp > 0) {
+          winnerPets[idx].exp += Math.round(100 * winExpMultiplier);
+          const { leveledUpPet } = calculateLevelUp(winnerPets[idx]);
+          winnerPets[idx] = leveledUpPet;
         }
+      }
+    }
 
-        // 레벨업으로 HP가 회복되는 것을 방지.
-        // 전투 중 쓰러진 펫은 전투 후에도 HP 0으로 유지한다.
+    // 패자 펫 업데이트
+    if (finalLoserPet) {
+      const idx = loserPets.findIndex(p => p.id === finalLoserPet.id);
+      if (idx !== -1) {
+        loserPets[idx] = {
+          ...loserPets[idx],
+          hp: Math.min(loserPets[idx].maxHp, finalLoserPet.hp),
+          sp: finalLoserPet.sp,
+          status: {},
+          // ▼ [추가] 전적 카운터
+          battleWins: loserPets[idx].battleWins || 0,
+          battleLosses: (loserPets[idx].battleLosses || 0) + (fled ? 0 : 1),
+          battleFlees: (loserPets[idx].battleFlees || 0) + (fled ? 1 : 0),
+        };
+        const wasFainted = loserPets[idx].hp <= 0;
         if (wasFainted) {
-          nextPet.hp = 0;
-        } else {
-          nextPet.hp = Math.min(nextPet.maxHp, nextPet.hp);
+          loserPets[idx].hp = 0;
         }
+        // 쓰러졌어도(HP 0) 패배 경험치는 지급한다.
+        const baseExp = fled ? 10 : 30;
+        loserPets[idx].exp += Math.round(baseExp * loseExpMultiplier);
+        const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
+        loserPets[idx] = leveledUpPet;
+        // 레벨업 시 HP가 maxHp로 풀회복되므로, 쓰러진 상태였다면 다시 0으로 되돌린다.
+        if (wasFainted) {
+          loserPets[idx].hp = 0;
+        }
+      }
+    }
 
-        nextPet.sp = Math.max(0, nextPet.sp ?? nextSp);
-        nextPet.status = {};
-
-        nextPets[idx] = nextPet;
-      });
-
-      return nextPets;
-    };
-
-    // HP/SP는 team 전체 저장, 경험치/전적은 participatedPetIds 기준 적용
-    winnerPets = applyTeamOutcome(
-      winnerPets,
-      finalWinnerTeam,
-      finalWinnerPet,
-      finalWinnerParticipatedPetIds,
-      'win'
-    );
-
-    loserPets = applyTeamOutcome(
-      loserPets,
-      finalLoserTeam,
-      finalLoserPet,
-      finalLoserParticipatedPetIds,
-      'lose'
-    );
-
+    // 포인트 증감 적용 (버프 수치 반영)
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
     const levelScaleNote = levelGap >= 10 ? ' (레벨 차 보상 감소)' : levelGap >= 5 ? ' (레벨 차 보상 약간 감소)' : '';
-    await addPointHistory(
-      classId,
-      winnerData.authUid,
-      winnerData.name,
-      victoryReward,
-      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote
-    );
-
+    await addPointHistory(classId, winnerData.authUid, winnerData.name, victoryReward, "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote);
     if (defeatPenalty > 0) {
-      await addPointHistory(
-        classId,
-        loserData.authUid,
-        loserData.name,
-        -defeatPenalty,
-        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '')
-      );
+      await addPointHistory(classId, loserData.authUid, loserData.name, -defeatPenalty, "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : ''));
     }
   });
 }
 
-
 // [추가] 무승부/도망 처리 (경험치/포인트 변화 없이 상태만 저장)
-export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet, player1Team = null, player2Team = null) {
-  // M5_DRAW_TEAM_STATE_PERSIST_PATCH
+export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet) {
   if (!classId) return;
   const p1Ref = doc(db, "classes", classId, "players", player1Id);
   const p2Ref = doc(db, "classes", classId, "players", player2Id);
@@ -4036,70 +3937,20 @@ export async function processBattleDraw(classId, player1Id, player2Id, player1Pe
     const p2Doc = await transaction.get(p2Ref);
     if (!p1Doc.exists() || !p2Doc.exists()) return;
 
-    const clampBattleHp = (storedPet, battlePet) => {
-      const rawHp = Number(battlePet?.hp);
-      const fallbackHp = Number(storedPet?.hp ?? 0);
-      const hp = Number.isFinite(rawHp) ? rawHp : fallbackHp;
-      return Math.min(Number(storedPet?.maxHp ?? hp), Math.max(0, hp));
+    // 펫 상태 업데이트 헬퍼
+    const updatePetState = (playerData, finalPetState) => {
+      const pets = playerData.pets || [];
+      const idx = pets.findIndex(p => p.id === finalPetState.id);
+      if (idx !== -1) {
+        pets[idx] = { ...pets[idx], hp: finalPetState.hp, sp: finalPetState.sp, status: {} };
+      }
+      return pets;
     };
 
-    const normalizeBattleSp = (storedPet, battlePet) => {
-      const rawSp = Number(battlePet?.sp);
-      const fallbackSp = Number(storedPet?.sp ?? 0);
-      const sp = Number.isFinite(rawSp) ? rawSp : fallbackSp;
-      return Math.max(0, sp);
-    };
-
-    const dedupeBattleTeam = (team, fallbackPet) => {
-      const list = Array.isArray(team) && team.length > 0
-        ? team
-        : fallbackPet
-          ? [fallbackPet]
-          : [];
-
-      const map = new Map();
-      list.filter(Boolean).forEach(pet => {
-        if (pet?.id && !map.has(pet.id)) {
-          map.set(pet.id, pet);
-        }
-      });
-
-      return Array.from(map.values());
-    };
-
-    const updateTeamPetStates = (playerData, finalPetState, finalTeamState) => {
-      const storedPets = [...(playerData.pets || [])];
-      const battleTeam = dedupeBattleTeam(finalTeamState, finalPetState);
-
-      if (battleTeam.length === 0) return storedPets;
-
-      battleTeam.forEach((battlePet) => {
-        if (!battlePet?.id) return;
-
-        const idx = storedPets.findIndex(p => p.id === battlePet.id);
-        if (idx === -1) return;
-
-        storedPets[idx] = {
-          ...storedPets[idx],
-          hp: clampBattleHp(storedPets[idx], battlePet),
-          sp: normalizeBattleSp(storedPets[idx], battlePet),
-          status: {},
-        };
-      });
-
-      return storedPets;
-    };
-
-    transaction.update(p1Ref, {
-      pets: updateTeamPetStates(p1Doc.data(), player1Pet, player1Team),
-    });
-
-    transaction.update(p2Ref, {
-      pets: updateTeamPetStates(p2Doc.data(), player2Pet, player2Team),
-    });
+    transaction.update(p1Ref, { pets: updatePetState(p1Doc.data(), player1Pet) });
+    transaction.update(p2Ref, { pets: updatePetState(p2Doc.data(), player2Pet) });
   });
 }
-
 
 export async function revivePet(classId, playerId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
@@ -4499,44 +4350,7 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
   });
 }
 
-// M3_BATTLE_TEAM_DATA_ON_CREATE_PATCH
-// 현재는 1펫 배틀을 유지하되, 배틀 문서에 team/activePetIndex/activePetId 구조를 함께 저장합니다.
-// 이후 2펫/3펫 선택 기능이 들어오면 이 helper의 team 인자만 확장하면 됩니다.
-const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets = null) => {
-  // M4_CHALLENGER_TEAM_SELECT_PATCH
-  // battlePet은 선발 펫, teamPets는 선발+대기 펫 목록입니다.
-  const rawTeam = Array.isArray(teamPets) && teamPets.length > 0 ? teamPets : [battlePet];
-
-  const safeTeam = rawTeam
-    .filter(Boolean)
-    .map(pet => ({
-      ...pet,
-      status: { ...(pet?.status || {}) },
-    }));
-
-  const activeIndexById = safeTeam.findIndex(pet => pet?.id === battlePet?.id);
-  const activePetIndex = activeIndexById >= 0 ? activeIndexById : 0;
-  const safePet = safeTeam[activePetIndex] || {
-    ...battlePet,
-    status: { ...(battlePet?.status || {}) },
-  };
-
-  return {
-    id: player.id,
-    name: player.name,
-    pet: safePet,
-    team: safeTeam.length > 0 ? safeTeam : [safePet],
-    activePetIndex,
-    activePetId: safePet.id || null,
-    participatedPetIds: safePet.id ? [safePet.id] : [],
-    equippedTitle: player.equippedTitle || null,
-    avatarSnapshotUrl: player.avatarSnapshotUrl || null,
-    photoURL: player.photoURL || null,
-    ...extra,
-  };
-};
-
-export async function createBattleChallenge(classId, challengerObj, opponentObj, options = {}) {
+export async function createBattleChallenge(classId, challengerObj, opponentObj) {
   if (!classId || !challengerObj?.id || !opponentObj?.id) {
     throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
   }
@@ -4681,58 +4495,11 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // ▼▼▼ [수정] 펫 정보 가져오기 및 숨은 영웅 쉴드 버프 부여 ▼▼▼
   // =========================================================
   let challengerPets = challenger.pets || [];
-  let opponentPets = opponent.pets || [];
-
-  // M4_CHALLENGER_TEAM_SELECT_PATCH
-  // 신청자가 선택한 선발/대기 펫을 battle team으로 구성합니다.
-  // 아직 수락자 쪽 선택 플로우는 없으므로 opponent는 기존 파트너 펫 1마리만 사용합니다.
-  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 2) => {
-    const alivePets = (pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
-    const byId = new Map(alivePets.map(pet => [pet.id, pet]));
-
-    const normalizedIds = Array.isArray(requestedPetIds)
-      ? requestedPetIds.filter(Boolean)
-      : [];
-
-    const picked = [];
-    normalizedIds.forEach(id => {
-      const pet = byId.get(id);
-      if (pet && !picked.some(existing => existing.id === pet.id)) {
-        picked.push(pet);
-      }
-    });
-
-    if (picked.length === 0 && fallbackPetId && byId.has(fallbackPetId)) {
-      picked.push(byId.get(fallbackPetId));
-    }
-
-    if (picked.length === 0 && alivePets[0]) {
-      picked.push(alivePets[0]);
-    }
-
-    return picked.slice(0, maxTeamSize).map(pet => ({
-      ...pet,
-      status: { ...(pet.status || {}) },
-    }));
-  };
-
-  const challengerRequestedTeamIds = Array.isArray(options?.challengerTeamPetIds)
-    ? options.challengerTeamPetIds
-    : [];
-
-  const opponentRequestedTeamIds = Array.isArray(options?.opponentTeamPetIds)
-    ? options.opponentTeamPetIds
-    : [];
-
-  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, 2);
-  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 1);
+  const petIndex = challengerPets.findIndex(p => p.id === challenger.partnerPetId);
 
   // (중요) DB에 영구적으로 체력이 늘어나지 않도록 얕은 복사(...)를 사용합니다.
-  let challengerPet = { ...(challengerBattleTeam[0] || {}) };
-  let opponentPet = { ...(opponentBattleTeam[0] || {}) };
-
-  if (!challengerPet?.id) throw new Error("나의 출전 가능한 펫을 찾을 수 없습니다.");
-  if (!opponentPet?.id) throw new Error("상대방의 출전 가능한 펫을 찾을 수 없습니다.");
+  let challengerPet = { ...challengerPets[petIndex] };
+  let opponentPet = { ...opponent.pets.find(p => p.id === opponent.partnerPetId) };
 
   // [버프 적용] 숨은 영웅(god_of_tidiness): 배틀 스탯 생성 시 최대 HP 5% 쉴드 보너스 부여
   if (challenger.equippedTitle === 'god_of_tidiness') {
@@ -4803,20 +4570,12 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   }
 
   // 새 배틀 생성 (덮어쓰기)
-  const battleTeamSize = Math.max(challengerBattleTeam.length, opponentBattleTeam.length);
-  const battleMode = battleTeamSize > 1 ? 'team-preview' : 'single';
-
   const battleData = {
     id: battleId,
     status: 'pending',
-    battleSchemaVersion: 2,
-    battleMode,
-    teamSize: battleTeamSize,
-    battleMode: 'single',
-    teamSize: 1,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
-    challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeam),
-    opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeam),
+    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet, equippedTitle: challenger.equippedTitle || null, avatarSnapshotUrl: challenger.avatarSnapshotUrl || null, photoURL: challenger.photoURL || null },
+    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false, equippedTitle: opponent.equippedTitle || null, avatarSnapshotUrl: opponent.avatarSnapshotUrl || null, photoURL: opponent.photoURL || null },
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
     question: null,

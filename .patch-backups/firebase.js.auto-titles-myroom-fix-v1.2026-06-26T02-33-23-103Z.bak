@@ -136,21 +136,13 @@ export async function buyAvatarPart(classId, playerId, part) {
 // =================================================================
 // ▼▼▼ [수정] 자동 칭호 획득 조건 검사 및 부여 헬퍼 함수 (classId 추가) ▼▼▼
 // =================================================================
-export async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
-  // AUTO_TITLE_ATOMIC_REWARD_V1
-  if (!classId || !studentId) return 0;
+async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid) {
+  if (!classId || !studentId || !studentAuthUid) return;
 
   const playerRef = doc(db, 'classes', classId, 'players', studentId);
   const playerSnap = await getDoc(playerRef);
-  if (!playerSnap.exists()) return 0;
-
+  if (!playerSnap.exists()) return;
   const playerData = playerSnap.data();
-  const targetAuthUid = studentAuthUid || playerData.authUid || studentId;
-
-  const toNumber = (value) => {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : 0;
-  };
 
   const titlesRef = collection(db, "classes", classId, "titles");
   const qTitles = query(titlesRef, where("type", "==", "auto"));
@@ -158,225 +150,50 @@ export async function checkAndGrantAutoTitles(classId, studentId, studentAuthUid
   const autoTitles = titlesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const submissionsRef = collection(db, "classes", classId, "missionSubmissions");
-  const qSubmissions = query(
-    submissionsRef,
-    where("studentId", "==", studentId),
-    where("status", "==", "approved")
-  );
+  const qSubmissions = query(submissionsRef, where("studentId", "==", studentId), where("status", "==", "approved"));
   const submissionsSnapshot = await getDocs(qSubmissions);
-  const approvedMissionCount = Math.max(
-    submissionsSnapshot.size,
-    toNumber(playerData.approvedMissionCount),
-    toNumber(playerData.completedMissionCount),
-    toNumber(playerData.missionCompletedCount),
-    toNumber(playerData.missionCompleteCount)
-  );
+  const approvedMissionCount = submissionsSnapshot.size;
 
   const quizHistoryRef = collection(db, "classes", classId, "quiz_history");
-  const qQuiz = query(
-    quizHistoryRef,
-    where("studentId", "==", studentId),
-    where("isCorrect", "==", true)
-  );
+  const qQuiz = query(quizHistoryRef, where("studentId", "==", studentId), where("isCorrect", "==", true));
   const quizSnapshot = await getDocs(qQuiz);
-  const correctQuizCount = Math.max(
-    quizSnapshot.size,
-    toNumber(playerData.correctQuizCount),
-    toNumber(playerData.quizCorrectCount),
-    toNumber(playerData.totalCorrectQuizCount),
-    toNumber(playerData.correctQuizTotal)
-  );
+  const correctQuizCount = quizSnapshot.size;
 
-  const contributionsQuery = query(
-    collectionGroup(db, 'contributions'),
-    where('classId', '==', classId),
-    where('playerId', '==', studentId)
-  );
+  const contributionsQuery = query(collectionGroup(db, 'contributions'), where('classId', '==', classId), where('playerId', '==', studentId));
   const contributionsSnapshot = await getDocs(contributionsQuery);
-  const totalDonationFromDocs = contributionsSnapshot.docs.reduce((sum, doc) => sum + toNumber(doc.data().amount), 0);
-  const totalDonation = Math.max(
-    totalDonationFromDocs,
-    toNumber(playerData.totalDonation),
-    toNumber(playerData.donationTotal),
-    toNumber(playerData.totalDonatedPoints)
-  );
+  const totalDonation = contributionsSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
 
   const likesQuery = query(collection(db, "classes", classId, "players", studentId, "myRoomLikes"));
   const likesSnapshot = await getDocs(likesQuery);
-  const myRoomLikesCount = Math.max(
-    toNumber(playerData.myRoomLikesTotal),
-    toNumber(playerData.myRoomLikeCount),
-    toNumber(playerData.myRoomLikesCount),
-    likesSnapshot.size
-  );
-
-  const attendanceCount = Math.max(
-    toNumber(playerData.totalAttendanceDays),
-    toNumber(playerData.cumulativeAttendanceDays),
-    toNumber(playerData.attendanceCount),
-    toNumber(playerData.consecutiveAttendanceDays)
-  );
-
-  const pointOwned = toNumber(playerData.points);
-  let grantedCount = 0;
+  const myRoomLikesCount = likesSnapshot.size;
 
   for (const title of autoTitles) {
-    let conditionMet = false;
+    if (playerData.ownedTitles && playerData.ownedTitles.includes(title.id)) {
+      continue;
+    }
 
+    let conditionMet = false;
     if (title.conditionId === 'mission_30_completed' && approvedMissionCount >= 30) conditionMet = true;
     else if (title.conditionId === 'quiz_50_correct' && correctQuizCount >= 50) conditionMet = true;
-    else if (title.conditionId === 'point_10000_owned' && pointOwned >= 10000) conditionMet = true;
+    else if (title.conditionId === 'point_10000_owned' && playerData.points >= 10000) conditionMet = true;
     else if (title.conditionId === 'donation_5000_points' && totalDonation >= 5000) conditionMet = true;
     else if (title.conditionId === 'myroom_20_likes' && myRoomLikesCount >= 20) conditionMet = true;
-    else if (title.conditionId === 'attendance_30_consecutive' && attendanceCount >= 30) conditionMet = true;
-    else if (title.conditionId === 'league_winner' && (
-      toNumber(playerData.leagueWins) > 0 ||
-      toNumber(playerData.leagueWinnerCount) > 0 ||
-      playerData.isLeagueWinner === true
-    )) conditionMet = true;
-    else if (title.conditionId === 'top_scorer' && (
-      toNumber(playerData.topScorerCount) > 0 ||
-      playerData.isTopScorer === true
-    )) conditionMet = true;
+    // [수정] 성실한 나무: 연속 30일 → 누적 30일 출석으로 조건 완화
+    else if (title.conditionId === 'attendance_30_consecutive' && (playerData.totalAttendanceDays || playerData.consecutiveAttendanceDays || 0) >= 30) conditionMet = true;
 
-    if (!conditionMet) continue;
-
-    const rewardReason = `칭호 [${title.name}] 획득 보상`;
-
-    // 과거 버전에서 이미 같은 칭호 보상 내역이 있다면, 포인트는 다시 주지 않고
-    // ownedTitles / autoTitleRewardsGranted만 정리합니다.
-    let hasExistingRewardHistory = false;
-    const rewardAuthUidForHistoryCheck = targetAuthUid || playerData.authUid || studentId;
-
-    try {
-      const historyRef = collection(db, 'classes', classId, 'point_history');
-      const qHistory = query(
-        historyRef,
-        where('playerId', '==', rewardAuthUidForHistoryCheck),
-        where('reason', '==', rewardReason),
-        limit(1)
+    if (conditionMet) {
+      await grantTitleToPlayer(classId, studentId, title.id);
+      createNotification(
+        studentAuthUid,
+        `✨ 칭호 획득! [${title.name}]`,
+        title.description,
+        "title_acquired",
+        "/profile"
       );
-      const historySnapshot = await getDocs(qHistory);
-      hasExistingRewardHistory = !historySnapshot.empty;
-    } catch (historyError) {
-      console.warn('[자동칭호] 기존 보상 이력 확인 실패, ownedTitles/marker 기준으로 진행:', historyError);
-    }
-
-    const result = await runTransaction(db, async (transaction) => {
-      const latestSnap = await transaction.get(playerRef);
-      if (!latestSnap.exists()) {
-        return { granted: false, rewardPaid: false, authUid: null, name: null };
-      }
-
-      const latestData = latestSnap.data();
-      const ownedTitles = Array.isArray(latestData.ownedTitles) ? latestData.ownedTitles : [];
-      const rewardMarkers = latestData.autoTitleRewardsGranted || {};
-      const alreadyOwnsTitle = ownedTitles.includes(title.id);
-      const alreadyRewarded = Boolean(rewardMarkers[title.id]) || hasExistingRewardHistory;
-
-      if (alreadyOwnsTitle || alreadyRewarded) {
-        const updateData = {};
-        if (!alreadyOwnsTitle) updateData.ownedTitles = arrayUnion(title.id);
-        if (!rewardMarkers[title.id]) updateData[`autoTitleRewardsGranted.${title.id}`] = true;
-
-        if (Object.keys(updateData).length > 0) {
-          transaction.update(playerRef, updateData);
-        }
-
-        return {
-          granted: !alreadyOwnsTitle,
-          rewardPaid: false,
-          authUid: latestData.authUid || targetAuthUid || studentId,
-          name: latestData.name || playerData.name || ''
-        };
-      }
-
-      transaction.update(playerRef, {
-        ownedTitles: arrayUnion(title.id),
-        points: increment(2000),
-        [`autoTitleRewardsGranted.${title.id}`]: serverTimestamp()
-      });
-
-      return {
-        granted: true,
-        rewardPaid: true,
-        authUid: latestData.authUid || targetAuthUid || studentId,
-        name: latestData.name || playerData.name || ''
-      };
-    });
-
-    if (result.granted) {
-      grantedCount += 1;
-
-      if (result.authUid) {
-        createNotification(
-          result.authUid,
-          `✨ 칭호 획득! [${title.name}]`,
-          title.description,
-          "title_acquired",
-          "/profile"
-        );
-      }
-    }
-
-    if (result.rewardPaid && result.authUid) {
-      // AUTO_TITLE_REWARD_POINT_POPUP_V1
-      // 포인트는 transaction에서 이미 지급됨. 여기서는 모달/알림/내역만 생성합니다.
-      // PointAdjustmentModal은 type='point'이고 data.amount가 있는 알림만 감지합니다.
-      await addDoc(collection(db, 'notifications'), {
-        userId: result.authUid,
-        title: `+2000P 포인트 조정`,
-        body: `사유: ${rewardReason}`,
-        type: 'point',
-        link: null,
-        isRead: false,
-        createdAt: serverTimestamp(),
-        data: {
-          amount: 2000,
-          reason: rewardReason,
-          title: `+2000P 포인트 조정`,
-          autoTitleReward: true,
-          titleId: title.id,
-          titleName: title.name
-        }
-      });
-
-      await addPointHistory(
-        classId,
-        result.authUid,
-        result.name,
-        2000,
-        rewardReason
-      );
+      await adjustPlayerPoints(classId, studentId, 2000, `칭호 [${title.name}] 획득 보상`);
     }
   }
-
-  return grantedCount;
 }
-
-
-export async function syncMissingAutoTitlesForClass(classId) {
-  // AUTO_TITLE_RECHECK_MYROOM_LIKES_V3
-  if (!classId) return { checked: 0, granted: 0 };
-
-  const playersRef = collection(db, 'classes', classId, 'players');
-  const playersSnapshot = await getDocs(playersRef);
-
-  let checked = 0;
-  let granted = 0;
-
-  for (const playerDoc of playersSnapshot.docs) {
-    const player = { id: playerDoc.id, ...playerDoc.data() };
-    if (player.status === 'inactive') continue;
-
-    checked += 1;
-    granted += await checkAndGrantAutoTitles(classId, player.id, player.authUid);
-  }
-
-  return { checked, granted };
-}
-
-
 
 // --- 미션 관리 (classId 추가) ---
 // src/api/firebase.js
@@ -2382,27 +2199,14 @@ export async function getPlayerSeasonStats(classId, playerId) {
  * @param {string} likerName - '좋아요'를 누르는 플레이어 이름
  */
 export async function likeMyRoom(classId, roomId, likerId, likerName) {
-  // AUTO_TITLE_RECHECK_MYROOM_LIKES_V3
   if (!classId) throw new Error("학급 정보가 없습니다.");
-
   const roomOwnerRef = doc(db, "classes", classId, "players", roomId);
   const likerRef = doc(db, "classes", classId, "players", likerId);
   const likeHistoryRef = doc(db, "classes", classId, "players", roomId, "myRoomLikes", likerId);
-  const likesCollectionRef = collection(db, "classes", classId, "players", roomId, "myRoomLikes");
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
-  // 기존 누적 필드가 없는 반을 위해 현재 남아 있는 unique 좋아요 문서 수를 baseline으로 사용합니다.
-  // 이미 같은 친구가 이전 달에 여러 번 눌렀던 기록은 문서가 덮어써져 복구할 수 없지만,
-  // 현재 남아 있는 친구 수에서 1부터 다시 시작하는 문제는 막습니다.
-  const existingLikesSnapshot = await getDocs(likesCollectionRef);
-  const existingUniqueLikeCount = existingLikesSnapshot.size;
-
-  let roomOwnerName = '친구';
-  let roomOwnerAuthUid = null;
-  let nextMyRoomLikesTotal = null;
-
-  await runTransaction(db, async (transaction) => {
+  return runTransaction(db, async (transaction) => {
     const likeHistorySnap = await transaction.get(likeHistoryRef);
     if (likeHistorySnap.exists() && likeHistorySnap.data().lastLikedMonth === currentMonth) {
       throw new Error("이번 달에는 이미 '좋아요'를 눌렀습니다.");
@@ -2412,43 +2216,30 @@ export async function likeMyRoom(classId, roomId, likerId, likerName) {
     if (!roomOwnerSnap.exists()) throw new Error("방 주인의 정보를 찾을 수 없습니다.");
 
     const roomOwnerData = roomOwnerSnap.data();
-    roomOwnerName = roomOwnerData.name || '친구';
-    roomOwnerAuthUid = roomOwnerData.authUid || roomId;
-
-    const currentMyRoomLikesTotal = Number(roomOwnerData.myRoomLikesTotal || 0);
-    nextMyRoomLikesTotal = Math.max(currentMyRoomLikesTotal, existingUniqueLikeCount) + 1;
+    const roomOwnerName = roomOwnerData.name || '친구';
 
     transaction.update(likerRef, { points: increment(100) });
-
-    transaction.update(roomOwnerRef, {
-      myRoomLikesTotal: nextMyRoomLikesTotal,
-      totalLikes: increment(1)
-    });
-
+    // ▼▼▼ [수정] 마이룸 좋아요 시, 방 주인의 totalLikes +1 ▼▼▼
+    transaction.update(roomOwnerRef, { totalLikes: increment(1) });
     transaction.set(likeHistoryRef, {
-      likerName,
+      likerName: likerName,
       lastLikedMonth: currentMonth,
       timestamp: serverTimestamp()
     }, { merge: true });
-  });
 
-  await addPointHistory(classId, likerId, likerName, 100, `${roomOwnerName}의 마이룸 '좋아요' 보상`);
+    await addPointHistory(classId, likerId, likerName, 100, `${roomOwnerName}의 마이룸 '좋아요' 보상`);
 
-  if (roomOwnerAuthUid) {
     createNotification(
-      roomOwnerAuthUid,
+      roomId,
       `❤️ ${likerName}님이 내 마이룸을 좋아합니다!`,
       "내 마이룸을 방문해서 확인해보세요!",
       "myroom_like",
       `/my-room/${roomId}`
     );
-  }
 
-  await checkAndGrantAutoTitles(classId, roomId, roomOwnerAuthUid);
-
-  return { myRoomLikesTotal: nextMyRoomLikesTotal };
+    await checkAndGrantAutoTitles(classId, roomId, roomOwnerData.authUid);
+  });
 }
-
 
 
 /**
@@ -3816,19 +3607,7 @@ export async function convertLikesToExp(classId, playerId, amount, petId) { // p
 
 // src/api/firebase.js
 
-export async function processBattleResults(
-  classId,
-  winnerId,
-  loserId,
-  fled = false,
-  finalWinnerPet,
-  finalLoserPet,
-  finalWinnerTeam = null,
-  finalLoserTeam = null,
-  finalWinnerParticipatedPetIds = null,
-  finalLoserParticipatedPetIds = null
-) {
-  // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH_FIX_AFTER_V2
+export async function processBattleResults(classId, winnerId, loserId, fled = false, finalWinnerPet, finalLoserPet) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
   const loserRef = doc(db, "classes", classId, "players", loserId);
@@ -3842,191 +3621,116 @@ export async function processBattleResults(
     const winnerData = winnerDoc.data();
     const loserData = loserDoc.data();
 
+    // ▼▼▼ [버프 적용] 장착한 칭호 확인 ▼▼▼
     const winnerTitle = winnerData.equippedTitle;
     const loserTitle = loserData.equippedTitle;
 
-    // 포인트 보상/페널티는 플레이어 단위로 한 번만 적용
+    // 1. 포인트 부자 버프: 승리 보상 20% 증가
     let victoryReward = 150;
     if (winnerTitle === 'point_rich') {
-      victoryReward = Math.floor(victoryReward * 1.2);
+      victoryReward = Math.floor(victoryReward * 1.2); // 180P
     }
 
+    // 2. 기부천사 버프: 패배/도망 페널티 50% 면제
     let defeatPenalty = fled ? 0 : 50;
     if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
-      defeatPenalty = Math.floor(defeatPenalty * 0.5);
+      defeatPenalty = Math.floor(defeatPenalty * 0.5); // 25P 차감으로 감소
     }
+    // ▲▲▲ [버프 적용 끝] ▲▲▲
 
-    // 레벨 차 보상 스케일링은 대표 active 펫 기준으로 1회 계산
+    // ▼▼▼ [완화] 레벨 차 보상/패널티 스케일링 (쩔 어뷰징은 막되, 대전 회피 유발 방지) ▼▼▼
+    // 레벨갭 기준(±5, ±10)은 유지하되 배율을 완화하고,
+    // 역전승(저레벨이 고레벨을 이긴 경우) 보너스/추가 패널티는 완전히 제거해
+    // 고레벨 학생도 안심하고 대전에 응할 수 있도록 함.
     const winnerPetLevel = finalWinnerPet?.level || 1;
     const loserPetLevel = finalLoserPet?.level || 1;
-    const levelGap = winnerPetLevel - loserPetLevel;
+    const levelGap = winnerPetLevel - loserPetLevel; // 양수 = 승자가 레벨 높음, 음수 = 승자가 레벨 낮음
 
-    let winExpMultiplier = 1.0;
-    let loseExpMultiplier = 1.0;
+    let winExpMultiplier = 1.0;  // 승자 펫 경험치 배율
+    let loseExpMultiplier = 1.0;  // 패자 펫 경험치 배율
 
     if (levelGap >= 10) {
-      victoryReward = Math.floor(victoryReward * 0.5);
-      winExpMultiplier = 0.5;
+      // 10레벨 이상 높은 펫이 이긴 경우 → 쩔 행위 의심, 보상은 절반만 지급
+      victoryReward = Math.floor(victoryReward * 0.5); // 75P
+      winExpMultiplier = 0.5;                            // 경험치 50%
     } else if (levelGap >= 5) {
-      victoryReward = Math.floor(victoryReward * 0.75);
+      // 5~9레벨 차이 → 약하게만 감소
+      victoryReward = Math.floor(victoryReward * 0.75); // 112P
       winExpMultiplier = 0.75;
     }
+    // 역전승(levelGap이 음수, 즉 저레벨이 고레벨을 이긴 경우)은
+    // 추가 보너스나 패자 추가 페널티 없이 기본 보상과 동일하게 처리한다.
+    // ▲▲▲ [레벨 차 스케일링 끝] ▲▲▲
 
-    let winnerPets = [...(winnerData.pets || [])];
-    let loserPets = [...(loserData.pets || [])];
+    let winnerPets = winnerData.pets || [];
+    let loserPets = loserData.pets || [];
 
-    const clampBattleHp = (storedPet, battlePet) => {
-      const rawHp = Number(battlePet?.hp);
-      const fallbackHp = Number(storedPet?.hp ?? 0);
-      const hp = Number.isFinite(rawHp) ? rawHp : fallbackHp;
-      return Math.min(Number(storedPet?.maxHp ?? hp), Math.max(0, hp));
-    };
-
-    const normalizeBattleSp = (storedPet, battlePet) => {
-      const rawSp = Number(battlePet?.sp);
-      const fallbackSp = Number(storedPet?.sp ?? 0);
-      const sp = Number.isFinite(rawSp) ? rawSp : fallbackSp;
-      return Math.max(0, sp);
-    };
-
-    const dedupeBattleTeam = (team, fallbackPet) => {
-      const list = Array.isArray(team) && team.length > 0
-        ? team
-        : fallbackPet
-          ? [fallbackPet]
-          : [];
-
-      const map = new Map();
-      list.filter(Boolean).forEach(pet => {
-        if (pet?.id && !map.has(pet.id)) {
-          map.set(pet.id, pet);
-        }
-      });
-
-      return Array.from(map.values());
-    };
-
-    const getParticipatedIds = (explicitIds, battleTeam, fallbackPet) => {
-      const ids = new Set();
-
-      if (Array.isArray(explicitIds)) {
-        explicitIds.filter(Boolean).forEach(id => ids.add(id));
-      }
-
-      // 과거/부분 패치 문서 fallback:
-      // 선발 펫(team[0])과 마지막 active 펫은 최소 출전 처리
-      if (battleTeam?.[0]?.id) ids.add(battleTeam[0].id);
-      if (fallbackPet?.id) ids.add(fallbackPet.id);
-
-      return ids;
-    };
-
-    const applyTeamOutcome = (storedPets, finalTeam, fallbackPet, explicitParticipatedIds, outcome) => {
-      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
-      if (battleTeam.length === 0) return storedPets;
-
-      const participatedIds = getParticipatedIds(explicitParticipatedIds, battleTeam, fallbackPet);
-      const nextPets = [...storedPets];
-
-      battleTeam.forEach((battlePet) => {
-        if (!battlePet?.id) return;
-
-        const idx = nextPets.findIndex(p => p.id === battlePet.id);
-        if (idx === -1) return;
-
-        const nextHp = clampBattleHp(nextPets[idx], battlePet);
-        const nextSp = normalizeBattleSp(nextPets[idx], battlePet);
-        const wasFainted = nextHp <= 0;
-        const participated = participatedIds.has(battlePet.id);
-
-        let nextPet = {
-          ...nextPets[idx],
-          hp: nextHp,
-          sp: nextSp,
+    // 승자 펫 업데이트
+    if (finalWinnerPet) {
+      const idx = winnerPets.findIndex(p => p.id === finalWinnerPet.id);
+      if (idx !== -1) {
+        winnerPets[idx] = {
+          ...winnerPets[idx],
+          hp: Math.min(winnerPets[idx].maxHp, finalWinnerPet.hp),
+          sp: finalWinnerPet.sp,
           status: {},
-          battleWins: nextPets[idx].battleWins || 0,
-          battleLosses: nextPets[idx].battleLosses || 0,
-          battleFlees: nextPets[idx].battleFlees || 0,
+          // ▼ [추가] 전적 카운터
+          battleWins: (winnerPets[idx].battleWins || 0) + 1,
+          battleLosses: winnerPets[idx].battleLosses || 0,
+          battleFlees: winnerPets[idx].battleFlees || 0,
         };
-
-        // 경험치/전적은 실제 필드에 나온 펫만 적용
-        if (participated) {
-          if (outcome === 'win') {
-            nextPet.battleWins = (nextPet.battleWins || 0) + 1;
-            nextPet.exp = (nextPet.exp || 0) + Math.round(100 * winExpMultiplier);
-          } else if (outcome === 'lose') {
-            nextPet.battleLosses = (nextPet.battleLosses || 0) + (fled ? 0 : 1);
-            nextPet.battleFlees = (nextPet.battleFlees || 0) + (fled ? 1 : 0);
-            const baseExp = fled ? 10 : 30;
-            nextPet.exp = (nextPet.exp || 0) + Math.round(baseExp * loseExpMultiplier);
-          }
-
-          const { leveledUpPet } = calculateLevelUp(nextPet);
-          nextPet = leveledUpPet;
+        if (winnerPets[idx].hp > 0) {
+          winnerPets[idx].exp += Math.round(100 * winExpMultiplier);
+          const { leveledUpPet } = calculateLevelUp(winnerPets[idx]);
+          winnerPets[idx] = leveledUpPet;
         }
+      }
+    }
 
-        // 레벨업으로 HP가 회복되는 것을 방지.
-        // 전투 중 쓰러진 펫은 전투 후에도 HP 0으로 유지한다.
+    // 패자 펫 업데이트
+    if (finalLoserPet) {
+      const idx = loserPets.findIndex(p => p.id === finalLoserPet.id);
+      if (idx !== -1) {
+        loserPets[idx] = {
+          ...loserPets[idx],
+          hp: Math.min(loserPets[idx].maxHp, finalLoserPet.hp),
+          sp: finalLoserPet.sp,
+          status: {},
+          // ▼ [추가] 전적 카운터
+          battleWins: loserPets[idx].battleWins || 0,
+          battleLosses: (loserPets[idx].battleLosses || 0) + (fled ? 0 : 1),
+          battleFlees: (loserPets[idx].battleFlees || 0) + (fled ? 1 : 0),
+        };
+        const wasFainted = loserPets[idx].hp <= 0;
         if (wasFainted) {
-          nextPet.hp = 0;
-        } else {
-          nextPet.hp = Math.min(nextPet.maxHp, nextPet.hp);
+          loserPets[idx].hp = 0;
         }
+        // 쓰러졌어도(HP 0) 패배 경험치는 지급한다.
+        const baseExp = fled ? 10 : 30;
+        loserPets[idx].exp += Math.round(baseExp * loseExpMultiplier);
+        const { leveledUpPet } = calculateLevelUp(loserPets[idx]);
+        loserPets[idx] = leveledUpPet;
+        // 레벨업 시 HP가 maxHp로 풀회복되므로, 쓰러진 상태였다면 다시 0으로 되돌린다.
+        if (wasFainted) {
+          loserPets[idx].hp = 0;
+        }
+      }
+    }
 
-        nextPet.sp = Math.max(0, nextPet.sp ?? nextSp);
-        nextPet.status = {};
-
-        nextPets[idx] = nextPet;
-      });
-
-      return nextPets;
-    };
-
-    // HP/SP는 team 전체 저장, 경험치/전적은 participatedPetIds 기준 적용
-    winnerPets = applyTeamOutcome(
-      winnerPets,
-      finalWinnerTeam,
-      finalWinnerPet,
-      finalWinnerParticipatedPetIds,
-      'win'
-    );
-
-    loserPets = applyTeamOutcome(
-      loserPets,
-      finalLoserTeam,
-      finalLoserPet,
-      finalLoserParticipatedPetIds,
-      'lose'
-    );
-
+    // 포인트 증감 적용 (버프 수치 반영)
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
     const levelScaleNote = levelGap >= 10 ? ' (레벨 차 보상 감소)' : levelGap >= 5 ? ' (레벨 차 보상 약간 감소)' : '';
-    await addPointHistory(
-      classId,
-      winnerData.authUid,
-      winnerData.name,
-      victoryReward,
-      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote
-    );
-
+    await addPointHistory(classId, winnerData.authUid, winnerData.name, victoryReward, "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote);
     if (defeatPenalty > 0) {
-      await addPointHistory(
-        classId,
-        loserData.authUid,
-        loserData.name,
-        -defeatPenalty,
-        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '')
-      );
+      await addPointHistory(classId, loserData.authUid, loserData.name, -defeatPenalty, "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : ''));
     }
   });
 }
 
-
 // [추가] 무승부/도망 처리 (경험치/포인트 변화 없이 상태만 저장)
-export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet, player1Team = null, player2Team = null) {
-  // M5_DRAW_TEAM_STATE_PERSIST_PATCH
+export async function processBattleDraw(classId, player1Id, player2Id, player1Pet, player2Pet) {
   if (!classId) return;
   const p1Ref = doc(db, "classes", classId, "players", player1Id);
   const p2Ref = doc(db, "classes", classId, "players", player2Id);
@@ -4036,70 +3740,20 @@ export async function processBattleDraw(classId, player1Id, player2Id, player1Pe
     const p2Doc = await transaction.get(p2Ref);
     if (!p1Doc.exists() || !p2Doc.exists()) return;
 
-    const clampBattleHp = (storedPet, battlePet) => {
-      const rawHp = Number(battlePet?.hp);
-      const fallbackHp = Number(storedPet?.hp ?? 0);
-      const hp = Number.isFinite(rawHp) ? rawHp : fallbackHp;
-      return Math.min(Number(storedPet?.maxHp ?? hp), Math.max(0, hp));
+    // 펫 상태 업데이트 헬퍼
+    const updatePetState = (playerData, finalPetState) => {
+      const pets = playerData.pets || [];
+      const idx = pets.findIndex(p => p.id === finalPetState.id);
+      if (idx !== -1) {
+        pets[idx] = { ...pets[idx], hp: finalPetState.hp, sp: finalPetState.sp, status: {} };
+      }
+      return pets;
     };
 
-    const normalizeBattleSp = (storedPet, battlePet) => {
-      const rawSp = Number(battlePet?.sp);
-      const fallbackSp = Number(storedPet?.sp ?? 0);
-      const sp = Number.isFinite(rawSp) ? rawSp : fallbackSp;
-      return Math.max(0, sp);
-    };
-
-    const dedupeBattleTeam = (team, fallbackPet) => {
-      const list = Array.isArray(team) && team.length > 0
-        ? team
-        : fallbackPet
-          ? [fallbackPet]
-          : [];
-
-      const map = new Map();
-      list.filter(Boolean).forEach(pet => {
-        if (pet?.id && !map.has(pet.id)) {
-          map.set(pet.id, pet);
-        }
-      });
-
-      return Array.from(map.values());
-    };
-
-    const updateTeamPetStates = (playerData, finalPetState, finalTeamState) => {
-      const storedPets = [...(playerData.pets || [])];
-      const battleTeam = dedupeBattleTeam(finalTeamState, finalPetState);
-
-      if (battleTeam.length === 0) return storedPets;
-
-      battleTeam.forEach((battlePet) => {
-        if (!battlePet?.id) return;
-
-        const idx = storedPets.findIndex(p => p.id === battlePet.id);
-        if (idx === -1) return;
-
-        storedPets[idx] = {
-          ...storedPets[idx],
-          hp: clampBattleHp(storedPets[idx], battlePet),
-          sp: normalizeBattleSp(storedPets[idx], battlePet),
-          status: {},
-        };
-      });
-
-      return storedPets;
-    };
-
-    transaction.update(p1Ref, {
-      pets: updateTeamPetStates(p1Doc.data(), player1Pet, player1Team),
-    });
-
-    transaction.update(p2Ref, {
-      pets: updateTeamPetStates(p2Doc.data(), player2Pet, player2Team),
-    });
+    transaction.update(p1Ref, { pets: updatePetState(p1Doc.data(), player1Pet) });
+    transaction.update(p2Ref, { pets: updatePetState(p2Doc.data(), player2Pet) });
   });
 }
-
 
 export async function revivePet(classId, playerId, petId) {
   if (!classId) throw new Error("학급 정보가 없습니다.");
@@ -4499,44 +4153,7 @@ export async function submitBattleAction(classId, battleId, actionData, allQuizz
   });
 }
 
-// M3_BATTLE_TEAM_DATA_ON_CREATE_PATCH
-// 현재는 1펫 배틀을 유지하되, 배틀 문서에 team/activePetIndex/activePetId 구조를 함께 저장합니다.
-// 이후 2펫/3펫 선택 기능이 들어오면 이 helper의 team 인자만 확장하면 됩니다.
-const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets = null) => {
-  // M4_CHALLENGER_TEAM_SELECT_PATCH
-  // battlePet은 선발 펫, teamPets는 선발+대기 펫 목록입니다.
-  const rawTeam = Array.isArray(teamPets) && teamPets.length > 0 ? teamPets : [battlePet];
-
-  const safeTeam = rawTeam
-    .filter(Boolean)
-    .map(pet => ({
-      ...pet,
-      status: { ...(pet?.status || {}) },
-    }));
-
-  const activeIndexById = safeTeam.findIndex(pet => pet?.id === battlePet?.id);
-  const activePetIndex = activeIndexById >= 0 ? activeIndexById : 0;
-  const safePet = safeTeam[activePetIndex] || {
-    ...battlePet,
-    status: { ...(battlePet?.status || {}) },
-  };
-
-  return {
-    id: player.id,
-    name: player.name,
-    pet: safePet,
-    team: safeTeam.length > 0 ? safeTeam : [safePet],
-    activePetIndex,
-    activePetId: safePet.id || null,
-    participatedPetIds: safePet.id ? [safePet.id] : [],
-    equippedTitle: player.equippedTitle || null,
-    avatarSnapshotUrl: player.avatarSnapshotUrl || null,
-    photoURL: player.photoURL || null,
-    ...extra,
-  };
-};
-
-export async function createBattleChallenge(classId, challengerObj, opponentObj, options = {}) {
+export async function createBattleChallenge(classId, challengerObj, opponentObj) {
   if (!classId || !challengerObj?.id || !opponentObj?.id) {
     throw new Error("챌린지 생성에 필요한 정보가 부족합니다.");
   }
@@ -4681,58 +4298,11 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // ▼▼▼ [수정] 펫 정보 가져오기 및 숨은 영웅 쉴드 버프 부여 ▼▼▼
   // =========================================================
   let challengerPets = challenger.pets || [];
-  let opponentPets = opponent.pets || [];
-
-  // M4_CHALLENGER_TEAM_SELECT_PATCH
-  // 신청자가 선택한 선발/대기 펫을 battle team으로 구성합니다.
-  // 아직 수락자 쪽 선택 플로우는 없으므로 opponent는 기존 파트너 펫 1마리만 사용합니다.
-  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 2) => {
-    const alivePets = (pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
-    const byId = new Map(alivePets.map(pet => [pet.id, pet]));
-
-    const normalizedIds = Array.isArray(requestedPetIds)
-      ? requestedPetIds.filter(Boolean)
-      : [];
-
-    const picked = [];
-    normalizedIds.forEach(id => {
-      const pet = byId.get(id);
-      if (pet && !picked.some(existing => existing.id === pet.id)) {
-        picked.push(pet);
-      }
-    });
-
-    if (picked.length === 0 && fallbackPetId && byId.has(fallbackPetId)) {
-      picked.push(byId.get(fallbackPetId));
-    }
-
-    if (picked.length === 0 && alivePets[0]) {
-      picked.push(alivePets[0]);
-    }
-
-    return picked.slice(0, maxTeamSize).map(pet => ({
-      ...pet,
-      status: { ...(pet.status || {}) },
-    }));
-  };
-
-  const challengerRequestedTeamIds = Array.isArray(options?.challengerTeamPetIds)
-    ? options.challengerTeamPetIds
-    : [];
-
-  const opponentRequestedTeamIds = Array.isArray(options?.opponentTeamPetIds)
-    ? options.opponentTeamPetIds
-    : [];
-
-  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, 2);
-  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 1);
+  const petIndex = challengerPets.findIndex(p => p.id === challenger.partnerPetId);
 
   // (중요) DB에 영구적으로 체력이 늘어나지 않도록 얕은 복사(...)를 사용합니다.
-  let challengerPet = { ...(challengerBattleTeam[0] || {}) };
-  let opponentPet = { ...(opponentBattleTeam[0] || {}) };
-
-  if (!challengerPet?.id) throw new Error("나의 출전 가능한 펫을 찾을 수 없습니다.");
-  if (!opponentPet?.id) throw new Error("상대방의 출전 가능한 펫을 찾을 수 없습니다.");
+  let challengerPet = { ...challengerPets[petIndex] };
+  let opponentPet = { ...opponent.pets.find(p => p.id === opponent.partnerPetId) };
 
   // [버프 적용] 숨은 영웅(god_of_tidiness): 배틀 스탯 생성 시 최대 HP 5% 쉴드 보너스 부여
   if (challenger.equippedTitle === 'god_of_tidiness') {
@@ -4803,20 +4373,12 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   }
 
   // 새 배틀 생성 (덮어쓰기)
-  const battleTeamSize = Math.max(challengerBattleTeam.length, opponentBattleTeam.length);
-  const battleMode = battleTeamSize > 1 ? 'team-preview' : 'single';
-
   const battleData = {
     id: battleId,
     status: 'pending',
-    battleSchemaVersion: 2,
-    battleMode,
-    teamSize: battleTeamSize,
-    battleMode: 'single',
-    teamSize: 1,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
-    challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeam),
-    opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeam),
+    challenger: { id: challenger.id, name: challenger.name, pet: challengerPet, equippedTitle: challenger.equippedTitle || null, avatarSnapshotUrl: challenger.avatarSnapshotUrl || null, photoURL: challenger.photoURL || null },
+    opponent: { id: opponent.id, name: opponent.name, pet: opponentPet, accepted: false, equippedTitle: opponent.equippedTitle || null, avatarSnapshotUrl: opponent.avatarSnapshotUrl || null, photoURL: opponent.photoURL || null },
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
     question: null,
