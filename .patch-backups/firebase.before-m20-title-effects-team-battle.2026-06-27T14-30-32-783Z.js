@@ -3899,9 +3899,9 @@ export async function processBattleResults(
     }
 
     let defeatPenalty = fled ? 0 : 50;
-    // M20E_DILIGENT_GIVER_STACK_PENALTY_PATCH
-    // 성실한 기부천사 감면은 레벨차 감면까지 반영된 "최종 패널티"에 마지막으로 적용합니다.
-    let diligentGiverPenaltyNote = '';
+    if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
+      defeatPenalty = Math.floor(defeatPenalty * 0.5);
+    }
 
     // M9_EFFECTIVE_TEAM_LEVEL_SCALE_PATCH
     // 레벨 차 보상/패널티는 마지막 active 펫 1마리가 아니라,
@@ -4054,15 +4054,6 @@ export async function processBattleResults(
     if (!fled && maxLevelGap >= 5 && defeatPenalty > 25) {
       defeatPenalty = 25;
       defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
-    }
-
-    // M20E_DILIGENT_GIVER_STACK_PENALTY_PATCH
-    // 성실한 기부천사는 레벨차/도망 여부까지 계산된 최종 패배 페널티를 다시 50% 감면합니다.
-    // 예: 기본 50P → 강팀 상대 감면 25P → 기부천사 추가 감면 12P
-    if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
-      const beforeDiligentGiverPenalty = defeatPenalty;
-      defeatPenalty = Math.max(1, Math.floor(defeatPenalty * 0.5));
-      diligentGiverPenaltyNote = ` (기부천사 추가 감면 ${beforeDiligentGiverPenalty}P→${defeatPenalty}P)`;
     }
 
     // M15B_FLEE_EXP_SCALE_PATCH
@@ -4222,7 +4213,7 @@ export async function processBattleResults(
       loserExpGain,
       winnerPetExpGains: buildPetExpGains(finalWinnerTeam, finalWinnerPet, winnerParticipatedIdsForSummary, winnerExpGain),
       loserPetExpGains: buildPetExpGains(finalLoserTeam, finalLoserPet, loserParticipatedIdsForSummary, loserExpGain),
-      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, diligentGiverPenaltyNote, lossExpScaleNote].filter(Boolean),
+      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, lossExpScaleNote].filter(Boolean),
     };
 
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
@@ -4242,7 +4233,7 @@ export async function processBattleResults(
         loserData.authUid,
         loserData.name,
         -defeatPenalty,
-        "퀴즈 배틀 패배" + defeatPenaltyLevelNote + diligentGiverPenaltyNote + lossExpScaleNote
+        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '') + defeatPenaltyLevelNote + lossExpScaleNote
       );
     }
 
@@ -4734,7 +4725,7 @@ const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets
   // battlePet은 선발 펫, teamPets는 선발+대기 펫 목록입니다.
   const rawTeam = Array.isArray(teamPets) && teamPets.length > 0 ? teamPets : [battlePet];
 
-  let safeTeam = rawTeam
+  const safeTeam = rawTeam
     .filter(Boolean)
     .map(pet => ({
       ...pet,
@@ -4743,34 +4734,10 @@ const createBattleParticipantSnapshot = (player, battlePet, extra = {}, teamPets
 
   const activeIndexById = safeTeam.findIndex(pet => pet?.id === battlePet?.id);
   const activePetIndex = activeIndexById >= 0 ? activeIndexById : 0;
-
-  // M20_TITLE_EFFECTS_TEAM_BATTLE_FIX
-  // 숨은 영웅 HP 실드 / 인기스타 SP 오버차지처럼 battlePet에 적용된 시작 버프가
-  // 다중 배틀 team[activePetIndex] 원본으로 덮여 사라지지 않도록 active slot에 다시 반영합니다.
-  const activeTeamPet = safeTeam[activePetIndex] || {};
-  const safePet = battlePet?.id
-    ? {
-        ...activeTeamPet,
-        ...battlePet,
-        status: {
-          ...(activeTeamPet.status || {}),
-          ...(battlePet.status || {}),
-        },
-      }
-    : {
-        ...activeTeamPet,
-        status: { ...(activeTeamPet.status || {}) },
-      };
-
-  if (safePet?.id) {
-    safeTeam = safeTeam.length > 0
-      ? safeTeam.map((pet, index) => (
-          index === activePetIndex
-            ? safePet
-            : { ...pet, status: { ...(pet?.status || {}) } }
-        ))
-      : [safePet];
-  }
+  const safePet = safeTeam[activePetIndex] || {
+    ...battlePet,
+    status: { ...(battlePet?.status || {}) },
+  };
 
   return {
     id: player.id,
@@ -4990,63 +4957,27 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   if (!challengerPet?.id) throw new Error("나의 출전 가능한 펫을 찾을 수 없습니다.");
   if (!opponentPet?.id) throw new Error("상대방의 출전 가능한 펫을 찾을 수 없습니다.");
 
-  // M20_TITLE_EFFECTS_TEAM_BATTLE_FIX
-  // [시작 버프] 숨은 영웅(god_of_tidiness): 배틀 시작 시 최대 HP 5% 실드 부여
-  // hp가 maxHp를 넘으면 BattleHpBar에서 보라색 실드 구간으로 표시됩니다.
+  // [버프 적용] 숨은 영웅(god_of_tidiness): 배틀 스탯 생성 시 최대 HP 5% 쉴드 보너스 부여
   if (challenger.equippedTitle === 'god_of_tidiness') {
-    const shield = Math.floor(Number(challengerPet.maxHp ?? 0) * 0.05);
-    challengerPet.hp = Number(challengerPet.hp ?? 0) + shield;
+    const shield = Math.floor(challengerPet.maxHp * 0.05);
+    challengerPet.hp += shield;
   }
   if (opponent.equippedTitle === 'god_of_tidiness') {
-    const shield = Math.floor(Number(opponentPet.maxHp ?? 0) * 0.05);
-    opponentPet.hp = Number(opponentPet.hp ?? 0) + shield;
+    const shield = Math.floor(opponentPet.maxHp * 0.05);
+    opponentPet.hp += shield;
   }
 
-  // [시작 버프] 인기스타(popular_star): 배틀 시작 시 SP 20% 오버차지
-  // sp가 maxSp를 넘으면 BattleSpBar에서 노란색 오버차지 구간으로 표시됩니다.
+  // ▼▼▼ [추가] 인기스타(popular_star): 배틀 스탯 생성 시 SP 20% 오버차지 부여 ▼▼▼
   if (challenger.equippedTitle === 'popular_star') {
-    const bonusSp = Math.floor(Number(challengerPet.maxSp ?? 0) * 0.2);
-    challengerPet.sp = Number(challengerPet.maxSp ?? challengerPet.sp ?? 0) + bonusSp;
+    const bonusSp = Math.floor(challengerPet.maxSp * 0.2);
+    challengerPet.sp = challengerPet.maxSp + bonusSp; // 최대치를 뚫고 저장
   }
   if (opponent.equippedTitle === 'popular_star') {
-    const bonusSp = Math.floor(Number(opponentPet.maxSp ?? 0) * 0.2);
-    opponentPet.sp = Number(opponentPet.maxSp ?? opponentPet.sp ?? 0) + bonusSp;
+    const bonusSp = Math.floor(opponentPet.maxSp * 0.2);
+    opponentPet.sp = opponentPet.maxSp + bonusSp;
   }
   // ▲▲▲ [버프 적용 완료] ▲▲▲
-  // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-  // 다중 펫 배틀에서는 편성된 팀 전체가 "배틀 시작" 상태에 들어간 것으로 봅니다.
-  // 숨은 영웅 HP 실드와 인기스타 SP 오버차지를 선발 1마리뿐 아니라 팀 전체에 적용합니다.
-  const applyBattleStartTitleEffectsToTeam = (team, equippedTitle) => {
-    const safeTeam = Array.isArray(team) && team.length > 0 ? team : [];
 
-    return safeTeam.map((pet) => {
-      const nextPet = {
-        ...pet,
-        status: { ...(pet?.status || {}) },
-      };
-
-      if (!nextPet?.id) return nextPet;
-
-      if (equippedTitle === 'god_of_tidiness') {
-        const shield = Math.floor(Number(nextPet.maxHp ?? 0) * 0.05);
-        nextPet.hp = Number(nextPet.hp ?? 0) + shield;
-      }
-
-      if (equippedTitle === 'popular_star') {
-        const bonusSp = Math.floor(Number(nextPet.maxSp ?? 0) * 0.2);
-        nextPet.sp = Number(nextPet.maxSp ?? nextPet.sp ?? 0) + bonusSp;
-      }
-
-      return nextPet;
-    });
-  };
-
-  const challengerBattleTeamWithTitleEffects = applyBattleStartTitleEffectsToTeam(challengerBattleTeam, challenger.equippedTitle);
-  const opponentBattleTeamWithTitleEffects = applyBattleStartTitleEffectsToTeam(opponentBattleTeam, opponent.equippedTitle);
-
-  // 기존 active pet에만 적용되던 시작 버프 값은 팀 전체 버프 결과로 다시 확정합니다.
-  challengerPet = { ...(challengerBattleTeamWithTitleEffects[0] || challengerPet), status: { ...((challengerBattleTeamWithTitleEffects[0] || challengerPet)?.status || {}) } };
-  opponentPet = { ...(opponentBattleTeamWithTitleEffects[0] || opponentPet), status: { ...((opponentBattleTeamWithTitleEffects[0] || opponentPet)?.status || {}) } };
 
   // 기절 상태 체크
   if (challengerPet.hp <= 0) throw new Error("나의 펫이 기절 상태입니다. 펫 센터에서 치료 후 신청해주세요.");
@@ -5095,7 +5026,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   }
 
   // 새 배틀 생성 (덮어쓰기)
-  const battleTeamSize = Math.max(challengerBattleTeamWithTitleEffects.length, opponentBattleTeamWithTitleEffects.length);
+  const battleTeamSize = Math.max(challengerBattleTeam.length, opponentBattleTeam.length);
   const battleMode = battleTeamSize > 1 ? 'team-preview' : 'single';
 
   const battleData = {
@@ -5105,8 +5036,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
     battleMode,
     teamSize: battleTeamSize,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
-    challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeamWithTitleEffects),
-    opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeamWithTitleEffects),
+    challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeam),
+    opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeam),
     log: `${challenger.name}님이 ${opponent.name}님에게 대결을 신청했습니다!`,
     turn: null,
     question: null,

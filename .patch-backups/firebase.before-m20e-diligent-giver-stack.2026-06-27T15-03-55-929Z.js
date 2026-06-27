@@ -3899,9 +3899,9 @@ export async function processBattleResults(
     }
 
     let defeatPenalty = fled ? 0 : 50;
-    // M20E_DILIGENT_GIVER_STACK_PENALTY_PATCH
-    // 성실한 기부천사 감면은 레벨차 감면까지 반영된 "최종 패널티"에 마지막으로 적용합니다.
-    let diligentGiverPenaltyNote = '';
+    if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
+      defeatPenalty = Math.floor(defeatPenalty * 0.5);
+    }
 
     // M9_EFFECTIVE_TEAM_LEVEL_SCALE_PATCH
     // 레벨 차 보상/패널티는 마지막 active 펫 1마리가 아니라,
@@ -4054,15 +4054,6 @@ export async function processBattleResults(
     if (!fled && maxLevelGap >= 5 && defeatPenalty > 25) {
       defeatPenalty = 25;
       defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
-    }
-
-    // M20E_DILIGENT_GIVER_STACK_PENALTY_PATCH
-    // 성실한 기부천사는 레벨차/도망 여부까지 계산된 최종 패배 페널티를 다시 50% 감면합니다.
-    // 예: 기본 50P → 강팀 상대 감면 25P → 기부천사 추가 감면 12P
-    if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
-      const beforeDiligentGiverPenalty = defeatPenalty;
-      defeatPenalty = Math.max(1, Math.floor(defeatPenalty * 0.5));
-      diligentGiverPenaltyNote = ` (기부천사 추가 감면 ${beforeDiligentGiverPenalty}P→${defeatPenalty}P)`;
     }
 
     // M15B_FLEE_EXP_SCALE_PATCH
@@ -4222,7 +4213,7 @@ export async function processBattleResults(
       loserExpGain,
       winnerPetExpGains: buildPetExpGains(finalWinnerTeam, finalWinnerPet, winnerParticipatedIdsForSummary, winnerExpGain),
       loserPetExpGains: buildPetExpGains(finalLoserTeam, finalLoserPet, loserParticipatedIdsForSummary, loserExpGain),
-      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, diligentGiverPenaltyNote, lossExpScaleNote].filter(Boolean),
+      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, lossExpScaleNote].filter(Boolean),
     };
 
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
@@ -4242,7 +4233,7 @@ export async function processBattleResults(
         loserData.authUid,
         loserData.name,
         -defeatPenalty,
-        "퀴즈 배틀 패배" + defeatPenaltyLevelNote + diligentGiverPenaltyNote + lossExpScaleNote
+        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '') + defeatPenaltyLevelNote + lossExpScaleNote
       );
     }
 

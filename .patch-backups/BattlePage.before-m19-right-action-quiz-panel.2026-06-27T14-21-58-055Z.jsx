@@ -745,37 +745,6 @@ const LogText = styled.p`
   display: flex; align-items: center; white-space: pre-line;
 `;
 
-// M19_RIGHT_ACTION_QUIZ_PANEL_PATCH
-const BattlePrompt = styled.h3`
-  margin: 0.75rem 0 0;
-  padding: 0.9rem 1rem;
-  border-radius: 16px;
-  background: #f8f9fa;
-  border: 2px solid #e9ecef;
-  color: #212529;
-  font-size: 1.15rem;
-  line-height: 1.5;
-`;
-
-const RightActionPanel = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  align-self: stretch;
-`;
-
-const RightTaskCard = styled.div`
-  padding: 0.95rem;
-  border-radius: 16px;
-  background: #f8f9fa;
-  border: 2px solid #dee2e6;
-  color: #343a40;
-  font-weight: 900;
-  text-align: center;
-  line-height: 1.5;
-`;
-
-
 const AnswerInput = styled.input`
   width: 100%; padding: 1rem; font-size: 1.2rem; text-align: center;
   border: 2px solid #dee2e6; border-radius: 12px; margin-top: 1rem;
@@ -1105,134 +1074,13 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         }
     };
 
-    // M20D_POPULAR_STAR_OVERCHARGE_GUARD_PATCH
-    // 인기스타(popular_star): 배틀 시작 시 팀 전체 SP 20% 오버차지.
-    // 기존 생성 단계에서 누락되거나 다중 팀 교체 과정에서 사라진 경우를 대비해,
-    // battle 문서를 읽는 시점에 한 번만 보정하고 status marker로 중복 충전을 막습니다.
-    const applyPopularStarOverchargeGuard = (participant) => {
-        if (!participant || participant.equippedTitle !== 'popular_star') {
-            return { participant, changed: false };
-        }
-
-        const activePet = participant.pet;
-        const baseTeam = Array.isArray(participant.team) && participant.team.length > 0
-            ? participant.team
-            : activePet
-                ? [activePet]
-                : [];
-
-        if (baseTeam.length === 0) {
-            return { participant, changed: false };
-        }
-
-        let changed = false;
-
-        const nextTeam = baseTeam.map((pet) => {
-            if (!pet?.id) return pet;
-
-            const status = { ...(pet.status || {}) };
-            if (status.popularStarOvercharged === true) {
-                return {
-                    ...pet,
-                    status,
-                };
-            }
-
-            const maxSp = Number(pet.maxSp ?? 0);
-            if (!Number.isFinite(maxSp) || maxSp <= 0) {
-                return {
-                    ...pet,
-                    status,
-                };
-            }
-
-            const bonusSp = Math.floor(maxSp * 0.2);
-            const targetSp = maxSp + bonusSp;
-            const currentSp = Number(pet.sp ?? 0);
-
-            changed = true;
-            return {
-                ...pet,
-                sp: Math.max(currentSp, targetSp),
-                status: {
-                    ...status,
-                    popularStarOvercharged: true,
-                },
-            };
-        });
-
-        if (!changed) {
-            return { participant, changed: false };
-        }
-
-        const activeIndexById = participant.activePetId
-            ? nextTeam.findIndex(pet => pet?.id === participant.activePetId)
-            : -1;
-
-        const activeIndex = activeIndexById >= 0
-            ? activeIndexById
-            : Math.max(0, Number(participant.activePetIndex ?? 0));
-
-        const nextPet = nextTeam[activeIndex] || activePet;
-
-        return {
-            changed: true,
-            participant: {
-                ...participant,
-                pet: nextPet
-                    ? {
-                        ...nextPet,
-                        status: { ...(nextPet.status || {}) },
-                    }
-                    : nextPet,
-                team: nextTeam,
-                activePetIndex: activeIndex,
-                activePetId: nextPet?.id || participant.activePetId || null,
-            },
-        };
-    };
-
-    const applyPopularStarOverchargeGuardToBattle = (data) => {
-        if (!data || data.status === 'finished' || data.status === 'cancelled' || data.status === 'rejected') {
-            return { data, changed: false };
-        }
-
-        const challengerResult = applyPopularStarOverchargeGuard(data.challenger);
-        const opponentResult = applyPopularStarOverchargeGuard(data.opponent);
-
-        if (!challengerResult.changed && !opponentResult.changed) {
-            return { data, changed: false };
-        }
-
-        return {
-            changed: true,
-            data: {
-                ...data,
-                challenger: challengerResult.participant,
-                opponent: opponentResult.participant,
-            },
-        };
-    };
-
     useEffect(() => {
         if (!myPlayerData || !classId) return;
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
         const unsubscribe = onSnapshot(battleRef, (docSnap) => {
             if (docSnap.exists()) {
-                const rawData = docSnap.data();
-                const overchargeGuardResult = applyPopularStarOverchargeGuardToBattle(rawData);
-                const data = overchargeGuardResult.data;
-
+                const data = docSnap.data();
                 setBattleState(data);
-
-                if (overchargeGuardResult.changed) {
-                    updateDoc(battleRef, {
-                        challenger: data.challenger,
-                        opponent: data.opponent,
-                    }).catch(error => {
-                        console.warn('popular_star overcharge guard update failed:', error);
-                    });
-                }
                 if (data.status === 'rejected') {
                     alert("상대방이 대전을 거절했습니다.");
                     goBack();
@@ -2568,52 +2416,6 @@ const handleCancel = async () => {
         return messages.join(' ');
     };
 
-    // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-    // 턴 종료 칭호 효과는 현재 공격자뿐 아니라 양쪽 active pet 모두를 대상으로 처리합니다.
-    const applyEndOfTurnTitleEffects = (participant) => {
-        const pet = participant?.pet;
-        if (!participant || !pet || Number(pet.hp ?? 0) <= 0) return '';
-
-        if (participant.equippedTitle === 'diligent_tree') {
-            const maxHp = Number(pet.maxHp ?? 0);
-            const currentHp = Number(pet.hp ?? 0);
-            const heal = Math.max(1, Math.floor(maxHp * 0.05));
-
-            // 숨은 영웅 실드처럼 hp가 maxHp를 넘은 상태라면 회복 처리로 실드를 깎지 않습니다.
-            if (maxHp > 0 && currentHp > 0 && currentHp < maxHp) {
-                pet.hp = Math.min(maxHp, currentHp + heal);
-                return `🌳 [성실한 나무] ${pet.name || '펫'} HP +${heal} 회복!`;
-            }
-        }
-
-        return '';
-    };
-
-    // 상대가 공격하지 않고 두뇌간식/펫 교체를 선택해도,
-    // 방어자가 FOCUS를 골랐다면 그 틈에 기를 모은 것으로 처리합니다.
-    const applyDefensiveFocusAction = (defenderParticipant, defenderAction) => {
-        if (defenderAction !== 'FOCUS') return '';
-
-        const pet = defenderParticipant?.pet;
-        if (!defenderParticipant || !pet || Number(pet.hp ?? 0) <= 0) return '';
-
-        if (!pet.status) pet.status = {};
-        pet.status.focusCharge = 1;
-
-        if (defenderParticipant.equippedTitle === 'idea_bank') {
-            const maxSp = Number(pet.maxSp ?? 0);
-            const currentSp = Number(pet.sp ?? 0);
-            const spGain = Math.floor(maxSp * 0.2);
-
-            if (maxSp > 0 && spGain > 0) {
-                pet.sp = Math.min(maxSp, currentSp + spGain);
-                return `💡 [아이디어 뱅크] ${pet.name || '펫'}이(가) 틈을 타 기를 모으며 SP를 ${spGain} 회복했습니다!`;
-            }
-        }
-
-        return `⚡ ${pet.name || '펫'}이(가) 틈을 타 기를 모았습니다! 다음 공격이 강해집니다!`;
-    };
-
     const syncBattleParticipantActivePetToTeam = (participant) => {
         if (!participant?.pet) return participant;
 
@@ -2971,12 +2773,6 @@ const handleUseItem = async (itemId) => {
                 const myStatusLog = applyEndOfTurnDotAndStatus(nextMyParticipantBase, { eligibleStatusKeys: getActiveStatusKeys(nextMyParticipantBase.pet?.status) });
                 const opponentStatusLog = applyEndOfTurnDotAndStatus(nextOpponentParticipantBase, { eligibleStatusKeys: getActiveStatusKeys(nextOpponentParticipantBase.pet?.status) });
 
-                // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-                // 공격자가 두뇌간식을 먹어도 방어자의 FOCUS는 정상 처리합니다.
-                const defenderFocusLog = applyDefensiveFocusAction(nextOpponentParticipantBase, data.defenderAction);
-                const myTitleTurnEndLog = applyEndOfTurnTitleEffects(nextMyParticipantBase);
-                const opponentTitleTurnEndLog = applyEndOfTurnTitleEffects(nextOpponentParticipantBase);
-
                 const myResolved = resolveFaintedActiveParticipant(nextMyParticipantBase);
                 const opponentResolved = resolveFaintedActiveParticipant(nextOpponentParticipantBase);
 
@@ -3007,9 +2803,6 @@ const handleUseItem = async (itemId) => {
                     baseLog,
                     myStatusLog,
                     opponentStatusLog,
-                    defenderFocusLog,
-                    myTitleTurnEndLog,
-                    opponentTitleTurnEndLog,
                     myResolved.log,
                     opponentResolved.log,
                     isFinished
@@ -3293,12 +3086,6 @@ const handleUseItem = async (itemId) => {
                 const switcherStatusLog = applyEndOfTurnDotAndStatus(currentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(currentTurnParticipant.pet?.status) });
                 const opponentStatusLog = applyEndOfTurnDotAndStatus(opponentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(opponentTurnParticipant.pet?.status) });
 
-                // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-                // 공격자가 펫을 교체해도 방어자의 FOCUS는 정상 처리합니다.
-                const defenderFocusLog = applyDefensiveFocusAction(opponentTurnParticipant, data.defenderAction);
-                const switcherTitleTurnEndLog = applyEndOfTurnTitleEffects(currentTurnParticipant);
-                const opponentTitleTurnEndLog = applyEndOfTurnTitleEffects(opponentTurnParticipant);
-
                 const currentPetAfterTurn = currentTurnParticipant.pet;
 
                 const syncedTeam = team.map((pet, index) => (
@@ -3353,9 +3140,6 @@ const handleUseItem = async (itemId) => {
                 const log = [
                     switcherStatusLog,
                     opponentStatusLog,
-                    defenderFocusLog,
-                    switcherTitleTurnEndLog,
-                    opponentTitleTurnEndLog,
                     switchLog,
                     opponentResolved.log,
                     isFinished ? '전투가 종료되었습니다!' : null,
@@ -3722,8 +3506,11 @@ if (defender.pet.status?.stunned) {
                     }
                 }
 
-                // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-                // 성실한 나무 회복은 아래 공통 턴 종료 칭호 처리에서 attacker/defender 모두 적용합니다.
+                if (attacker.equippedTitle === 'diligent_tree') {
+                    const heal = Math.floor(attacker.pet.maxHp * 0.05);
+                    attacker.pet.hp = Math.min(attacker.pet.maxHp, attacker.pet.hp + heal);
+                    log += ` 🌳 [성실한 나무 효과로 HP +${heal} 회복]`;
+                }
 
                 // M10_FAINTED_SWITCH_CHOICE_PATCH
                 // 공격/스킬 처리 후 쓰러진 active 펫 처리:
@@ -3735,17 +3522,6 @@ if (defender.pet.status?.stunned) {
 
                 if (ccDotLogs.length > 0) {
                     log += ` ${ccDotLogs.join(' ')}`;
-                }
-
-                // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-                // DOT/상태 턴 종료 처리 뒤에 양쪽 active pet의 턴 종료 칭호 효과를 적용합니다.
-                const titleTurnEndLogs = [
-                    applyEndOfTurnTitleEffects(attacker),
-                    applyEndOfTurnTitleEffects(defender),
-                ].filter(Boolean);
-
-                if (titleTurnEndLogs.length > 0) {
-                    log += ` ${titleTurnEndLogs.join(' ')}`;
                 }
 
                 const attackerFaintState = getFaintedSwitchState(attacker);
@@ -4115,172 +3891,146 @@ if (defender.pet.status?.stunned) {
                                     </div>
                                 )}
                                 {battleState.status === 'pending_switch' && (
-                                    <RightTaskCard style={{
+                                    <div style={{
                                         marginTop: '1rem',
+                                        padding: '1rem',
+                                        borderRadius: '16px',
                                         background: pendingSwitchForMe ? '#f3f0ff' : '#f8f9fa',
-                                        borderColor: pendingSwitchForMe ? '#7950f2' : '#dee2e6',
+                                        border: pendingSwitchForMe ? '2px solid #7950f2' : '2px solid #dee2e6',
                                         color: pendingSwitchForMe ? '#5f3dc4' : '#495057',
+                                        fontWeight: 900,
+                                        textAlign: 'center',
+                                        lineHeight: 1.6,
                                     }}>
                                         {pendingSwitchForMe ? (
                                             <>
-                                                <div style={{ fontSize: '1.18rem', marginBottom: '0.25rem' }}>💫 다음 펫 선택</div>
-                                                <div style={{ fontSize: '0.9rem' }}>오른쪽 영역에서 다음 펫을 고르세요.</div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div style={{ fontSize: '1.18rem' }}>⏳ 상대 선택 대기 중</div>
-                                                <div style={{ fontSize: '0.9rem' }}>상대가 다음 펫을 고르는 중입니다.</div>
-                                            </>
-                                        )}
-                                    </RightTaskCard>
-                                )}
-                                {battleState.status === 'quiz' && battleState.question && (
-                                    <>
-                                        <BattlePrompt>Q. {battleState.question.question}</BattlePrompt>
-                                        {isStunned ? (
-                                            <RightTaskCard style={{ marginTop: '1rem', color: '#e03131', background: '#fff5f5', borderColor: '#ffc9c9' }}>
-                                                <div style={{ fontSize: '1.15rem' }}>😵 혼란 상태!</div>
-                                                <div style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>아무것도 할 수 없습니다. 상대방의 행동을 기다립니다.</div>
-                                            </RightTaskCard>
-                                        ) : hasSubmitted && (isOX || hasOptions) ? (
-                                            <RightTaskCard style={{ marginTop: '1rem', color: battleState.chat?.[myPlayerData.id]?.isCorrect ? '#2b8a3e' : '#c92a2a', background: battleState.chat?.[myPlayerData.id]?.isCorrect ? '#ebfbee' : '#fff5f5', borderColor: battleState.chat?.[myPlayerData.id]?.isCorrect ? '#b2f2bb' : '#ffc9c9' }}>
-                                                {battleState.chat?.[myPlayerData.id]?.isCorrect
-                                                    ? "정답입니다! 오른쪽 영역에서 다음 행동을 기다려주세요."
-                                                    : "오답입니다... 상대방의 결과를 기다리고 있습니다."}
-                                            </RightTaskCard>
-                                        ) : (
-                                            <div style={{ marginTop: '0.75rem', color: '#868e96', fontWeight: 800 }}>
-                                                정답 입력과 선택지는 오른쪽 영역에 표시됩니다.
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                            <RightActionPanel>
-                                {battleState.status === 'pending_switch' && (
-                                    <RightTaskCard style={{
-                                        background: pendingSwitchForMe ? '#f3f0ff' : '#f8f9fa',
-                                        borderColor: pendingSwitchForMe ? '#7950f2' : '#dee2e6',
-                                        color: pendingSwitchForMe ? '#5f3dc4' : '#495057',
-                                    }}>
-                                        {pendingSwitchForMe ? (
-                                            <>
-                                                <div style={{ fontSize: '1.12rem', marginBottom: '0.45rem' }}>💫 출전할 펫 선택</div>
-                                                <div style={{ fontSize: '0.84rem', marginBottom: '0.65rem', opacity: 0.85 }}>
-                                                    10초 안에 고르세요. 시간이 지나면 자동 선택됩니다.
-                                                </div>
-                                                <div style={{ display: 'grid', gap: '0.55rem' }}>
+                                                <div style={{ fontSize: '1.25rem', marginBottom: '0.4rem' }}>💫 다음 펫을 선택하세요!</div>
+                                                <div style={{ marginBottom: '0.8rem' }}>10초 안에 출전할 펫을 고르세요. 시간이 지나면 자동으로 선택됩니다.</div>
+                                                <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                                    gap: '0.6rem',
+                                                }}>
                                                     {pendingSwitchPets.map(pet => (
-                                                        <MenuItem
+                                                        <button
                                                             key={pet.id}
                                                             onClick={() => handleFaintedPetSwitch(pet.id)}
                                                             disabled={isProcessing}
                                                             style={{
-                                                                backgroundColor: 'white',
-                                                                borderColor: '#7950f2',
+                                                                padding: '0.75rem',
+                                                                borderRadius: '14px',
+                                                                border: '2px solid #7950f2',
+                                                                background: 'white',
                                                                 color: '#5f3dc4',
-                                                                flexDirection: 'column',
-                                                                gap: '0.15rem',
+                                                                fontWeight: 900,
+                                                                cursor: isProcessing ? 'not-allowed' : 'pointer',
                                                             }}
                                                         >
-                                                            <span>{pet.name}</span>
-                                                            <small>Lv.{pet.level || 1} · HP {Math.max(0, Number(pet.hp ?? 0))}/{pet.maxHp ?? '?'}</small>
-                                                        </MenuItem>
+                                                            <div>{pet.name}</div>
+                                                            <div style={{ fontSize: '0.82rem', opacity: 0.85 }}>
+                                                                Lv.{pet.level || 1} · HP {Math.max(0, Number(pet.hp ?? 0))}/{pet.maxHp ?? '?'}
+                                                            </div>
+                                                        </button>
                                                     ))}
                                                 </div>
                                             </>
                                         ) : (
                                             <>
-                                                <div style={{ fontSize: '1.12rem' }}>⏳ 상대 선택 대기</div>
-                                                <div style={{ fontSize: '0.86rem', marginTop: '0.35rem', opacity: 0.85 }}>
-                                                    상대가 선택하거나 시간이 지나면 다음 문제가 시작됩니다.
-                                                </div>
+                                                <div style={{ fontSize: '1.25rem' }}>⏳ 상대가 다음 펫을 고르는 중입니다.</div>
+                                                <div>상대가 선택하거나 10초가 지나면 다음 문제가 시작됩니다.</div>
                                             </>
                                         )}
-                                    </RightTaskCard>
+                                    </div>
                                 )}
-
-                                {battleState.status === 'quiz' && battleState.question && !isStunned && (
-                                    <RightTaskCard style={{ background: '#ffffff', borderColor: '#339af0' }}>
-                                        <div style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#1864ab' }}>✏️ 정답 선택</div>
-                                        {(() => {
-                                            if (isOX) {
-                                                return (
-                                                    <OXGrid>
-                                                        {['O', 'X'].map(ox => (
-                                                            <OXButton
-                                                                key={ox}
-                                                                $ox={ox}
-                                                                onClick={() => handleOptionClick(ox)}
-                                                                disabled={isProcessing || hasSubmitted}
-                                                            >
-                                                                {ox === 'O' ? '⭕' : '❌'}
-                                                            </OXButton>
-                                                        ))}
-                                                    </OXGrid>
-                                                );
-                                            }
-
-                                            if (battleState.question.options && battleState.question.options.length > 0) {
-                                                return (
-                                                    <OptionGrid>
-                                                        {shuffledOptions.map((opt, idx) => (
-                                                            <OptionButton
-                                                                key={idx}
-                                                                onClick={() => handleOptionClick(opt)}
-                                                                disabled={isProcessing || hasSubmitted}
-                                                                style={{ opacity: hasSubmitted ? 0.5 : 1, cursor: hasSubmitted ? 'not-allowed' : 'pointer' }}
-                                                            >
-                                                                {opt}
-                                                            </OptionButton>
-                                                        ))}
-                                                    </OptionGrid>
-                                                );
-                                            }
-
-                                            return (
-                                                <form onSubmit={handleQuizSubmit}>
-                                                    <AnswerInput
-                                                        name="answer"
-                                                        value={answer}
-                                                        onChange={(e) => setAnswer(e.target.value)}
-                                                        placeholder="정답을 입력하세요"
-                                                        autoFocus
-                                                        disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
-                                                    />
-                                                </form>
-                                            );
-                                        })()}
-                                        {hasSubmitted && (isOX || hasOptions) && (
-                                            <div style={{ textAlign: 'center', marginTop: '12px', color: '#666', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                                                {battleState.chat?.[myPlayerData.id]?.isCorrect
-                                                    ? "정답입니다! 처리 중..."
-                                                    : "오답입니다... 대기 중"}
+                                {battleState.status === 'quiz' && battleState.question && (
+                                    <>
+                                        <h3>Q. {battleState.question.question}</h3>
+                                        {isStunned ? (
+                                            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                                                <p style={{ color: 'red', fontWeight: 'bold', fontSize: '1.2rem' }}>😵 혼란 상태! 아무것도 할 수 없습니다.</p>
+                                                <p>(상대방의 행동을 기다리는 중...)</p>
                                             </div>
-                                        )}
-                                    </RightTaskCard>
-                                )}
+                                        ) : (
+                                            <>
+                                                {(() => {
+                                                    if (isOX) {
+                                                        return (
+                                                            <OXGrid>
+                                                                {['O', 'X'].map(ox => (
+                                                                    <OXButton
+                                                                        key={ox}
+                                                                        $ox={ox}
+                                                                        onClick={() => handleOptionClick(ox)}
+                                                                        disabled={isProcessing || hasSubmitted}
+                                                                    >
+                                                                        {ox === 'O' ? '⭕' : '❌'}
+                                                                    </OXButton>
+                                                                ))}
+                                                            </OXGrid>
+                                                        );
+                                                    }
 
-                                <BattleActionMenu
-                                    isStunned={isStunned}
-                                    isBound={isBound}
-                                    showActionMenu={showActionMenu}
-                                    showDefenseMenu={showDefenseMenu}
-                                    actionSubMenu={actionSubMenu}
-                                    setActionSubMenu={setActionSubMenu}
-                                    myEquippedSkills={myEquippedSkills}
-                                    myInfo={myInfo}
-                                    usableItems={usableItems}
-                                    getSkillCost={getSkillCost}
-                                    handleActionSelect={handleActionSelect}
-                                    handleUseItem={handleUseItem}
+                                                    if (battleState.question.options && battleState.question.options.length > 0) {
+                                                        return (
+                                                            <OptionGrid>
+                                                                {shuffledOptions.map((opt, idx) => (
+                                                                    <OptionButton
+                                                                        key={idx}
+                                                                        onClick={() => handleOptionClick(opt)}
+                                                                        disabled={isProcessing || hasSubmitted}
+                                                                        style={{ opacity: hasSubmitted ? 0.5 : 1, cursor: hasSubmitted ? 'not-allowed' : 'pointer' }}
+                                                                    >
+                                                                        {opt}
+                                                                    </OptionButton>
+                                                                ))}
+                                                            </OptionGrid>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <form onSubmit={handleQuizSubmit}>
+                                                            <AnswerInput
+                                                                name="answer"
+                                                                value={answer}
+                                                                onChange={(e) => setAnswer(e.target.value)}
+                                                                placeholder="정답을 입력하세요"
+                                                                autoFocus
+                                                                disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
+                                                            />
+                                                        </form>
+                                                    );
+                                                })()}
+                                                {hasSubmitted && (isOX || hasOptions) && (
+                                                    <div style={{ textAlign: 'center', marginTop: '15px', color: '#666', fontWeight: 'bold' }}>
+                                                        {battleState.chat?.[myPlayerData.id]?.isCorrect
+                                                            ? "정답입니다! (처리 중...)"
+                                                            : "오답입니다... 상대방의 결과를 기다리고 있습니다."}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                            <BattleActionMenu
+                                isStunned={isStunned}
+                                isBound={isBound}
+                                showActionMenu={showActionMenu}
+                                showDefenseMenu={showDefenseMenu}
+                                actionSubMenu={actionSubMenu}
+                                setActionSubMenu={setActionSubMenu}
+                                myEquippedSkills={myEquippedSkills}
+                                myInfo={myInfo}
+                                usableItems={usableItems}
+                                getSkillCost={getSkillCost}
+                                handleActionSelect={handleActionSelect}
+                                handleUseItem={handleUseItem}
                                     switchablePets={showActionMenu && !myInfo?.pet?.status?.bound ? switchablePets : []}
                                     handleManualSwitch={handleManualSwitch}
-                                    DEFENSE_ACTIONS={availableDefenseActions}
-                                    ActionMenuComponent={ActionMenu}
-                                    MenuItemComponent={MenuItem}
-                                />
-                            </RightActionPanel>
+                                DEFENSE_ACTIONS={availableDefenseActions}
+                                ActionMenuComponent={ActionMenu}
+                                MenuItemComponent={MenuItem}
+                            />
                         </QuizArea>
                     </>
                 )}
