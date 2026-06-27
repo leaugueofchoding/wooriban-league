@@ -3868,6 +3868,30 @@ export async function processBattleResults(
 
     // 포인트 보상/페널티는 플레이어 단위로 한 번만 적용
     let victoryReward = 150;
+    let fleeRewardNote = '';
+    let fleeExpMultiplier = 1;
+
+    // M15_FLEE_LIMIT_AND_FLEE_WIN_PATCH
+    // 도망 성공은 상대 승리로 처리하되, 즉시 도망 어뷰징을 막기 위해
+    // 도망친 팀이 얼마나 몰렸는지에 따라 승리 포인트를 40~100%로 조정합니다.
+    if (fled) {
+      const fleeingTeam = Array.isArray(finalLoserTeam) && finalLoserTeam.length > 0
+        ? finalLoserTeam
+        : finalLoserPet
+          ? [finalLoserPet]
+          : [];
+
+      const totalMaxHp = fleeingTeam.reduce((sum, pet) => sum + Math.max(0, Number(pet?.maxHp ?? 0)), 0);
+      const totalCurrentHp = fleeingTeam.reduce((sum, pet) => sum + Math.max(0, Number(pet?.hp ?? 0)), 0);
+      const damageProgress = totalMaxHp > 0
+        ? Math.max(0, Math.min(1, 1 - (totalCurrentHp / totalMaxHp)))
+        : 1;
+
+      const fleeRewardMultiplier = Math.max(0.4, Math.min(1, 0.4 + damageProgress * 0.6));
+      victoryReward = Math.floor(victoryReward * fleeRewardMultiplier);
+      fleeRewardNote = ` (도망 승리 보상 ${Math.round(fleeRewardMultiplier * 100)}%)`;
+      fleeExpMultiplier = fleeRewardMultiplier;
+    }
     if (winnerTitle === 'point_rich') {
       victoryReward = Math.floor(victoryReward * 1.2);
     }
@@ -3885,6 +3909,7 @@ export async function processBattleResults(
     // 16 + 16 팀보다 강한 팀으로 판정됩니다.
     let levelGap = 0;
     let levelScaleNote = '';
+    let teamSizeRewardNote = '';
     let lossExpScaleNote = '';
     let defeatPenaltyLevelNote = '';
     let winExpMultiplier = 1.0;
@@ -3923,6 +3948,31 @@ export async function processBattleResults(
 
       return Array.from(map.values());
     };
+
+    // M12_TEAM_SIZE_POINT_REWARD_PATCH
+    // 대전 규모가 클수록 시간이 오래 걸리고 여러 펫의 HP/SP가 소모되므로
+    // 승리 포인트 보상만 완만하게 올립니다. 경험치 배율은 M9 레벨 보정만 따릅니다.
+    const getBattleTeamSizeForReward = () => {
+      const winnerTeamSize = dedupeBattleTeam(finalWinnerTeam, finalWinnerPet).length || 1;
+      const loserTeamSize = dedupeBattleTeam(finalLoserTeam, finalLoserPet).length || 1;
+
+      // 원칙적으로 양쪽 팀 크기는 같지만, 혹시 과거 문서나 예외 데이터가 있으면
+      // 더 작은 쪽을 기준으로 하여 과한 보상을 방지합니다.
+      return Math.min(3, Math.max(1, Math.min(winnerTeamSize, loserTeamSize)));
+    };
+
+    const battleTeamSizeForReward = getBattleTeamSizeForReward();
+    const teamSizeRewardMultiplier = battleTeamSizeForReward >= 3
+      ? 2
+      : battleTeamSizeForReward >= 2
+        ? 1.5
+        : 1;
+
+    if (teamSizeRewardMultiplier > 1) {
+      victoryReward = Math.floor(victoryReward * teamSizeRewardMultiplier);
+      teamSizeRewardNote = ` (${battleTeamSizeForReward} vs ${battleTeamSizeForReward} 보상 x${teamSizeRewardMultiplier})`;
+    }
+
 
     const getEffectiveTeamLevel = (finalTeam, fallbackPet) => {
       const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
@@ -4003,6 +4053,27 @@ export async function processBattleResults(
       defeatPenalty = 25;
       defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
     }
+
+    // M15B_FLEE_EXP_SCALE_PATCH
+
+
+    // 도망 성공 승리는 포인트뿐 아니라 승리 경험치도 같은 비율로 줄입니다.
+
+
+    // 이후 applyTeamOutcome에서 참여한 승리 펫에게 Math.round(100 * winExpMultiplier)가 적용됩니다.
+
+
+    if (fled && fleeExpMultiplier < 1) {
+
+
+      winExpMultiplier = Math.max(0.1, winExpMultiplier * fleeExpMultiplier);
+
+
+    }
+
+
+    
+
 
     const getParticipatedIds = (explicitIds, battleTeam, fallbackPet) => {
       const ids = new Set();
@@ -4105,7 +4176,7 @@ export async function processBattleResults(
       winnerData.authUid,
       winnerData.name,
       victoryReward,
-      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote
+      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + fleeRewardNote + teamSizeRewardNote + levelScaleNote
     );
 
     if (defeatPenalty > 0) {
@@ -4672,7 +4743,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // -----------------------------------------------------------
   const battlesRef = collection(db, 'classes', classId, 'battles');
   // 배틀 진행 중으로 간주할 상태 목록 (pending 포함)
-  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution'];
+  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution', 'switching', 'pending_switch'];
 
   // 1. 상대방이 '도전자(challenger)'로서 대결 중인 경우 조회
   const q1 = query(
@@ -4783,7 +4854,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // M4_CHALLENGER_TEAM_SELECT_PATCH
   // 신청자가 선택한 선발/대기 펫을 battle team으로 구성합니다.
   // 아직 수락자 쪽 선택 플로우는 없으므로 opponent는 기존 파트너 펫 1마리만 사용합니다.
-  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 2) => {
+  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 3) => {
     const alivePets = (pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
     const byId = new Map(alivePets.map(pet => [pet.id, pet]));
 
@@ -4821,8 +4892,13 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
     ? options.opponentTeamPetIds
     : [];
 
-  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, 2);
-  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 1);
+  const opponentAlivePetCount = (opponentPets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
+  const challengerTeamLimit = Math.min(3, Math.max(1, opponentAlivePetCount));
+
+  // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
+  // 클라이언트가 우회되더라도 신청자 팀은 피신청자의 생존 펫 수보다 크게 만들 수 없습니다.
+  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, challengerTeamLimit);
+  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 3);
 
   // (중요) DB에 영구적으로 체력이 늘어나지 않도록 얕은 복사(...)를 사용합니다.
   let challengerPet = { ...(challengerBattleTeam[0] || {}) };
@@ -4909,8 +4985,6 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
     battleSchemaVersion: 2,
     battleMode,
     teamSize: battleTeamSize,
-    battleMode: 'single',
-    teamSize: 1,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
     challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeam),
     opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeam),
@@ -4961,7 +5035,7 @@ export async function cancelBattleChallenge(classId, battleId) {
 export async function adminCleanupZombieBattles(classId) {
   if (!classId) throw new Error('학급 정보가 없습니다.');
   const battlesRef = collection(db, 'classes', classId, 'battles');
-  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution'];
+  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution', 'switching', 'pending_switch'];
   const q = query(battlesRef, where('status', 'in', activeStatuses));
   const snapshot = await getDocs(q);
 
