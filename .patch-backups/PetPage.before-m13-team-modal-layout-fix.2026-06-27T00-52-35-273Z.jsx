@@ -1237,19 +1237,8 @@ function PetPage() {
       )}
       {battleTeamDraft.show && (
         <ModalBackground onClick={closeBattleTeamDraft}>
-          <ModalContent
-            className="white-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              // M13_TEAM_MODAL_LAYOUT_FIX_PATCH
-              maxWidth: '680px',
-              maxHeight: '88vh',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexShrink: 0 }}>
+          <ModalContent className="white-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div>
                 <h3 style={{ margin: 0 }}>⚔️ 배틀 팀 선택</h3>
                 <p style={{ margin: '0.35rem 0 0', color: '#868e96', fontSize: '0.9rem', fontWeight: 700 }}>
@@ -1259,27 +1248,7 @@ function PetPage() {
               <button onClick={closeBattleTeamDraft} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>✖</button>
             </div>
 
-            <div style={{
-
-
-              flex: 1,
-
-
-              overflowY: 'auto',
-
-
-              paddingRight: '0.35rem',
-
-
-              paddingBottom: '0.25rem',
-
-
-            }}>
-
-
             {(() => {
-
-
               // M11B_BATTLE_SIZE_CHOICE_PATCH
               const alivePets = getAliveBattlePets();
               const opponentAliveCount = (battleTeamDraft.opponent?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
@@ -1421,20 +1390,7 @@ function PetPage() {
                     </div>
                   )}
 
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    marginTop: '1.2rem',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    position: 'sticky',
-                    bottom: 0,
-                    background: 'white',
-                    padding: '0.85rem 0 0.15rem',
-                    borderTop: '1px solid #f1f3f5',
-                    zIndex: 2,
-                  }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1.2rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
                       선택: {[leadPet?.name, benchPet?.name, thirdPet?.name].filter(Boolean).join(' + ') || '-'} · {selectedTeamSize} vs {selectedTeamSize}
                     </div>
@@ -1469,8 +1425,6 @@ function PetPage() {
                 </>
               );
             })()}
-
-            </div>
           </ModalContent>
         </ModalBackground>
       )}

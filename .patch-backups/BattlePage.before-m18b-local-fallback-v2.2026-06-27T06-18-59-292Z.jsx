@@ -929,9 +929,6 @@ function BattlePage() {
     const battleId = useMemo(() => [myPlayerData?.id, opponentId].sort().join('_'), [myPlayerData, opponentId]);
 
     const [battleState, setBattleState] = useState(null);
-    // M18B_RESULT_SUMMARY_LOCAL_FALLBACK_V3_PATCH
-    // resultSummary가 Firestore snapshot으로 늦게 들어와도 결과창에 즉시 표시하기 위한 로컬 fallback
-    const [localResultSummary, setLocalResultSummary] = useState(null);
     const [timeLeft, setTimeLeft] = useState(20);
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -2016,7 +2013,6 @@ const handleCancel = async () => {
                 );
 
                 if (resultSummary) {
-                    setLocalResultSummary(resultSummary);
                     await updateDoc(battleRef, { resultSummary });
                 }
             }
@@ -3307,7 +3303,6 @@ const handleActionSelect = async (actionId) => {
                         );
 
                         if (resultSummary) {
-                            setLocalResultSummary(resultSummary);
                             await updateDoc(battleRef, { resultSummary });
                         }
 
@@ -4042,7 +4037,7 @@ if (defender.pet.status?.stunned) {
                     participated: participatedIds.has(pet.id),
                 }));
 
-                const resultSummary = battleState.resultSummary || localResultSummary || null;
+                const resultSummary = battleState.resultSummary || null;
                 const isFleeResult = Boolean(battleState.fledBy || resultSummary?.fled);
                 const pointChange = resultSummary?.pointChanges?.[myPlayerData?.id];
                 const pointChangeText = Number.isFinite(Number(pointChange))

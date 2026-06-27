@@ -513,11 +513,11 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
     };
 
     const getTargetAcceptTeamSize = () => {
-        // M11B_BATTLE_SIZE_CHOICE_PATCH
+        // M11_ENABLE_3V3_TEAM_SELECTION_PATCH
         const challengerTeamSize = Array.isArray(battleChallenge?.challenger?.team)
             ? battleChallenge.challenger.team.length
             : 1;
-        return Math.min(3, Math.max(1, challengerTeamSize));
+        return Math.min(3, challengerTeamSize, getAliveBattlePetsForAccept().length);
     };
 
     const shouldSelectBenchForAccept = () => {
@@ -785,12 +785,12 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
 
                 {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
                 {battleChallenge && (() => {
-                    // M11B_BATTLE_SIZE_CHOICE_PATCH
+                    // M11_ENABLE_3V3_TEAM_SELECTION_PATCH
                     const alivePets = getAliveBattlePetsForAccept();
                     const challengerTeamSize = Array.isArray(battleChallenge.challenger?.team)
-                        ? Math.min(3, battleChallenge.challenger.team.length)
+                        ? battleChallenge.challenger.team.length
                         : 1;
-                    const targetTeamSize = challengerTeamSize;
+                    const targetTeamSize = Math.min(3, challengerTeamSize, alivePets.length);
                     const needsBenchSelect = targetTeamSize >= 2;
 
                     const aliveIds = new Set(alivePets.map(pet => pet.id));
@@ -821,8 +821,7 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     const selectedIdsForAccept = [selectedLeadId, selectedBenchId, selectedThirdId].filter(Boolean);
                     const uniqueSelectedCount = new Set(selectedIdsForAccept).size;
                     const myPetFainted = alivePets.length === 0;
-                    const insufficientPets = alivePets.length < targetTeamSize;
-                    const acceptDisabled = myPetFainted || insufficientPets || uniqueSelectedCount < targetTeamSize;
+                    const acceptDisabled = myPetFainted || uniqueSelectedCount < targetTeamSize;
 
                     const renderPetChoice = (slotLabel, selectedId, onSelect, blockedIds = []) => (
                         <div style={{ marginBottom: '0.8rem', textAlign: 'left' }}>
@@ -895,16 +894,10 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                     </div>
                                 )}
 
-                                {!myPetFainted && insufficientPets && (
-                                    <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center', fontWeight: 800 }}>
-                                        ⚠️ 상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 수락하려면 살아있는 펫이 {targetTeamSize}마리 필요합니다.
-                                    </div>
-                                )}
-
-                                {!myPetFainted && needsBenchSelect && !insufficientPets && (
+                                {!myPetFainted && needsBenchSelect && (
                                     <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '14px', padding: '0.8rem', marginBottom: '0.9rem' }}>
                                         <p style={{ margin: '0 0 0.8rem', color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
-                                            상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 나도 {targetTeamSize}마리 팀을 선택하세요.
+                                            상대가 {challengerTeamSize}펫 팀으로 신청했습니다. 나도 {targetTeamSize}마리 팀을 선택하세요.
                                         </p>
 
                                         {renderPetChoice('1번 선발 펫', selectedLeadId, (petId) => {
@@ -928,11 +921,11 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                     </div>
                                 )}
 
-                                {!myPetFainted && !needsBenchSelect && !insufficientPets && (
+                                {!myPetFainted && !needsBenchSelect && (
                                     <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#495057', textAlign: 'center', fontWeight: 700 }}>
                                         {alivePets.length === 1
                                             ? `내 펫이 1마리뿐이라 ${alivePets[0].name}이(가) 바로 참가합니다.`
-                                            : '상대가 1 vs 1로 신청했습니다. 기존 파트너 펫으로 참가합니다.'}
+                                            : '기존 파트너 펫으로 참가합니다.'}
                                     </div>
                                 )}
 

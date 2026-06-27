@@ -1398,22 +1398,11 @@ export async function updateMatchScores(classId, matchId, scores, scorers, recor
   }
   const matchData = matchSnap.data();
 
-  const RECORDER_REWARD = 100;
-  const VICTORY_REWARD = 100;
-  const DEFEAT_REWARD = 50;
-  const GOAL_REWARD = 20;
-
   batch.update(matchRef, {
     teamA_score: scores.a,
     teamB_score: scores.b,
     status: '완료',
-    scorers: scorers || {},
-    rewardPolicy: {
-      recorder: RECORDER_REWARD,
-      victory: VICTORY_REWARD,
-      participation: DEFEAT_REWARD,
-      goal: GOAL_REWARD,
-    }
+    scorers: scorers || {}
   });
 
   if (recorderId) {
@@ -1424,11 +1413,14 @@ export async function updateMatchScores(classId, matchId, scores, scorers, recor
     if (!recorderSnapshot.empty) {
       const recorderDoc = recorderSnapshot.docs[0];
       const recorderData = recorderDoc.data();
-      batch.update(recorderDoc.ref, { points: increment(RECORDER_REWARD) });
-      addPointHistory(classId, recorderId, recorderData.name, RECORDER_REWARD, `보너스 (경기 결과 기록)`);
+      batch.update(recorderDoc.ref, { points: increment(30) });
+      addPointHistory(classId, recorderId, recorderData.name, 30, `보너스 (경기 결과 기록)`);
     }
   }
-let winningTeamId = null;
+
+  const VICTORY_REWARD = 50;
+  const DEFEAT_REWARD = 15;
+  let winningTeamId = null;
   let losingTeamId = null;
 
   if (scores.a > scores.b) {
@@ -1495,21 +1487,14 @@ export async function updateMatchStatus(classId, matchId, newStatus) {
 export async function updateMatchScoresWithPointAdjust(classId, matchId, newScores, newScorers) {
   if (!classId) return;
 
-  const VICTORY_REWARD = 100;
-  const DEFEAT_REWARD = 50;
+  const VICTORY_REWARD = 50;
+  const DEFEAT_REWARD = 15;
   const DRAW_REWARD = 0;
-  const GOAL_REWARD = 20;
 
   const matchRef = doc(db, 'classes', classId, 'matches', matchId);
   const matchSnap = await getDoc(matchRef);
   if (!matchSnap.exists()) throw new Error('경기를 찾을 수 없습니다.');
   const matchData = matchSnap.data();
-
-  const previousRewardPolicy = matchData.rewardPolicy || {};
-  const PREVIOUS_VICTORY_REWARD = Number(previousRewardPolicy.victory ?? 50);
-  const PREVIOUS_DEFEAT_REWARD = Number(previousRewardPolicy.participation ?? 15);
-  const PREVIOUS_DRAW_REWARD = Number(previousRewardPolicy.draw ?? 0);
-  const PREVIOUS_GOAL_REWARD = Number(previousRewardPolicy.goal ?? 0);
 
   const batch = writeBatch(db);
 
@@ -1518,12 +1503,6 @@ export async function updateMatchScoresWithPointAdjust(classId, matchId, newScor
     teamA_score: newScores.a,
     teamB_score: newScores.b,
     scorers: newScorers || {},
-    rewardPolicy: {
-      victory: VICTORY_REWARD,
-      participation: DEFEAT_REWARD,
-      draw: DRAW_REWARD,
-      goal: GOAL_REWARD,
-    },
   });
 
   // 2. 기존 결과 기반 포인트 회수
@@ -3868,32 +3847,6 @@ export async function processBattleResults(
 
     // 포인트 보상/페널티는 플레이어 단위로 한 번만 적용
     let victoryReward = 150;
-    let fleeRewardNote = '';
-    let fleeExpMultiplier = 1;
-    let fleeRewardPercent = null;
-
-    // M15_FLEE_LIMIT_AND_FLEE_WIN_PATCH
-    // 도망 성공은 상대 승리로 처리하되, 즉시 도망 어뷰징을 막기 위해
-    // 도망친 팀이 얼마나 몰렸는지에 따라 승리 포인트를 40~100%로 조정합니다.
-    if (fled) {
-      const fleeingTeam = Array.isArray(finalLoserTeam) && finalLoserTeam.length > 0
-        ? finalLoserTeam
-        : finalLoserPet
-          ? [finalLoserPet]
-          : [];
-
-      const totalMaxHp = fleeingTeam.reduce((sum, pet) => sum + Math.max(0, Number(pet?.maxHp ?? 0)), 0);
-      const totalCurrentHp = fleeingTeam.reduce((sum, pet) => sum + Math.max(0, Number(pet?.hp ?? 0)), 0);
-      const damageProgress = totalMaxHp > 0
-        ? Math.max(0, Math.min(1, 1 - (totalCurrentHp / totalMaxHp)))
-        : 1;
-
-      const fleeRewardMultiplier = Math.max(0.4, Math.min(1, 0.4 + damageProgress * 0.6));
-      victoryReward = Math.floor(victoryReward * fleeRewardMultiplier);
-      fleeRewardPercent = Math.round(fleeRewardMultiplier * 100);
-      fleeRewardNote = ` (도망 승리 보상 ${fleeRewardPercent}%)`;
-      fleeExpMultiplier = fleeRewardMultiplier;
-    }
     if (winnerTitle === 'point_rich') {
       victoryReward = Math.floor(victoryReward * 1.2);
     }
@@ -3903,19 +3856,21 @@ export async function processBattleResults(
       defeatPenalty = Math.floor(defeatPenalty * 0.5);
     }
 
-    // M9_EFFECTIVE_TEAM_LEVEL_SCALE_PATCH
-    // 레벨 차 보상/패널티는 마지막 active 펫 1마리가 아니라,
-    // 선택/편성된 팀 배열(finalTeam) 전체의 실질 팀 레벨 기준으로 계산합니다.
-    // 실질 팀 레벨 = 최고 레벨 70% + 평균 레벨 30%
-    // 예: 30 + 2 팀은 평균 16이지만 실질 레벨은 약 26으로 계산되어,
-    // 16 + 16 팀보다 강한 팀으로 판정됩니다.
-    let levelGap = 0;
-    let levelScaleNote = '';
-    let teamSizeRewardNote = '';
-    let lossExpScaleNote = '';
-    let defeatPenaltyLevelNote = '';
+    // 레벨 차 보상 스케일링은 대표 active 펫 기준으로 1회 계산
+    const winnerPetLevel = finalWinnerPet?.level || 1;
+    const loserPetLevel = finalLoserPet?.level || 1;
+    const levelGap = winnerPetLevel - loserPetLevel;
+
     let winExpMultiplier = 1.0;
     let loseExpMultiplier = 1.0;
+
+    if (levelGap >= 10) {
+      victoryReward = Math.floor(victoryReward * 0.5);
+      winExpMultiplier = 0.5;
+    } else if (levelGap >= 5) {
+      victoryReward = Math.floor(victoryReward * 0.75);
+      winExpMultiplier = 0.75;
+    }
 
     let winnerPets = [...(winnerData.pets || [])];
     let loserPets = [...(loserData.pets || [])];
@@ -3950,132 +3905,6 @@ export async function processBattleResults(
 
       return Array.from(map.values());
     };
-
-    // M12_TEAM_SIZE_POINT_REWARD_PATCH
-    // 대전 규모가 클수록 시간이 오래 걸리고 여러 펫의 HP/SP가 소모되므로
-    // 승리 포인트 보상만 완만하게 올립니다. 경험치 배율은 M9 레벨 보정만 따릅니다.
-    const getBattleTeamSizeForReward = () => {
-      const winnerTeamSize = dedupeBattleTeam(finalWinnerTeam, finalWinnerPet).length || 1;
-      const loserTeamSize = dedupeBattleTeam(finalLoserTeam, finalLoserPet).length || 1;
-
-      // 원칙적으로 양쪽 팀 크기는 같지만, 혹시 과거 문서나 예외 데이터가 있으면
-      // 더 작은 쪽을 기준으로 하여 과한 보상을 방지합니다.
-      return Math.min(3, Math.max(1, Math.min(winnerTeamSize, loserTeamSize)));
-    };
-
-    const battleTeamSizeForReward = getBattleTeamSizeForReward();
-    const teamSizeRewardMultiplier = battleTeamSizeForReward >= 3
-      ? 2
-      : battleTeamSizeForReward >= 2
-        ? 1.5
-        : 1;
-
-    if (teamSizeRewardMultiplier > 1) {
-      victoryReward = Math.floor(victoryReward * teamSizeRewardMultiplier);
-      teamSizeRewardNote = ` (${battleTeamSizeForReward} vs ${battleTeamSizeForReward} 보상 x${teamSizeRewardMultiplier})`;
-    }
-
-
-    const getEffectiveTeamLevel = (finalTeam, fallbackPet) => {
-      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
-
-      if (battleTeam.length === 0) {
-        const fallbackLevel = Number(fallbackPet?.level ?? 1);
-        return Number.isFinite(fallbackLevel) && fallbackLevel > 0 ? fallbackLevel : 1;
-      }
-
-      const levels = battleTeam
-        .map(pet => Number(pet?.level ?? 1))
-        .filter(level => Number.isFinite(level) && level > 0);
-
-      if (levels.length === 0) return 1;
-
-      const maxLevel = Math.max(...levels);
-      const averageLevel = levels.reduce((sum, level) => sum + level, 0) / levels.length;
-
-      // 3 vs 3에서도 그대로 작동:
-      // 최고 레벨은 원맨 캐리 위협을 반영하고, 평균 레벨은 나머지 팀 전력을 반영합니다.
-      return Math.max(1, Math.round(maxLevel * 0.7 + averageLevel * 0.3));
-    };
-
-    const getTeamMaxLevel = (finalTeam, fallbackPet) => {
-      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
-
-      if (battleTeam.length === 0) {
-        const fallbackLevel = Number(fallbackPet?.level ?? 1);
-        return Number.isFinite(fallbackLevel) && fallbackLevel > 0 ? fallbackLevel : 1;
-      }
-
-      const levels = battleTeam
-        .map(pet => Number(pet?.level ?? 1))
-        .filter(level => Number.isFinite(level) && level > 0);
-
-      return levels.length > 0 ? Math.max(...levels) : 1;
-    };
-
-    const winnerEffectiveLevel = getEffectiveTeamLevel(finalWinnerTeam, finalWinnerPet);
-    const loserEffectiveLevel = getEffectiveTeamLevel(finalLoserTeam, finalLoserPet);
-    const winnerMaxLevel = getTeamMaxLevel(finalWinnerTeam, finalWinnerPet);
-    const loserMaxLevel = getTeamMaxLevel(finalLoserTeam, finalLoserPet);
-    const maxLevelGap = winnerMaxLevel - loserMaxLevel;
-
-    levelGap = winnerEffectiveLevel - loserEffectiveLevel;
-
-    if (levelGap >= 10) {
-      victoryReward = Math.floor(victoryReward * 0.5);
-      winExpMultiplier = 0.5;
-      loseExpMultiplier = 1.5;
-      levelScaleNote = ` (실질 팀 레벨 +${levelGap}: 보상 크게 감소)`;
-      lossExpScaleNote = ` (상대 실질 팀 레벨 +${levelGap}: 패배 경험치 보정)`;
-    } else if (levelGap >= 5) {
-      victoryReward = Math.floor(victoryReward * 0.75);
-      winExpMultiplier = 0.75;
-      loseExpMultiplier = 1.25;
-      levelScaleNote = ` (실질 팀 레벨 +${levelGap}: 보상 약간 감소)`;
-      lossExpScaleNote = ` (상대 실질 팀 레벨 +${levelGap}: 패배 경험치 보정)`;
-    } else if (levelGap <= -10) {
-      victoryReward = Math.floor(victoryReward * 1.5);
-      winExpMultiplier = 1.5;
-      loseExpMultiplier = 0.5;
-      levelScaleNote = ` (실질 팀 레벨 ${Math.abs(levelGap)} 낮은 팀 승리 보너스)`;
-      lossExpScaleNote = ` (높은 팀 패배: 패배 경험치 감소)`;
-    } else if (levelGap <= -5) {
-      victoryReward = Math.floor(victoryReward * 1.25);
-      winExpMultiplier = 1.25;
-      loseExpMultiplier = 0.75;
-      levelScaleNote = ` (실질 팀 레벨 ${Math.abs(levelGap)} 낮은 팀 승리 보너스)`;
-      lossExpScaleNote = ` (높은 팀 패배: 패배 경험치 약간 감소)`;
-    }
-
-    // M9B_STRONG_OPPONENT_DEFEAT_PENALTY_PATCH
-    // 패배 포인트는 "팀 실질 레벨"보다 상대 최고레벨 격차를 더 민감하게 봅니다.
-    // 예: 11+1 vs 5+6은 실질 팀 레벨 차이는 작지만, 최고레벨 차이는 +5이므로
-    // 낮은 최고레벨 팀이 졌을 때 패배 페널티를 50P → 25P로 줄입니다.
-    if (!fled && maxLevelGap >= 5 && defeatPenalty > 25) {
-      defeatPenalty = 25;
-      defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
-    }
-
-    // M15B_FLEE_EXP_SCALE_PATCH
-
-
-    // 도망 성공 승리는 포인트뿐 아니라 승리 경험치도 같은 비율로 줄입니다.
-
-
-    // 이후 applyTeamOutcome에서 참여한 승리 펫에게 Math.round(100 * winExpMultiplier)가 적용됩니다.
-
-
-    if (fled && fleeExpMultiplier < 1) {
-
-
-      winExpMultiplier = Math.max(0.1, winExpMultiplier * fleeExpMultiplier);
-
-
-    }
-
-
-    
-
 
     const getParticipatedIds = (explicitIds, battleTeam, fallbackPet) => {
       const ids = new Set();
@@ -4170,61 +3999,16 @@ export async function processBattleResults(
       'lose'
     );
 
-    // M18_RESULT_REWARD_SUMMARY_PATCH
-    // 결과창에서 보여줄 포인트/경험치 요약을 생성합니다.
-    const winnerParticipatedIdsForSummary = getParticipatedIds(
-      finalWinnerParticipatedPetIds,
-      dedupeBattleTeam(finalWinnerTeam, finalWinnerPet),
-      finalWinnerPet
-    );
-    const loserParticipatedIdsForSummary = getParticipatedIds(
-      finalLoserParticipatedPetIds,
-      dedupeBattleTeam(finalLoserTeam, finalLoserPet),
-      finalLoserPet
-    );
-
-    const winnerExpGain = Math.round(100 * winExpMultiplier);
-    const loserBaseExp = fled ? 10 : 30;
-    const loserExpGain = Math.round(loserBaseExp * loseExpMultiplier);
-
-    const buildPetExpGains = (team, fallbackPet, participatedIds, expGain) => {
-      return dedupeBattleTeam(team, fallbackPet)
-        .filter(pet => pet?.id && participatedIds.has(pet.id))
-        .map(pet => ({
-          petId: pet.id,
-          name: pet.name || '펫',
-          exp: expGain,
-        }));
-    };
-
-    const battleResultSummary = {
-      winnerId,
-      loserId,
-      fled,
-      fleeRewardPercent,
-      battleTeamSize: battleTeamSizeForReward,
-      winnerPoints: victoryReward,
-      loserPoints: -defeatPenalty,
-      pointChanges: {
-        [winnerId]: victoryReward,
-        [loserId]: -defeatPenalty,
-      },
-      winnerExpGain,
-      loserExpGain,
-      winnerPetExpGains: buildPetExpGains(finalWinnerTeam, finalWinnerPet, winnerParticipatedIdsForSummary, winnerExpGain),
-      loserPetExpGains: buildPetExpGains(finalLoserTeam, finalLoserPet, loserParticipatedIdsForSummary, loserExpGain),
-      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, lossExpScaleNote].filter(Boolean),
-    };
-
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
+    const levelScaleNote = levelGap >= 10 ? ' (레벨 차 보상 감소)' : levelGap >= 5 ? ' (레벨 차 보상 약간 감소)' : '';
     await addPointHistory(
       classId,
       winnerData.authUid,
       winnerData.name,
       victoryReward,
-      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + fleeRewardNote + teamSizeRewardNote + levelScaleNote
+      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + levelScaleNote
     );
 
     if (defeatPenalty > 0) {
@@ -4233,11 +4017,9 @@ export async function processBattleResults(
         loserData.authUid,
         loserData.name,
         -defeatPenalty,
-        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '') + defeatPenaltyLevelNote + lossExpScaleNote
+        "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '')
       );
     }
-
-    return battleResultSummary;
   });
 }
 
@@ -4793,7 +4575,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // -----------------------------------------------------------
   const battlesRef = collection(db, 'classes', classId, 'battles');
   // 배틀 진행 중으로 간주할 상태 목록 (pending 포함)
-  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution', 'switching', 'pending_switch'];
+  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution'];
 
   // 1. 상대방이 '도전자(challenger)'로서 대결 중인 경우 조회
   const q1 = query(
@@ -4904,7 +4686,7 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   // M4_CHALLENGER_TEAM_SELECT_PATCH
   // 신청자가 선택한 선발/대기 펫을 battle team으로 구성합니다.
   // 아직 수락자 쪽 선택 플로우는 없으므로 opponent는 기존 파트너 펫 1마리만 사용합니다.
-  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 3) => {
+  const buildBattleTeamFromIds = (pets, requestedPetIds, fallbackPetId, maxTeamSize = 2) => {
     const alivePets = (pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
     const byId = new Map(alivePets.map(pet => [pet.id, pet]));
 
@@ -4942,13 +4724,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
     ? options.opponentTeamPetIds
     : [];
 
-  const opponentAlivePetCount = (opponentPets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
-  const challengerTeamLimit = Math.min(3, Math.max(1, opponentAlivePetCount));
-
-  // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
-  // 클라이언트가 우회되더라도 신청자 팀은 피신청자의 생존 펫 수보다 크게 만들 수 없습니다.
-  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, challengerTeamLimit);
-  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 3);
+  const challengerBattleTeam = buildBattleTeamFromIds(challengerPets, challengerRequestedTeamIds, challenger.partnerPetId, 2);
+  const opponentBattleTeam = buildBattleTeamFromIds(opponentPets, opponentRequestedTeamIds, opponent.partnerPetId, 1);
 
   // (중요) DB에 영구적으로 체력이 늘어나지 않도록 얕은 복사(...)를 사용합니다.
   let challengerPet = { ...(challengerBattleTeam[0] || {}) };
@@ -5035,6 +4812,8 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
     battleSchemaVersion: 2,
     battleMode,
     teamSize: battleTeamSize,
+    battleMode: 'single',
+    teamSize: 1,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
     challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeam),
     opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeam),
@@ -5085,7 +4864,7 @@ export async function cancelBattleChallenge(classId, battleId) {
 export async function adminCleanupZombieBattles(classId) {
   if (!classId) throw new Error('학급 정보가 없습니다.');
   const battlesRef = collection(db, 'classes', classId, 'battles');
-  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution', 'switching', 'pending_switch'];
+  const activeStatuses = ['pending', 'starting', 'quiz', 'action', 'resolution'];
   const q = query(battlesRef, where('status', 'in', activeStatuses));
   const snapshot = await getDocs(q);
 

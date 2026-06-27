@@ -929,9 +929,6 @@ function BattlePage() {
     const battleId = useMemo(() => [myPlayerData?.id, opponentId].sort().join('_'), [myPlayerData, opponentId]);
 
     const [battleState, setBattleState] = useState(null);
-    // M18B_RESULT_SUMMARY_LOCAL_FALLBACK_V3_PATCH
-    // resultSummary가 Firestore snapshot으로 늦게 들어와도 결과창에 즉시 표시하기 위한 로컬 fallback
-    const [localResultSummary, setLocalResultSummary] = useState(null);
     const [timeLeft, setTimeLeft] = useState(20);
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -2002,7 +1999,7 @@ const handleCancel = async () => {
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
             
-                const resultSummary = await processBattleResults(
+                await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -2014,11 +2011,6 @@ const handleCancel = async () => {
                     winnerParticipant.participatedPetIds || null,
                     loserParticipant.participatedPetIds || null
                 );
-
-                if (resultSummary) {
-                    setLocalResultSummary(resultSummary);
-                    await updateDoc(battleRef, { resultSummary });
-                }
             }
         } catch (error) {
             console.error("Timeout handling error:", error);
@@ -3293,7 +3285,7 @@ const handleActionSelect = async (actionId) => {
                             log: `🏃 ${myPet.name}이(가) 도망쳤습니다! ${opponentParticipant.name}의 승리로 처리됩니다.`
                         });
 
-                        const resultSummary = await processBattleResults(
+                        await processBattleResults(
                             classId,
                             opponentId,
                             myId,
@@ -3305,11 +3297,6 @@ const handleActionSelect = async (actionId) => {
                             opponentParticipant?.participatedPetIds || null,
                             myParticipant?.participatedPetIds || null
                         );
-
-                        if (resultSummary) {
-                            setLocalResultSummary(resultSummary);
-                            await updateDoc(battleRef, { resultSummary });
-                        }
 
                         setTimeout(() => goBack(), 2000);
                     } else {
@@ -4021,143 +4008,23 @@ if (defender.pet.status?.stunned) {
             {battleState?.status === 'finished' && (() => {
                 const isWin = battleState.winner === myPlayerData?.id;
                 const isDraw = !battleState.winner;
-                // M17_TEAM_RESULT_MODAL_PATCH
-                // 2v2/3v3에서는 파트너 펫 1마리보다 이번 배틀 팀 전체를 보여주는 편이 자연스럽습니다.
-                const resultParticipant = rawMyInfo || myInfo || {};
-                const battleTeam = Array.isArray(resultParticipant.team) && resultParticipant.team.length > 0
-                    ? resultParticipant.team
-                    : resultParticipant.pet
-                        ? [resultParticipant.pet]
-                        : [];
-
-                const latestPetMap = new Map((myPlayerData?.pets || []).map(pet => [pet.id, pet]));
-                const participatedIds = new Set([
-                    ...(Array.isArray(resultParticipant.participatedPetIds) ? resultParticipant.participatedPetIds : []),
-                    resultParticipant.pet?.id,
-                ].filter(Boolean));
-
-                const resultTeamPets = battleTeam.map(pet => ({
-                    ...pet,
-                    ...(latestPetMap.get(pet.id) || {}),
-                    participated: participatedIds.has(pet.id),
-                }));
-
-                const resultSummary = battleState.resultSummary || localResultSummary || null;
-                const isFleeResult = Boolean(battleState.fledBy || resultSummary?.fled);
-                const pointChange = resultSummary?.pointChanges?.[myPlayerData?.id];
-                const pointChangeText = Number.isFinite(Number(pointChange))
-                    ? Number(pointChange) > 0
-                        ? `+${Number(pointChange)}P`
-                        : Number(pointChange) < 0
-                            ? `${Number(pointChange)}P`
-                            : '0P'
-                    : null;
-
-                const myExpGains = resultSummary
-                    ? (
-                        battleState.winner === myPlayerData?.id
-                            ? (resultSummary.winnerPetExpGains || [])
-                            : (resultSummary.loserPetExpGains || [])
-                    )
-                    : [];
-
-                const totalExpGain = myExpGains.reduce((sum, item) => sum + Number(item.exp || 0), 0);
-                const expGainMap = new Map(myExpGains.map(item => [item.petId, item.exp]));
-                const hasRewardSummary = Boolean(resultSummary && (pointChangeText !== null || totalExpGain > 0));
+                const myPet = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
                 const color = isDraw ? '#6c757d' : isWin ? '#007bff' : '#dc3545';
                 return (
                     <ModalBackground>
                         <ModalContent $color={color}>
                             <h2>
-                                {isDraw
-                                    ? '무승부'
-                                    : isFleeResult && isWin
-                                        ? '🏃 도망 승리!'
-                                        : isFleeResult
-                                            ? '🏃 도망 처리'
-                                            : isWin
-                                                ? '🏆 승리!'
-                                                : '💀 패배...'}
+                                {isDraw ? '무승부' : isWin ? '🏆 승리!' : '💀 패배...'}
                             </h2>
                             <p>{battleState.log}</p>
-                            {hasRewardSummary && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.18)',
-                                    borderRadius: '12px',
-                                    padding: '0.8rem 1rem',
-                                    margin: '0.6rem 0 1rem',
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                                    gap: '0.6rem',
-                                    fontWeight: 900,
-                                }}>
-                                    {pointChangeText !== null && (
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>포인트 변화</div>
-                                            <div style={{ fontSize: '1.1rem' }}>
-                                                {Number(pointChange) > 0 ? '💰 ' : Number(pointChange) < 0 ? '💸 ' : '➖ '}
-                                                {pointChangeText}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>획득 경험치</div>
-                                        <div style={{ fontSize: '1.1rem' }}>✨ +{totalExpGain} EXP</div>
+                            {myPet && (
+                                <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '10px', padding: '0.7rem 1rem', margin: '0.5rem 0 1rem', fontSize: '0.88rem' }}>
+                                    <div style={{ fontWeight: 800, marginBottom: '0.3rem', opacity: 0.85 }}>
+                                        {myPet.name} 누적 전적
                                     </div>
-                                    {isFleeResult && resultSummary?.fleeRewardPercent && (
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>도망 보상</div>
-                                            <div style={{ fontSize: '1.1rem' }}>{resultSummary.fleeRewardPercent}% 반영</div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {resultTeamPets.length > 0 && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.15)',
-                                    borderRadius: '12px',
-                                    padding: '0.75rem 1rem',
-                                    margin: '0.5rem 0 1rem',
-                                    fontSize: '0.88rem',
-                                }}>
-                                    <div style={{ fontWeight: 900, marginBottom: '0.55rem', opacity: 0.9 }}>
-                                        이번 배틀 팀
-                                    </div>
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                                        gap: '0.5rem',
-                                    }}>
-                                        {resultTeamPets.map(pet => (
-                                            <div
-                                                key={pet.id}
-                                                style={{
-                                                    background: pet.participated ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-                                                    border: pet.participated ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.16)',
-                                                    borderRadius: '10px',
-                                                    padding: '0.5rem',
-                                                    opacity: pet.participated ? 1 : 0.72,
-                                                }}
-                                            >
-                                                <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
-                                                    {pet.participated ? '✅' : '대기'} {pet.name}
-                                                </div>
-                                                <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>
-                                                    Lv.{pet.level || 1} · HP {Math.max(0, Number(pet.hp ?? 0))}/{pet.maxHp ?? '?'}
-                                                </div>
-                                                {Number(expGainMap.get(pet.id) || 0) > 0 && (
-                                                    <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', fontWeight: 900 }}>
-                                                        ✨ +{expGainMap.get(pet.id)} EXP
-                                                    </div>
-                                                )}
-                                                <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', opacity: 0.9 }}>
-                                                    🏆 {pet.battleWins || 0}승 · 💀 {pet.battleLosses || 0}패
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div style={{ marginTop: '0.45rem', fontSize: '0.76rem', opacity: 0.78 }}>
-                                        ✅ 표시된 펫은 이번 배틀에 실제로 출전한 펫입니다.
+                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                                        <span>🏆 {myPet.battleWins || 0}승</span>
+                                        <span>💀 {myPet.battleLosses || 0}패</span>
                                     </div>
                                 </div>
                             )}

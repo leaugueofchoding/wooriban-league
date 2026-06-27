@@ -302,10 +302,8 @@ function Auth({ user }) {
     const [battleChallenge, setBattleChallenge] = useState(null);
     
     const [acceptBattleTeamDraft, setAcceptBattleTeamDraft] = useState({
-        // M11_ENABLE_3V3_TEAM_SELECTION_PATCH
         leadPetId: null,
         benchPetId: null,
-        thirdPetId: null,
     }); // M4_ACCEPTOR_TEAM_SELECT_PATCH
 const notificationRef = useRef(null);
 
@@ -422,7 +420,7 @@ const notificationRef = useRef(null);
 
     useEffect(() => {
         // M4_ACCEPTOR_TEAM_SELECT_PATCH
-        setAcceptBattleTeamDraft({ leadPetId: null, benchPetId: null, thirdPetId: null });
+        setAcceptBattleTeamDraft({ leadPetId: null, benchPetId: null });
     }, [battleChallenge?.id]);
 const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
 
@@ -512,16 +510,11 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
         return (myPlayerData?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
     };
 
-    const getTargetAcceptTeamSize = () => {
-        // M11B_BATTLE_SIZE_CHOICE_PATCH
+    const shouldSelectBenchForAccept = () => {
         const challengerTeamSize = Array.isArray(battleChallenge?.challenger?.team)
             ? battleChallenge.challenger.team.length
             : 1;
-        return Math.min(3, Math.max(1, challengerTeamSize));
-    };
-
-    const shouldSelectBenchForAccept = () => {
-        return getTargetAcceptTeamSize() >= 2;
+        return challengerTeamSize > 1 && getAliveBattlePetsForAccept().length >= 2;
     };
 
     const getAcceptBattleTeamPetIds = () => {
@@ -529,32 +522,21 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
         if (alivePets.length === 0) return [];
 
         const aliveIds = new Set(alivePets.map(pet => pet.id));
-        const targetTeamSize = getTargetAcceptTeamSize();
-        const selectedIds = [];
-
         const preferredLeadId = aliveIds.has(acceptBattleTeamDraft.leadPetId)
             ? acceptBattleTeamDraft.leadPetId
             : aliveIds.has(myPlayerData?.partnerPetId)
                 ? myPlayerData.partnerPetId
                 : alivePets[0].id;
 
-        selectedIds.push(preferredLeadId);
-
-        if (targetTeamSize >= 2) {
-            const preferredBenchId = aliveIds.has(acceptBattleTeamDraft.benchPetId) && acceptBattleTeamDraft.benchPetId !== preferredLeadId
-                ? acceptBattleTeamDraft.benchPetId
-                : alivePets.find(pet => pet.id !== preferredLeadId)?.id || null;
-            if (preferredBenchId) selectedIds.push(preferredBenchId);
+        if (!shouldSelectBenchForAccept()) {
+            return [preferredLeadId];
         }
 
-        if (targetTeamSize >= 3) {
-            const preferredThirdId = aliveIds.has(acceptBattleTeamDraft.thirdPetId) && !selectedIds.includes(acceptBattleTeamDraft.thirdPetId)
-                ? acceptBattleTeamDraft.thirdPetId
-                : alivePets.find(pet => !selectedIds.includes(pet.id))?.id || null;
-            if (preferredThirdId) selectedIds.push(preferredThirdId);
-        }
+        const preferredBenchId = aliveIds.has(acceptBattleTeamDraft.benchPetId) && acceptBattleTeamDraft.benchPetId !== preferredLeadId
+            ? acceptBattleTeamDraft.benchPetId
+            : alivePets.find(pet => pet.id !== preferredLeadId)?.id || null;
 
-        return [...new Set(selectedIds)].slice(0, targetTeamSize);
+        return [preferredLeadId, preferredBenchId].filter(Boolean);
     };
 
     const createOpponentBattleSnapshotForAccept = (selectedTeam) => {
@@ -597,10 +579,8 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
             return;
         }
 
-        const targetTeamSize = getTargetAcceptTeamSize();
-
-        if (selectedTeam.length < targetTeamSize) {
-            alert(targetTeamSize >= 3 ? "서로 다른 펫 3마리를 선택해주세요." : "선발 펫과 대기 펫을 선택해주세요.");
+        if (shouldSelectBenchForAccept() && selectedTeam.length < 2) {
+            alert("선발 펫과 대기 펫을 선택해주세요.");
             return;
         }
 
@@ -785,13 +765,12 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
 
                 {/* ▼▼▼ [수정] 모달 디자인을 신버전으로 교체 ▼▼▼ */}
                 {battleChallenge && (() => {
-                    // M11B_BATTLE_SIZE_CHOICE_PATCH
+                    // M4_ACCEPTOR_TEAM_SELECT_PATCH
                     const alivePets = getAliveBattlePetsForAccept();
                     const challengerTeamSize = Array.isArray(battleChallenge.challenger?.team)
-                        ? Math.min(3, battleChallenge.challenger.team.length)
+                        ? battleChallenge.challenger.team.length
                         : 1;
-                    const targetTeamSize = challengerTeamSize;
-                    const needsBenchSelect = targetTeamSize >= 2;
+                    const needsBenchSelect = challengerTeamSize > 1 && alivePets.length >= 2;
 
                     const aliveIds = new Set(alivePets.map(pet => pet.id));
                     const selectedLeadId = aliveIds.has(acceptBattleTeamDraft.leadPetId)
@@ -808,29 +787,16 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                         )
                         : null;
 
-                    const selectedThirdId = targetTeamSize >= 3
-                        ? (
-                            aliveIds.has(acceptBattleTeamDraft.thirdPetId) &&
-                            acceptBattleTeamDraft.thirdPetId !== selectedLeadId &&
-                            acceptBattleTeamDraft.thirdPetId !== selectedBenchId
-                                ? acceptBattleTeamDraft.thirdPetId
-                                : alivePets.find(pet => pet.id !== selectedLeadId && pet.id !== selectedBenchId)?.id || null
-                        )
-                        : null;
-
-                    const selectedIdsForAccept = [selectedLeadId, selectedBenchId, selectedThirdId].filter(Boolean);
-                    const uniqueSelectedCount = new Set(selectedIdsForAccept).size;
                     const myPetFainted = alivePets.length === 0;
-                    const insufficientPets = alivePets.length < targetTeamSize;
-                    const acceptDisabled = myPetFainted || insufficientPets || uniqueSelectedCount < targetTeamSize;
+                    const acceptDisabled = myPetFainted || (needsBenchSelect && (!selectedLeadId || !selectedBenchId || selectedLeadId === selectedBenchId));
 
-                    const renderPetChoice = (slotLabel, selectedId, onSelect, blockedIds = []) => (
+                    const renderPetChoice = (slotLabel, selectedId, onSelect, blockedId = null) => (
                         <div style={{ marginBottom: '0.8rem', textAlign: 'left' }}>
                             <h4 style={{ margin: '0 0 0.45rem', color: '#343a40', fontSize: '0.95rem' }}>{slotLabel}</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '0.55rem' }}>
                                 {alivePets.map(pet => {
                                     const isSelected = selectedId === pet.id;
-                                    const isBlocked = Array.isArray(blockedIds) ? blockedIds.includes(pet.id) : blockedIds === pet.id;
+                                    const isBlocked = blockedId === pet.id;
                                     return (
                                         <button
                                             key={pet.id}
@@ -870,7 +836,7 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
 
                     return (
                         <ModalBackground>
-                            <ModalContent style={{ maxWidth: needsBenchSelect ? '640px' : '400px' }}>
+                            <ModalContent style={{ maxWidth: needsBenchSelect ? '560px' : '400px' }}>
                                 <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
 
                                 <OpponentItem>
@@ -895,44 +861,30 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                     </div>
                                 )}
 
-                                {!myPetFainted && insufficientPets && (
-                                    <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center', fontWeight: 800 }}>
-                                        ⚠️ 상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 수락하려면 살아있는 펫이 {targetTeamSize}마리 필요합니다.
-                                    </div>
-                                )}
-
-                                {!myPetFainted && needsBenchSelect && !insufficientPets && (
+                                {!myPetFainted && needsBenchSelect && (
                                     <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '14px', padding: '0.8rem', marginBottom: '0.9rem' }}>
                                         <p style={{ margin: '0 0 0.8rem', color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
-                                            상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 나도 {targetTeamSize}마리 팀을 선택하세요.
+                                            상대가 2펫 팀으로 신청했습니다. 나도 선발 펫과 대기 펫을 선택하세요.
                                         </p>
 
                                         {renderPetChoice('1번 선발 펫', selectedLeadId, (petId) => {
                                             const fallbackBenchId = selectedBenchId === petId
-                                                ? alivePets.find(p => p.id !== petId && p.id !== selectedThirdId)?.id || null
+                                                ? alivePets.find(p => p.id !== petId)?.id || null
                                                 : selectedBenchId;
-                                            const fallbackThirdId = selectedThirdId === petId
-                                                ? alivePets.find(p => p.id !== petId && p.id !== fallbackBenchId)?.id || null
-                                                : selectedThirdId;
-                                            setAcceptBattleTeamDraft(prev => ({ ...prev, leadPetId: petId, benchPetId: fallbackBenchId, thirdPetId: fallbackThirdId }));
-                                        }, [])}
+                                            setAcceptBattleTeamDraft(prev => ({ ...prev, leadPetId: petId, benchPetId: fallbackBenchId }));
+                                        })}
 
-                                        {targetTeamSize >= 2 && renderPetChoice('2번 대기 펫', selectedBenchId, (petId) => {
-                                            const fallbackThirdId = selectedThirdId === petId ? null : selectedThirdId;
-                                            setAcceptBattleTeamDraft(prev => ({ ...prev, benchPetId: petId, thirdPetId: fallbackThirdId }));
-                                        }, [selectedLeadId].filter(Boolean))}
-
-                                        {targetTeamSize >= 3 && renderPetChoice('3번 대기 펫', selectedThirdId, (petId) => {
-                                            setAcceptBattleTeamDraft(prev => ({ ...prev, thirdPetId: petId }));
-                                        }, [selectedLeadId, selectedBenchId].filter(Boolean))}
+                                        {renderPetChoice('2번 대기 펫', selectedBenchId, (petId) => {
+                                            setAcceptBattleTeamDraft(prev => ({ ...prev, benchPetId: petId }));
+                                        }, selectedLeadId)}
                                     </div>
                                 )}
 
-                                {!myPetFainted && !needsBenchSelect && !insufficientPets && (
+                                {!myPetFainted && !needsBenchSelect && (
                                     <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#495057', textAlign: 'center', fontWeight: 700 }}>
                                         {alivePets.length === 1
                                             ? `내 펫이 1마리뿐이라 ${alivePets[0].name}이(가) 바로 참가합니다.`
-                                            : '상대가 1 vs 1로 신청했습니다. 기존 파트너 펫으로 참가합니다.'}
+                                            : '기존 파트너 펫으로 참가합니다.'}
                                     </div>
                                 )}
 

@@ -15,20 +15,16 @@ const TeamMiniBarWrapper = styled.div`
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
     backdrop-filter: blur(4px);
     /* M14_BATTLE_TEAM_MINIBAR_POSITION_PATCH
-       M14B_MINIBAR_OVERLAP_FIX_PATCH
-       M14D_RESTORE_MY_QUEUE_MOVE_OPPONENT_QUEUE_PATCH
-       M14E_OPPONENT_QUEUE_ALIGN_PATCH
-       M14C_MINIBAR_UPPER_GAP_FIX_PATCH
-       상태창 카드와 겹치지 않도록 카드 옆 빈 공간으로 더 밀어냅니다.
-       - 내 팀: 내 상태창 오른쪽 바깥
-       - 상대 팀: 상대 상태창 왼쪽 바깥
+       대기열 아이콘을 펫 위가 아니라 상태창 옆 빈 공간으로 이동합니다.
+       - 내 팀: 왼쪽 위 상태창 오른쪽
+       - 상대 팀: 오른쪽 아래 상태창 왼쪽
     */
     ${props => props.$isMine ? `
-        left: 350px;
-        top: 26px;
+        left: 300px;
+        top: 24px;
     ` : `
-        right: 350px;
-        bottom: 32px;
+        right: 300px;
+        bottom: 54px;
         flex-direction: row-reverse;
     `}
 
@@ -37,29 +33,29 @@ const TeamMiniBarWrapper = styled.div`
         padding: 5px 6px;
 
         ${props => props.$isMine ? `
-            left: 285px;
-            top: 20px;
+            left: 220px;
+            top: 18px;
         ` : `
-            right: 280px;
-            bottom: 30px;
+            right: 220px;
+            bottom: 46px;
         `}
     }
 
     @media (max-width: 640px) {
         ${props => props.$isMine ? `
             left: 12px;
-            top: 104px;
+            top: 92px;
         ` : `
             right: 12px;
-            bottom: 78px;
+            bottom: 96px;
         `}
     }
 `;
 
 const MiniPetSlot = styled.div`
     position: relative;
-    width: 38px;
-    height: 38px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     padding: 2px;
     background: ${props => props.$active ? 'linear-gradient(135deg, #ffd43b, #ff922b)' : '#f1f3f5'};
@@ -91,8 +87,8 @@ const MiniPetSlot = styled.div`
     }
 
     @media (max-width: 768px) {
-        width: 26px;
-        height: 30px;
+        width: 34px;
+        height: 34px;
     }
 `;
 
@@ -116,7 +112,7 @@ const HpMiniBar = styled.div`
     }
 
     @media (max-width: 768px) {
-        width: 20px;
+        width: 24px;
     }
 `;
 

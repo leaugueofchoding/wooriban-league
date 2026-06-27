@@ -3869,8 +3869,6 @@ export async function processBattleResults(
     // 포인트 보상/페널티는 플레이어 단위로 한 번만 적용
     let victoryReward = 150;
     let fleeRewardNote = '';
-    let fleeExpMultiplier = 1;
-    let fleeRewardPercent = null;
 
     // M15_FLEE_LIMIT_AND_FLEE_WIN_PATCH
     // 도망 성공은 상대 승리로 처리하되, 즉시 도망 어뷰징을 막기 위해
@@ -3890,9 +3888,7 @@ export async function processBattleResults(
 
       const fleeRewardMultiplier = Math.max(0.4, Math.min(1, 0.4 + damageProgress * 0.6));
       victoryReward = Math.floor(victoryReward * fleeRewardMultiplier);
-      fleeRewardPercent = Math.round(fleeRewardMultiplier * 100);
-      fleeRewardNote = ` (도망 승리 보상 ${fleeRewardPercent}%)`;
-      fleeExpMultiplier = fleeRewardMultiplier;
+      fleeRewardNote = ` (도망 승리 보상 ${Math.round(fleeRewardMultiplier * 100)}%)`;
     }
     if (winnerTitle === 'point_rich') {
       victoryReward = Math.floor(victoryReward * 1.2);
@@ -4056,27 +4052,6 @@ export async function processBattleResults(
       defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
     }
 
-    // M15B_FLEE_EXP_SCALE_PATCH
-
-
-    // 도망 성공 승리는 포인트뿐 아니라 승리 경험치도 같은 비율로 줄입니다.
-
-
-    // 이후 applyTeamOutcome에서 참여한 승리 펫에게 Math.round(100 * winExpMultiplier)가 적용됩니다.
-
-
-    if (fled && fleeExpMultiplier < 1) {
-
-
-      winExpMultiplier = Math.max(0.1, winExpMultiplier * fleeExpMultiplier);
-
-
-    }
-
-
-    
-
-
     const getParticipatedIds = (explicitIds, battleTeam, fallbackPet) => {
       const ids = new Set();
 
@@ -4170,52 +4145,6 @@ export async function processBattleResults(
       'lose'
     );
 
-    // M18_RESULT_REWARD_SUMMARY_PATCH
-    // 결과창에서 보여줄 포인트/경험치 요약을 생성합니다.
-    const winnerParticipatedIdsForSummary = getParticipatedIds(
-      finalWinnerParticipatedPetIds,
-      dedupeBattleTeam(finalWinnerTeam, finalWinnerPet),
-      finalWinnerPet
-    );
-    const loserParticipatedIdsForSummary = getParticipatedIds(
-      finalLoserParticipatedPetIds,
-      dedupeBattleTeam(finalLoserTeam, finalLoserPet),
-      finalLoserPet
-    );
-
-    const winnerExpGain = Math.round(100 * winExpMultiplier);
-    const loserBaseExp = fled ? 10 : 30;
-    const loserExpGain = Math.round(loserBaseExp * loseExpMultiplier);
-
-    const buildPetExpGains = (team, fallbackPet, participatedIds, expGain) => {
-      return dedupeBattleTeam(team, fallbackPet)
-        .filter(pet => pet?.id && participatedIds.has(pet.id))
-        .map(pet => ({
-          petId: pet.id,
-          name: pet.name || '펫',
-          exp: expGain,
-        }));
-    };
-
-    const battleResultSummary = {
-      winnerId,
-      loserId,
-      fled,
-      fleeRewardPercent,
-      battleTeamSize: battleTeamSizeForReward,
-      winnerPoints: victoryReward,
-      loserPoints: -defeatPenalty,
-      pointChanges: {
-        [winnerId]: victoryReward,
-        [loserId]: -defeatPenalty,
-      },
-      winnerExpGain,
-      loserExpGain,
-      winnerPetExpGains: buildPetExpGains(finalWinnerTeam, finalWinnerPet, winnerParticipatedIdsForSummary, winnerExpGain),
-      loserPetExpGains: buildPetExpGains(finalLoserTeam, finalLoserPet, loserParticipatedIdsForSummary, loserExpGain),
-      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, lossExpScaleNote].filter(Boolean),
-    };
-
     transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
     transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
 
@@ -4236,8 +4165,6 @@ export async function processBattleResults(
         "퀴즈 배틀 패배" + (loserTitle === 'diligent_giver' ? ' (기부천사 페널티 감면)' : '') + defeatPenaltyLevelNote + lossExpScaleNote
       );
     }
-
-    return battleResultSummary;
   });
 }
 

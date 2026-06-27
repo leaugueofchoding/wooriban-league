@@ -746,25 +746,18 @@ function PetPage() {
   };
 
   const openBattleTeamDraft = (opponent) => {
-    // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
-    // 신청자는 상대가 실제로 받을 수 있는 규모까지만 팀을 선택할 수 있습니다.
+    // M4_CHALLENGER_TEAM_SELECT_PATCH
+    // 살아있는 펫이 2마리 이상이면 선발/대기 펫을 고르고 신청합니다.
     const alivePets = getAliveBattlePets();
-    const opponentAliveCount = (opponent?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
-    const maxSelectableTeamSize = Math.min(3, alivePets.length, Math.max(1, opponentAliveCount));
+
+    if (alivePets.length < 2) {
+      handleBattleRequest(opponent);
+      return;
+    }
 
     const preferredLeadId = selectedPet?.hp > 0
       ? selectedPet.id
-      : alivePets[0]?.id || null;
-
-    if (!preferredLeadId) {
-      alert("출전 가능한 펫이 없습니다. 펫 센터에서 치료해주세요.");
-      return;
-    }
-
-    if (maxSelectableTeamSize <= 1) {
-      handleBattleRequest(opponent, { challengerTeamPetIds: [preferredLeadId] });
-      return;
-    }
+      : alivePets[0].id;
 
     const defaultBenchId = alivePets.find(pet => pet.id !== preferredLeadId)?.id || null;
     const defaultThirdId = null;
@@ -1237,19 +1230,8 @@ function PetPage() {
       )}
       {battleTeamDraft.show && (
         <ModalBackground onClick={closeBattleTeamDraft}>
-          <ModalContent
-            className="white-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              // M13_TEAM_MODAL_LAYOUT_FIX_PATCH
-              maxWidth: '680px',
-              maxHeight: '88vh',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexShrink: 0 }}>
+          <ModalContent className="white-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div>
                 <h3 style={{ margin: 0 }}>⚔️ 배틀 팀 선택</h3>
                 <p style={{ margin: '0.35rem 0 0', color: '#868e96', fontSize: '0.9rem', fontWeight: 700 }}>
@@ -1259,31 +1241,9 @@ function PetPage() {
               <button onClick={closeBattleTeamDraft} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>✖</button>
             </div>
 
-            <div style={{
-
-
-              flex: 1,
-
-
-              overflowY: 'auto',
-
-
-              paddingRight: '0.35rem',
-
-
-              paddingBottom: '0.25rem',
-
-
-            }}>
-
-
             {(() => {
-
-
               // M11B_BATTLE_SIZE_CHOICE_PATCH
               const alivePets = getAliveBattlePets();
-              const opponentAliveCount = (battleTeamDraft.opponent?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
-              const maxSelectableTeamSize = Math.min(3, alivePets.length, Math.max(1, opponentAliveCount));
               const leadPet = alivePets.find(pet => pet.id === battleTeamDraft.leadPetId);
               const benchPet = alivePets.find(pet => pet.id === battleTeamDraft.benchPetId);
               const thirdPet = battleTeamDraft.benchPetId
@@ -1377,7 +1337,7 @@ function PetPage() {
                 <>
                   <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '16px', padding: '0.8rem 1rem', marginBottom: '1rem' }}>
                     <p style={{ margin: 0, color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
-                      신청 상대: {battleTeamDraft.opponent?.name || '상대'} · 상대 생존 펫 {opponentAliveCount}마리 · 최대 {maxSelectableTeamSize} vs {maxSelectableTeamSize}
+                      신청 상대: {battleTeamDraft.opponent?.name || '상대'} · 현재 선택 규모: {selectedTeamSize} vs {selectedTeamSize}
                     </p>
                   </div>
 
@@ -1392,7 +1352,7 @@ function PetPage() {
                     }));
                   }, [])}
 
-                  {maxSelectableTeamSize >= 2 && renderTeamChoice(
+                  {alivePets.length >= 2 && renderTeamChoice(
                     '2번 대기 펫',
                     battleTeamDraft.benchPetId,
                     (petId) => {
@@ -1404,7 +1364,7 @@ function PetPage() {
                     () => setBattleTeamDraft(prev => ({ ...prev, benchPetId: null, thirdPetId: null }))
                   )}
 
-                  {maxSelectableTeamSize >= 3 && battleTeamDraft.benchPetId && renderTeamChoice(
+                  {alivePets.length >= 3 && battleTeamDraft.benchPetId && renderTeamChoice(
                     '3번 대기 펫',
                     battleTeamDraft.thirdPetId,
                     (petId) => {
@@ -1415,26 +1375,13 @@ function PetPage() {
                     () => setBattleTeamDraft(prev => ({ ...prev, thirdPetId: null }))
                   )}
 
-                  {maxSelectableTeamSize >= 3 && !battleTeamDraft.benchPetId && (
+                  {alivePets.length >= 3 && !battleTeamDraft.benchPetId && (
                     <div style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: '14px', background: '#f8f9fa', border: '1px dashed #ced4da', color: '#868e96', fontWeight: 800, textAlign: 'center' }}>
                       2번 대기 펫을 선택하면 3번 대기 펫도 선택할 수 있습니다.
                     </div>
                   )}
 
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    marginTop: '1.2rem',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    position: 'sticky',
-                    bottom: 0,
-                    background: 'white',
-                    padding: '0.85rem 0 0.15rem',
-                    borderTop: '1px solid #f1f3f5',
-                    zIndex: 2,
-                  }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1.2rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
                       선택: {[leadPet?.name, benchPet?.name, thirdPet?.name].filter(Boolean).join(' + ') || '-'} · {selectedTeamSize} vs {selectedTeamSize}
                     </div>
@@ -1469,8 +1416,6 @@ function PetPage() {
                 </>
               );
             })()}
-
-            </div>
           </ModalContent>
         </ModalBackground>
       )}

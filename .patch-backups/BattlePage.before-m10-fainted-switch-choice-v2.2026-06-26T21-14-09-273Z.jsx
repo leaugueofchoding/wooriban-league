@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost , processBattleResults} from '../../api/firebase';
+import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost } from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS } from '../pet/petData';
@@ -773,12 +773,8 @@ const MenuItem = styled.button`
 
 const Timer = styled.div`
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 3.5rem; font-weight: 900;
-    color: ${props => props.$variant === 'switch' ? '#5f3dc4' : '#ff6b6b'};
-    background-color: rgba(255, 255, 255, 0.9);
-    padding: 0.5rem 2rem; border-radius: 30px;
-    border: 4px solid ${props => props.$variant === 'switch' ? '#7950f2' : '#ff6b6b'};
-    z-index: 10;
+    font-size: 3.5rem; font-weight: 900; color: #ff6b6b; background-color: rgba(255, 255, 255, 0.9);
+    padding: 0.5rem 2rem; border-radius: 30px; border: 4px solid #ff6b6b; z-index: 10;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 `;
 
@@ -918,7 +914,6 @@ const OptionButton = styled.button`
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 
 const SWITCH_RESUME_DELAY_MS = 2200;
-const SWITCH_CHOICE_LIMIT_MS = 10000;
 
 function BattlePage() {
     const { opponentId } = useParams();
@@ -929,9 +924,6 @@ function BattlePage() {
     const battleId = useMemo(() => [myPlayerData?.id, opponentId].sort().join('_'), [myPlayerData, opponentId]);
 
     const [battleState, setBattleState] = useState(null);
-    // M18B_RESULT_SUMMARY_LOCAL_FALLBACK_V3_PATCH
-    // resultSummary가 Firestore snapshot으로 늦게 들어와도 결과창에 즉시 표시하기 위한 로컬 fallback
-    const [localResultSummary, setLocalResultSummary] = useState(null);
     const [timeLeft, setTimeLeft] = useState(20);
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -1029,7 +1021,6 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         pendingNextQuestion: null,
         pendingUsedQuestions: null,
         switchResumeAt: null,
-        pendingSwitch: null,
     });
 
     const buildSwitchPauseUpdate = (data, nextQuiz, now = Date.now()) => ({
@@ -1040,7 +1031,6 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         pendingUsedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
         turnStartTime: now,
         switchResumeAt: now + SWITCH_RESUME_DELAY_MS,
-        pendingSwitch: null,
         chat: {},
     });
 
@@ -1262,7 +1252,6 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         pendingNextQuestion: null,
                         pendingUsedQuestions: null,
                         switchResumeAt: null,
-                        pendingSwitch: null,
                         chat: {},
                     });
                 });
@@ -1276,98 +1265,6 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         battleState?.status,
         battleState?.switchResumeAt,
         battleState?.pendingNextQuestion?.question,
-        battleState?.challenger?.id,
-        myPlayerData?.id,
-        classId,
-        battleId,
-    ]);
-
-    useEffect(() => {
-        // M10_FAINTED_SWITCH_CHOICE_PATCH
-        // 쓰러진 뒤 다음 펫 선택 상태에서는 퀴즈/행동 타이머와 다른 보라색 10초 타이머를 사용합니다.
-        if (!battleState || !myPlayerData || !classId) return;
-        if (battleState.status !== 'pending_switch') return;
-
-        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-        const iAmChallenger = myPlayerData.id === battleState.challenger?.id;
-        const expiresAt = Number(
-            battleState.pendingSwitch?.expiresAt ||
-            ((battleState.pendingSwitch?.createdAt || battleState.turnStartTime || Date.now()) + SWITCH_CHOICE_LIMIT_MS)
-        );
-
-        const updateSwitchTimer = () => {
-            const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-            setTimeLeft(remaining);
-            return remaining;
-        };
-
-        updateSwitchTimer();
-
-        const interval = setInterval(() => {
-            const remaining = updateSwitchTimer();
-
-            if (remaining > 0) return;
-            clearInterval(interval);
-
-            // 자동 선택 처리는 방장(challenger) 브라우저 하나만 담당합니다.
-            if (!iAmChallenger) return;
-
-            runTransaction(db, async (transaction) => {
-                const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists()) return;
-
-                const data = battleDoc.data();
-                if (data.status !== 'pending_switch') return;
-
-                const roles = Array.isArray(data.pendingSwitch?.roles)
-                    ? data.pendingSwitch.roles
-                    : [];
-
-                if (roles.length === 0) return;
-
-                const nextQuiz = data.pendingNextQuestion || getNextQuizObj(data.usedQuestions || []);
-                const pendingUsedQuestions = Array.isArray(data.pendingUsedQuestions)
-                    ? data.pendingUsedQuestions
-                    : [...(data.usedQuestions || []), nextQuiz.question];
-
-                const updateData = {};
-                const autoLogs = [];
-
-                roles.forEach(role => {
-                    const selected = applyPendingSwitchSelection(data[role]);
-                    if (!selected?.participant) return;
-
-                    updateData[role] = selected.participant;
-                    autoLogs.push(`⏰ 시간 초과! ${selected.participant.name}의 ${selected.selectedPetName}이(가) 자동으로 등장!`);
-                });
-
-                transaction.update(battleRef, {
-                    ...updateData,
-                    status: 'switching',
-                    question: null,
-                    pendingNextQuestion: nextQuiz,
-                    pendingUsedQuestions,
-                    switchResumeAt: Date.now() + SWITCH_RESUME_DELAY_MS,
-                    pendingSwitch: null,
-                    turnStartTime: Date.now(),
-                    turn: null,
-                    attackerAction: null,
-                    attackerActionPayload: null,
-                    defenderAction: null,
-                    chat: {},
-                    log: [data.log, ...autoLogs].filter(Boolean).join(' '),
-                });
-            }).catch(error => {
-                console.error('Pending switch timeout error:', error);
-            });
-        }, 250);
-
-        return () => clearInterval(interval);
-    }, [
-        battleState?.status,
-        battleState?.pendingSwitch?.expiresAt,
-        battleState?.pendingSwitch?.roles?.join('|'),
-        battleState?.turnStartTime,
         battleState?.challenger?.id,
         myPlayerData?.id,
         classId,
@@ -2002,7 +1899,7 @@ const handleCancel = async () => {
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
             
-                const resultSummary = await processBattleResults(
+                await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -2014,11 +1911,6 @@ const handleCancel = async () => {
                     winnerParticipant.participatedPetIds || null,
                     loserParticipant.participatedPetIds || null
                 );
-
-                if (resultSummary) {
-                    setLocalResultSummary(resultSummary);
-                    await updateDoc(battleRef, { resultSummary });
-                }
             }
         } catch (error) {
             console.error("Timeout handling error:", error);
@@ -2447,177 +2339,6 @@ const handleCancel = async () => {
         };
     };
 
-    const getPendingSwitchChoices = (participant) => {
-        const synced = syncBattleParticipantActivePetToTeam(participant);
-        const activePet = synced?.pet;
-
-        if (!activePet) {
-            return {
-                participant: synced,
-                activePet: null,
-                team: [],
-                activeIndex: 0,
-                choices: [],
-            };
-        }
-
-        const team = Array.isArray(synced.team) && synced.team.length > 0
-            ? synced.team
-            : [activePet];
-
-        const activeIndexById = synced.activePetId
-            ? team.findIndex(pet => pet?.id === synced.activePetId)
-            : -1;
-
-        const activeIndex = activeIndexById >= 0
-            ? activeIndexById
-            : Math.max(0, Number(synced.activePetIndex ?? 0));
-
-        const syncedTeam = team.map((pet, index) => (
-            index === activeIndex
-                ? { ...activePet, status: { ...(activePet.status || {}) } }
-                : { ...pet, status: { ...(pet?.status || {}) } }
-        ));
-
-        const choices = syncedTeam
-            .map((pet, index) => ({ pet, index }))
-            .filter(({ pet, index }) => (
-                index !== activeIndex &&
-                pet?.id &&
-                Number(pet.hp ?? 0) > 0
-            ));
-
-        return {
-            participant: {
-                ...synced,
-                team: syncedTeam,
-                activePetIndex: activeIndex,
-                activePetId: activePet.id || synced.activePetId || null,
-            },
-            activePet,
-            team: syncedTeam,
-            activeIndex,
-            choices,
-        };
-    };
-
-    const applyPendingSwitchSelection = (participant, nextPetId = null) => {
-        // M10_FAINTED_SWITCH_CHOICE_PATCH
-        const state = getPendingSwitchChoices(participant);
-        if (!state.participant || state.choices.length === 0) return null;
-
-        const selectedChoice = nextPetId
-            ? state.choices.find(({ pet }) => pet?.id === nextPetId)
-            : state.choices[0];
-
-        if (!selectedChoice?.pet) return null;
-
-        const nextPet = {
-            ...selectedChoice.pet,
-            status: { ...(selectedChoice.pet.status || {}) },
-        };
-
-        const nextTeam = state.team.map((pet, index) => (
-            index === selectedChoice.index ? nextPet : pet
-        ));
-
-        const participatedPetIds = [
-            ...new Set([
-                ...(Array.isArray(state.participant.participatedPetIds) ? state.participant.participatedPetIds : []),
-                state.activePet?.id,
-                nextPet.id,
-            ].filter(Boolean)),
-        ];
-
-        return {
-            participant: {
-                ...state.participant,
-                pet: nextPet,
-                team: nextTeam,
-                activePetIndex: selectedChoice.index,
-                activePetId: nextPet.id || null,
-                participatedPetIds,
-            },
-            selectedPetName: nextPet.name || '다음 펫',
-        };
-    };
-
-    const getFaintedSwitchState = (participant) => {
-        // M10_FAINTED_SWITCH_CHOICE_PATCH
-        // active 펫이 쓰러졌을 때:
-        // - 대기 0마리: 팀 패배
-        // - 대기 1마리: 자동교체
-        // - 대기 2마리 이상: 직접 선택
-        const state = getPendingSwitchChoices(participant);
-        const activePet = state.activePet;
-
-        if (!activePet) {
-            return {
-                participant: state.participant,
-                teamDefeated: true,
-                needsChoice: false,
-                autoSwitched: false,
-                log: '',
-            };
-        }
-
-        if (Number(activePet.hp ?? 0) > 0) {
-            return {
-                participant: state.participant,
-                teamDefeated: false,
-                needsChoice: false,
-                autoSwitched: false,
-                log: '',
-            };
-        }
-
-        if (state.choices.length === 0) {
-            return {
-                participant: state.participant,
-                teamDefeated: true,
-                needsChoice: false,
-                autoSwitched: false,
-                log: `${state.participant.name}의 ${activePet.name || '펫'}이(가) 쓰러졌습니다!`,
-            };
-        }
-
-        if (state.choices.length === 1) {
-            const selected = applyPendingSwitchSelection(state.participant, state.choices[0].pet.id);
-            return {
-                participant: selected.participant,
-                teamDefeated: false,
-                needsChoice: false,
-                autoSwitched: true,
-                switchedPetName: selected.selectedPetName,
-                log: `${activePet.name || '펫'}이(가) 쓰러져 ${selected.selectedPetName}이(가) 대신 나섭니다!`,
-            };
-        }
-
-        return {
-            participant: state.participant,
-            teamDefeated: false,
-            needsChoice: true,
-            autoSwitched: false,
-            log: `${state.participant.name}의 ${activePet.name || '펫'}이(가) 쓰러졌습니다. 다음 펫을 고르는 중입니다!`,
-        };
-    };
-
-    const buildPendingSwitchUpdate = (data, nextQuiz, roles, now = Date.now()) => ({
-        // M10_FAINTED_SWITCH_CHOICE_PATCH
-        status: 'pending_switch',
-        question: null,
-        pendingNextQuestion: nextQuiz,
-        pendingUsedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
-        switchResumeAt: null,
-        pendingSwitch: {
-            roles,
-            createdAt: now,
-            expiresAt: now + SWITCH_CHOICE_LIMIT_MS,
-        },
-        turnStartTime: now,
-        chat: {},
-    });
-
     const resolveFaintedActiveParticipant = (participant) => {
         // M5_ITEM_SWITCH_DOT_BOTH_SIDES_PATCH
         const synced = syncBattleParticipantActivePetToTeam(participant);
@@ -2890,101 +2611,6 @@ const handleUseItem = async (itemId) => {
 
 
     
-    const handleFaintedPetSwitch = async (nextPetId) => {
-        // M10_FAINTED_SWITCH_CHOICE_PATCH
-        if (!battleState || !myPlayerData || isProcessing) return;
-        if (battleState.status !== 'pending_switch') return;
-
-        setIsProcessing(true);
-
-        try {
-            const battleRef = doc(db, 'classes', classId, 'battles', battleId);
-
-            const result = await runTransaction(db, async (transaction) => {
-                const battleDoc = await transaction.get(battleRef);
-                if (!battleDoc.exists()) return null;
-
-                const data = battleDoc.data();
-                if (data.status !== 'pending_switch') return null;
-
-                const iAmChallenger = myPlayerData.id === data.challenger.id;
-                const myRole = iAmChallenger ? 'challenger' : 'opponent';
-                const roles = Array.isArray(data.pendingSwitch?.roles)
-                    ? data.pendingSwitch.roles
-                    : [];
-
-                if (!roles.includes(myRole)) return null;
-
-                const selected = applyPendingSwitchSelection(data[myRole], nextPetId);
-                if (!selected?.participant) return null;
-
-                const remainingRoles = roles.filter(role => role !== myRole);
-                const nextQuiz = data.pendingNextQuestion || getNextQuizObj(data.usedQuestions || []);
-                const pendingUsedQuestions = Array.isArray(data.pendingUsedQuestions)
-                    ? data.pendingUsedQuestions
-                    : [...(data.usedQuestions || []), nextQuiz.question];
-
-                const switchLog = `🔁 ${selected.participant.name}의 ${selected.selectedPetName}이(가) 등장!`;
-                const baseLog = data.log || '';
-                const nextLog = [baseLog, switchLog].filter(Boolean).join(' ');
-
-                const updateData = {
-                    [myRole]: selected.participant,
-                    log: remainingRoles.length > 0
-                        ? `${nextLog} 상대가 다음 펫을 고르는 중입니다.`
-                        : nextLog,
-                };
-
-                if (remainingRoles.length > 0) {
-                    updateData.pendingSwitch = {
-                        ...(data.pendingSwitch || {}),
-                        roles: remainingRoles,
-                    };
-                } else {
-                    updateData.status = 'switching';
-                    updateData.question = null;
-                    updateData.pendingNextQuestion = nextQuiz;
-                    updateData.pendingUsedQuestions = pendingUsedQuestions;
-                    updateData.switchResumeAt = Date.now() + SWITCH_RESUME_DELAY_MS;
-                    updateData.pendingSwitch = null;
-                    updateData.turnStartTime = Date.now();
-                    updateData.turn = null;
-                    updateData.attackerAction = null;
-                    updateData.attackerActionPayload = null;
-                    updateData.defenderAction = null;
-                    updateData.chat = {};
-                }
-
-                transaction.update(battleRef, updateData);
-
-                return {
-                    switchedPetName: selected.selectedPetName,
-                };
-            });
-
-            if (result?.switchedPetName) {
-                setSwitchMessage(`🔁 ${result.switchedPetName} 등장!`);
-                setSwitchIntro(prev => ({ ...prev, my: true }));
-
-                clearTimeout(switchIntroTimerRef.current);
-                clearTimeout(switchMessageTimerRef.current);
-
-                switchIntroTimerRef.current = setTimeout(() => {
-                    setSwitchIntro({ my: false, opponent: false });
-                }, 1200);
-
-                switchMessageTimerRef.current = setTimeout(() => {
-                    setSwitchMessage('');
-                }, 1800);
-            }
-        } catch (error) {
-            console.error('Fainted pet switch error:', error);
-            alert('다음 펫 선택 중 오류가 발생했습니다.');
-        } finally {
-            setTimeout(() => setIsProcessing(false), 300);
-        }
-    };
-
     const handleManualSwitch = async (nextPetId) => {
         // M5_ITEM_SWITCH_DOT_BOTH_SIDES_PATCH
         if (!battleState || !myPlayerData || isProcessing) return;
@@ -3264,60 +2890,37 @@ const handleActionSelect = async (actionId) => {
                 await updateDoc(battleRef, updates);
             } else {
                 if (actionId === 'FLEE') {
-                    const myId = myPlayerData.id;
-                    const opponentId = battleState.turn;
-                    const fleeAttemptedBy = Array.isArray(battleState.fleeAttemptedBy)
-                        ? battleState.fleeAttemptedBy
-                        : [];
-
-                    if (fleeAttemptedBy.includes(myId)) {
-                        alert('이번 배틀에서는 이미 도망을 시도했습니다.');
-                        return;
-                    }
-
-                    const nextFleeAttemptedBy = [...new Set([...fleeAttemptedBy, myId])];
-
-                    const isChallengerMe = myPlayerData.id === battleState.challenger.id;
-                    const myParticipant = isChallengerMe ? battleState.challenger : battleState.opponent;
-                    const opponentParticipant = isChallengerMe ? battleState.opponent : battleState.challenger;
-                    const myPet = myParticipant.pet;
-                    const opponentPet = opponentParticipant.pet;
-
                     if (Math.random() < 0.3) {
+                        const opponentId = battleState.turn;
+                        const myId = myPlayerData.id;
+
+                        const isChallengerMe = myPlayerData.id === battleState.challenger.id;
+                        const myPet = isChallengerMe ? battleState.challenger.pet : battleState.opponent.pet;
+                        const opponentPet = isChallengerMe ? battleState.opponent.pet : battleState.challenger.pet;
+
                         await updateDoc(battleRef, {
                             status: 'finished',
-                            winner: opponentId,
-                            fledBy: myId,
-                            fleeAttemptedBy: nextFleeAttemptedBy,
+                            winner: null,
                             defenderAction: 'FLEE_SUCCESS',
-                            log: `🏃 ${myPet.name}이(가) 도망쳤습니다! ${opponentParticipant.name}의 승리로 처리됩니다.`
+                            log: `${myPet.name}이(가) 도망쳤습니다!`
                         });
 
-                        const resultSummary = await processBattleResults(
-                            classId,
-                            opponentId,
-                            myId,
-                            true,
-                            opponentPet,
-                            myPet,
-                            opponentParticipant?.team || [opponentPet],
-                            myParticipant?.team || [myPet],
-                            opponentParticipant?.participatedPetIds || null,
-                            myParticipant?.participatedPetIds || null
-                        );
+                        // M5_DRAW_TEAM_STATE_PERSIST_PATCH
+                            const myParticipant = isChallengerMe ? battleState.challenger : battleState.opponent;
+                            const opponentParticipant = isChallengerMe ? battleState.opponent : battleState.challenger;
 
-                        if (resultSummary) {
-                            setLocalResultSummary(resultSummary);
-                            await updateDoc(battleRef, { resultSummary });
-                        }
-
+                            await processBattleDraw(
+                                classId,
+                                myId,
+                                opponentId,
+                                myPet,
+                                opponentPet,
+                                myParticipant?.team || [myPet],
+                                opponentParticipant?.team || [opponentPet]
+                            );
                         setTimeout(() => goBack(), 2000);
                     } else {
-                        await updateDoc(battleRef, {
-                            defenderAction: 'FLEE_FAILED',
-                            fleeAttemptedBy: nextFleeAttemptedBy,
-                            log: '도망치기에 실패했다! 이번 배틀에서는 더 이상 도망칠 수 없습니다.'
-                        });
+                        await updateDoc(battleRef, { defenderAction: 'FLEE_FAILED', log: '도망치기에 실패했다!' });
                     }
                 } else {
                     await updateDoc(battleRef, { defenderAction: actionId });
@@ -3499,9 +3102,21 @@ if (defender.pet.status?.stunned) {
                     log += ` 🌳 [성실한 나무 효과로 HP +${heal} 회복]`;
                 }
 
-                // M10_FAINTED_SWITCH_CHOICE_PATCH
-                // 공격/스킬 처리 후 쓰러진 active 펫 처리:
-                // 대기 0마리: 종료, 대기 1마리: 자동교체, 대기 2마리 이상: 직접 선택
+                let switchMessages = [];
+
+                const attackerSwitch = switchToNextAlivePetIfNeeded(attacker);
+                attacker = attackerSwitch.participant;
+                if (attackerSwitch.switched) {
+                    switchMessages.push(`${attacker.name}의 다음 펫 ${attackerSwitch.switchedPetName}이(가) 등장!`);
+                }
+
+                const defenderSwitch = switchToNextAlivePetIfNeeded(defender);
+                defender = defenderSwitch.participant;
+                if (defenderSwitch.switched) {
+                    switchMessages.push(`${defender.name}의 다음 펫 ${defenderSwitch.switchedPetName}이(가) 등장!`);
+                }
+
+                // M5_FIX_DUPLICATE_CCDOTLOGS_PATCH
                 const ccDotLogs = [
                     applyEndOfTurnDotAndStatus(attacker, { eligibleStatusKeys: initialAttackerStatusKeys }),
                     applyEndOfTurnDotAndStatus(defender, { eligibleStatusKeys: initialDefenderStatusKeys }),
@@ -3511,51 +3126,28 @@ if (defender.pet.status?.stunned) {
                     log += ` ${ccDotLogs.join(' ')}`;
                 }
 
-                const attackerFaintState = getFaintedSwitchState(attacker);
-                attacker = attackerFaintState.participant;
-
-                const defenderFaintState = getFaintedSwitchState(defender);
-                defender = defenderFaintState.participant;
-
-                const pendingSwitchRoles = [];
-                const switchMessages = [];
-
-                if (attackerFaintState.log) switchMessages.push(attackerFaintState.log);
-                if (defenderFaintState.log) switchMessages.push(defenderFaintState.log);
-
-                if (attackerFaintState.needsChoice) {
-                    pendingSwitchRoles.push(isChallengerAttacker ? 'challenger' : 'opponent');
-                }
-
-                if (defenderFaintState.needsChoice) {
-                    pendingSwitchRoles.push(isChallengerAttacker ? 'opponent' : 'challenger');
-                }
-
-                const isFinished = attackerFaintState.teamDefeated || defenderFaintState.teamDefeated;
+                const isFinished = defender.pet.hp <= 0 || attacker.pet.hp <= 0;
                 let winnerId = null;
 
                 if (isFinished) {
-                    if (attackerFaintState.teamDefeated && !defenderFaintState.teamDefeated) winnerId = defender.id;
-                    else if (defenderFaintState.teamDefeated && !attackerFaintState.teamDefeated) winnerId = attacker.id;
-                    log += ` ${switchMessages.join(' ')} 전투 종료!`;
+                    if (attacker.pet.hp > 0) winnerId = attacker.id;
+                    else if (defender.pet.hp > 0) winnerId = defender.id;
+                    log += ` 펫이 지쳐 쓰러졌습니다! 전투 종료!`;
                 } else if (switchMessages.length > 0) {
                     log += ` ${switchMessages.join(' ')}`;
                 }
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
-                const hasPendingSwitch = !isFinished && pendingSwitchRoles.length > 0;
-                const hasSwitchPause = !isFinished && !hasPendingSwitch && switchMessages.length > 0;
-                const nextTurnUpdate = hasPendingSwitch
-                    ? buildPendingSwitchUpdate(data, nextQuiz, pendingSwitchRoles)
-                    : hasSwitchPause
-                        ? buildSwitchPauseUpdate(data, nextQuiz)
-                        : buildNextQuizUpdate(data, nextQuiz);
+                const hasSwitchPause = !isFinished && switchMessages.length > 0;
+                const nextTurnUpdate = hasSwitchPause
+                    ? buildSwitchPauseUpdate(data, nextQuiz)
+                    : buildNextQuizUpdate(data, nextQuiz);
 
                 const updateData = {
                     log,
                     challenger: syncBattleParticipantActivePet(isChallengerAttacker ? attacker : defender),
                     opponent: syncBattleParticipantActivePet(isChallengerAttacker ? defender : attacker),
-                    status: isFinished ? 'finished' : hasPendingSwitch ? 'pending_switch' : hasSwitchPause ? 'switching' : 'quiz',
+                    status: isFinished ? 'finished' : hasSwitchPause ? 'switching' : 'quiz',
                     winner: winnerId,
                     ...(!isFinished && {
                         ...nextTurnUpdate,
@@ -3671,39 +3263,8 @@ if (defender.pet.status?.stunned) {
         ));
     })();
 
-    const pendingSwitchRoles = Array.isArray(battleState.pendingSwitch?.roles)
-        ? battleState.pendingSwitch.roles
-        : [];
-    const pendingSwitchForMe = battleState.status === 'pending_switch' && pendingSwitchRoles.includes(myRole);
-    const pendingSwitchPets = (() => {
-        if (!pendingSwitchForMe || !myInfo) return [];
-
-        const team = Array.isArray(myInfo.team) && myInfo.team.length > 0
-            ? myInfo.team
-            : myInfo.pet
-                ? [myInfo.pet]
-                : [];
-
-        const activePetId = myInfo.activePetId || myInfo.pet?.id || null;
-
-        return team.filter(pet => (
-            pet?.id &&
-            pet.id !== activePetId &&
-            Number(pet.hp ?? 0) > 0
-        ));
-    })();
-
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
     const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
-
-    // M15_FLEE_LIMIT_AND_FLEE_WIN_PATCH
-    // 도망은 플레이어당 전투 1회만 시도할 수 있습니다.
-    const fleeAttemptedByMe = Array.isArray(battleState.fleeAttemptedBy)
-        && battleState.fleeAttemptedBy.includes(myPlayerData.id);
-
-    const availableDefenseActions = fleeAttemptedByMe
-        ? Object.fromEntries(Object.entries(DEFENSE_ACTIONS).filter(([key]) => key !== 'FLEE'))
-        : DEFENSE_ACTIONS;
 
     const myEquippedSkills = (myInfo.pet.equippedSkills || [])
         .filter(id => id.toLowerCase() !== 'tackle')
@@ -3713,7 +3274,7 @@ if (defender.pet.status?.stunned) {
         })
         .filter(Boolean);
 
-    const showTimer = (battleState.status === 'quiz' || battleState.status === 'action' || battleState.status === 'pending_switch');
+    const showTimer = (battleState.status === 'quiz' || battleState.status === 'action');
     const isStunned = myInfo.pet.status?.stunned;
     const isBound = myInfo.pet.status?.bound;
     const hasSubmitted = battleState.chat?.[myPlayerData?.id] !== undefined;
@@ -3760,7 +3321,7 @@ if (defender.pet.status?.stunned) {
                 ) : (
                     <>
                         <BattleField>
-                            {showTimer && <Timer $variant={battleState.status === 'pending_switch' ? 'switch' : undefined}>{timeLeft}</Timer>}
+                            {showTimer && <Timer>{timeLeft}</Timer>}
                             {switchMessage && (
                                 <div
                                     style={{
@@ -3873,58 +3434,6 @@ if (defender.pet.status?.stunned) {
                                         <div>새 펫이 등장했습니다. 잠시 후 다음 문제가 시작됩니다.</div>
                                     </div>
                                 )}
-                                {battleState.status === 'pending_switch' && (
-                                    <div style={{
-                                        marginTop: '1rem',
-                                        padding: '1rem',
-                                        borderRadius: '16px',
-                                        background: pendingSwitchForMe ? '#f3f0ff' : '#f8f9fa',
-                                        border: pendingSwitchForMe ? '2px solid #7950f2' : '2px solid #dee2e6',
-                                        color: pendingSwitchForMe ? '#5f3dc4' : '#495057',
-                                        fontWeight: 900,
-                                        textAlign: 'center',
-                                        lineHeight: 1.6,
-                                    }}>
-                                        {pendingSwitchForMe ? (
-                                            <>
-                                                <div style={{ fontSize: '1.25rem', marginBottom: '0.4rem' }}>💫 다음 펫을 선택하세요!</div>
-                                                <div style={{ marginBottom: '0.8rem' }}>10초 안에 출전할 펫을 고르세요. 시간이 지나면 자동으로 선택됩니다.</div>
-                                                <div style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                                                    gap: '0.6rem',
-                                                }}>
-                                                    {pendingSwitchPets.map(pet => (
-                                                        <button
-                                                            key={pet.id}
-                                                            onClick={() => handleFaintedPetSwitch(pet.id)}
-                                                            disabled={isProcessing}
-                                                            style={{
-                                                                padding: '0.75rem',
-                                                                borderRadius: '14px',
-                                                                border: '2px solid #7950f2',
-                                                                background: 'white',
-                                                                color: '#5f3dc4',
-                                                                fontWeight: 900,
-                                                                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                                                            }}
-                                                        >
-                                                            <div>{pet.name}</div>
-                                                            <div style={{ fontSize: '0.82rem', opacity: 0.85 }}>
-                                                                Lv.{pet.level || 1} · HP {Math.max(0, Number(pet.hp ?? 0))}/{pet.maxHp ?? '?'}
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div style={{ fontSize: '1.25rem' }}>⏳ 상대가 다음 펫을 고르는 중입니다.</div>
-                                                <div>상대가 선택하거나 10초가 지나면 다음 문제가 시작됩니다.</div>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
                                 {battleState.status === 'quiz' && battleState.question && (
                                     <>
                                         <h3>Q. {battleState.question.question}</h3>
@@ -4010,7 +3519,7 @@ if (defender.pet.status?.stunned) {
                                 handleUseItem={handleUseItem}
                                     switchablePets={showActionMenu && !myInfo?.pet?.status?.bound ? switchablePets : []}
                                     handleManualSwitch={handleManualSwitch}
-                                DEFENSE_ACTIONS={availableDefenseActions}
+                                DEFENSE_ACTIONS={DEFENSE_ACTIONS}
                                 ActionMenuComponent={ActionMenu}
                                 MenuItemComponent={MenuItem}
                             />
@@ -4021,143 +3530,23 @@ if (defender.pet.status?.stunned) {
             {battleState?.status === 'finished' && (() => {
                 const isWin = battleState.winner === myPlayerData?.id;
                 const isDraw = !battleState.winner;
-                // M17_TEAM_RESULT_MODAL_PATCH
-                // 2v2/3v3에서는 파트너 펫 1마리보다 이번 배틀 팀 전체를 보여주는 편이 자연스럽습니다.
-                const resultParticipant = rawMyInfo || myInfo || {};
-                const battleTeam = Array.isArray(resultParticipant.team) && resultParticipant.team.length > 0
-                    ? resultParticipant.team
-                    : resultParticipant.pet
-                        ? [resultParticipant.pet]
-                        : [];
-
-                const latestPetMap = new Map((myPlayerData?.pets || []).map(pet => [pet.id, pet]));
-                const participatedIds = new Set([
-                    ...(Array.isArray(resultParticipant.participatedPetIds) ? resultParticipant.participatedPetIds : []),
-                    resultParticipant.pet?.id,
-                ].filter(Boolean));
-
-                const resultTeamPets = battleTeam.map(pet => ({
-                    ...pet,
-                    ...(latestPetMap.get(pet.id) || {}),
-                    participated: participatedIds.has(pet.id),
-                }));
-
-                const resultSummary = battleState.resultSummary || localResultSummary || null;
-                const isFleeResult = Boolean(battleState.fledBy || resultSummary?.fled);
-                const pointChange = resultSummary?.pointChanges?.[myPlayerData?.id];
-                const pointChangeText = Number.isFinite(Number(pointChange))
-                    ? Number(pointChange) > 0
-                        ? `+${Number(pointChange)}P`
-                        : Number(pointChange) < 0
-                            ? `${Number(pointChange)}P`
-                            : '0P'
-                    : null;
-
-                const myExpGains = resultSummary
-                    ? (
-                        battleState.winner === myPlayerData?.id
-                            ? (resultSummary.winnerPetExpGains || [])
-                            : (resultSummary.loserPetExpGains || [])
-                    )
-                    : [];
-
-                const totalExpGain = myExpGains.reduce((sum, item) => sum + Number(item.exp || 0), 0);
-                const expGainMap = new Map(myExpGains.map(item => [item.petId, item.exp]));
-                const hasRewardSummary = Boolean(resultSummary && (pointChangeText !== null || totalExpGain > 0));
+                const myPet = myPlayerData?.pets?.find(p => p.id === myPlayerData?.partnerPetId) || myPlayerData?.pets?.[0];
                 const color = isDraw ? '#6c757d' : isWin ? '#007bff' : '#dc3545';
                 return (
                     <ModalBackground>
                         <ModalContent $color={color}>
                             <h2>
-                                {isDraw
-                                    ? '무승부'
-                                    : isFleeResult && isWin
-                                        ? '🏃 도망 승리!'
-                                        : isFleeResult
-                                            ? '🏃 도망 처리'
-                                            : isWin
-                                                ? '🏆 승리!'
-                                                : '💀 패배...'}
+                                {isDraw ? '무승부' : isWin ? '🏆 승리!' : '💀 패배...'}
                             </h2>
                             <p>{battleState.log}</p>
-                            {hasRewardSummary && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.18)',
-                                    borderRadius: '12px',
-                                    padding: '0.8rem 1rem',
-                                    margin: '0.6rem 0 1rem',
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                                    gap: '0.6rem',
-                                    fontWeight: 900,
-                                }}>
-                                    {pointChangeText !== null && (
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>포인트 변화</div>
-                                            <div style={{ fontSize: '1.1rem' }}>
-                                                {Number(pointChange) > 0 ? '💰 ' : Number(pointChange) < 0 ? '💸 ' : '➖ '}
-                                                {pointChangeText}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>획득 경험치</div>
-                                        <div style={{ fontSize: '1.1rem' }}>✨ +{totalExpGain} EXP</div>
+                            {myPet && (
+                                <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '10px', padding: '0.7rem 1rem', margin: '0.5rem 0 1rem', fontSize: '0.88rem' }}>
+                                    <div style={{ fontWeight: 800, marginBottom: '0.3rem', opacity: 0.85 }}>
+                                        {myPet.name} 누적 전적
                                     </div>
-                                    {isFleeResult && resultSummary?.fleeRewardPercent && (
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>도망 보상</div>
-                                            <div style={{ fontSize: '1.1rem' }}>{resultSummary.fleeRewardPercent}% 반영</div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {resultTeamPets.length > 0 && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.15)',
-                                    borderRadius: '12px',
-                                    padding: '0.75rem 1rem',
-                                    margin: '0.5rem 0 1rem',
-                                    fontSize: '0.88rem',
-                                }}>
-                                    <div style={{ fontWeight: 900, marginBottom: '0.55rem', opacity: 0.9 }}>
-                                        이번 배틀 팀
-                                    </div>
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                                        gap: '0.5rem',
-                                    }}>
-                                        {resultTeamPets.map(pet => (
-                                            <div
-                                                key={pet.id}
-                                                style={{
-                                                    background: pet.participated ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-                                                    border: pet.participated ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.16)',
-                                                    borderRadius: '10px',
-                                                    padding: '0.5rem',
-                                                    opacity: pet.participated ? 1 : 0.72,
-                                                }}
-                                            >
-                                                <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
-                                                    {pet.participated ? '✅' : '대기'} {pet.name}
-                                                </div>
-                                                <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>
-                                                    Lv.{pet.level || 1} · HP {Math.max(0, Number(pet.hp ?? 0))}/{pet.maxHp ?? '?'}
-                                                </div>
-                                                {Number(expGainMap.get(pet.id) || 0) > 0 && (
-                                                    <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', fontWeight: 900 }}>
-                                                        ✨ +{expGainMap.get(pet.id)} EXP
-                                                    </div>
-                                                )}
-                                                <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', opacity: 0.9 }}>
-                                                    🏆 {pet.battleWins || 0}승 · 💀 {pet.battleLosses || 0}패
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div style={{ marginTop: '0.45rem', fontSize: '0.76rem', opacity: 0.78 }}>
-                                        ✅ 표시된 펫은 이번 배틀에 실제로 출전한 펫입니다.
+                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                                        <span>🏆 {myPet.battleWins || 0}승</span>
+                                        <span>💀 {myPet.battleLosses || 0}패</span>
                                     </div>
                                 </div>
                             )}

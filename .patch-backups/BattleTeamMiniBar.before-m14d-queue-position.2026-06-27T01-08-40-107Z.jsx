@@ -16,19 +16,17 @@ const TeamMiniBarWrapper = styled.div`
     backdrop-filter: blur(4px);
     /* M14_BATTLE_TEAM_MINIBAR_POSITION_PATCH
        M14B_MINIBAR_OVERLAP_FIX_PATCH
-       M14D_RESTORE_MY_QUEUE_MOVE_OPPONENT_QUEUE_PATCH
-       M14E_OPPONENT_QUEUE_ALIGN_PATCH
        M14C_MINIBAR_UPPER_GAP_FIX_PATCH
        상태창 카드와 겹치지 않도록 카드 옆 빈 공간으로 더 밀어냅니다.
        - 내 팀: 내 상태창 오른쪽 바깥
        - 상대 팀: 상대 상태창 왼쪽 바깥
     */
     ${props => props.$isMine ? `
-        left: 350px;
-        top: 26px;
+        left: 292px;
+        top: 42px;
     ` : `
-        right: 350px;
-        bottom: 32px;
+        right: 410px;
+        bottom: 66px;
         flex-direction: row-reverse;
     `}
 
@@ -37,21 +35,21 @@ const TeamMiniBarWrapper = styled.div`
         padding: 5px 6px;
 
         ${props => props.$isMine ? `
-            left: 285px;
-            top: 20px;
+            left: 232px;
+            top: 36px;
         ` : `
-            right: 280px;
-            bottom: 30px;
+            right: 320px;
+            bottom: 56px;
         `}
     }
 
     @media (max-width: 640px) {
         ${props => props.$isMine ? `
             left: 12px;
-            top: 104px;
+            top: 112px;
         ` : `
             right: 12px;
-            bottom: 78px;
+            bottom: 112px;
         `}
     }
 `;
