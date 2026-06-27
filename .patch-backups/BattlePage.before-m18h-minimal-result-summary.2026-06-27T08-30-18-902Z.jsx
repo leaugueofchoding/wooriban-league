@@ -931,7 +931,7 @@ function BattlePage() {
     const [battleState, setBattleState] = useState(null);
     // M18B_RESULT_SUMMARY_LOCAL_FALLBACK_V3_PATCH
     // resultSummary가 Firestore snapshot으로 늦게 들어와도 결과창에 즉시 표시하기 위한 로컬 fallback
-    const [localResultSummary, setLocalResultSummary] = useState(null); // M18H_MINIMAL_RESULT_SUMMARY_SAVE_PATCH
+    const [localResultSummary, setLocalResultSummary] = useState(null);
     const [timeLeft, setTimeLeft] = useState(20);
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -2232,7 +2232,7 @@ const handleCancel = async () => {
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
             
-                                const resultSummary = await processBattleResults(
+                await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -2244,10 +2244,6 @@ const handleCancel = async () => {
                     winnerParticipant.participatedPetIds || null,
                     loserParticipant.participatedPetIds || null
                 );
-                if (resultSummary) {
-                    setLocalResultSummary(resultSummary);
-                    await updateDoc(battleRef, { resultSummary });
-                }
             }
 
         } catch (error) {
@@ -2868,7 +2864,7 @@ const handleUseItem = async (itemId) => {
                         ? result.finalOpponent
                         : result.finalChallenger;
 
-                                        const resultSummary = await processBattleResults(
+                    await processBattleResults(
                         classId,
                         result.winnerId,
                         loserId,
@@ -2880,10 +2876,6 @@ const handleUseItem = async (itemId) => {
                         winnerParticipant.participatedPetIds || null,
                         loserParticipant.participatedPetIds || null
                     );
-                    if (resultSummary) {
-                        setLocalResultSummary(resultSummary);
-                        await updateDoc(battleRef, { resultSummary });
-                    }
                 }
             }
         } catch (error) {
@@ -3209,7 +3201,7 @@ const handleUseItem = async (itemId) => {
                     ? result.finalOpponent
                     : result.finalChallenger;
 
-                                const resultSummary = await processBattleResults(
+                await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -3221,10 +3213,6 @@ const handleUseItem = async (itemId) => {
                     winnerParticipant.participatedPetIds || null,
                     loserParticipant.participatedPetIds || null
                 );
-                if (resultSummary) {
-                    setLocalResultSummary(resultSummary);
-                    await updateDoc(battleRef, { resultSummary });
-                }
             }
         } catch (error) {
             console.error('Manual pet switch error:', error);
@@ -3323,8 +3311,7 @@ const handleActionSelect = async (actionId) => {
                             await updateDoc(battleRef, { resultSummary });
                         }
 
-                        // M18H_MINIMAL_RESULT_SUMMARY_SAVE_PATCH
-                        // 도망 결과도 결과창에서 확인할 수 있도록 자동 이동하지 않습니다.
+                        setTimeout(() => goBack(), 2000);
                     } else {
                         await updateDoc(battleRef, {
                             defenderAction: 'FLEE_FAILED',
@@ -3602,7 +3589,7 @@ if (defender.pet.status?.stunned) {
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
             
-                                const resultSummary = await processBattleResults(
+                await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -3614,10 +3601,6 @@ if (defender.pet.status?.stunned) {
                     winnerParticipant.participatedPetIds || null,
                     loserParticipant.participatedPetIds || null
                 );
-                if (resultSummary) {
-                    setLocalResultSummary(resultSummary);
-                    await updateDoc(battleRef, { resultSummary });
-                }
             }
         } catch (error) {
             console.error("Battle resolution error:", error);
@@ -4097,17 +4080,6 @@ if (defender.pet.status?.stunned) {
                                                 : '💀 패배...'}
                             </h2>
                             <p>{battleState.log}</p>
-                            {!isDraw && !hasRewardSummary && battleState.resultSummaryError && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.18)',
-                                    borderRadius: '12px',
-                                    padding: '0.8rem 1rem',
-                                    margin: '0.6rem 0 1rem',
-                                    fontWeight: 900,
-                                }}>
-                                    ⚠️ 보상 요약을 불러오지 못했습니다. 실제 보상은 처리되었을 수 있습니다.
-                                </div>
-                            )}
                             {hasRewardSummary && (
                                 <div style={{
                                     background: 'rgba(255,255,255,0.18)',

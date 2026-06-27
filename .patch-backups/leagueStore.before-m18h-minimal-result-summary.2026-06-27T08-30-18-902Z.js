@@ -360,8 +360,7 @@ export const useLeagueStore = create((set, get) => ({
     ) => {
         // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH_FIX_AFTER_V2
         try {
-            // M18H_RETURN_RESULT_SUMMARY_FROM_STORE_PATCH
-            const resultSummary = await firebaseProcessBattleResults(
+            await firebaseProcessBattleResults(
                 classIdArg,
                 winnerId,
                 loserId,
@@ -375,10 +374,8 @@ export const useLeagueStore = create((set, get) => ({
             );
             const updatedPlayers = await getPlayers(classIdArg);
             set({ players: updatedPlayers });
-            return resultSummary;
         } catch (error) {
             console.error("Battle result processing failed:", error);
-            return null;
         }
     },
 
