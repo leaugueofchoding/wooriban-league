@@ -5098,12 +5098,19 @@ export async function createBattleChallenge(classId, challengerObj, opponentObj,
   const battleTeamSize = Math.max(challengerBattleTeamWithTitleEffects.length, opponentBattleTeamWithTitleEffects.length);
   const battleMode = battleTeamSize > 1 ? 'team-preview' : 'single';
 
+  // M21_RANDOM_CSS_BATTLE_BACKGROUNDS_PATCH
+  // 학생이 선택하지 않아도 배틀을 시작할 때마다 CSS 배경 테마가 랜덤으로 정해집니다.
+  // battle 문서에 저장하므로 양쪽 플레이어가 같은 배경을 봅니다.
+  const battleThemeIds = ['forest', 'sunset', 'ice', 'star', 'thunder', 'cherry'];
+  const battleTheme = battleThemeIds[Math.floor(Math.random() * battleThemeIds.length)];
+
   const battleData = {
     id: battleId,
     status: 'pending',
     battleSchemaVersion: 2,
     battleMode,
     teamSize: battleTeamSize,
+    battleTheme,
     // 칭호가 없을 경우 undefined 대신 null을 넣도록 방어 처리!
     challenger: createBattleParticipantSnapshot(challenger, challengerPet, {}, challengerBattleTeamWithTitleEffects),
     opponent: createBattleParticipantSnapshot(opponent, opponentPet, { accepted: false }, opponentBattleTeamWithTitleEffects),

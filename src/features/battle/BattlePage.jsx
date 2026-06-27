@@ -626,37 +626,237 @@ const ScaleSlider = styled.input`
   flex: 1; accent-color: #339af0; cursor: pointer;
 `;
 
+// M21_RANDOM_CSS_BATTLE_BACKGROUNDS_PATCH
+const getBattleFieldThemeCss = (theme = 'forest') => {
+  switch (theme) {
+    case 'sunset':
+      return css`
+        border-color: #ff922b;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(255, 236, 153, 0.9) 0 8%, transparent 9%),
+          linear-gradient(to bottom, #ff922b 0%, #ffc078 35%, #ffe8cc 36%, #ffa94d 100%);
+        box-shadow:
+          inset 0 0 0 4px rgba(255,255,255,0.42),
+          inset 0 -18px 0 rgba(230, 119, 0, 0.2),
+          0 8px 20px rgba(0,0,0,0.1);
+
+        &::before {
+          opacity: 0.33;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.38) 2px, transparent 2px),
+            linear-gradient(90deg, rgba(255,255,255,0.22) 2px, transparent 2px);
+          background-size: 26px 26px;
+        }
+
+        &::after {
+          background:
+            repeating-linear-gradient(
+              0deg,
+              rgba(201, 101, 0, 0.26) 0 8px,
+              rgba(255, 169, 77, 0.28) 8px 16px
+            );
+          border-color: rgba(230, 119, 0, 0.38);
+          box-shadow:
+            inset 0 0 0 6px rgba(255,255,255,0.25),
+            0 12px 0 rgba(230, 119, 0, 0.16);
+        }
+      `;
+
+    case 'ice':
+      return css`
+        border-color: #74c0fc;
+        background:
+          radial-gradient(circle at 20% 22%, rgba(255,255,255,0.75) 0 7%, transparent 8%),
+          radial-gradient(circle at 78% 18%, rgba(255,255,255,0.45) 0 5%, transparent 6%),
+          linear-gradient(to bottom, #d0ebff 0%, #e7f5ff 37%, #a5d8ff 38%, #74c0fc 100%);
+        box-shadow:
+          inset 0 0 0 4px rgba(255,255,255,0.55),
+          inset 0 -18px 0 rgba(24, 100, 171, 0.16),
+          0 8px 20px rgba(0,0,0,0.08);
+
+        &::before {
+          opacity: 0.42;
+          background-image:
+            linear-gradient(135deg, rgba(255,255,255,0.7) 2px, transparent 2px),
+            linear-gradient(45deg, rgba(255,255,255,0.28) 2px, transparent 2px);
+          background-size: 28px 28px;
+        }
+
+        &::after {
+          background:
+            repeating-linear-gradient(
+              0deg,
+              rgba(116, 192, 252, 0.28) 0 8px,
+              rgba(208, 235, 255, 0.35) 8px 16px
+            );
+          border-color: rgba(51, 154, 240, 0.42);
+          box-shadow:
+            inset 0 0 0 6px rgba(255,255,255,0.32),
+            0 12px 0 rgba(24, 100, 171, 0.12);
+        }
+      `;
+
+    case 'star':
+      return css`
+        border-color: #845ef7;
+        background:
+          radial-gradient(circle at 16% 20%, rgba(255,255,255,0.95) 0 2px, transparent 3px),
+          radial-gradient(circle at 68% 14%, rgba(255,255,255,0.85) 0 2px, transparent 3px),
+          radial-gradient(circle at 86% 30%, rgba(255,255,255,0.75) 0 2px, transparent 3px),
+          linear-gradient(to bottom, #343a40 0%, #5f3dc4 38%, #6741d9 39%, #9775fa 100%);
+        box-shadow:
+          inset 0 0 0 4px rgba(255,255,255,0.25),
+          inset 0 -18px 0 rgba(52, 58, 64, 0.18),
+          0 8px 22px rgba(0,0,0,0.14);
+
+        &::before {
+          opacity: 0.28;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.38) 2px, transparent 2px),
+            linear-gradient(90deg, rgba(255,255,255,0.25) 2px, transparent 2px);
+          background-size: 24px 24px;
+        }
+
+        &::after {
+          background:
+            repeating-linear-gradient(
+              0deg,
+              rgba(95, 61, 196, 0.32) 0 8px,
+              rgba(151, 117, 250, 0.28) 8px 16px
+            );
+          border-color: rgba(255,255,255,0.34);
+          box-shadow:
+            inset 0 0 0 6px rgba(255,255,255,0.20),
+            0 12px 0 rgba(52, 58, 64, 0.18);
+        }
+      `;
+
+    case 'thunder':
+      return css`
+        border-color: #ffd43b;
+        background:
+          linear-gradient(135deg, transparent 0 58%, rgba(255, 212, 59, 0.78) 59% 62%, transparent 63%),
+          radial-gradient(circle at 70% 18%, rgba(255, 236, 153, 0.7) 0 9%, transparent 10%),
+          linear-gradient(to bottom, #495057 0%, #868e96 38%, #ced4da 39%, #ffd43b 100%);
+        box-shadow:
+          inset 0 0 0 4px rgba(255,255,255,0.28),
+          inset 0 -18px 0 rgba(245, 159, 0, 0.22),
+          0 8px 22px rgba(0,0,0,0.13);
+
+        &::before {
+          opacity: 0.36;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.34) 2px, transparent 2px),
+            linear-gradient(90deg, rgba(255, 212, 59, 0.35) 2px, transparent 2px);
+          background-size: 24px 24px;
+        }
+
+        &::after {
+          background:
+            repeating-linear-gradient(
+              0deg,
+              rgba(245, 159, 0, 0.30) 0 8px,
+              rgba(255, 212, 59, 0.30) 8px 16px
+            );
+          border-color: rgba(245, 159, 0, 0.45);
+          box-shadow:
+            inset 0 0 0 6px rgba(255,255,255,0.22),
+            0 12px 0 rgba(52, 58, 64, 0.16);
+        }
+      `;
+
+    case 'cherry':
+      return css`
+        border-color: #f783ac;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.72) 0 5%, transparent 6%),
+          radial-gradient(circle at 78% 22%, rgba(255, 222, 235, 0.9) 0 8%, transparent 9%),
+          linear-gradient(to bottom, #fcc2d7 0%, #ffe3ec 38%, #d8f5a2 39%, #b2f2bb 100%);
+        box-shadow:
+          inset 0 0 0 4px rgba(255,255,255,0.48),
+          inset 0 -18px 0 rgba(201, 42, 42, 0.12),
+          0 8px 20px rgba(0,0,0,0.08);
+
+        &::before {
+          opacity: 0.38;
+          background-image:
+            radial-gradient(circle, rgba(240, 101, 149, 0.38) 0 3px, transparent 4px),
+            linear-gradient(rgba(255,255,255,0.28) 2px, transparent 2px);
+          background-size: 30px 30px, 24px 24px;
+        }
+
+        &::after {
+          background:
+            repeating-linear-gradient(
+              0deg,
+              rgba(240, 101, 149, 0.18) 0 8px,
+              rgba(81, 207, 102, 0.22) 8px 16px
+            );
+          border-color: rgba(240, 101, 149, 0.32);
+          box-shadow:
+            inset 0 0 0 6px rgba(255,255,255,0.28),
+            0 12px 0 rgba(47, 158, 68, 0.12);
+        }
+      `;
+
+    case 'forest':
+    default:
+      return css`
+        border-color: #8ce99a;
+        background:
+          linear-gradient(
+            to bottom,
+            #a5d8ff 0%,
+            #d0ebff 38%,
+            #b2f2bb 39%,
+            #8ce99a 100%
+          );
+        box-shadow:
+          inset 0 0 0 4px rgba(255,255,255,0.45),
+          inset 0 -18px 0 rgba(47, 158, 68, 0.18),
+          0 8px 20px rgba(0,0,0,0.08);
+
+        &::before {
+          opacity: 0.45;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.42) 2px, transparent 2px),
+            linear-gradient(90deg, rgba(255,255,255,0.32) 2px, transparent 2px);
+          background-size: 24px 24px;
+        }
+
+        &::after {
+          background:
+            repeating-linear-gradient(
+              0deg,
+              rgba(43, 138, 62, 0.22) 0 8px,
+              rgba(81, 207, 102, 0.22) 8px 16px
+            );
+          border-color: rgba(47, 158, 68, 0.35);
+          box-shadow:
+            inset 0 0 0 6px rgba(255,255,255,0.25),
+            0 12px 0 rgba(47, 158, 68, 0.15);
+        }
+      `;
+  }
+};
+
 const BattleField = styled.div`
   height: 550px;
   position: relative;
   margin-bottom: 2rem;
   overflow: visible;
   border-radius: 20px;
-  border: 3px solid #8ce99a;
-  background:
-    linear-gradient(
-      to bottom,
-      #a5d8ff 0%,
-      #d0ebff 38%,
-      #b2f2bb 39%,
-      #8ce99a 100%
-    );
-  box-shadow:
-    inset 0 0 0 4px rgba(255,255,255,0.45),
-    inset 0 -18px 0 rgba(47, 158, 68, 0.18),
-    0 8px 20px rgba(0,0,0,0.08);
+  border: 3px solid;
+  transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+
+  ${props => getBattleFieldThemeCss(props.$theme)}
 
   &::before {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-        border-radius: 17px;
-opacity: 0.45;
-    background-image:
-      linear-gradient(rgba(255,255,255,0.42) 2px, transparent 2px),
-      linear-gradient(90deg, rgba(255,255,255,0.32) 2px, transparent 2px);
-    background-size: 24px 24px;
+    border-radius: 17px;
     image-rendering: pixelated;
     z-index: 0;
   }
@@ -670,16 +870,7 @@ opacity: 0.45;
     height: 120px;
     transform: translateX(-50%);
     border-radius: 50%;
-    background:
-      repeating-linear-gradient(
-        0deg,
-        rgba(43, 138, 62, 0.22) 0 8px,
-        rgba(81, 207, 102, 0.22) 8px 16px
-      );
-    border: 4px solid rgba(47, 158, 68, 0.35);
-    box-shadow:
-      inset 0 0 0 6px rgba(255,255,255,0.25),
-      0 12px 0 rgba(47, 158, 68, 0.15);
+    border: 4px solid;
     z-index: 0;
   }
 
@@ -4000,7 +4191,7 @@ if (defender.pet.status?.stunned) {
                     <WaitingText>{battleState.log}</WaitingText>
                 ) : (
                     <>
-                        <BattleField>
+                        <BattleField $theme={battleState.battleTheme || 'forest'}>
                             {showTimer && <Timer $variant={battleState.status === 'pending_switch' ? 'switch' : undefined}>{timeLeft}</Timer>}
                             {switchMessage && (
                                 <div
