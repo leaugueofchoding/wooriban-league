@@ -391,6 +391,96 @@ function MyRoomPage() {
   };
   const [roomConfig, setRoomConfig] = useState(initialRoomConfig);
 
+  // MYROOM_M1_STABILIZE_V1
+  // 이후 WASD 이동/펫 상호작용을 붙이기 전에 마이룸 데이터를 안전한 형태로 정규화한다.
+  const clampPercent = (value, fallback = 50) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(100, n));
+  };
+
+  const normalizePosition = (position = {}, fallback = {}) => {
+    const source = position && typeof position === 'object' ? position : {};
+    const base = fallback && typeof fallback === 'object' ? fallback : {};
+    const z = Number(source.zIndex ?? base.zIndex ?? 100);
+
+    return {
+      ...base,
+      ...source,
+      left: clampPercent(source.left, clampPercent(base.left, 50)),
+      top: clampPercent(source.top, clampPercent(base.top, 60)),
+      zIndex: Number.isFinite(z) ? z : Number(base.zIndex ?? 100),
+      isFlipped: Boolean(source.isFlipped ?? base.isFlipped ?? false)
+    };
+  };
+
+  const normalizeRoomConfig = (configData = {}, itemList = []) => {
+    const safeConfig = configData && typeof configData === 'object' ? configData : {};
+    const safeItems = Array.isArray(itemList) ? itemList : [];
+
+    const normalizedItems = safeItems
+      .filter(item => item && item.itemId)
+      .map((item, index) => {
+        const z = Number(item.zIndex ?? 1);
+        return {
+          ...item,
+          instanceId: item.instanceId ?? `${item.itemId}-${index}-${Date.now()}`,
+          left: clampPercent(item.left, 50),
+          top: clampPercent(item.top, 50),
+          zIndex: Number.isFinite(z) ? z : index + 1,
+          isFlipped: Boolean(item.isFlipped)
+        };
+      });
+
+    const normalizedPets = Object.entries(safeConfig.playerPets || {}).reduce((acc, [petId, pos], index) => {
+      acc[petId] = normalizePosition(pos, {
+        left: 60 + (index % 3) * 5,
+        top: 65 + (index % 2) * 5,
+        zIndex: 101 + index,
+        isFlipped: false
+      });
+      return acc;
+    }, {});
+
+    return {
+      ...initialRoomConfig,
+      ...safeConfig,
+      items: normalizedItems,
+      houseId: safeConfig.houseId || null,
+      backgroundId: safeConfig.backgroundId || null,
+      playerAvatar: normalizePosition(safeConfig.playerAvatar, initialRoomConfig.playerAvatar),
+      playerPet: normalizePosition(safeConfig.playerPet, initialRoomConfig.playerPet),
+      playerPets: normalizedPets
+    };
+  };
+
+  const cloneRoomConfigForEdit = (config = {}) => ({
+    ...config,
+    items: Array.isArray(config.items) ? config.items.map(item => ({ ...item })) : [],
+    playerAvatar: { ...(config.playerAvatar || initialRoomConfig.playerAvatar) },
+    playerPet: { ...(config.playerPet || initialRoomConfig.playerPet) },
+    playerPets: Object.fromEntries(
+      Object.entries(config.playerPets || {}).map(([petId, pos]) => [petId, { ...pos }])
+    )
+  });
+
+  const getEditableTarget = (config, targetId) => {
+    if (!config || !targetId) return null;
+    if (targetId === 'playerAvatar') return config.playerAvatar;
+    if (targetId === 'playerPet') return config.playerPet;
+
+    if (isPetKey(targetId)) {
+      const petId = targetId.slice(4);
+      if (!config.playerPets) config.playerPets = {};
+      if (!config.playerPets[petId]) {
+        config.playerPets[petId] = normalizePosition({}, getDefaultPetPosition(petId));
+      }
+      return config.playerPets[petId];
+    }
+
+    return (config.items || []).find(item => item.instanceId === targetId) || null;
+  };
+
   const roomContainerRef = useRef(null);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
@@ -497,7 +587,7 @@ function MyRoomPage() {
       likes.length
     );
   }, [roomOwnerData, likes.length]);
-const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[item.itemId] = (acc[item.itemId] || 0) + 1; return acc; }, {}), [roomConfig.items]);
+const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => { acc[item.itemId] = (acc[item.itemId] || 0) + 1; return acc; }, {}), [roomConfig.items]);
 
   const categorizedInventory = useMemo(() => {
     const itemsToDisplay = myPlayerData?.role === 'admin' ? myRoomItems : myPlayerData?.ownedMyRoomItems?.map(id => myRoomItems.find(i => i.id === id)).filter(Boolean) || [];
@@ -538,14 +628,7 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
             .map(([itemId, itemConfig], index) => ({ instanceId: Date.now() + index, itemId, ...itemConfig }));
         }
 
-        setRoomConfig({
-          items: newItems,
-          houseId: configData.houseId || null,
-          backgroundId: configData.backgroundId || null,
-          playerAvatar: configData.playerAvatar || initialRoomConfig.playerAvatar,
-          playerPet: configData.playerPet || initialRoomConfig.playerPet,
-          playerPets: configData.playerPets || {}  // ▼ [추가] 여러 펫 위치 로드
-        });
+        setRoomConfig(normalizeRoomConfig(configData, newItems));
 
         fetchRoomSocialData(playerId);
       }
@@ -565,66 +648,139 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
   };
 
 
+  // MYROOM_M1_1_PET_POSITION_FIX_V1
+  // roomConfig.playerPets에 아직 저장되지 않은 펫도 클릭 즉시 편집 가능하게 만든다.
+  const getDefaultPetPosition = (petId) => {
+    const ownerAllPets = roomOwnerData?.pets || [];
+    const petIndex = Math.max(0, ownerAllPets.findIndex(pet => pet.id === petId));
+    const defaultPositions = [
+      { left: 60, top: 65 },
+      { left: 70, top: 60 },
+      { left: 50, top: 70 },
+      { left: 75, top: 70 },
+      { left: 65, top: 75 }
+    ];
+
+    return {
+      ...defaultPositions[petIndex % defaultPositions.length],
+      zIndex: 101 + petIndex,
+      isFlipped: false
+    };
+  };
+
+  const ensurePetPosition = (petId) => {
+    if (!petId) return;
+
+    setRoomConfig(prev => {
+      if (prev.playerPets?.[petId]) return prev;
+
+      return normalizeRoomConfig({
+        ...prev,
+        playerPets: {
+          ...(prev.playerPets || {}),
+          [petId]: getDefaultPetPosition(petId)
+        }
+      }, prev.items || []);
+    });
+  };
+
   // --- Handlers (Edit) ---
 
-  const handleSelect = (e, instanceId) => { e.stopPropagation(); if (isMyRoom && isEditing) setSelectedItemId(instanceId); };
+  const handleSelect = (e, instanceId) => {
+    e.stopPropagation();
+    if (!isMyRoom || !isEditing) return;
+
+    if (isPetKey(instanceId)) {
+      ensurePetPosition(instanceId.slice(4));
+    }
+
+    setSelectedItemId(instanceId);
+  };
 
   // ▼ [수정] selectedItemId가 숫자(instanceId)일 수도 있어서 String() 변환 후 비교
   const isPetKey = (id) => typeof id === 'string' && id.startsWith('pet:');
 
   const moveItem = (direction) => {
-    if (!selectedItemId) return;
+    if (!isMyRoom || !isEditing || !selectedItemId) return;
+
     setRoomConfig(prev => {
+      const newConfig = cloneRoomConfigForEdit(prev);
+      const target = getEditableTarget(newConfig, selectedItemId);
+      if (!target) return prev;
+
       const moveAmount = 0.5;
-      const newConfig = JSON.parse(JSON.stringify(prev));
-      let target;
-      if (selectedItemId === 'playerAvatar') target = newConfig.playerAvatar;
-      else if (selectedItemId === 'playerPet') target = newConfig.playerPet;
-      else if (isPetKey(selectedItemId)) {
-        const petId = selectedItemId.slice(4);
-        target = newConfig.playerPets[petId];
-      }
-      else target = newConfig.items.find(i => i.instanceId === selectedItemId);
-      if (target) {
-        if (direction === 'up') target.top -= moveAmount;
-        if (direction === 'down') target.top += moveAmount;
-        if (direction === 'left') target.left -= moveAmount;
-        if (direction === 'right') target.left += moveAmount;
-      }
-      return newConfig;
+      if (direction === 'up') target.top = clampPercent(target.top - moveAmount, target.top);
+      if (direction === 'down') target.top = clampPercent(target.top + moveAmount, target.top);
+      if (direction === 'left') target.left = clampPercent(target.left - moveAmount, target.left);
+      if (direction === 'right') target.left = clampPercent(target.left + moveAmount, target.left);
+
+      return normalizeRoomConfig(newConfig, newConfig.items);
     });
   };
 
-  const startMoving = (direction) => { stopMoving(); moveItem(direction); moveInterval.current = setInterval(() => moveItem(direction), 50); };
-  const stopMoving = () => clearInterval(moveInterval.current);
+  const stopMoving = () => {
+    if (moveInterval.current) {
+      clearInterval(moveInterval.current);
+      moveInterval.current = null;
+    }
+  };
+
+  const startMoving = (direction) => {
+    if (!isMyRoom || !isEditing || !selectedItemId) return;
+    stopMoving();
+    moveItem(direction);
+    moveInterval.current = setInterval(() => moveItem(direction), 50);
+  };
+
+  useEffect(() => {
+    return () => stopMoving();
+  }, []);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setSelectedItemId(null);
+      stopMoving();
+    }
+  }, [isEditing, playerId]);
+
   const handleFlip = () => {
-    if (!selectedItemId) return;
+    if (!isMyRoom || !isEditing || !selectedItemId) return;
+
     setRoomConfig(prev => {
-      if (selectedItemId === 'playerAvatar') return { ...prev, playerAvatar: { ...prev.playerAvatar, isFlipped: !prev.playerAvatar.isFlipped } };
-      if (selectedItemId === 'playerPet') return { ...prev, playerPet: { ...prev.playerPet, isFlipped: !prev.playerPet.isFlipped } };
-      if (isPetKey(selectedItemId)) {
-        const petId = selectedItemId.slice(4);
-        return { ...prev, playerPets: { ...prev.playerPets, [petId]: { ...prev.playerPets[petId], isFlipped: !prev.playerPets[petId].isFlipped } } };
-      }
-      return { ...prev, items: prev.items.map(item => item.instanceId === selectedItemId ? { ...item, isFlipped: !item.isFlipped } : item) };
+      const newConfig = cloneRoomConfigForEdit(prev);
+      const target = getEditableTarget(newConfig, selectedItemId);
+      if (!target) return prev;
+
+      target.isFlipped = !Boolean(target.isFlipped);
+      return normalizeRoomConfig(newConfig, newConfig.items);
     });
   };
+
   const handleLayerChange = (direction) => {
-    if (!selectedItemId) return;
+    if (!isMyRoom || !isEditing || !selectedItemId) return;
+
     setRoomConfig(prev => {
-      const newConfig = JSON.parse(JSON.stringify(prev));
-      const petPositions = Object.values(newConfig.playerPets || {}).map(p => p.zIndex).filter(Boolean);
-      const allZIndexes = [...newConfig.items.map(i => i.zIndex), newConfig.playerAvatar?.zIndex || 100, newConfig.playerPet?.zIndex || 101, ...petPositions];
-      const maxZ = Math.max(...allZIndexes); const minZ = Math.min(...allZIndexes);
-      let target;
-      if (selectedItemId === 'playerAvatar') target = newConfig.playerAvatar;
-      else if (selectedItemId === 'playerPet') target = newConfig.playerPet;
-      else if (isPetKey(selectedItemId)) target = newConfig.playerPets[selectedItemId.slice(4)];
-      else target = newConfig.items.find(i => i.instanceId === selectedItemId);
-      if (target) target.zIndex = direction === 'forward' ? maxZ + 1 : minZ - 1;
-      return newConfig;
+      const newConfig = cloneRoomConfigForEdit(prev);
+      const target = getEditableTarget(newConfig, selectedItemId);
+      if (!target) return prev;
+
+      const petPositions = Object.values(newConfig.playerPets || {}).map(p => p?.zIndex).filter(v => Number.isFinite(Number(v)));
+      const itemZIndexes = (newConfig.items || []).map(i => i?.zIndex).filter(v => Number.isFinite(Number(v)));
+      const allZIndexes = [
+        ...itemZIndexes,
+        Number(newConfig.playerAvatar?.zIndex ?? 100),
+        Number(newConfig.playerPet?.zIndex ?? 101),
+        ...petPositions.map(Number)
+      ].filter(v => Number.isFinite(v));
+
+      const maxZ = allZIndexes.length ? Math.max(...allZIndexes) : 101;
+      const minZ = allZIndexes.length ? Math.min(...allZIndexes) : 1;
+
+      target.zIndex = direction === 'forward' ? maxZ + 1 : minZ - 1;
+      return normalizeRoomConfig(newConfig, newConfig.items);
     });
   };
+
   const handleDeleteSelectedItem = () => {
     if (!isMyRoom || !isEditing || !selectedItemId) return;
     if (selectedItemId === 'playerAvatar' || selectedItemId === 'playerPet') return alert("캐릭터와 펫은 삭제할 수 없습니다.");
@@ -633,7 +789,7 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
     setSelectedItemId(null);
   };
   const handleAddItem = (item) => {
-    const currentZIndexes = roomConfig.items.map(i => i.zIndex);
+    const currentZIndexes = (roomConfig.items || []).map(i => i.zIndex);
     const maxZ = currentZIndexes.length > 0 ? Math.max(...currentZIndexes) : 99;
     setRoomConfig(prev => ({ ...prev, items: [...prev.items, { instanceId: Date.now(), itemId: item.id, left: 50, top: 50, zIndex: maxZ + 1, isFlipped: false }] }));
   };
@@ -643,7 +799,7 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
       if (itemsOfType.length === 0) return prev;
       const lastItem = itemsOfType[itemsOfType.length - 1];
       if (selectedItemId === lastItem.instanceId) setSelectedItemId(null);
-      return { ...prev, items: prev.items.filter(i => i.instanceId !== lastItem.instanceId) };
+      return { ...prev, items: (prev.items || []).filter(i => i.instanceId !== lastItem.instanceId) };
     });
   };
 
@@ -726,7 +882,7 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
       // ★ 아바타와 펫은 스냅샷에서 제외 (접속 시 동적 렌더링)
       const allRenderItems = [];
 
-      roomConfig.items.forEach(item => {
+      (roomConfig.items || []).forEach(item => {
         const info = myRoomItems.find(i => i.id === item.itemId);
         if (info?.src) {
           allRenderItems.push({
@@ -972,7 +1128,13 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
       <LayoutGrid>
         <LeftSection>
           <RoomCanvasWrapper>
-            <RoomContainer ref={roomContainerRef} $padding={houseAspectPadding} onClick={(e) => { if (e.target === e.currentTarget && isEditing) setSelectedItemId(null); }}>
+            <RoomContainer
+                ref={roomContainerRef}
+                $padding={houseAspectPadding}
+                onMouseLeave={stopMoving}
+                onTouchCancel={stopMoving}
+                onClick={(e) => { if (e.target === e.currentTarget && isEditing) setSelectedItemId(null); }}
+              >
               {!isEditing && snapshotUrl ? (
                 <img src={snapshotUrl} alt="snapshot" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, objectFit: 'contain', pointerEvents: 'none' }} />
               ) : (
@@ -981,7 +1143,7 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
                   {appliedHouse && <AppliedHouse src={appliedHouse.src} />}
                   {appliedBackground && <AppliedBackground src={appliedBackground.src} />}
 
-                  {roomConfig.items.map(item => {
+                  {(roomConfig.items || []).map(item => {
                     const info = myRoomItems.find(i => i.id === item.itemId);
                     if (!info) return null;
                     return (
@@ -1110,12 +1272,12 @@ const itemCounts = useMemo(() => roomConfig.items.reduce((acc, item) => { acc[it
             {isMyRoom && (
               isEditing ? (
                 <>
-                  <SecondaryBtn onClick={() => { if (confirm("저장하지 않고 나가시겠습니까?")) { setIsEditing(false); setSelectedItemId(null); } }}>취소</SecondaryBtn>
-                  <SecondaryBtn onClick={() => { if (confirm("초기화 하시겠습니까?")) setRoomConfig(initialRoomConfig); }}>초기화</SecondaryBtn>
+                  <SecondaryBtn onClick={() => { if (confirm("저장하지 않고 나가시겠습니까?")) { stopMoving(); setIsEditing(false); setSelectedItemId(null); } }}>취소</SecondaryBtn>
+                  <SecondaryBtn onClick={() => { if (confirm("초기화 하시겠습니까?")) { stopMoving(); setRoomConfig(initialRoomConfig); setSelectedItemId(null); } }}>초기화</SecondaryBtn>
                   <PrimaryBtn onClick={handleSaveLayout} disabled={isLoadingSnapshot}>{isLoadingSnapshot ? '저장 중...' : '저장하기'}</PrimaryBtn>
                 </>
               ) : (
-                <ActionButton onClick={() => { setIsEditing(true); setSelectedItemId(null); }} style={{ background: '#339af0', color: 'white' }}>
+                <ActionButton onClick={() => { stopMoving(); setIsEditing(true); setSelectedItemId(null); }} style={{ background: '#339af0', color: 'white' }}>
                   🎨 마이룸 꾸미기
                 </ActionButton>
               )
