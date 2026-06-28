@@ -315,16 +315,16 @@ const MovementTestPanel = styled.div`
   right: 16px;
   bottom: 16px;
   z-index: 1200;
-  width: 168px;
+  width: 140px;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 16px;
-  padding: 0.75rem;
+  padding: 0.55rem;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.4rem;
   user-select: none;
 `;
 
@@ -1264,8 +1264,45 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
 
   // --- Handlers (Movement M2) ---
   const moveMovementActorBy = (dx, dy, direction) => {
-    if (!isMyRoom || isEditing) return;
+    if (isEditing) return;
 
+    // 친구 방에서는 내 방문 아바타를 임시 좌표로 움직인다.
+    // 이 좌표는 친구 방 데이터에 저장하지 않는다.
+    if (!isMyRoom) {
+      setVisitorPos(prev => {
+        const current = normalizeMovementActor({
+          type: 'visitor',
+          x: prev.x,
+          y: prev.y,
+          footX: prev.x,
+          footY: clampPercent(prev.y + 12, prev.y),
+          direction,
+          zIndex: 200
+        });
+
+        const nextX = clampPercent(current.x + dx, current.x);
+        const nextY = clampPercent(current.y + dy, current.y);
+
+        const candidate = normalizeMovementActor({
+          ...current,
+          x: nextX,
+          y: nextY,
+          footX: nextX,
+          footY: clampPercent(nextY + 12, nextY),
+          direction,
+          isMoving: true
+        });
+
+        const areaConfig = currentRoomAreaConfig || normalizeRoomAreaConfig(roomConfig.roomAreaId);
+        const next = constrainMovementActorToRoomArea(candidate, current, areaConfig);
+
+        return { x: next.x, y: next.y };
+      });
+
+      return;
+    }
+
+    // 내 방에서는 저장 가능한 movementActor 좌표를 움직인다.
     setRoomConfig(prev => {
       const current = normalizeMovementActor(prev.movementActor);
       const nextX = clampPercent(current.x + dx, current.x);
@@ -1322,6 +1359,60 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
       alert('이동 좌표 저장 중 오류 발생: ' + e.message);
     }
   };
+
+
+
+  // MYROOM_M4_WASD_KEYBOARD_MOVEMENT_V1
+  const isTypingTarget = (target) => {
+    const tagName = target?.tagName?.toLowerCase();
+    return (
+      target?.isContentEditable ||
+      tagName === 'input' ||
+      tagName === 'textarea' ||
+      tagName === 'select'
+    );
+  };
+
+  useEffect(() => {
+    const handleRoomKeyboardMove = (e) => {
+      if (isEditing) return;
+      if (isTypingTarget(e.target)) return;
+
+      const key = e.key.toLowerCase();
+      const directionMap = {
+        w: 'up',
+        arrowup: 'up',
+        a: 'left',
+        arrowleft: 'left',
+        s: 'down',
+        arrowdown: 'down',
+        d: 'right',
+        arrowright: 'right'
+      };
+
+      const direction = directionMap[key];
+      if (!direction) return;
+
+      // 내 방은 이동 모드 ON일 때만 키보드 이동 허용.
+      // 친구 방은 방문자 아바타 이동이므로 별도 버튼 없이 허용.
+      if (isMyRoom && !isMoveMode) return;
+      if (!isMyRoom && !myPlayerData) return;
+
+      e.preventDefault();
+
+      const step = e.shiftKey ? 4 : 2;
+      const dx = direction === 'left' ? -step : direction === 'right' ? step : 0;
+      const dy = direction === 'up' ? -step : direction === 'down' ? step : 0;
+
+      moveMovementActorBy(dx, dy, direction);
+    };
+
+    window.addEventListener('keydown', handleRoomKeyboardMove);
+
+    return () => {
+      window.removeEventListener('keydown', handleRoomKeyboardMove);
+    };
+  }, [isEditing, isMoveMode, isMyRoom, myPlayerData, roomConfig.roomAreaId]);
 
 
 
@@ -1555,7 +1646,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                   onMouseDown={handleVisitorDragStart}
                   onTouchStart={handleVisitorDragStart}
                 >
-                  <div className="label">Visiting...</div>
+                  <div className="label">WASD 이동</div>
                   <FloatingContent>
                     <VisitorAvatar>
                       {myPlayerData.avatarSnapshotUrl ? (
@@ -1605,7 +1696,8 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                     x {movementActor.x.toFixed(1)} / y {movementActor.y.toFixed(1)}<br />
                     footX {movementActor.footX.toFixed(1)} / footY {movementActor.footY.toFixed(1)}<br />
                     dir {movementActor.direction}<br />
-                    area {currentRoomAreaConfig.roomBackgroundId}
+                    area {currentRoomAreaConfig.roomBackgroundId}<br />
+                    WASD/방향키
                   </MovementCoordText>
                   <MovementDPadGrid>
                     <div />
