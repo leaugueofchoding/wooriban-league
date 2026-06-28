@@ -308,6 +308,71 @@ const DeleteItemButton = styled(ControllerButton)` width: 50px; height: 50px; co
 const LayerButton = styled(ControllerButton)` width: 60px; height: 36px; font-size: 0.85rem; `;
 const DPadButton = styled(ControllerButton)` width: 100%; height: 100%; `;
 
+
+// MYROOM_M2_MOVEMENT_COORDINATES_V5
+const MovementTestPanel = styled.div`
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  width: 168px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  padding: 0.75rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  user-select: none;
+`;
+
+const MovementPanelTitle = styled.div`
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: #1971c2;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  align-items: center;
+`;
+
+const MovementCoordText = styled.div`
+  font-size: 0.68rem;
+  color: #868e96;
+  font-weight: 700;
+  line-height: 1.35;
+`;
+
+const MovementDPadGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 34px);
+  gap: 4px;
+`;
+
+const MovementSmallButton = styled(ControllerButton)`
+  width: 100%;
+  height: 100%;
+  font-size: 0.9rem;
+  border-radius: 10px;
+`;
+
+const MovementSaveButton = styled(ControllerButton)`
+  width: 100%;
+  height: 34px;
+  font-size: 0.78rem;
+  color: #0ca678;
+  border-color: #b2f2bb;
+  background: #ebfbee;
+
+  &:hover {
+    color: #087f5b;
+    background: #d3f9d8;
+  }
+`;
+
 /* 인벤토리 스타일 */
 const InventoryContainer = styled(GlassCard)`
   padding: 1.5rem; margin-top: 0;
@@ -376,8 +441,10 @@ function MyRoomPage() {
   const currentUser = auth.currentUser;
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isMoveMode, setIsMoveMode] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const moveInterval = useRef(null);
+  const movementStopTimeout = useRef(null);
 
   // 룸 설정 초기값
   const initialRoomConfig = {
@@ -388,7 +455,23 @@ function MyRoomPage() {
     playerPet: { left: 60, top: 65, zIndex: 101, isFlipped: false },
     // ▼ [추가] 여러 펫 위치를 petId → position 맵으로 저장
     playerPets: {}  // { [petId]: { left, top, zIndex, isFlipped } }
-  };
+  ,
+
+    // M2: 꾸미기용 아바타 위치와 분리된 이동 주체 좌표
+        // M3: 배경별 벽/바닥 판정 프리셋 ID
+    roomAreaId: 'basic_room_01',
+
+movementActor: {
+      type: 'avatar',
+      x: 50,
+      y: 60,
+      direction: 'down',
+      isMoving: false,
+      footX: 50,
+      footY: 72,
+      zIndex: 150,
+      isFlipped: false
+    }};
   const [roomConfig, setRoomConfig] = useState(initialRoomConfig);
 
   // MYROOM_M1_STABILIZE_V1
@@ -397,6 +480,126 @@ function MyRoomPage() {
     const n = Number(value);
     if (!Number.isFinite(n)) return fallback;
     return Math.max(0, Math.min(100, n));
+  };
+
+  // MYROOM_M3_ROOM_AREA_POLYGONS_V1
+  // 좌표는 현재 마이룸 렌더링 방식에 맞춰 0~100 퍼센트 기준으로 관리한다.
+  // 실제 이미지 픽셀 좌표가 필요한 경우에도 이 구조를 유지한 채 변환만 붙이면 된다.
+  const ROOM_AREA_PRESETS = {
+    basic_room_01: {
+      roomBackgroundId: 'basic_room_01',
+
+      // 기본 방 기준: 아래쪽 사다리꼴 바닥을 이동 가능 영역으로 둔다.
+      floorPolygon: [
+        { x: 8, y: 46 },
+        { x: 92, y: 46 },
+        { x: 98, y: 92 },
+        { x: 2, y: 92 }
+      ],
+
+      wallPolygon: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 46 },
+        { x: 0, y: 46 }
+      ],
+
+      spawnPoint: { x: 50, y: 60, footX: 50, footY: 72 },
+
+      furniturePlacementPolygon: [
+        { x: 5, y: 42 },
+        { x: 95, y: 42 },
+        { x: 98, y: 92 },
+        { x: 2, y: 92 }
+      ],
+
+      blockedZones: [],
+      interactionZones: []
+    }
+  };
+
+  const normalizePolygon = (polygon = []) => (
+    Array.isArray(polygon)
+      ? polygon
+          .filter(point => point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)))
+          .map(point => ({ x: clampPercent(point.x, 0), y: clampPercent(point.y, 0) }))
+      : []
+  );
+
+  const normalizeRoomAreaConfig = (roomAreaId = 'basic_room_01') => {
+    const preset = ROOM_AREA_PRESETS[roomAreaId] || ROOM_AREA_PRESETS.basic_room_01;
+
+    return {
+      ...preset,
+      roomBackgroundId: preset.roomBackgroundId || roomAreaId || 'basic_room_01',
+      floorPolygon: normalizePolygon(preset.floorPolygon),
+      wallPolygon: normalizePolygon(preset.wallPolygon),
+      furniturePlacementPolygon: normalizePolygon(preset.furniturePlacementPolygon),
+      spawnPoint: {
+        x: clampPercent(preset.spawnPoint?.x, 50),
+        y: clampPercent(preset.spawnPoint?.y, 60),
+        footX: clampPercent(preset.spawnPoint?.footX ?? preset.spawnPoint?.x, 50),
+        footY: clampPercent(preset.spawnPoint?.footY ?? preset.spawnPoint?.y, 72)
+      },
+      blockedZones: Array.isArray(preset.blockedZones)
+        ? preset.blockedZones.map(zone => ({ ...zone, polygon: normalizePolygon(zone.polygon) }))
+        : [],
+      interactionZones: Array.isArray(preset.interactionZones)
+        ? preset.interactionZones.map(zone => ({ ...zone, polygon: normalizePolygon(zone.polygon) }))
+        : []
+    };
+  };
+
+  const isPointInPolygon = (point, polygon = []) => {
+    if (!point || !Array.isArray(polygon) || polygon.length < 3) return false;
+
+    let inside = false;
+    const px = Number(point.x);
+    const py = Number(point.y);
+
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = Number(polygon[i].x);
+      const yi = Number(polygon[i].y);
+      const xj = Number(polygon[j].x);
+      const yj = Number(polygon[j].y);
+
+      const intersects = ((yi > py) !== (yj > py)) &&
+        (px < ((xj - xi) * (py - yi)) / ((yj - yi) || 0.00001) + xi);
+
+      if (intersects) inside = !inside;
+    }
+
+    return inside;
+  };
+
+  const isPointInsideAnyZone = (point, zones = []) => (
+    Array.isArray(zones) && zones.some(zone => isPointInPolygon(point, zone.polygon))
+  );
+
+  const isFootPointWalkable = (actor, areaConfig) => {
+    const safeArea = areaConfig || normalizeRoomAreaConfig();
+    const footPoint = {
+      x: clampPercent(actor?.footX ?? actor?.x, 50),
+      y: clampPercent(actor?.footY ?? actor?.y, 72)
+    };
+
+    const inFloor = isPointInPolygon(footPoint, safeArea.floorPolygon);
+    const inBlockedZone = isPointInsideAnyZone(footPoint, safeArea.blockedZones);
+
+    return inFloor && !inBlockedZone;
+  };
+
+  const constrainMovementActorToRoomArea = (candidate, current, areaConfig) => {
+    const next = normalizeMovementActor(candidate);
+    if (isFootPointWalkable(next, areaConfig)) return next;
+
+    // M3 1차 판정: 바닥 밖으로 나가려 하면 직전 좌표에 머물게 한다.
+    // M4 이후에는 가장 가까운 바닥 경계점으로 보정하는 방식으로 고도화 가능.
+    return normalizeMovementActor({
+      ...current,
+      direction: next.direction,
+      isMoving: false
+    });
   };
 
   const normalizePosition = (position = {}, fallback = {}) => {
@@ -413,6 +616,33 @@ function MyRoomPage() {
       isFlipped: Boolean(source.isFlipped ?? base.isFlipped ?? false)
     };
   };
+
+  const normalizeMovementActor = (actor = {}) => {
+    const source = actor && typeof actor === 'object' ? actor : {};
+    const x = clampPercent(source.x ?? source.left, initialRoomConfig.movementActor.x);
+    const y = clampPercent(source.y ?? source.top, initialRoomConfig.movementActor.y);
+    const z = Number(source.zIndex ?? initialRoomConfig.movementActor.zIndex);
+    const direction = ['up', 'down', 'left', 'right'].includes(source.direction)
+      ? source.direction
+      : initialRoomConfig.movementActor.direction;
+
+    return {
+      type: source.type || 'avatar',
+      x,
+      y,
+      direction,
+      isMoving: Boolean(source.isMoving),
+      footX: clampPercent(source.footX ?? x, x),
+      footY: clampPercent(source.footY ?? y + 12, y),
+      zIndex: Number.isFinite(z) ? z : initialRoomConfig.movementActor.zIndex,
+      isFlipped: direction === 'left'
+        ? true
+        : direction === 'right'
+          ? false
+          : Boolean(source.isFlipped ?? initialRoomConfig.movementActor.isFlipped)
+    };
+  };
+
 
   const normalizeRoomConfig = (configData = {}, itemList = []) => {
     const safeConfig = configData && typeof configData === 'object' ? configData : {};
@@ -450,7 +680,9 @@ function MyRoomPage() {
       backgroundId: safeConfig.backgroundId || null,
       playerAvatar: normalizePosition(safeConfig.playerAvatar, initialRoomConfig.playerAvatar),
       playerPet: normalizePosition(safeConfig.playerPet, initialRoomConfig.playerPet),
-      playerPets: normalizedPets
+      playerPets: normalizedPets,
+      roomAreaId: safeConfig.roomAreaId || 'basic_room_01',
+      movementActor: normalizeMovementActor(safeConfig.movementActor || safeConfig.playerAvatar)
     };
   };
 
@@ -558,6 +790,32 @@ function MyRoomPage() {
   const appliedHouse = useMemo(() => roomConfig.houseId ? myRoomItems.find(item => item.id === roomConfig.houseId) : null, [roomConfig.houseId, myRoomItems]);
   const appliedBackground = useMemo(() => roomConfig.backgroundId ? myRoomItems.find(item => item.id === roomConfig.backgroundId) : null, [roomConfig.backgroundId, myRoomItems]);
 
+
+  const movementActor = useMemo(
+    () => normalizeMovementActor(roomConfig.movementActor),
+    [roomConfig.movementActor]
+  );
+
+
+
+  const currentRoomAreaConfig = useMemo(
+    () => normalizeRoomAreaConfig(roomConfig.roomAreaId),
+    [roomConfig.roomAreaId]
+  );
+
+  const ownerAvatarRenderPosition = useMemo(() => {
+    if (isMyRoom && !isEditing) {
+      return {
+        left: movementActor.x,
+        top: movementActor.y,
+        zIndex: movementActor.zIndex,
+        isFlipped: movementActor.isFlipped
+      };
+    }
+
+    return normalizePosition(roomConfig.playerAvatar, initialRoomConfig.playerAvatar);
+  }, [isMyRoom, isEditing, movementActor, roomConfig.playerAvatar]);
+
   // ▼▼▼ [추가] 집 이미지 실제 비율로 컨테이너 패딩 동적 조정 ▼▼▼
   const [houseAspectPadding, setHouseAspectPadding] = useState('75%'); // 기본 4:3
   useEffect(() => {
@@ -607,6 +865,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
     setComments([]);
     setLikes([]);
     setIsEditing(false);
+    setIsMoveMode(false);
     setVisitorPos({ x: 85, y: 80 });
 
     const loadRoomData = async () => {
@@ -742,6 +1001,13 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
       stopMoving();
     }
   }, [isEditing, playerId]);
+
+
+  useEffect(() => {
+    if (isEditing) {
+      setIsMoveMode(false);
+    }
+  }, [isEditing]);
 
   const handleFlip = () => {
     if (!isMyRoom || !isEditing || !selectedItemId) return;
@@ -996,6 +1262,69 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
   }, [isDraggingVisitor]);
 
 
+  // --- Handlers (Movement M2) ---
+  const moveMovementActorBy = (dx, dy, direction) => {
+    if (!isMyRoom || isEditing) return;
+
+    setRoomConfig(prev => {
+      const current = normalizeMovementActor(prev.movementActor);
+      const nextX = clampPercent(current.x + dx, current.x);
+      const nextY = clampPercent(current.y + dy, current.y);
+
+      const candidate = normalizeMovementActor({
+        ...current,
+        x: nextX,
+        y: nextY,
+        footX: nextX,
+        footY: clampPercent(nextY + 12, nextY),
+        direction,
+        isMoving: true
+      });
+
+      const areaConfig = normalizeRoomAreaConfig(prev.roomAreaId);
+      const next = constrainMovementActorToRoomArea(candidate, current, areaConfig);
+
+      return {
+        ...prev,
+        movementActor: next
+      };
+    });
+
+    if (movementStopTimeout.current) {
+      clearTimeout(movementStopTimeout.current);
+    }
+
+    movementStopTimeout.current = setTimeout(() => {
+      setRoomConfig(prev => ({
+        ...prev,
+        movementActor: normalizeMovementActor({
+          ...(prev.movementActor || {}),
+          isMoving: false
+        })
+      }));
+    }, 180);
+  };
+
+  const handleSaveMovementActor = async () => {
+    if (!classId || !playerId || !isMyRoom) return;
+
+    const nextActor = normalizeMovementActor(roomConfig.movementActor);
+
+    try {
+      await updateDoc(doc(db, 'classes', classId, 'players', playerId), {
+        'myRoomConfig.movementActor': nextActor,
+        'myRoomConfig.roomAreaId': roomConfig.roomAreaId || 'basic_room_01'
+      });
+      setRoomConfig(prev => ({ ...prev, movementActor: nextActor }));
+      alert('🚶 이동 좌표가 저장되었습니다!');
+    } catch (e) {
+      console.error(e);
+      alert('이동 좌표 저장 중 오류 발생: ' + e.message);
+    }
+  };
+
+
+
   // --- Handlers (Social) ---
 
   const MIN_COMMENT_LENGTH = 8;
@@ -1166,8 +1495,8 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                 <InteractiveItem
                   className="player-avatar"
                   $width={15} $height={25}
-                  $left={roomConfig.playerAvatar.left} $top={roomConfig.playerAvatar.top}
-                  $zIndex={roomConfig.playerAvatar.zIndex} $isFlipped={roomConfig.playerAvatar.isFlipped}
+                  $left={ownerAvatarRenderPosition.left} $top={ownerAvatarRenderPosition.top}
+                  $zIndex={ownerAvatarRenderPosition.zIndex} $isFlipped={ownerAvatarRenderPosition.isFlipped}
                   $isEditing={isEditing} $isSelected={selectedItemId === 'playerAvatar'}
                   onClick={(e) => handleSelect(e, 'playerAvatar')}
                 >
@@ -1265,7 +1594,34 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                   </RightControllerWrapper>
                 </>
               )}
-            </RoomContainer>
+            
+              {isMyRoom && isMoveMode && !isEditing && (
+                <MovementTestPanel>
+                  <MovementPanelTitle>
+                    <span>🚶 이동 좌표</span>
+                    <span>{movementActor.isMoving ? 'moving' : 'ready'}</span>
+                  </MovementPanelTitle>
+                  <MovementCoordText>
+                    x {movementActor.x.toFixed(1)} / y {movementActor.y.toFixed(1)}<br />
+                    footX {movementActor.footX.toFixed(1)} / footY {movementActor.footY.toFixed(1)}<br />
+                    dir {movementActor.direction}<br />
+                    area {currentRoomAreaConfig.roomBackgroundId}
+                  </MovementCoordText>
+                  <MovementDPadGrid>
+                    <div />
+                    <MovementSmallButton onClick={() => moveMovementActorBy(0, -2, 'up')}>▲</MovementSmallButton>
+                    <div />
+                    <MovementSmallButton onClick={() => moveMovementActorBy(-2, 0, 'left')}>◀</MovementSmallButton>
+                    <MovementSmallButton onClick={() => setRoomConfig(prev => ({ ...prev, movementActor: normalizeMovementActor(initialRoomConfig.movementActor) }))}>↺</MovementSmallButton>
+                    <MovementSmallButton onClick={() => moveMovementActorBy(2, 0, 'right')}>▶</MovementSmallButton>
+                    <div />
+                    <MovementSmallButton onClick={() => moveMovementActorBy(0, 2, 'down')}>▼</MovementSmallButton>
+                    <div />
+                  </MovementDPadGrid>
+                  <MovementSaveButton onClick={handleSaveMovementActor}>좌표 저장</MovementSaveButton>
+                </MovementTestPanel>
+              )}
+</RoomContainer>
           </RoomCanvasWrapper>
 
           <ButtonGroup>
@@ -1277,9 +1633,20 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                   <PrimaryBtn onClick={handleSaveLayout} disabled={isLoadingSnapshot}>{isLoadingSnapshot ? '저장 중...' : '저장하기'}</PrimaryBtn>
                 </>
               ) : (
-                <ActionButton onClick={() => { stopMoving(); setIsEditing(true); setSelectedItemId(null); }} style={{ background: '#339af0', color: 'white' }}>
+                <>
+                                  <ActionButton
+                    onClick={() => { stopMoving(); setIsMoveMode(prev => !prev); }}
+                    style={{
+                      background: isMoveMode ? '#20c997' : '#e7f5ff',
+                      color: isMoveMode ? 'white' : '#1971c2'
+                    }}
+                  >
+                    🚶 이동 모드 {isMoveMode ? 'ON' : 'OFF'}
+                  </ActionButton>
+<ActionButton onClick={() => { stopMoving(); setIsEditing(true); setSelectedItemId(null); }} style={{ background: '#339af0', color: 'white' }}>
                   🎨 마이룸 꾸미기
                 </ActionButton>
+                </>
               )
             )}
             <SecondaryBtn onClick={() => navigate('/')}>🏠 홈으로</SecondaryBtn>
