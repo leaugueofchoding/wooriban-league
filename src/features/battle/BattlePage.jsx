@@ -901,7 +901,10 @@ const PetContainer = styled.div`
                                             props.$animType === 'WIND_BLADE' ? css`${props.$isMine ? windBladeRight : windBladeLeft}     1.1s ease-in-out` :
                                                 props.$animType === 'TORNADO_SWEEP' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft}  2.0s ease-in-out` :
                                                     props.$animType === 'DRAGON_CLAW' ? css`${props.$isMine ? dragonClawRight : dragonClawLeft} 1.0s ease-in-out` :
-                                                        props.$animType === 'WATER_BALL' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.2s ease-in-out` :
+                                                        props.$animType === 'WAVE_MARK' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 0.95s ease-in-out` :
+                                                            props.$animType === 'BLOSSOM_CURRENT' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.25s ease-in-out` :
+                                                                props.$animType === 'ARA_BLOOM' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft} 1.75s ease-in-out` :
+                                                                    props.$animType === 'WATER_BALL' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.2s ease-in-out` :
                                                             props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
                                                                 props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 2.2s ease-in-out` :
                                                                     props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
@@ -2050,6 +2053,55 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         if (iAmChallenger) handleResolution(battleRef);
                     }, 1200);
 
+                } else if (actionType === 'WAVE_MARK' || actionType === 'BLOSSOM_CURRENT' || actionType === 'ARA_BLOOM') {
+                    if (isAttackerMe) setAnimState(prev => ({ ...prev, my: actionType }));
+                    else setAnimState(prev => ({ ...prev, opponent: actionType }));
+
+                    setCurrentEffect({ type: actionType, isMine: isAttackerMe });
+
+                    const triggerHit = () => {
+                        if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
+                        else setHitState(prev => ({ ...prev, my: true }));
+                    };
+
+                    const clearHit = () => setHitState({ my: false, opponent: false });
+
+                    if (actionType === 'ARA_BLOOM') {
+                        setTimeout(triggerHit, 700);
+                        setTimeout(clearHit, 930);
+                        setTimeout(triggerHit, 1220);
+                        setTimeout(clearHit, 1480);
+
+                        setTimeout(() => {
+                            setCurrentEffect(null);
+                            setAnimState({ my: null, opponent: null });
+                            setHitState({ my: false, opponent: false });
+                            setIsProcessing(false);
+                            if (iAmChallenger) handleResolution(battleRef);
+                        }, 2300);
+                    } else if (actionType === 'BLOSSOM_CURRENT') {
+                        setTimeout(triggerHit, 520);
+                        setTimeout(clearHit, 820);
+
+                        setTimeout(() => {
+                            setCurrentEffect(null);
+                            setAnimState({ my: null, opponent: null });
+                            setHitState({ my: false, opponent: false });
+                            setIsProcessing(false);
+                            if (iAmChallenger) handleResolution(battleRef);
+                        }, 1550);
+                    } else {
+                        setTimeout(triggerHit, 420);
+                        setTimeout(clearHit, 720);
+
+                        setTimeout(() => {
+                            setCurrentEffect(null);
+                            setAnimState({ my: null, opponent: null });
+                            setHitState({ my: false, opponent: false });
+                            setIsProcessing(false);
+                            if (iAmChallenger) handleResolution(battleRef);
+                        }, 1350);
+                    }
                 } else if (actionType === 'WATER_BALL') {
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'WATER_BALL' }));
                     else setAnimState(prev => ({ ...prev, opponent: 'WATER_BALL' }));

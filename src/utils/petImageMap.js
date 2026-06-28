@@ -96,6 +96,22 @@ import frog3_back from '@/assets/pets/frog3_back.png';
 import frog3_crunch from '@/assets/pets/frog3_crunch.png';
 import frog3_crunch_back from '@/assets/pets/frog3_crunch_back.png';
 
+// --- Manta Assets (포롱이 계열) ---
+import manta1_portrait from '@/assets/pets/manta1_portrait.png';
+import manta1_back from '@/assets/pets/manta1_back.png';
+import manta1_crunch from '@/assets/pets/manta1_crunch.png';
+import manta1_crunch_back from '@/assets/pets/manta1_crunch_back.png';
+
+import manta2_portrait from '@/assets/pets/manta2_portrait.png';
+import manta2_back from '@/assets/pets/manta2_back.png';
+import manta2_crunch from '@/assets/pets/manta2_crunch.png';
+import manta2_crunch_back from '@/assets/pets/manta2_crunch_back.png';
+
+import manta3_portrait from '@/assets/pets/manta3_portrait.png';
+import manta3_back from '@/assets/pets/manta3_back.png';
+import manta3_crunch from '@/assets/pets/manta3_crunch.png';
+import manta3_crunch_back from '@/assets/pets/manta3_crunch_back.png';
+
 
 export const petImageMap = {
     // === Dragon ===
@@ -193,4 +209,20 @@ export const petImageMap = {
     frog_lv3_battle: frog3_back,
     frog_lv3_brace: frog3_crunch,
     frog_lv3_brace_back: frog3_crunch_back,
+
+    // === Manta (포롱이 계열) ===
+    manta_lv1_idle: manta1_portrait,
+    manta_lv1_battle: manta1_back,
+    manta_lv1_brace: manta1_crunch,
+    manta_lv1_brace_back: manta1_crunch_back,
+
+    manta_lv2_idle: manta2_portrait,
+    manta_lv2_battle: manta2_back,
+    manta_lv2_brace: manta2_crunch,
+    manta_lv2_brace_back: manta2_crunch_back,
+
+    manta_lv3_idle: manta3_portrait,
+    manta_lv3_battle: manta3_back,
+    manta_lv3_brace: manta3_crunch,
+    manta_lv3_brace_back: manta3_crunch_back,
 };

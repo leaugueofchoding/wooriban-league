@@ -19,6 +19,17 @@ export function getBattleStatusList(petStatus = {}) {
         });
     }
 
+    const waveMarkCount = Number(petStatus.waveMark ?? 0);
+    if (Number.isFinite(waveMarkCount) && waveMarkCount > 0) {
+        const safeWaveMarkCount = Math.max(1, Math.min(3, Math.floor(waveMarkCount)));
+        statuses.push({
+            kind: 'waveMark',
+            icon: '💧',
+            label: `물결표식 ${safeWaveMarkCount}/3`,
+            detail: '표식이 많을수록 폭발 피해 증가',
+            tone: safeWaveMarkCount >= 3 ? '#e64980' : safeWaveMarkCount >= 2 ? '#7950f2' : '#228be6',
+        });
+    }
     if (petStatus.dazzled) {
         statuses.push({
             kind: 'blind',
@@ -341,6 +352,15 @@ function BattleStatusEffect({
             50% { transform: translateY(-2px); filter: brightness(1.16); }
           }
 
+          @keyframes battleWaveMarkBubble {
+            0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+            45% { transform: translateY(-6px) scale(1.16); filter: brightness(1.38); }
+          }
+
+          @keyframes battleWaveMarkGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(77,171,247,0.36), inset 0 0 18px rgba(77,171,247,0.22); }
+            50% { box-shadow: 0 0 32px rgba(102,217,232,0.62), inset 0 0 26px rgba(116,192,252,0.36); }
+          }
           @keyframes battleAuraPulse {
             0% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
             35% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
@@ -534,6 +554,27 @@ function BattleStatusEffect({
             filter: drop-shadow(0 0 14px color-mix(in srgb, var(--status-tone) 65%, transparent));
           }
 
+          .battleStatusAura--waveMark {
+            background:
+              radial-gradient(circle, rgba(77,171,247,0.32) 0%, rgba(102,217,232,0.16) 45%, rgba(34,139,230,0.03) 74%);
+            box-shadow:
+              0 0 24px rgba(77,171,247,0.46),
+              inset 0 0 22px rgba(102,217,232,0.26);
+            animation:
+              battleAuraPulse 0.45s ease-out forwards,
+              battleWaveMarkGlow 1.15s ease-in-out infinite;
+          }
+
+          .battleStatusAura--waveMark .battleStatusRing {
+            animation: battleRingSpin 5.2s linear infinite;
+          }
+
+          .battleStatusAura--waveMark span {
+            animation: battleWaveMarkBubble 1.05s ease-in-out infinite;
+            filter:
+              drop-shadow(0 0 8px rgba(255,255,255,0.95))
+              drop-shadow(0 0 12px rgba(77,171,247,0.85));
+          }
           .battleStatusAura--stun .battleStatusRing {
             animation: battleRingSpin 4.8s linear infinite;
           }

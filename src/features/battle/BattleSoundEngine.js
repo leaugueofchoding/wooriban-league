@@ -236,6 +236,22 @@ const SOUND_RECIPES = {
         SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.16 });
         playTone(ctx, { startTime: 0.18, type: 'triangle', freqStart: 500, freqEnd: 700, duration: 0.2, gainStart: 0.12, gainAttack: 0.02, freqCurve: 'linear' });
     },
+    WAVE_MARK: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.12 });
+        SOUND_RECIPES.WATER_DROP(ctx, 0.12, { gainStart: 0.10 });
+        playTone(ctx, { startTime: 0.22, type: 'sine', freqStart: 900, freqEnd: 520, duration: 0.22, gainStart: 0.10, gainAttack: 0.02, freqCurve: 'linear' });
+    },
+    BLOSSOM_CURRENT: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.15 });
+        playNoise(ctx, { startTime: 0.05, duration: 0.55, filterType: 'bandpass', freqStart: 700, freqEnd: 1800, gainStart: 0.12, gainAttack: 0.04, Q: 1.2 });
+        playTone(ctx, { startTime: 0.28, type: 'sine', freqStart: 620, freqEnd: 980, duration: 0.35, gainStart: 0.08, gainAttack: 0.04, freqCurve: 'linear' });
+    },
+    ARA_BLOOM: (ctx) => {
+        playTone(ctx, { type: 'sine', freqStart: 240, freqEnd: 920, duration: 0.55, gainStart: 0.0001, gainEnd: 0.16, gainAttack: 0.48, freqCurve: 'linear' });
+        playNoise(ctx, { startTime: 0.45, duration: 0.8, filterType: 'bandpass', freqStart: 350, freqEnd: 2200, gainStart: 0.22, gainAttack: 0.05, Q: 1.5 });
+        SOUND_RECIPES.WATER_DROP(ctx, 0.82, { gainStart: 0.22 });
+        SOUND_RECIPES.WATER_DROP(ctx, 1.05, { gainStart: 0.18 });
+    },
     REED_BOW: (ctx) => {
         // 활시위 튕기는 소리 + 화살이 물기를 머금고 나가는 소리
         playTone(ctx, { type: 'triangle', freqStart: 1200, freqEnd: 300, duration: 0.12, gainStart: 0.18, gainAttack: 0.002 });
@@ -328,6 +344,9 @@ const ACTION_SOUND_MAP = {
     FLAME_DASH: 'FLAME_DASH',
     UPHWA: 'UPHWA',
     WATER_BALL: 'WATER_BALL',
+    WAVE_MARK: 'WAVE_MARK',
+    BLOSSOM_CURRENT: 'BLOSSOM_CURRENT',
+    ARA_BLOOM: 'ARA_BLOOM',
     COUNTER_STANCE: 'COUNTER_STANCE',
     ULTIMATE_SECRET: 'ULTIMATE_SECRET',
     REED_BOW: 'REED_BOW',
@@ -353,6 +372,9 @@ const HIT_SOUND_MAP = {
     THUNDERSTORM: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 200, freqEnd: 25, duration: 0.3, gainStart: 0.32, gainAttack: 0.003 }); playCrackle(ctx, { count: 4, spread: 0.1, baseGain: 0.12 }); },
     STATIC_SHOCK: (ctx) => playCrackle(ctx, { count: 3, spread: 0.08, baseGain: 0.1 }),
     WATER_BALL: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.22 }),
+    WAVE_MARK: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.14 }),
+    BLOSSOM_CURRENT: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.18 }),
+    ARA_BLOOM: (ctx) => { SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.22 }); playNoise(ctx, { duration: 0.22, filterType: 'bandpass', freqStart: 700, freqEnd: 1800, gainStart: 0.14, Q: 1.2 }); },
     COUNTER_STANCE: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.2 }),
     REED_BOW: (ctx) => SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.18 }),
     ULTIMATE_SECRET: (ctx) => { playTone(ctx, { type: 'sawtooth', freqStart: 100, freqEnd: 20, duration: 0.4, gainStart: 0.36, gainAttack: 0.005 }); playNoise(ctx, { duration: 0.35, filterType: 'lowpass', freqStart: 1500, freqEnd: 100, gainStart: 0.22, Q: 0.5 }); },

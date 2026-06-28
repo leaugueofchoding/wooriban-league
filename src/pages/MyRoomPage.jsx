@@ -233,7 +233,7 @@ const VisitorWrapper = styled.div`
   &:active { cursor: grabbing; }
   width: 15%;
   height: 25%;
-  z-index: 200;
+  z-index: ${props => props.$zIndex || 200};
   pointer-events: auto;
   left: ${props => props.$x}%;
   top: ${props => props.$y}%;
@@ -816,6 +816,38 @@ movementActor: {
     return normalizePosition(roomConfig.playerAvatar, initialRoomConfig.playerAvatar);
   }, [isMyRoom, isEditing, movementActor, roomConfig.playerAvatar]);
 
+  // MYROOM_M5_DEPTH_SORT_V1
+  // 1차 깊이 정렬: 발 위치/아래쪽 y좌표가 더 큰 요소가 더 위에 보이도록 z-index를 계산한다.
+  // 편집 모드에서는 기존 수동 zIndex 조작을 유지한다.
+  const getRoomDepthZIndex = (depthY, fallbackZ = 100, offset = 0) => {
+    const fallback = Number(fallbackZ);
+    if (isEditing) return Number.isFinite(fallback) ? fallback : 100;
+
+    const y = clampPercent(depthY, 50);
+
+    // 컨트롤러 z-index(1000)보다 낮게 유지하면서, 배경/집보다 충분히 위로 올린다.
+    return Math.round(100 + y * 4 + offset);
+  };
+
+  // myroom-m5-1-depth-bottom-fix-v1-marker
+  const getFurnitureDepthY = (item = {}, info = {}) => {
+    // M5.1: 가구도 중심점이 아니라 "바닥에 가까운 기준점"으로 깊이를 잡는다.
+    // item.depthY: 개별 배치 인스턴스에서 직접 지정하는 최우선 깊이값
+    // item.depthOffset / info.depthOffset: 가구별 보정값
+    // 기본값: top + width*0.35, 즉 이미지 중심보다 아래쪽을 바닥 기준으로 본다.
+    const explicitDepthY = Number(item.depthY ?? info.depthY);
+    if (Number.isFinite(explicitDepthY)) return explicitDepthY;
+
+    const itemTop = Number(item.top);
+    const itemWidth = Number(info.width || item.width || 15);
+    const depthOffset = Number(item.depthOffset ?? info.depthOffset ?? itemWidth * 0.35);
+
+    if (!Number.isFinite(itemTop)) return 50;
+
+    return clampPercent(itemTop + depthOffset, itemTop);
+  };
+
+
   // ▼▼▼ [추가] 집 이미지 실제 비율로 컨테이너 패딩 동적 조정 ▼▼▼
   const [houseAspectPadding, setHouseAspectPadding] = useState('75%'); // 기본 4:3
   useEffect(() => {
@@ -855,6 +887,9 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
   }, [myPlayerData, myRoomItems]);
 
 
+
+  // M5: 이동 모드/친구 방에서는 스냅샷 대신 live room을 렌더링한다.
+  const shouldUseRoomSnapshot = !isEditing && Boolean(snapshotUrl) && isMyRoom && !isMoveMode;
   // --- Effects ---
 
   useEffect(() => {
@@ -1555,7 +1590,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                 onTouchCancel={stopMoving}
                 onClick={(e) => { if (e.target === e.currentTarget && isEditing) setSelectedItemId(null); }}
               >
-              {!isEditing && snapshotUrl ? (
+              {shouldUseRoomSnapshot ? (
                 <img src={snapshotUrl} alt="snapshot" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, objectFit: 'contain', pointerEvents: 'none' }} />
               ) : (
                 <>
@@ -1570,7 +1605,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                       <InteractiveItem
                         key={item.instanceId}
                         $width={info.width || 15}
-                        $left={item.left} $top={item.top} $zIndex={item.zIndex} $isFlipped={item.isFlipped}
+                        $left={item.left} $top={item.top} $zIndex={getRoomDepthZIndex(getFurnitureDepthY(item, info), item.zIndex)} $isFlipped={item.isFlipped}
                         $isEditing={isEditing} $isSelected={selectedItemId === item.instanceId}
                         onClick={(e) => handleSelect(e, item.instanceId)}
                       >
@@ -1587,7 +1622,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                   className="player-avatar"
                   $width={15} $height={25}
                   $left={ownerAvatarRenderPosition.left} $top={ownerAvatarRenderPosition.top}
-                  $zIndex={ownerAvatarRenderPosition.zIndex} $isFlipped={ownerAvatarRenderPosition.isFlipped}
+                  $zIndex={getRoomDepthZIndex(movementActor.footY ?? ownerAvatarRenderPosition.top, ownerAvatarRenderPosition.zIndex, 0)} $isFlipped={ownerAvatarRenderPosition.isFlipped}
                   $isEditing={isEditing} $isSelected={selectedItemId === 'playerAvatar'}
                   onClick={(e) => handleSelect(e, 'playerAvatar')}
                 >
@@ -1616,7 +1651,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                       className="player-pet"
                       $width={12} $height={12}
                       $left={pos.left} $top={pos.top}
-                      $zIndex={pos.zIndex || 101 + idx}
+                      $zIndex={getRoomDepthZIndex((pos.top || 65) + 8, pos.zIndex || 101 + idx, 0)}
                       $isFlipped={pos.isFlipped || false}
                       $isEditing={isEditing}
                       $isSelected={selectedItemId === petKey}
@@ -1643,6 +1678,7 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                 <VisitorWrapper
                   $x={visitorPos.x}
                   $y={visitorPos.y}
+                  $zIndex={getRoomDepthZIndex((visitorPos.y || 80) + 12, 200, 0)}
                   onMouseDown={handleVisitorDragStart}
                   onTouchStart={handleVisitorDragStart}
                 >
@@ -1697,7 +1733,8 @@ const itemCounts = useMemo(() => (roomConfig.items || []).reduce((acc, item) => 
                     footX {movementActor.footX.toFixed(1)} / footY {movementActor.footY.toFixed(1)}<br />
                     dir {movementActor.direction}<br />
                     area {currentRoomAreaConfig.roomBackgroundId}<br />
-                    WASD/방향키
+                    WASD/방향키<br />
+                    depth bottom
                   </MovementCoordText>
                   <MovementDPadGrid>
                     <div />

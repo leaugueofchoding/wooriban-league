@@ -7,6 +7,7 @@ export const PET_SPECIES = {
     ELECTRIC_MONKEY: 'monkey',
     FOX: 'fox',
     FROG: 'frog',
+    MANTA: 'manta',
 };
 
 export const ELEMENTS = {
@@ -34,6 +35,7 @@ const getPetElement = (appearanceId = '') => {
     if (appearanceId.includes('bird') || appearanceId.includes('turtle')) return '풀';
     if (appearanceId.includes('monkey')) return '번개';
     if (appearanceId.includes('frog')) return '물';
+    if (appearanceId.includes('manta')) return '물';
     return null;
 };
 
@@ -84,6 +86,55 @@ const checkBlindMiss = (attacker) => {
     return false;
 };
 
+const WAVE_MARK_MAX = 3;
+const WAVE_MARK_STUN_COUNTS = [2];
+const ARA_BLOOM_DAMAGE_MULTIPLIER_BY_MARK = [1.0, 2.0, 6.0, 12.0];
+
+const getWaveMarkCount = (targetPet) => {
+    const rawCount = Number(targetPet?.status?.waveMark ?? 0);
+    if (!Number.isFinite(rawCount)) return 0;
+    return Math.max(0, Math.min(WAVE_MARK_MAX, Math.floor(rawCount)));
+};
+
+const setWaveMarkCount = (targetPet, count) => {
+    if (!targetPet.status) targetPet.status = {};
+
+    const nextCount = Math.max(0, Math.min(WAVE_MARK_MAX, Math.floor(Number(count) || 0)));
+
+    if (nextCount <= 0) {
+        delete targetPet.status.waveMark;
+        delete targetPet.status.waveMarkMax;
+        return 0;
+    }
+
+    targetPet.status.waveMark = nextCount;
+    targetPet.status.waveMarkMax = WAVE_MARK_MAX;
+    return nextCount;
+};
+
+const addWaveMark = (targetPet) => {
+    const beforeMark = getWaveMarkCount(targetPet);
+    const afterMark = setWaveMarkCount(targetPet, beforeMark + 1);
+    const stunTriggered = beforeMark !== afterMark && WAVE_MARK_STUN_COUNTS.includes(afterMark);
+
+    return {
+        beforeMark,
+        afterMark,
+        isMax: afterMark >= WAVE_MARK_MAX,
+        stunTriggered,
+    };
+};
+
+const clearWaveMarks = (targetPet) => {
+    const markCount = getWaveMarkCount(targetPet);
+    setWaveMarkCount(targetPet, 0);
+    return markCount;
+};
+
+const getAraBloomDamageMultiplier = (markCount) => {
+    const safeMarkCount = Math.max(0, Math.min(WAVE_MARK_MAX, Math.floor(Number(markCount) || 0)));
+    return ARA_BLOOM_DAMAGE_MULTIPLIER_BY_MARK[safeMarkCount] || 1.0;
+};
 export const PREVIEW_STATUS = {
     DEFENSE_UP: {
         caster: [
@@ -342,6 +393,50 @@ export const PREVIEW_STATUS = {
             },
         ],
     },
+    WAVE_MARK: {
+        target: [
+            {
+                kind: 'waveMark',
+                icon: '💧',
+                label: '물결표식',
+                detail: '최대 3개 · 2개 도달 시 기절',
+                tone: '#4dabf7',
+            },
+        ],
+    },
+
+    BLOSSOM_CURRENT: {
+        caster: [
+            {
+                kind: 'heal',
+                icon: '🌸',
+                label: '표식 회복',
+                detail: '표식 +1 · 체력 회복',
+                tone: '#f783ac',
+            },
+        ],
+        target: [
+            {
+                kind: 'waveMark',
+                icon: '💧',
+                label: '물결표식 참조',
+                detail: '표식 +1 · 유지',
+                tone: '#4dabf7',
+            },
+        ],
+    },
+
+    ARA_BLOOM: {
+        target: [
+            {
+                kind: 'waveMark',
+                icon: '🌊',
+                label: '표식 폭발',
+                detail: '표식 수에 비례해 피해 증가',
+                tone: '#228be6',
+            },
+        ],
+    },
 };
 
 export const SKILLS = {
@@ -352,7 +447,7 @@ export const SKILLS = {
         type: 'basic',
         element: null,
         basePower: 20,
-        description: '가장 기본적인 몸통박치기로 적에게 물리적인 피해를 줍니다.',
+        description: '가장 기본적인 몸통박치기로 적에게 물리적인 피해를 줍니다. 만타 계열은 상대에게 물결표식이 있을 때 표식 수에 따라 피해가 조금 증가합니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
@@ -404,6 +499,19 @@ export const SKILLS = {
                     break;
                 default:
                     break;
+            }
+
+            const waveMarkCount = getWaveMarkCount(defender);
+            const isMantaAttacker = String(attacker.appearanceId ?? '').includes('manta');
+            const waveMarkBasicMultipliers = [1, 1.25, 1.6, 2.0];
+            const safeWaveMarkCount = Math.min(3, Math.max(0, waveMarkCount));
+            const waveMarkBasicMultiplier = isMantaAttacker
+                ? (waveMarkBasicMultipliers[safeWaveMarkCount] ?? 1)
+                : 1;
+
+            if (damage > 0 && waveMarkBasicMultiplier > 1) {
+                damage *= waveMarkBasicMultiplier;
+                log += ` 🌊 물결표식 ${safeWaveMarkCount}개의 물살을 타고 공격이 강해졌다!`;
             }
 
             damage = Math.round(damage);
@@ -1217,6 +1325,194 @@ export const SKILLS = {
             return `${isCritical ? '💥 [급소 강타!] ' : ''}'${attacker.name}'의 부들활! 🏹 ${damage}의 피해! 질긴 덩굴이 상대를 꽁꽁 묶어버렸습니다! (2턴간 방어/도망 불가)`;
         }
     }
+,
+    WAVE_MARK: {
+        id: 'wave_mark',
+        name: '물방울 낙인',
+        cost: 8,
+        type: 'signature',
+        element: '물',
+        basePower: 10,
+        description: '작은 물방울을 따라붙게 해 약한 물속성 피해를 주고 물결표식을 1개 남깁니다. 이 공격은 회피할 수 없으며, 표식이 2개가 되는 순간 상대를 1턴 기절시킵니다. 물결표식은 최대 3개까지 쌓입니다.',
+        previewStatus: PREVIEW_STATUS.WAVE_MARK,
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            const defender = defenderPlayer.pet;
+
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
+            if (checkBlindMiss(attacker)) {
+                return `'${attacker.name}'의 물방울 낙인! ...하지만 물방울이 엉뚱한 곳에서 터졌습니다! 💨`;
+            }
+
+            let { damage, isEffective, isCritical } = calculateDamage(
+                SKILLS.WAVE_MARK.basePower,
+                attackerPlayer,
+                defenderPlayer,
+                SKILLS.WAVE_MARK.element,
+                0.75,
+                0.25
+            );
+
+            let log = `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 물방울 낙인! 💧`;
+            if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
+
+            if (defenderAction === 'BRACE') {
+                damage *= 0.7;
+                log += ` (상대는 웅크려 피해를 줄였다!)`;
+            } else if (defenderAction === 'EVADE') {
+                log += ` (물방울이 상대의 회피를 따라붙었다!)`;
+            }
+
+            damage = Math.max(1, Math.round(damage));
+            defender.hp = Math.max(0, defender.hp - damage);
+
+            const markResult = addWaveMark(defender);
+
+            log += ` ${damage}의 피해! 물결표식이 새겨졌습니다. (${markResult.afterMark}/${WAVE_MARK_MAX})`;
+
+            if (markResult.stunTriggered) {
+                defender.status.stunned = true;
+                defender.status.stunnedTurns = 1;
+                log += ` 💫 표식이 2개가 되며 물결이 발목을 묶었습니다! 상대는 1턴간 행동할 수 없습니다!`;
+            } else if (markResult.isMax) {
+                log += ` 🌊 물결표식이 최대치입니다!`;
+            }
+
+            return log;
+        }
+    },
+
+    BLOSSOM_CURRENT: {
+        id: 'blossom_current',
+        name: '벚꽃해류',
+        cost: 30,
+        type: 'signature',
+        element: '물',
+        basePower: 30,
+        description: '벚꽃잎이 섞인 해류로 상대를 감싸 피해를 주고 물결표식을 1개 남깁니다. 증가한 표식 수 1개당 자신의 최대 HP 5%를 회복합니다. 표식은 사라지지 않습니다.',
+        previewStatus: PREVIEW_STATUS.BLOSSOM_CURRENT,
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            const defender = defenderPlayer.pet;
+
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
+            if (checkBlindMiss(attacker)) {
+                return `'${attacker.name}'의 벚꽃해류! ...하지만 해류가 흩어졌습니다! 💨`;
+            }
+
+            let { damage, isEffective, isCritical } = calculateDamage(
+                SKILLS.BLOSSOM_CURRENT.basePower,
+                attackerPlayer,
+                defenderPlayer,
+                SKILLS.BLOSSOM_CURRENT.element,
+                1.45,
+                0.45
+            );
+
+            if (defenderAction === 'BRACE') damage *= 0.7;
+
+            damage = Math.round(damage);
+            defender.hp = Math.max(0, defender.hp - damage);
+
+            const markResult = addWaveMark(defender);
+            const markCount = markResult.afterMark;
+            const heal = markCount > 0
+                ? Math.max(1, Math.round(Number(attacker.maxHp ?? 0) * 0.05 * markCount))
+                : 0;
+
+            if (heal > 0) {
+                attacker.hp = Math.min(attacker.maxHp, Number(attacker.hp ?? 0) + heal);
+            }
+
+            if (markResult.stunTriggered) {
+                defender.status.stunned = true;
+                defender.status.stunnedTurns = 1;
+            }
+
+            let log = `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 벚꽃해류! 🌸🌊`;
+            if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
+            log += ` ${damage}의 피해! 물결표식이 하나 더 새겨졌습니다. (${markCount}/${WAVE_MARK_MAX})`;
+            log += ` 표식의 물살을 타고 ${heal}의 체력을 회복했습니다!`;
+
+            if (markResult.stunTriggered) {
+                log += ` 💫 표식이 2개가 되며 상대는 1턴간 행동할 수 없습니다!`;
+            } else if (markResult.isMax) {
+                log += ` 🌊 물결표식이 최대치입니다!`;
+            }
+
+            return log;
+        }
+    },
+
+    ARA_BLOOM: {
+        id: 'ara_bloom',
+        name: '아라만개',
+        cost: 75,
+        type: 'signature',
+        element: '물',
+        basePower: 42,
+        description: '바다 깊은 곳의 꽃물살을 만개시킵니다. 상대의 물결표식이 1/2/3개일 때 피해가 각각 2배/6배/12배로 증가하며, 명중하면 표식은 모두 사라집니다.',
+        previewStatus: PREVIEW_STATUS.ARA_BLOOM,
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            const defender = defenderPlayer.pet;
+
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
+            if (checkBlindMiss(attacker)) {
+                return `'${attacker.name}'의 아라만개! ...하지만 꽃물살의 방향을 놓쳤습니다! 💨`;
+            }
+
+            const markCount = getWaveMarkCount(defender);
+            const markMultiplier = getAraBloomDamageMultiplier(markCount);
+
+            let { damage, isEffective, isCritical } = calculateDamage(
+                SKILLS.ARA_BLOOM.basePower,
+                attackerPlayer,
+                defenderPlayer,
+                SKILLS.ARA_BLOOM.element,
+                1.65,
+                0.40
+            );
+
+            let log = `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 아라만개! 🌸🌊`;
+            if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
+
+            if (defenderAction === 'EVADE' && Math.random() < 0.3) {
+                log += ` 상대가 꽃물살의 중심을 가까스로 피했습니다! 피해는 없고 물결표식은 유지됩니다. (${markCount}/${WAVE_MARK_MAX})`;
+                return log;
+            }
+
+            if (markCount > 0) {
+                damage *= markMultiplier;
+                log += ` 물결표식 ${markCount}개가 한꺼번에 폭발합니다! (피해 x${markMultiplier.toFixed(1)})`;
+            } else {
+                log += ` 표식 없이 사용되어 위력이 온전히 피어나지 못했습니다.`;
+            }
+
+            if (defenderAction === 'BRACE') {
+                damage *= 0.7;
+                log += ` (상대는 웅크려 피해를 줄였다!)`;
+            }
+
+            damage = Math.round(damage);
+            defender.hp = Math.max(0, defender.hp - damage);
+
+            if (markCount > 0) {
+                clearWaveMarks(defender);
+                log += ` ${damage}의 피해! 물결표식이 모두 사라졌습니다.`;
+            } else {
+                log += ` ${damage}의 피해!`;
+            }
+
+            return log;
+        }
+    }
 };
 
 export const PET_DATA = {
@@ -1378,6 +1674,33 @@ export const PET_DATA = {
                 statBoost: { hp: 2.1, sp: 2.0, atk: 2.0 },
                 newSkills: [SKILLS.ULTIMATE_SECRET.id, SKILLS.REED_BOW.id],
                 description: "마침내 무과에 당당히 급제하여 전장을 가르며 섬광을 내뿜는 호위무사 별감구리입니다. (💧물/일반 속성)"
+            },
+        }
+    }
+,
+    ['manta']: {
+        name: '포롱이',
+        element: '물',
+        compatibleElements: ['물'],
+        description: "맑은 물방울 속에서 작은 꽃잎과 함께 태어난 포롱이입니다. 몸속 물결이 흔들릴 때마다 방울 소리를 내며 상대에게 조용히 표식을 새깁니다. (💧물 속성)",
+        baseStats: { maxHp: 100, maxSp: 65, atk: 9 },
+        growth: { hp: 18, sp: 9, atk: 3 },
+        skill: SKILLS.WAVE_MARK,
+        initialSkills: [SKILLS.WAVE_MARK.id],
+        evolution: {
+            lv10: {
+                appearanceId: 'manta_lv2',
+                name: '살랑가오',
+                statBoost: { hp: 1.35, sp: 1.25, atk: 1.35 },
+                newSkill: SKILLS.BLOSSOM_CURRENT,
+                description: "꽃잎 무늬 지느러미로 물결 위를 살랑이며 미끄러지는 가오리입니다. 새겨 둔 물결표식을 따라 해류를 되돌려 체력을 회복합니다. (💧물 속성)"
+            },
+            lv20: {
+                appearanceId: 'manta_lv3',
+                name: '아라가오',
+                statBoost: { hp: 2.0, sp: 1.55, atk: 1.75 },
+                newSkill: SKILLS.ARA_BLOOM,
+                description: "깊은 바다의 꽃물살을 다스리는 우아한 수호 가오리입니다. 오래 쌓인 물결표식을 한순간에 만개시켜 전장을 뒤덮습니다. (💧물 속성)"
             },
         }
     }

@@ -803,6 +803,122 @@ const disturbAfterimage2ToMe = keyframes`
   100% { right: 68%; top: 68%; opacity: 0; transform: scale(0.5); }
 `;
 
+const waveMarkSealToOpp = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.35) rotate(0deg); }
+  18%  { opacity: 1; transform: scale(1.35) rotate(90deg); filter: brightness(1.8) drop-shadow(0 0 14px #74c0fc); }
+  70%  { left: 70%; bottom: 70%; opacity: 1; transform: scale(1.15) rotate(360deg); filter: brightness(2.4) drop-shadow(0 0 18px #4dabf7); }
+  100% { left: 74%; bottom: 73%; opacity: 0; transform: scale(2.6) rotate(540deg); filter: brightness(3); }
+`;
+const waveMarkSealToMe = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0; transform: scale(0.35) rotate(0deg); }
+  18%  { opacity: 1; transform: scale(1.35) rotate(-90deg); filter: brightness(1.8) drop-shadow(0 0 14px #74c0fc); }
+  70%  { right: 70%; top: 70%; opacity: 1; transform: scale(1.15) rotate(-360deg); filter: brightness(2.4) drop-shadow(0 0 18px #4dabf7); }
+  100% { right: 74%; top: 73%; opacity: 0; transform: scale(2.6) rotate(-540deg); filter: brightness(3); }
+`;
+
+const blossomCurrentToOpp = keyframes`
+  0%   { left: 16%; bottom: 15%; opacity: 0; transform: scale(0.4) rotate(-20deg); }
+  15%  { opacity: 1; transform: scale(1.2) rotate(10deg); filter: brightness(1.7) drop-shadow(0 0 14px #f783ac); }
+  48%  { left: 52%; bottom: 52%; transform: scale(2.1) rotate(160deg); filter: brightness(2.4) drop-shadow(0 0 22px #74c0fc); }
+  78%  { left: 72%; bottom: 70%; transform: scale(2.6) rotate(300deg); filter: brightness(3); }
+  100% { left: 76%; bottom: 74%; opacity: 0; transform: scale(1.0) rotate(420deg); }
+`;
+const blossomCurrentToMe = keyframes`
+  0%   { right: 16%; top: 15%; opacity: 0; transform: scale(0.4) rotate(20deg); }
+  15%  { opacity: 1; transform: scale(1.2) rotate(-10deg); filter: brightness(1.7) drop-shadow(0 0 14px #f783ac); }
+  48%  { right: 52%; top: 52%; transform: scale(2.1) rotate(-160deg); filter: brightness(2.4) drop-shadow(0 0 22px #74c0fc); }
+  78%  { right: 72%; top: 70%; transform: scale(2.6) rotate(-300deg); filter: brightness(3); }
+  100% { right: 76%; top: 74%; opacity: 0; transform: scale(1.0) rotate(-420deg); }
+`;
+
+const blossomHealSelfMine = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.55); }
+  35%  { opacity: 1; transform: translateY(-18px) scale(1.55); filter: brightness(2) drop-shadow(0 0 16px #f783ac); }
+  100% { left: 18%; bottom: 26%; opacity: 0; transform: translateY(-34px) scale(2.2); }
+`;
+const blossomHealSelfOpp = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0; transform: scale(0.55); }
+  35%  { opacity: 1; transform: translateY(18px) scale(1.55); filter: brightness(2) drop-shadow(0 0 16px #f783ac); }
+  100% { right: 18%; top: 26%; opacity: 0; transform: translateY(34px) scale(2.2); }
+`;
+
+const araBloomCenterToOpp = keyframes`
+  0%   { left: 70%; bottom: 68%; opacity: 0; transform: scale(0.3) rotate(0deg); }
+  18%  { opacity: 1; transform: scale(1.8) rotate(120deg); filter: brightness(2.2) drop-shadow(0 0 20px #74c0fc); }
+  48%  { transform: scale(3.8) rotate(360deg); filter: brightness(4) drop-shadow(0 0 36px #f783ac); }
+  75%  { transform: scale(5.0) rotate(540deg); filter: brightness(5) drop-shadow(0 0 52px #4dabf7); }
+  100% { left: 70%; bottom: 68%; opacity: 0; transform: scale(6.2) rotate(720deg); }
+`;
+const araBloomCenterToMe = keyframes`
+  0%   { left: 26%; top: 60%; opacity: 0; transform: scale(0.3) rotate(0deg); }
+  18%  { opacity: 1; transform: scale(1.8) rotate(-120deg); filter: brightness(2.2) drop-shadow(0 0 20px #74c0fc); }
+  48%  { transform: scale(3.8) rotate(-360deg); filter: brightness(4) drop-shadow(0 0 36px #f783ac); }
+  75%  { transform: scale(5.0) rotate(-540deg); filter: brightness(5) drop-shadow(0 0 52px #4dabf7); }
+  100% { left: 26%; top: 60%; opacity: 0; transform: scale(6.2) rotate(-720deg); }
+`;
+
+// MANTA_HEAL_EFFECT_PATCH_V4_APPLIED
+// 씨뿌리기/벚꽃해류 전투 회복 이펙트
+const mantaHealSeedToOpponent = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.35) rotate(-20deg); }
+  15%  { opacity: 1; transform: scale(1.25) rotate(8deg); filter: drop-shadow(0 0 10px #8ce99a); }
+  65%  { left: 65%; bottom: 66%; opacity: 1; transform: scale(1.0) rotate(22deg); filter: brightness(1.6) drop-shadow(0 0 14px #51cf66); }
+  84%  { left: 70%; bottom: 70%; opacity: 1; transform: scale(2.0) rotate(0deg); filter: brightness(2.4) drop-shadow(0 0 20px #69db7c); }
+  100% { left: 73%; bottom: 73%; opacity: 0; transform: scale(0.5); }
+`;
+
+const mantaHealSeedToMe = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0; transform: scale(0.35) rotate(20deg); }
+  15%  { opacity: 1; transform: scale(1.25) rotate(-8deg); filter: drop-shadow(0 0 10px #8ce99a); }
+  65%  { right: 65%; top: 66%; opacity: 1; transform: scale(1.0) rotate(-22deg); filter: brightness(1.6) drop-shadow(0 0 14px #51cf66); }
+  84%  { right: 70%; top: 70%; opacity: 1; transform: scale(2.0) rotate(0deg); filter: brightness(2.4) drop-shadow(0 0 20px #69db7c); }
+  100% { right: 73%; top: 73%; opacity: 0; transform: scale(0.5); }
+`;
+
+const mantaHealBlossomToOpponent = keyframes`
+  0%   { left: 18%; bottom: 18%; opacity: 0; transform: scale(0.35) rotate(0deg); }
+  12%  { opacity: 1; transform: scale(1.3) rotate(-8deg); filter: drop-shadow(0 0 12px #74c0fc); }
+  45%  { left: 50%; bottom: 52%; opacity: 1; transform: scale(1.6) rotate(12deg); filter: brightness(1.7) drop-shadow(0 0 16px #f783ac); }
+  78%  { left: 68%; bottom: 70%; opacity: 1; transform: scale(2.1) rotate(-10deg); filter: brightness(2.3) drop-shadow(0 0 24px #74c0fc); }
+  100% { left: 74%; bottom: 74%; opacity: 0; transform: scale(0.6); }
+`;
+
+const mantaHealBlossomToMe = keyframes`
+  0%   { right: 18%; top: 18%; opacity: 0; transform: scale(0.35) rotate(0deg); }
+  12%  { opacity: 1; transform: scale(1.3) rotate(8deg); filter: drop-shadow(0 0 12px #74c0fc); }
+  45%  { right: 50%; top: 52%; opacity: 1; transform: scale(1.6) rotate(-12deg); filter: brightness(1.7) drop-shadow(0 0 16px #f783ac); }
+  78%  { right: 68%; top: 70%; opacity: 1; transform: scale(2.1) rotate(10deg); filter: brightness(2.3) drop-shadow(0 0 24px #74c0fc); }
+  100% { right: 74%; top: 74%; opacity: 0; transform: scale(0.6); }
+`;
+
+const mantaHealRiseMine = keyframes`
+  0%   { left: 18%; bottom: 16%; opacity: 0; transform: scale(0.35) translateY(0); }
+  20%  { opacity: 1; transform: scale(1.35) translateY(-6px); filter: brightness(1.8) drop-shadow(0 0 10px #f783ac); }
+  62%  { opacity: 0.95; transform: scale(1.1) translateY(-34px); filter: brightness(2.1) drop-shadow(0 0 18px #ffdeeb); }
+  100% { left: 18%; bottom: 30%; opacity: 0; transform: scale(0.45) translateY(-64px); }
+`;
+
+const mantaHealRiseOpp = keyframes`
+  0%   { right: 18%; top: 16%; opacity: 0; transform: scale(0.35) translateY(0); }
+  20%  { opacity: 1; transform: scale(1.35) translateY(6px); filter: brightness(1.8) drop-shadow(0 0 10px #f783ac); }
+  62%  { opacity: 0.95; transform: scale(1.1) translateY(34px); filter: brightness(2.1) drop-shadow(0 0 18px #ffdeeb); }
+  100% { right: 18%; top: 30%; opacity: 0; transform: scale(0.45) translateY(64px); }
+`;
+
+const mantaGreenHealRiseMine = keyframes`
+  0%   { left: 18%; bottom: 16%; opacity: 0; transform: scale(0.35) translateY(0); }
+  20%  { opacity: 1; transform: scale(1.35) translateY(-6px); filter: brightness(1.8) drop-shadow(0 0 10px #69db7c); }
+  62%  { opacity: 0.95; transform: scale(1.1) translateY(-34px); filter: brightness(2.1) drop-shadow(0 0 18px #b2f2bb); }
+  100% { left: 18%; bottom: 30%; opacity: 0; transform: scale(0.45) translateY(-64px); }
+`;
+
+const mantaGreenHealRiseOpp = keyframes`
+  0%   { right: 18%; top: 16%; opacity: 0; transform: scale(0.35) translateY(0); }
+  20%  { opacity: 1; transform: scale(1.35) translateY(6px); filter: brightness(1.8) drop-shadow(0 0 10px #69db7c); }
+  62%  { opacity: 0.95; transform: scale(1.1) translateY(34px); filter: brightness(2.1) drop-shadow(0 0 18px #b2f2bb); }
+  100% { right: 18%; top: 30%; opacity: 0; transform: scale(0.45) translateY(64px); }
+`;
+
 // ==========================================
 // 3. 스킬 → 아이콘/타입/지속시간 매핑
 // ==========================================
@@ -816,7 +932,7 @@ const SKILL_CONFIG = {
   QUICK_DISTURBANCE: { icon: '💨', duration: '1.0s', type: 'DISTURBANCE_MULTI' },
   WIND_BLADE: { icon: '🌬️', duration: '1.1s', type: 'WIND_BLADE_MULTI' },
   TORNADO_SWEEP: { icon: '🌪️', duration: '2.0s', type: 'TORNADO_FULL' },
-  LEECH_SEED: { icon: '🌱', duration: '1.3s', type: 'SEED' },
+  LEECH_SEED: { icon: '🌱', duration: '1.45s', type: 'SEED_HEAL_MULTI' },
   VINE_WHIP: { icon: '🌿', duration: '1.2s', type: 'VINE_WHIP_MULTI' },
   SOLAR_BEAM: { icon: '☀️', duration: '1.5s', type: 'SOLAR' },
   SHOCK_SCRATCH: { icon: '⚡', duration: '0.9s', type: 'SCRATCH' },
@@ -827,6 +943,10 @@ const SKILL_CONFIG = {
   COUNTER_STANCE: { icon: '⚔️', duration: '1.4s', type: 'COUNTER_STANCE_MULTI' },
   REED_BOW: { icon: '🏹', duration: '1.0s', type: 'ARROW' },
   ULTIMATE_SECRET: { icon: '', duration: '2.2s', type: 'ULTIMATE_SECRET_FULL' },
+  // 💧 포롱이 계열
+  WAVE_MARK: { icon: '💧', duration: '1.25s', type: 'WAVE_MARK_MULTI' },
+  BLOSSOM_CURRENT: { icon: '🌸', duration: '1.65s', type: 'BLOSSOM_CURRENT_HEAL_MULTI' },
+  ARA_BLOOM: { icon: '🌊', duration: '2.2s', type: 'ARA_BLOOM_FULL' },
   // 독/공용
   POISON_STING: { icon: '☠️', duration: '1.3s', type: 'POISON' },
   STATIC_SHOCK: { icon: '⚡', duration: '0.8s', type: 'PROJECTILE' },
@@ -907,6 +1027,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
   const config = SKILL_CONFIG[type] || { icon: '✨', duration: '1s', type: 'PROJECTILE' };
 
   const glowMap = {
+    SEED_HEAL_MULTI: '#69db7c', BLOSSOM_CURRENT_HEAL_MULTI: '#f783ac',
     POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', VINE_WHIP_MULTI: '#40c057', ARROW: '#69db7c',
     WATER_BALL: '#4dabf7',
     COUNTER_STANCE_MULTI: '#4dabf7',
@@ -916,6 +1037,84 @@ const BattleSkillEffect = ({ type, isMine }) => {
     TORNADO: '#74c0fc', TORNADO_FULL: '#74c0fc', ZIGZAG: '#74c0fc', DISTURBANCE_MULTI: '#74c0fc', WIND_BLADE_MULTI: '#339af0',
     SIPHON: '#cc5de8',
   };
+
+
+  // ── 🌱 씨뿌리기: 피해 후 내 쪽으로 회복 이펙트
+  if (config.type === 'SEED_HEAL_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.45s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#69db7c">
+        <MultiIcon
+          $anim={isMine ? mantaHealSeedToOpponent : mantaHealSeedToMe}
+          $duration="1.05s"
+          $glow="#69db7c"
+          $size="3.6rem"
+        >🌱</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaGreenHealRiseMine : mantaGreenHealRiseOpp}
+          $duration="0.95s"
+          $delay="0.45s"
+          $glow="#69db7c"
+          $size="2.7rem"
+        >💚</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaGreenHealRiseMine : mantaGreenHealRiseOpp}
+          $duration="0.95s"
+          $delay="0.58s"
+          $glow="#b2f2bb"
+          $size="2.1rem"
+        >🍃</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaGreenHealRiseMine : mantaGreenHealRiseOpp}
+          $duration="0.95s"
+          $delay="0.72s"
+          $glow="#8ce99a"
+          $size="1.8rem"
+        >✨</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 🌸 벚꽃해류: 물결/꽃잎 공격 후 내 쪽으로 회복 이펙트
+  if (config.type === 'BLOSSOM_CURRENT_HEAL_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.65s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#f783ac">
+        <MultiIcon
+          $anim={isMine ? mantaHealBlossomToOpponent : mantaHealBlossomToMe}
+          $duration="1.15s"
+          $glow="#74c0fc"
+          $size="3.8rem"
+        >🌊</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaHealBlossomToOpponent : mantaHealBlossomToMe}
+          $duration="1.15s"
+          $delay="0.10s"
+          $glow="#f783ac"
+          $size="3.0rem"
+        >🌸</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaHealRiseMine : mantaHealRiseOpp}
+          $duration="1.0s"
+          $delay="0.55s"
+          $glow="#f783ac"
+          $size="2.8rem"
+        >💗</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaHealRiseMine : mantaHealRiseOpp}
+          $duration="1.0s"
+          $delay="0.68s"
+          $glow="#ffdeeb"
+          $size="2.2rem"
+        >🌸</MultiIcon>
+        <MultiIcon
+          $anim={isMine ? mantaHealRiseMine : mantaHealRiseOpp}
+          $duration="1.0s"
+          $delay="0.82s"
+          $glow="#fcc2d7"
+          $size="1.9rem"
+        >✨</MultiIcon>
+      </EffectContainer>
+    );
+  }
 
   // ── 🐸 반격태세: 돌격 → X자 검기 교차 + 반격 오라
   if (config.type === 'COUNTER_STANCE_MULTI') {
@@ -1021,6 +1220,39 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
+  // ── 💧 물방울 낙인: 작은 방울이 따라붙고 표식 링이 새겨짐
+  if (config.type === 'WAVE_MARK_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.25s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#74c0fc">
+        <MultiIcon $anim={isMine ? flyToOpponent : flyToMe} $duration="0.95s" $glow="#74c0fc" $size="3.2rem">💧</MultiIcon>
+        <MultiIcon $anim={isMine ? waveMarkSealToOpp : waveMarkSealToMe} $duration="1.15s" $glow="#4dabf7" $size="3.8rem" $delay="0.06s">💧</MultiIcon>
+        <MultiIcon $anim={isMine ? waveMarkSealToOpp : waveMarkSealToMe} $duration="1.05s" $glow="#a5d8ff" $size="2.4rem" $delay="0.16s">💧</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 🌸 벚꽃해류: 꽃잎 해류 + 자기 회복 반짝임
+  if (config.type === 'BLOSSOM_CURRENT_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.45s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#f783ac">
+        <MultiIcon $anim={isMine ? blossomCurrentToOpp : blossomCurrentToMe} $duration="1.35s" $glow="#74c0fc" $size="4.0rem">🌊</MultiIcon>
+        <MultiIcon $anim={isMine ? blossomCurrentToOpp : blossomCurrentToMe} $duration="1.25s" $glow="#f783ac" $size="3.2rem" $delay="0.12s">🌸</MultiIcon>
+        <MultiIcon $anim={isMine ? blossomHealSelfMine : blossomHealSelfOpp} $duration="1.05s" $glow="#f783ac" $size="3.0rem" $delay="0.35s">💗</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 🌸🌊 아라만개: 표식 폭발형 최종기
+  if (config.type === 'ARA_BLOOM_FULL') {
+    return (
+      <EffectContainer $icon="" $duration="2.2s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#74c0fc">
+        <ScreenShakeOverlay $duration="0.7s" />
+        <MultiIcon $anim={isMine ? araBloomCenterToOpp : araBloomCenterToMe} $duration="2.0s" $glow="#74c0fc" $size="5.8rem">🌊</MultiIcon>
+        <MultiIcon $anim={isMine ? araBloomCenterToOpp : araBloomCenterToMe} $duration="1.85s" $glow="#f783ac" $size="5.0rem" $delay="0.12s">🌸</MultiIcon>
+        <MultiIcon $anim={isMine ? araBloomCenterToOpp : araBloomCenterToMe} $duration="1.55s" $glow="#a5d8ff" $size="4.0rem" $delay="0.28s">💧</MultiIcon>
+      </EffectContainer>
+    );
+  }
   // ── 용의 발톱
   if (config.type === 'DRAGON_CLAW_MULTI') {
     return (
