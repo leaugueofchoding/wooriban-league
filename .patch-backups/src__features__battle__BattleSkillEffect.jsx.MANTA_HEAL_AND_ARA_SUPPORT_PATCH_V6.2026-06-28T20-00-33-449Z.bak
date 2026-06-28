@@ -932,7 +932,7 @@ const SKILL_CONFIG = {
   QUICK_DISTURBANCE: { icon: '💨', duration: '1.0s', type: 'DISTURBANCE_MULTI' },
   WIND_BLADE: { icon: '🌬️', duration: '1.1s', type: 'WIND_BLADE_MULTI' },
   TORNADO_SWEEP: { icon: '🌪️', duration: '2.0s', type: 'TORNADO_FULL' },
-  LEECH_SEED: { icon: '🌱', duration: '1.35s', type: 'LEECH_SEED_HEAL_MULTI' },
+  LEECH_SEED: { icon: '🌱', duration: '1.45s', type: 'SEED_HEAL_MULTI' },
   VINE_WHIP: { icon: '🌿', duration: '1.2s', type: 'VINE_WHIP_MULTI' },
   SOLAR_BEAM: { icon: '☀️', duration: '1.5s', type: 'SOLAR' },
   SHOCK_SCRATCH: { icon: '⚡', duration: '0.9s', type: 'SCRATCH' },
@@ -945,7 +945,7 @@ const SKILL_CONFIG = {
   ULTIMATE_SECRET: { icon: '', duration: '2.2s', type: 'ULTIMATE_SECRET_FULL' },
   // 💧 포롱이 계열
   WAVE_MARK: { icon: '💧', duration: '1.25s', type: 'WAVE_MARK_MULTI' },
-  BLOSSOM_CURRENT: { icon: '🌸', duration: '1.45s', type: 'BLOSSOM_CURRENT_HEAL_MULTI' },
+  BLOSSOM_CURRENT: { icon: '🌸', duration: '1.65s', type: 'BLOSSOM_CURRENT_HEAL_MULTI' },
   ARA_BLOOM: { icon: '🌊', duration: '2.2s', type: 'ARA_BLOOM_FULL' },
   // 독/공용
   POISON_STING: { icon: '☠️', duration: '1.3s', type: 'POISON' },
@@ -1028,7 +1028,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
 
   const glowMap = {
     SEED_HEAL_MULTI: '#69db7c', BLOSSOM_CURRENT_HEAL_MULTI: '#f783ac',
-    POISON: '#69db7c', SEED: '#69db7c', LEECH_SEED_HEAL_MULTI: '#40c057', VINE: '#40c057', VINE_WHIP_MULTI: '#40c057', ARROW: '#69db7c',
+    POISON: '#69db7c', SEED: '#69db7c', VINE: '#40c057', VINE_WHIP_MULTI: '#40c057', ARROW: '#69db7c',
     WATER_BALL: '#4dabf7',
     COUNTER_STANCE_MULTI: '#4dabf7',
     ULTIMATE_SECRET_FULL: '#f8f9fa',
@@ -1112,30 +1112,6 @@ const BattleSkillEffect = ({ type, isMine }) => {
           $glow="#fcc2d7"
           $size="1.9rem"
         >✨</MultiIcon>
-      </EffectContainer>
-    );
-  }
-
-  // ── 🌱 씨뿌리기: 씨앗 공격 후 자기 회복 연출
-  if (config.type === 'LEECH_SEED_HEAL_MULTI') {
-    return (
-      <EffectContainer $icon="" $duration="1.35s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#40c057">
-        <MultiIcon $anim={isMine ? seedFly : seedFlyToMe} $duration="0.95s" $glow="#40c057" $size="3.8rem">🌱</MultiIcon>
-        <MultiIcon $anim={isMine ? seedFly : seedFlyToMe} $duration="0.9s" $glow="#69db7c" $size="2.8rem" $delay="0.08s">🍃</MultiIcon>
-        <MultiIcon $anim={buffSelf(isMine)} $duration="0.85s" $glow="#2f9e44" $size="3.4rem" $delay="0.48s">💚</MultiIcon>
-        <MultiIcon $anim={buffSelf(isMine)} $duration="0.75s" $glow="#b2f2bb" $size="2.5rem" $delay="0.62s">✨</MultiIcon>
-      </EffectContainer>
-    );
-  }
-
-  // ── 🌸 벚꽃해류: 해류 공격 후 자기 회복 연출
-  if (config.type === 'BLOSSOM_CURRENT_HEAL_MULTI') {
-    return (
-      <EffectContainer $icon="" $duration="1.45s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#f783ac">
-        <MultiIcon $anim={isMine ? flyToOpponent : flyToMe} $duration="0.95s" $glow="#74c0fc" $size="3.7rem">🌊</MultiIcon>
-        <MultiIcon $anim={isMine ? flyToOpponent : flyToMe} $duration="0.9s" $glow="#f783ac" $size="3.0rem" $delay="0.12s">🌸</MultiIcon>
-        <MultiIcon $anim={buffSelf(isMine)} $duration="0.85s" $glow="#f783ac" $size="3.5rem" $delay="0.52s">💗</MultiIcon>
-        <MultiIcon $anim={buffSelf(isMine)} $duration="0.75s" $glow="#fcc2d7" $size="2.5rem" $delay="0.66s">🌸</MultiIcon>
       </EffectContainer>
     );
   }

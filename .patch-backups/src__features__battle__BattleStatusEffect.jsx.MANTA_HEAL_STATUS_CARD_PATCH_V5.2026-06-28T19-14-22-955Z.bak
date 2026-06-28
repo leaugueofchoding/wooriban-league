@@ -19,33 +19,6 @@ export function getBattleStatusList(petStatus = {}) {
         });
     }
 
-    if (petStatus.healPulse) {
-        const healKind = petStatus.healPulseKind || 'heal';
-        const isSeedHeal = healKind === 'seed';
-        const isBlossomHeal = healKind === 'blossom';
-        statuses.push({
-            kind: 'healPulse',
-            icon: isSeedHeal ? '💚' : isBlossomHeal ? '🌸' : '💖',
-            label: isSeedHeal ? '체력 흡수' : isBlossomHeal ? '표식 회복' : '회복',
-            detail: isSeedHeal ? '준 피해 일부 회복' : isBlossomHeal ? '표식 +1 · 체력 회복' : '체력 회복',
-            tone: isSeedHeal ? '#2f9e44' : isBlossomHeal ? '#f06595' : '#e64980',
-        });
-    }
-
-    if (petStatus.recentHeal) {
-        const healKind = petStatus.recentHealKind || 'heal';
-        const healMeta = healKind === 'leechSeed'
-            ? { icon: '💚', label: '체력 흡수', detail: '회복 스킬 사용', tone: '#2f9e44' }
-            : healKind === 'blossomCurrent'
-                ? { icon: '🌸', label: '표식 회복', detail: '회복 해류 사용', tone: '#e64980' }
-                : { icon: '💖', label: '체력 회복', detail: '회복 스킬 사용', tone: '#e64980' };
-
-        statuses.push({
-            kind: 'recentHeal',
-            ...healMeta,
-        });
-    }
-
     const waveMarkCount = Number(petStatus.waveMark ?? 0);
     if (Number.isFinite(waveMarkCount) && waveMarkCount > 0) {
         const safeWaveMarkCount = Math.max(1, Math.min(3, Math.floor(waveMarkCount)));
@@ -379,17 +352,6 @@ function BattleStatusEffect({
             50% { transform: translateY(-2px); filter: brightness(1.16); }
           }
 
-
-          @keyframes battleHealPulseFloat {
-            0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
-            45% { transform: translateY(-5px) scale(1.16); filter: brightness(1.35); }
-          }
-
-          @keyframes battleHealPulseGlow {
-            0%, 100% { box-shadow: 0 0 22px color-mix(in srgb, var(--status-tone) 42%, transparent), inset 0 0 18px color-mix(in srgb, var(--status-tone) 22%, transparent); }
-            50% { box-shadow: 0 0 34px color-mix(in srgb, var(--status-tone) 66%, transparent), inset 0 0 26px color-mix(in srgb, var(--status-tone) 36%, transparent); }
-          }
-
           @keyframes battleWaveMarkBubble {
             0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
             45% { transform: translateY(-6px) scale(1.16); filter: brightness(1.38); }
@@ -399,11 +361,6 @@ function BattleStatusEffect({
             0%, 100% { box-shadow: 0 0 20px rgba(77,171,247,0.36), inset 0 0 18px rgba(77,171,247,0.22); }
             50% { box-shadow: 0 0 32px rgba(102,217,232,0.62), inset 0 0 26px rgba(116,192,252,0.36); }
           }
-          @keyframes battleRecentHealPulse {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
-            45% { transform: translate(-50%, -53%) scale(1.08); filter: brightness(1.35); }
-          }
-
           @keyframes battleAuraPulse {
             0% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
             35% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
@@ -597,29 +554,6 @@ function BattleStatusEffect({
             filter: drop-shadow(0 0 14px color-mix(in srgb, var(--status-tone) 65%, transparent));
           }
 
-
-          .battleStatusAura--healPulse {
-            background:
-              radial-gradient(circle, color-mix(in srgb, var(--status-tone) 30%, transparent) 0%, color-mix(in srgb, var(--status-tone) 14%, transparent) 45%, transparent 74%);
-            box-shadow:
-              0 0 24px color-mix(in srgb, var(--status-tone) 48%, transparent),
-              inset 0 0 22px color-mix(in srgb, var(--status-tone) 28%, transparent);
-            animation:
-              battleAuraPulse 0.45s ease-out forwards,
-              battleHealPulseGlow 1.05s ease-in-out infinite;
-          }
-
-          .battleStatusAura--healPulse .battleStatusRing {
-            animation: battleRingSpin 4.2s linear infinite;
-          }
-
-          .battleStatusAura--healPulse span {
-            animation: battleHealPulseFloat 0.95s ease-in-out infinite;
-            filter:
-              drop-shadow(0 0 8px rgba(255,255,255,0.95))
-              drop-shadow(0 0 12px color-mix(in srgb, var(--status-tone) 82%, transparent));
-          }
-
           .battleStatusAura--waveMark {
             background:
               radial-gradient(circle, rgba(77,171,247,0.32) 0%, rgba(102,217,232,0.16) 45%, rgba(34,139,230,0.03) 74%);
@@ -686,27 +620,6 @@ function BattleStatusEffect({
           .battleStatusAura--focus {
             background: radial-gradient(circle, rgba(132,94,247,0.24), rgba(132,94,247,0.03) 70%);
             box-shadow: inset 0 0 22px rgba(132,94,247,0.20), 0 0 20px rgba(132,94,247,0.36);
-          }
-
-          .battleStatusAura--recentHeal {
-            background:
-              radial-gradient(circle, rgba(255, 222, 235, 0.48) 0%, rgba(240, 101, 149, 0.18) 45%, rgba(230,73,128,0.03) 74%);
-            box-shadow:
-              0 0 26px rgba(240,101,149,0.48),
-              inset 0 0 24px rgba(255,222,235,0.38);
-            animation:
-              battleAuraPulse 0.45s ease-out forwards,
-              battleRecentHealPulse 0.8s ease-in-out infinite;
-          }
-
-          .battleStatusAura--recentHeal .battleStatusRing {
-            animation: battleRingSpin 4.6s linear infinite;
-          }
-
-          .battleStatusAura--recentHeal span {
-            filter:
-              drop-shadow(0 0 8px rgba(255,255,255,0.95))
-              drop-shadow(0 0 14px rgba(240,101,149,0.72));
           }
 
           .battleStatusAura--heal {

@@ -2672,7 +2672,6 @@ const handleCancel = async () => {
         blind: 1,
         dazzled: 1,
         aching: 2,
-        healPulse: 1,
     };
 
     const BATTLE_STATUS_TURN_FIELDS = {
@@ -2683,7 +2682,6 @@ const handleCancel = async () => {
         blind: 'blindTurns',
         dazzled: 'dazzledTurns',
         aching: 'achingTurns',
-        healPulse: 'healPulseTurns',
     };
 
     const BATTLE_STATUS_END_MESSAGES = {
@@ -2705,17 +2703,9 @@ const handleCancel = async () => {
 
         delete pet.status[key];
 
-        
-        if (key === 'healPulse') {
-            delete pet.status.healPulseKind;
-        }
-const turnField = BATTLE_STATUS_TURN_FIELDS[key];
+        const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         if (turnField) {
             delete pet.status[turnField];
-        }
-
-        if (key === 'recentHeal') {
-            delete pet.status.recentHealKind;
         }
     };
 
@@ -2812,7 +2802,7 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
             messages.push(`☠️ ${pet.name}은(는) 중독으로 ${poisonDamage}의 피해를 입었습니다!`);
         }
 
-        ['burned', 'poisoned', 'bound', 'stunned', 'blind', 'dazzled', 'aching', 'healPulse'].forEach(key => {
+        ['burned', 'poisoned', 'bound', 'stunned', 'blind', 'dazzled', 'aching'].forEach(key => {
             if (canTickStatus(key)) {
                 tickBattleStatusTurn(pet, key, messages);
             }

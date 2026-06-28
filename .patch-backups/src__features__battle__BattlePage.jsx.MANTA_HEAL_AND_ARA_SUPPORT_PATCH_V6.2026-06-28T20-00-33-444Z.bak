@@ -2713,10 +2713,6 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         if (turnField) {
             delete pet.status[turnField];
         }
-
-        if (key === 'recentHeal') {
-            delete pet.status.recentHealKind;
-        }
     };
 
     const ensureBattleStatusTurns = (pet, key) => {

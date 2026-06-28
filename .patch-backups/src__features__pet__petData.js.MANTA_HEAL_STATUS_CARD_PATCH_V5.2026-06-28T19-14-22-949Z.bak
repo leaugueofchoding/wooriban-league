@@ -86,17 +86,9 @@ const checkBlindMiss = (attacker) => {
     return false;
 };
 
-
-const markHealPulse = (pet, kind = 'heal') => {
-    if (!pet) return;
-    if (!pet.status) pet.status = {};
-    pet.status.healPulse = true;
-    pet.status.healPulseKind = kind;
-    pet.status.healPulseTurns = 1;
-};
 const WAVE_MARK_MAX = 3;
 const WAVE_MARK_STUN_COUNTS = [2];
-const ARA_BLOOM_DAMAGE_MULTIPLIER_BY_MARK = [1.0, 1.6, 4.5, 10.0];
+const ARA_BLOOM_DAMAGE_MULTIPLIER_BY_MARK = [1.0, 2.0, 6.0, 12.0];
 
 const getWaveMarkCount = (targetPet) => {
     const rawCount = Number(targetPet?.status?.waveMark ?? 0);
@@ -563,13 +555,7 @@ export const SKILLS = {
             const attacker = attackerPlayer.pet;
             const healAmount = Math.round(attacker.maxHp * 0.3);
             attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmount);
-                        // MANTA_HEAL_AND_ARA_SUPPORT_PATCH_V6: 회복의 기도 사용 시 실제 회복량이 0이어도 회복 카드/테두리를 1턴 표시
-            if (!attacker.status) attacker.status = {};
-            attacker.status.recentHeal = true;
-            attacker.status.recentHealTurns = 1;
-            attacker.status.recentHealKind = 'healingPrayer';
-
-return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! ✨`;
+            return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! ✨`;
         },
     },
 
@@ -994,11 +980,7 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
             defender.hp = Math.max(0, defender.hp - damage);
 
             const heal = Math.round(damage * 0.6);
-            const beforeHealHp = Number(attacker.hp ?? 0);
             attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
-            if (Number(attacker.hp ?? 0) > beforeHealHp) {
-                markHealPulse(attacker, 'seed');
-            }
 
             return `${seedCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 씨뿌리기! ${isEffective ? '🎯 [효과가 굉장했다!] ' : ''}적에게 ${damage}의 피해를 주고 ${heal}만큼 체력을 흡수했다! 🌱`;
         },
@@ -1443,11 +1425,7 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
                 : 0;
 
             if (heal > 0) {
-                const beforeHealHp = Number(attacker.hp ?? 0);
                 attacker.hp = Math.min(attacker.maxHp, Number(attacker.hp ?? 0) + heal);
-                if (Number(attacker.hp ?? 0) > beforeHealHp) {
-                    markHealPulse(attacker, 'blossom');
-                }
             }
 
             if (markResult.stunTriggered) {
