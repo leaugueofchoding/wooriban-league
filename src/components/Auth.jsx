@@ -240,16 +240,44 @@ const BonusNotificationItem = styled(NotificationItem)`
 
 // ▼▼▼ [추가] 펫 페이지 디자인 이식 ▼▼▼
 const ModalBackground = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  /* HOTFIX_TABLET_BATTLE_ACCEPT_MODAL_SCROLL
+     태블릿 가로/세로 화면에서 3:3 수락창이 viewport보다 커져도
+     하단 수락/거절 버튼까지 스크롤로 접근할 수 있게 합니다. */
+  position: fixed;
+  inset: 0;
   background-color: rgba(0, 0, 0, 0.7);
-  display: flex; justify-content: center; align-items: center;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
   z-index: 3000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
 `;
 
 const ModalContent = styled.div`
-  padding: 2rem; background: white; border-radius: 15px;
-  text-align: center; max-width: 400px; width: 90%;
-  display: flex; flex-direction: column;
+  padding: 2rem;
+  background: white;
+  border-radius: 15px;
+  text-align: center;
+  max-width: 400px;
+  width: min(90vw, 100%);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 30px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  margin: auto 0;
+
+  @media (max-width: 900px) {
+    padding: 1.15rem;
+    max-height: calc(100dvh - 22px);
+  }
+
+  @media (max-height: 760px) {
+    padding: 1rem;
+  }
 `;
 
 const OpponentItem = styled.div`
@@ -825,9 +853,9 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     const acceptDisabled = myPetFainted || insufficientPets || uniqueSelectedCount < targetTeamSize;
 
                     const renderPetChoice = (slotLabel, selectedId, onSelect, blockedIds = []) => (
-                        <div style={{ marginBottom: '0.8rem', textAlign: 'left' }}>
-                            <h4 style={{ margin: '0 0 0.45rem', color: '#343a40', fontSize: '0.95rem' }}>{slotLabel}</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '0.55rem' }}>
+                        <div style={{ marginBottom: '0.55rem', textAlign: 'left' }}>
+                            <h4 style={{ margin: '0 0 0.3rem', color: '#343a40', fontSize: '0.88rem' }}>{slotLabel}</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: '0.55rem' }}>
                                 {alivePets.map(pet => {
                                     const isSelected = selectedId === pet.id;
                                     const isBlocked = Array.isArray(blockedIds) ? blockedIds.includes(pet.id) : blockedIds === pet.id;
@@ -841,7 +869,7 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '0.5rem',
-                                                padding: '0.55rem',
+                                                padding: '0.42rem',
                                                 borderRadius: '12px',
                                                 border: isSelected ? '3px solid #20c997' : '2px solid #e9ecef',
                                                 background: isSelected ? '#e6fcf5' : isBlocked ? '#f1f3f5' : 'white',
@@ -853,7 +881,7 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                             <img
                                                 src={petImageMap[`${pet.appearanceId}_idle`]}
                                                 alt={pet.name}
-                                                style={{ width: 42, height: 42, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa' }}
+                                                style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa', flexShrink: 0 }}
                                             />
                                             <div>
                                                 <strong style={{ display: 'block', color: '#343a40', fontSize: '0.86rem' }}>{pet.name}</strong>
@@ -902,7 +930,7 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                 )}
 
                                 {!myPetFainted && needsBenchSelect && !insufficientPets && (
-                                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '14px', padding: '0.8rem', marginBottom: '0.9rem' }}>
+                                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '14px', padding: '0.65rem', marginBottom: '0.75rem' }}>
                                         <p style={{ margin: '0 0 0.8rem', color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
                                             상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 나도 {targetTeamSize}마리 팀을 선택하세요.
                                         </p>
