@@ -1,10 +1,15 @@
 // src/features/battle/elementReactionEngine.js
-// M3_REACTION_ENGINE_CORE
-// 원소반응 공용 엔진의 1차 골격입니다.
+// M4_REACTION_BALANCE_CONFIG
+// 원소반응 공용 엔진입니다.
+// 반응 배율/고정 피해/CC/흔적 소모 규칙은 elementReactionConfig.js에 둡니다.
 // 아직 실제 전투 로직에는 연결하지 않습니다.
-// 스킬 effect 함수는 앞으로 "어떤 원소 스킬을 썼는지"만 이 엔진에 전달하는 구조로 전환합니다.
 
 import { FEATURE_FLAGS } from './featureFlags.js';
+import {
+    ELEMENT_REACTION_BALANCE_CONFIG,
+    getReactionEntries,
+    getTraceConfig,
+} from './elementReactionConfig.js';
 
 export const ELEMENT_KEYS = Object.freeze({
     FIRE: 'fire',
@@ -23,8 +28,6 @@ export const ELEMENT_LABELS = Object.freeze({
     [ELEMENT_KEYS.LIGHTNING]: '번개',
     [ELEMENT_KEYS.ICE]: '얼음',
 });
-
-export const ELEMENT_TRACE_DEFAULT_TURNS = 2;
 
 const ELEMENT_ALIASES = Object.freeze({
     fire: ELEMENT_KEYS.FIRE,
@@ -45,65 +48,14 @@ const ELEMENT_ALIASES = Object.freeze({
     '얼음': ELEMENT_KEYS.ICE,
 });
 
-export const REACTION_TABLE = Object.freeze({
-    electroCharged: {
-        elements: [ELEMENT_KEYS.WATER, ELEMENT_KEYS.LIGHTNING],
-        label: '감전',
-        damageMultiplier: 1.15,
-        flatDamageRatio: 0.04,
-        visualEffectType: 'REACTION_ELECTRO_CHARGED',
-        log: '💧⚡ 물 기운에 전류가 퍼져 감전 반응이 발생했습니다!',
-    },
-    frozen: {
-        elements: [ELEMENT_KEYS.WATER, ELEMENT_KEYS.ICE],
-        label: '빙결',
-        damageMultiplier: 1.0,
-        flatDamageRatio: 0,
-        visualEffectType: 'REACTION_FROZEN',
-        statusEffects: [{ key: 'frozen', turns: 1 }],
-        log: '💧❄️ 물 기운이 얼어붙어 빙결 반응이 발생했습니다!',
-    },
-    vaporize: {
-        elements: [ELEMENT_KEYS.WATER, ELEMENT_KEYS.FIRE],
-        label: '증발',
-        damageMultiplier: 1.25,
-        flatDamageRatio: 0,
-        visualEffectType: 'REACTION_VAPORIZE',
-        log: '💧🔥 뜨거운 열기가 물 기운을 증발시켜 피해가 증폭됩니다!',
-    },
-    combustion: {
-        elements: [ELEMENT_KEYS.FIRE, ELEMENT_KEYS.GRASS],
-        label: '연소',
-        damageMultiplier: 1.1,
-        flatDamageRatio: 0.05,
-        visualEffectType: 'REACTION_COMBUSTION',
-        statusEffects: [{ key: 'combustion', turns: 2 }],
-        log: '🔥🌿 풀 기운에 불이 옮겨붙어 연소 반응이 발생했습니다!',
-    },
-    overload: {
-        elements: [ELEMENT_KEYS.FIRE, ELEMENT_KEYS.LIGHTNING],
-        label: '과부하',
-        damageMultiplier: 1.2,
-        flatDamageRatio: 0.03,
-        visualEffectType: 'REACTION_OVERLOAD',
-        log: '🔥⚡ 불꽃과 전류가 충돌해 과부하 폭발이 일어났습니다!',
-    },
-    pollenSpread: {
-        elements: [ELEMENT_KEYS.GRASS, ELEMENT_KEYS.WIND],
-        label: '꽃가루 확산',
-        damageMultiplier: 1.0,
-        flatDamageRatio: 0.04,
-        visualEffectType: 'REACTION_POLLEN_SPREAD',
-        log: '🌿🌪️ 바람을 타고 꽃가루가 퍼져 확산 반응이 발생했습니다!',
-    },
-});
+export const ELEMENT_TRACE_DEFAULT_TURNS = getTraceConfig().defaultTurns;
 
-const REACTION_LOOKUP = new Map(
-    Object.entries(REACTION_TABLE).map(([reactionKey, config]) => [
-        makePairKey(config.elements[0], config.elements[1]),
-        { reactionKey, ...config },
-    ])
-);
+// 기존 import 호환성을 위해 이름은 유지하되, 실제 데이터 원본은 config 파일입니다.
+export const REACTION_TABLE = ELEMENT_REACTION_BALANCE_CONFIG.reactions;
+
+export function getTraceDefaultTurns(balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG) {
+    return Number(getTraceConfig(balanceConfig).defaultTurns) || ELEMENT_TRACE_DEFAULT_TURNS;
+}
 
 export function normalizeElement(element) {
     if (element === null || element === undefined || element === '') return null;
@@ -114,7 +66,48 @@ export function makePairKey(firstElement, secondElement) {
     return [firstElement, secondElement].sort().join('+');
 }
 
-export function normalizeTraces(rawTraces = {}) {
+export function normalizeReactionConfig(rawConfig = {}) {
+    const [firstRaw, secondRaw] = rawConfig.elements || [];
+    const firstElement = normalizeElement(firstRaw);
+    const secondElement = normalizeElement(secondRaw);
+
+    if (!firstElement || !secondElement) return null;
+
+    return {
+        elements: [firstElement, secondElement],
+        label: rawConfig.label || null,
+        damageMultiplier: Number(rawConfig.damage?.multiplier ?? 1),
+        flatDamageRatio: Number(rawConfig.damage?.flatDamageRatio ?? 0),
+        statusEffects: Array.isArray(rawConfig.crowdControl?.statusEffects)
+            ? rawConfig.crowdControl.statusEffects
+            : [],
+        consumeMatchedTrace: rawConfig.traceRules?.consumeMatchedTrace ?? true,
+        applyTriggerTraceAfterReaction: rawConfig.traceRules?.applyTriggerTraceAfterReaction ?? false,
+        visualEffectType: rawConfig.visualEffectType || null,
+        log: rawConfig.log || '',
+        adminMeta: rawConfig.adminMeta || {},
+    };
+}
+
+export function buildReactionLookup(balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG) {
+    return new Map(
+        getReactionEntries(balanceConfig)
+            .map(([reactionKey, rawConfig]) => {
+                const normalizedConfig = normalizeReactionConfig(rawConfig);
+                if (!normalizedConfig) return null;
+
+                return [
+                    makePairKey(normalizedConfig.elements[0], normalizedConfig.elements[1]),
+                    { reactionKey, ...normalizedConfig },
+                ];
+            })
+            .filter(Boolean)
+    );
+}
+
+export function normalizeTraces(rawTraces = {}, balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG) {
+    const defaultTurns = getTraceDefaultTurns(balanceConfig);
+
     return Object.entries(rawTraces || {}).reduce((acc, [rawElement, rawValue]) => {
         const element = normalizeElement(rawElement);
         if (!element) return acc;
@@ -122,19 +115,19 @@ export function normalizeTraces(rawTraces = {}) {
         if (rawValue === false || rawValue === null || rawValue === undefined) return acc;
 
         const turns = typeof rawValue === 'object'
-            ? Number(rawValue.turns ?? ELEMENT_TRACE_DEFAULT_TURNS)
+            ? Number(rawValue.turns ?? defaultTurns)
             : Number(rawValue);
 
         acc[element] = Number.isFinite(turns) && turns > 0
             ? turns
-            : ELEMENT_TRACE_DEFAULT_TURNS;
+            : defaultTurns;
 
         return acc;
     }, {});
 }
 
-export function getElementTracesFromPet(pet) {
-    return normalizeTraces(pet?.status?.elementTraces || {});
+export function getElementTracesFromPet(pet, balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG) {
+    return normalizeTraces(pet?.status?.elementTraces || {}, balanceConfig);
 }
 
 export function createEmptyReactionResult({ reason = null, nextTraces = {} } = {}) {
@@ -155,14 +148,21 @@ export function createEmptyReactionResult({ reason = null, nextTraces = {} } = {
     };
 }
 
-export function findReaction(incomingElement, traces = {}) {
+export function findReaction(
+    incomingElement,
+    traces = {},
+    balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG
+) {
     const normalizedIncoming = normalizeElement(incomingElement);
     if (!normalizedIncoming) return null;
 
-    for (const traceElement of Object.keys(normalizeTraces(traces))) {
+    const reactionLookup = buildReactionLookup(balanceConfig);
+    const normalizedTraces = normalizeTraces(traces, balanceConfig);
+
+    for (const traceElement of Object.keys(normalizedTraces)) {
         if (traceElement === normalizedIncoming) continue;
 
-        const reaction = REACTION_LOOKUP.get(makePairKey(traceElement, normalizedIncoming));
+        const reaction = reactionLookup.get(makePairKey(traceElement, normalizedIncoming));
         if (reaction) {
             return {
                 ...reaction,
@@ -175,6 +175,82 @@ export function findReaction(incomingElement, traces = {}) {
     return null;
 }
 
+function calculateFlatReactionDamage({ reaction, defender }) {
+    const maxHp = Number(defender?.pet?.maxHp ?? defender?.maxHp ?? 0);
+    const flatDamageRatio = Number(reaction?.flatDamageRatio ?? 0);
+
+    return flatDamageRatio > 0 && maxHp > 0
+        ? Math.max(1, Math.round(maxHp * flatDamageRatio))
+        : 0;
+}
+
+function makeTraceAppliedResult({ incomingElement, currentTraces, balanceConfig }) {
+    const traceConfig = getTraceConfig(balanceConfig);
+    const shouldRefresh = traceConfig.refreshOnApply !== false;
+
+    return {
+        enabled: true,
+        skipped: false,
+        reason: 'TRACE_APPLIED',
+        reactionKey: null,
+        label: null,
+        damageMultiplier: 1,
+        flatDamage: 0,
+        consumeTraces: [],
+        applyTraces: [incomingElement],
+        nextTraces: {
+            ...currentTraces,
+            [incomingElement]: shouldRefresh
+                ? getTraceDefaultTurns(balanceConfig)
+                : (currentTraces[incomingElement] ?? getTraceDefaultTurns(balanceConfig)),
+        },
+        statusEffects: [],
+        visualEffectType: 'ELEMENT_TRACE_APPLIED',
+        logParts: [`${ELEMENT_LABELS[incomingElement]} 원소 흔적이 남았습니다.`],
+    };
+}
+
+function makeReactionTriggeredResult({
+    reaction,
+    currentTraces,
+    defender,
+    baseDamage,
+}) {
+    const safeBaseDamage = Math.max(0, Number(baseDamage) || 0);
+    const flatDamage = calculateFlatReactionDamage({ reaction, defender });
+
+    const nextTraces = { ...currentTraces };
+    const consumeTraces = reaction.consumeMatchedTrace ? [reaction.traceElement] : [];
+
+    consumeTraces.forEach(traceElement => {
+        delete nextTraces[traceElement];
+    });
+
+    if (reaction.applyTriggerTraceAfterReaction) {
+        nextTraces[reaction.triggerElement] = ELEMENT_TRACE_DEFAULT_TURNS;
+    }
+
+    return {
+        enabled: true,
+        skipped: false,
+        reason: 'REACTION_TRIGGERED',
+        reactionKey: reaction.reactionKey,
+        label: reaction.label,
+        damageMultiplier: reaction.damageMultiplier ?? 1,
+        flatDamage,
+        estimatedBonusDamage: Math.max(
+            0,
+            Math.round(safeBaseDamage * ((reaction.damageMultiplier ?? 1) - 1))
+        ) + flatDamage,
+        consumeTraces,
+        applyTraces: reaction.applyTriggerTraceAfterReaction ? [reaction.triggerElement] : [],
+        nextTraces,
+        statusEffects: reaction.statusEffects || [],
+        visualEffectType: reaction.visualEffectType || null,
+        logParts: reaction.log ? [reaction.log] : [],
+    };
+}
+
 export function resolveElementReaction({
     attacker = null,
     defender = null,
@@ -183,9 +259,13 @@ export function resolveElementReaction({
     baseDamage = 0,
     existingTraces = null,
     flags = FEATURE_FLAGS,
+    balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG,
 } = {}) {
     const incomingElement = normalizeElement(skillElement ?? skill?.element ?? null);
-    const currentTraces = normalizeTraces(existingTraces ?? getElementTracesFromPet(defender));
+    const currentTraces = normalizeTraces(
+        existingTraces ?? getElementTracesFromPet(defender, balanceConfig),
+        balanceConfig
+    );
 
     if (!flags?.ELEMENT_REACTION_ENABLED) {
         return createEmptyReactionResult({
@@ -201,54 +281,22 @@ export function resolveElementReaction({
         });
     }
 
-    const reaction = findReaction(incomingElement, currentTraces);
+    const reaction = findReaction(incomingElement, currentTraces, balanceConfig);
 
     if (!reaction) {
-        return {
-            enabled: true,
-            skipped: false,
-            reason: 'TRACE_APPLIED',
-            reactionKey: null,
-            label: null,
-            damageMultiplier: 1,
-            flatDamage: 0,
-            consumeTraces: [],
-            applyTraces: [incomingElement],
-            nextTraces: {
-                ...currentTraces,
-                [incomingElement]: ELEMENT_TRACE_DEFAULT_TURNS,
-            },
-            statusEffects: [],
-            visualEffectType: 'ELEMENT_TRACE_APPLIED',
-            logParts: [`${ELEMENT_LABELS[incomingElement]} 원소 흔적이 남았습니다.`],
-        };
+        return makeTraceAppliedResult({
+            incomingElement,
+            currentTraces,
+            balanceConfig,
+        });
     }
 
-    const maxHp = Number(defender?.pet?.maxHp ?? defender?.maxHp ?? 0);
-    const safeBaseDamage = Math.max(0, Number(baseDamage) || 0);
-    const flatDamageFromRatio = reaction.flatDamageRatio && maxHp > 0
-        ? Math.max(1, Math.round(maxHp * reaction.flatDamageRatio))
-        : 0;
-
-    const nextTraces = { ...currentTraces };
-    delete nextTraces[reaction.traceElement];
-
-    return {
-        enabled: true,
-        skipped: false,
-        reason: 'REACTION_TRIGGERED',
-        reactionKey: reaction.reactionKey,
-        label: reaction.label,
-        damageMultiplier: reaction.damageMultiplier ?? 1,
-        flatDamage: flatDamageFromRatio,
-        estimatedBonusDamage: Math.max(0, Math.round(safeBaseDamage * ((reaction.damageMultiplier ?? 1) - 1))) + flatDamageFromRatio,
-        consumeTraces: [reaction.traceElement],
-        applyTraces: [],
-        nextTraces,
-        statusEffects: reaction.statusEffects || [],
-        visualEffectType: reaction.visualEffectType || null,
-        logParts: [reaction.log],
-    };
+    return makeReactionTriggeredResult({
+        reaction,
+        currentTraces,
+        defender,
+        baseDamage,
+    });
 }
 
 export function applyReactionResultToPet(pet, reactionResult) {
