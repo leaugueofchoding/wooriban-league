@@ -296,7 +296,7 @@ function StatusBadge({
 function MiniStatusIcon({ status, index = 0 }) {
     return (
         <div
-            className="battleMiniStatus"
+            className={`battleMiniStatus ${status.isElementTrace ? 'battleMiniStatus--elementTrace' : ''}`}
             style={{
                 '--status-tone': status.tone,
                 borderColor: status.tone,
@@ -306,7 +306,9 @@ function MiniStatusIcon({ status, index = 0 }) {
             title={`${status.label} - ${status.detail}`}
         >
             <span className="battleMiniStatusIcon">{status.icon}</span>
-            <span className="battleMiniStatusLabel">{status.label}</span>
+            {!status.isElementTrace && (
+                <span className="battleMiniStatusLabel">{status.label}</span>
+            )}
         </div>
     );
 }
@@ -584,6 +586,14 @@ function BattleStatusEffect({
             box-shadow: 0 5px 16px rgba(0,0,0,0.10);
           }
 
+          .battleStatusLayer--battle .battleMiniStatusTray {
+            top: auto;
+            bottom: 18px;
+            padding: 0.12rem 0.18rem;
+            background: rgba(255,255,255,0.52);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+          }
+
           .battleMiniStatus {
             min-width: 32px;
             height: 32px;
@@ -600,6 +610,16 @@ function BattleStatusEffect({
             animation:
               battleMiniPop 0.22s ease-out both,
               battleMiniPulse 1.2s ease-in-out infinite;
+          }
+
+          .battleMiniStatus--elementTrace {
+            min-width: 30px;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            background: rgba(255,255,255,0.82);
+            border-width: 1.5px;
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--status-tone) 32%, transparent);
           }
 
           .battleMiniStatusIcon {

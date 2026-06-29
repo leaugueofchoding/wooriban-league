@@ -10,7 +10,7 @@ import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS, clearWaveMarks } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
-import { playSkillSound, playHitSound, playHealSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
+import { playSkillSound, playHitSound, playHealSound, playElementReactionSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
 import BattleStatusEffect from './BattleStatusEffect';
 import { BattleHpBar, BattleSpBar } from './BattleStatBars';
 import BattlePetSlot from './BattlePetSlot';
@@ -131,6 +131,13 @@ const switchToNextAlivePetIfNeeded = (participant) => {
 // 기본값은 ELEMENT_REACTION_ENABLED=false라 기존 배틀에는 영향이 없습니다.
 const tickElementTraces = (pet) => {
     if (!FEATURE_FLAGS.ELEMENT_REACTION_ENABLED) return;
+    if (pet?.status?.elementTraceJustApplied) {
+        // M10_5_ELEMENT_TRACE_SAME_TURN_TICK_GUARD
+        // 이번 행동으로 막 붙은 원소 흔적은 같은 턴 종료 처리에서 바로 감소시키지 않습니다.
+        delete pet.status.elementTraceJustApplied;
+        return;
+    }
+
     const traces = pet?.status?.elementTraces;
     if (!traces || typeof traces !== 'object') return;
 
@@ -170,11 +177,18 @@ const appendElementReactionAfterAction = ({
         defender,
         skill,
         baseDamage,
+        // M10_5_EXISTING_TRACE_EXPLICIT_PASS
+        // defender는 participant 형태이므로, 기존 흔적을 명시적으로 전달합니다.
+        existingTraces: defender.pet?.status?.elementTraces || {},
     });
 
     if (!reactionResult?.enabled) return '';
 
     applyReactionResultToPet(defender.pet, reactionResult);
+
+    if (reactionResult.applyTraces?.length && defender.pet.status) {
+        defender.pet.status.elementTraceJustApplied = true;
+    }
 
     // M9_WAVE_MARK_WATER_TRACE_LINK
     // 물결표식은 물 원소 흔적과 별개 상태지만,
@@ -1019,6 +1033,76 @@ const PetImage = styled.img`
   transition: filter 0.3s, opacity 0.3s, transform 0.35s ease;
 `;
 
+const reactionFlashPop = keyframes`
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.58) rotate(-4deg); filter: brightness(1); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.16) rotate(2deg); filter: brightness(1.42); }
+  52% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); filter: brightness(1.16); }
+  100% { opacity: 0; transform: translate(-50%, -58%) scale(1.22); filter: brightness(1); }
+`;
+
+const reactionFlashRing = keyframes`
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.42); }
+  24% { opacity: 0.78; transform: translate(-50%, -50%) scale(1.0); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.85); }
+`;
+
+const ReactionFlashOverlay = styled.div`
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 90;
+  pointer-events: none;
+  min-width: 240px;
+  padding: 0.9rem 1.55rem;
+  border-radius: 999px;
+  border: 3px solid color-mix(in srgb, ${props => props.$toneA} 58%, ${props => props.$toneB});
+  background:
+    radial-gradient(circle at 18% 30%, color-mix(in srgb, ${props => props.$toneA} 38%, transparent), transparent 42%),
+    radial-gradient(circle at 82% 72%, color-mix(in srgb, ${props => props.$toneB} 42%, transparent), transparent 46%),
+    rgba(255,255,255,0.88);
+  box-shadow:
+    0 0 28px color-mix(in srgb, ${props => props.$toneA} 46%, transparent),
+    0 0 44px color-mix(in srgb, ${props => props.$toneB} 38%, transparent),
+    inset 0 0 18px rgba(255,255,255,0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  animation: ${reactionFlashPop} 1.15s ease-out forwards;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 360px;
+    height: 150px;
+    border-radius: 999px;
+    border: 4px solid color-mix(in srgb, ${props => props.$toneA} 42%, ${props => props.$toneB});
+    box-shadow: 0 0 30px color-mix(in srgb, ${props => props.$toneB} 36%, transparent);
+    animation: ${reactionFlashRing} 1.05s ease-out forwards;
+  }
+
+  .reactionIcon {
+    position: relative;
+    z-index: 1;
+    font-size: 2.25rem;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px rgba(255,255,255,0.9));
+  }
+
+  .reactionLabel {
+    position: relative;
+    z-index: 1;
+    font-size: 1.65rem;
+    font-weight: 1000;
+    color: ${props => props.$text};
+    letter-spacing: -0.03em;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.92), 0 0 10px rgba(255,255,255,0.9);
+    white-space: nowrap;
+  }
+`;
+
 const QuizArea = styled.div`
   padding: 1.5rem; background-color: #fff; border: 2px solid #339af0;
   border-radius: 20px; display: grid; grid-template-columns: 1fr 320px;
@@ -1238,6 +1322,20 @@ const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '
 const SWITCH_RESUME_DELAY_MS = 2200;
 const SWITCH_CHOICE_LIMIT_MS = 10000;
 
+const REACTION_FLASH_META = {
+    electroCharged: { label: '감전', icon: '⚡💧', toneA: '#228be6', toneB: '#f08c00', text: '#1c7ed6' },
+    vaporize: { label: '증발', icon: '💧🔥', toneA: '#228be6', toneB: '#ff6b35', text: '#e8590c' },
+    combustion: { label: '연소', icon: '🔥🌿', toneA: '#ff6b35', toneB: '#2f9e44', text: '#e03131' },
+    overload: { label: '과부하', icon: '🔥⚡', toneA: '#ff6b35', toneB: '#f08c00', text: '#d9480f' },
+    pollenSpread: { label: '꽃가루 확산', icon: '🌿🌪️', toneA: '#2f9e44', toneB: '#15aabf', text: '#087f5b' },
+    frozen: { label: '빙결', icon: '💧❄️', toneA: '#228be6', toneB: '#4dabf7', text: '#1971c2' },
+};
+
+const detectElementReactionFromLog = (log = '') => {
+    const text = String(log || '');
+    return Object.entries(REACTION_FLASH_META).find(([, meta]) => text.includes(meta.label))?.[0] || null;
+};
+
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -1271,6 +1369,9 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
+    const [reactionFlash, setReactionFlash] = useState(null);
+    const lastReactionLogRef = useRef(null);
+    const reactionFlashTimerRef = useRef(null);
 
     const [shuffledOptions, setShuffledOptions] = useState([]);
     const [battleScale, setBattleScale] = useState(() => {
@@ -2344,6 +2445,27 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
     
     useEffect(() => {
+        // M10_6_REACTION_FLASH_AND_SOUND
+        const reactionKey = detectElementReactionFromLog(battleState?.log);
+        if (!reactionKey) return;
+
+        const logKey = `${battleState?.turnStartTime ?? ''}:${battleState?.log ?? ''}`;
+        if (lastReactionLogRef.current === logKey) return;
+        lastReactionLogRef.current = logKey;
+
+        const meta = REACTION_FLASH_META[reactionKey];
+        setReactionFlash({ id: `${Date.now()}-${reactionKey}`, reactionKey, ...meta });
+        playElementReactionSound(reactionKey);
+
+        clearTimeout(reactionFlashTimerRef.current);
+        reactionFlashTimerRef.current = setTimeout(() => {
+            setReactionFlash(null);
+        }, 1250);
+
+        return () => clearTimeout(reactionFlashTimerRef.current);
+    }, [battleState?.log, battleState?.turnStartTime]);
+
+    useEffect(() => {
         // M5_MANUAL_SWITCH_RESET_SUBMENU_V3
         // 행동 선택 상태를 벗어나면 교체/스킬/아이템 하위 메뉴를 닫습니다.
         if (!battleState || !myPlayerData) return;
@@ -2858,6 +2980,12 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         const eligibleStatusKeys = options.eligibleStatusKeys || null;
         const hasEligibilityGate = eligibleStatusKeys instanceof Set;
 
+        // M10_5_TRACE_OWNER_ATTACK_RETAIN
+        // 원소 흔적은 상대에게 묻혀 놓는 약점/반응 재료입니다.
+        // 흔적이 묻은 펫이 직접 공격했다는 이유만으로 자기 흔적이 사라지면
+        // 학생 입장에서는 "내가 공격했더니 표식이 없어졌다"처럼 보여 납득하기 어렵습니다.
+        const shouldTickElementTrace = options.tickElementTrace !== false;
+
         const messages = [];
 
         const isEligible = key => {
@@ -2914,7 +3042,9 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         // M5_ELEMENT_TRACE_TURN_TICK
         // 원소 흔적은 큰 상태이상 카드와 분리된 작은 흔적 UI입니다.
         // 기본 flag가 꺼져 있으면 아무 변화도 없습니다.
-        tickElementTraces(pet);
+        if (shouldTickElementTrace) {
+            tickElementTraces(pet);
+        }
 
         return messages.join(' ');
     };
@@ -3319,7 +3449,12 @@ const handleUseItem = async (itemId) => {
 
                 // 두뇌간식도 한 턴 종료로 간주합니다.
                 // 따라서 행동한 쪽뿐 아니라 양쪽 active pet 모두 DOT/턴수 감소를 받습니다.
-                const myStatusLog = applyEndOfTurnDotAndStatus(nextMyParticipantBase, { eligibleStatusKeys: getActiveStatusKeys(nextMyParticipantBase.pet?.status) });
+                const myStatusLog = applyEndOfTurnDotAndStatus(nextMyParticipantBase, {
+                    eligibleStatusKeys: getActiveStatusKeys(nextMyParticipantBase.pet?.status),
+                    // M10_5_TRACE_RETAIN_ON_NON_ATTACK_ACTION
+                    // 아이템 사용은 원소반응을 발생시키는 공격이 아니므로, 사용자 몸에 묻은 원소 흔적을 이 행동으로 깎지 않습니다.
+                    tickElementTrace: false,
+                });
                 const opponentStatusLog = applyEndOfTurnDotAndStatus(nextOpponentParticipantBase, { eligibleStatusKeys: getActiveStatusKeys(nextOpponentParticipantBase.pet?.status) });
 
                 // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
@@ -3641,7 +3776,12 @@ const handleUseItem = async (itemId) => {
 
                 // 펫 교체도 한 턴 종료로 간주합니다.
                 // 따라서 교체하는 쪽뿐 아니라 상대 active pet도 DOT/턴수 감소를 받습니다.
-                const switcherStatusLog = applyEndOfTurnDotAndStatus(currentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(currentTurnParticipant.pet?.status) });
+                const switcherStatusLog = applyEndOfTurnDotAndStatus(currentTurnParticipant, {
+                    eligibleStatusKeys: getActiveStatusKeys(currentTurnParticipant.pet?.status),
+                    // M10_5_TRACE_RETAIN_ON_SWITCH
+                    // 교체는 원소반응을 발생시키는 공격이 아니므로, 교체하는 펫의 원소 흔적을 이 행동으로 깎지 않습니다.
+                    tickElementTrace: false,
+                });
                 const opponentStatusLog = applyEndOfTurnDotAndStatus(opponentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(opponentTurnParticipant.pet?.status) });
 
                 // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
@@ -4114,7 +4254,10 @@ if (defender.pet.status?.stunned) {
                 // 공격/스킬 처리 후 쓰러진 active 펫 처리:
                 // 대기 0마리: 종료, 대기 1마리: 자동교체, 대기 2마리 이상: 직접 선택
                 const ccDotLogs = [
-                    applyEndOfTurnDotAndStatus(attacker, { eligibleStatusKeys: initialAttackerStatusKeys }),
+                    applyEndOfTurnDotAndStatus(attacker, {
+                        eligibleStatusKeys: initialAttackerStatusKeys,
+                        tickElementTrace: false,
+                    }),
                     applyEndOfTurnDotAndStatus(defender, { eligibleStatusKeys: initialDefenderStatusKeys }),
                 ].filter(Boolean);
 
@@ -4410,6 +4553,18 @@ if (defender.pet.status?.stunned) {
                                     ✨ {switchMessage}
                                 </div>
                             )}
+                            {reactionFlash && (
+                                <ReactionFlashOverlay
+                                    key={reactionFlash.id}
+                                    $toneA={reactionFlash.toneA}
+                                    $toneB={reactionFlash.toneB}
+                                    $text={reactionFlash.text}
+                                >
+                                    <span className="reactionIcon">{reactionFlash.icon}</span>
+                                    <span className="reactionLabel">{reactionFlash.label}</span>
+                                </ReactionFlashOverlay>
+                            )}
+
                             {/* M1_BATTLE_EFFECT_DISPLAY_STABILIZE_PATCH: 실제 배틀 이펙트는 currentEffect -> BattleSkillEffect 단일 경로로 호출합니다. */}
                             {currentEffect && (
                                 <BattleSkillEffect
