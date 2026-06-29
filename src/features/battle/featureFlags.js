@@ -1,4 +1,3 @@
 export const FEATURE_FLAGS = {
     ELEMENT_REACTION_ENABLED: false,
-    LEGACY_TYPE_CHART_ENABLED: true,
 };
