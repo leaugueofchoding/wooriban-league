@@ -18,6 +18,8 @@ import BattleTeamMiniBar from './BattleTeamMiniBar';
 import BattlePlayerPanel from './BattlePlayerPanel';
 import BattleActionMenu from './BattleActionMenu';
 import { normalizeBattleParticipantForBattle, replaceActiveBattlePet } from './battlePetUtils';
+import { FEATURE_FLAGS } from './featureFlags';
+import { resolveElementReaction, applyReactionResultToPet } from './elementReactionEngine';
 
 
 const syncBattleParticipantActivePet = (participant) => {
@@ -122,6 +124,84 @@ const switchToNextAlivePetIfNeeded = (participant) => {
         switched: true,
         switchedPetName: nextPet.name || '다음 펫',
     };
+};
+
+// M5_ELEMENT_TRACES_UI_PATCH
+// flag가 켜졌을 때만 원소 흔적/반응 결과를 실제 전투 상태에 반영합니다.
+// 기본값은 ELEMENT_REACTION_ENABLED=false라 기존 배틀에는 영향이 없습니다.
+const tickElementTraces = (pet) => {
+    if (!FEATURE_FLAGS.ELEMENT_REACTION_ENABLED) return;
+    const traces = pet?.status?.elementTraces;
+    if (!traces || typeof traces !== 'object') return;
+
+    const nextTraces = Object.entries(traces).reduce((acc, [element, rawTurns]) => {
+        const turns = typeof rawTurns === 'object'
+            ? Number(rawTurns.turns ?? 0)
+            : Number(rawTurns);
+
+        const nextTurns = Number.isFinite(turns) ? turns - 1 : 0;
+        if (nextTurns > 0) {
+            acc[element] = nextTurns;
+        }
+
+        return acc;
+    }, {});
+
+    if (Object.keys(nextTraces).length > 0) {
+        pet.status.elementTraces = nextTraces;
+    } else {
+        delete pet.status.elementTraces;
+    }
+};
+
+const appendElementReactionAfterAction = ({
+    attacker,
+    defender,
+    skill,
+    preHp,
+    actionResolved,
+}) => {
+    if (!FEATURE_FLAGS.ELEMENT_REACTION_ENABLED) return '';
+    if (!actionResolved || !skill?.element || !defender?.pet) return '';
+
+    const baseDamage = Math.max(0, Number(preHp ?? 0) - Number(defender.pet.hp ?? 0));
+    const reactionResult = resolveElementReaction({
+        attacker,
+        defender,
+        skill,
+        baseDamage,
+    });
+
+    if (!reactionResult?.enabled) return '';
+
+    applyReactionResultToPet(defender.pet, reactionResult);
+
+    const logParts = [];
+
+    if (reactionResult.reactionKey) {
+        const multiplierBonus = Math.max(
+            0,
+            Math.round(baseDamage * ((reactionResult.damageMultiplier ?? 1) - 1))
+        );
+        const bonusDamage = multiplierBonus + Math.max(0, Number(reactionResult.flatDamage ?? 0));
+
+        if (bonusDamage > 0) {
+            defender.pet.hp = Math.max(0, Number(defender.pet.hp ?? 0) - bonusDamage);
+            logParts.push('원소반응 추가 피해 ' + bonusDamage + '!');
+        }
+
+        if (reactionResult.logParts?.length) {
+            logParts.push(...reactionResult.logParts);
+        }
+
+        return logParts.length ? ' ' + logParts.join(' ') : '';
+    }
+
+    if (reactionResult.reason === 'TRACE_APPLIED' && reactionResult.logParts?.length) {
+        return ' ' + reactionResult.logParts.join(' ');
+    }
+
+    return '';
 };
 
 // M1_BATTLE_BGM_RANDOM_LOUD_PATCH
@@ -2818,6 +2898,11 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
             }
         });
 
+        // M5_ELEMENT_TRACE_TURN_TICK
+        // 원소 흔적은 큰 상태이상 카드와 분리된 작은 흔적 UI입니다.
+        // 기본 flag가 꺼져 있으면 아무 변화도 없습니다.
+        tickElementTraces(pet);
+
         return messages.join(' ');
     };
 
@@ -3887,8 +3972,11 @@ if (defender.pet.status?.stunned) {
                 
                 const preHp = defender.pet.hp;
                 const actionName = skill?.name || '공격';
+                let normalActionResolved = false;
 
                 const resolveNormalAction = () => {
+                    normalActionResolved = true;
+
                     if (skill && skill.effect) {
                         log = skill.effect(attacker, defender, defenderAction);
 
@@ -3948,6 +4036,21 @@ if (defender.pet.status?.stunned) {
                 // 단, SP 부족으로 기본공격으로 대체된 경우 actualCost는 0입니다.
                 if (skill && actualCost > 0) {
                     attacker.pet.sp = Math.max(0, Number(attacker.pet.sp ?? 0) - actualCost);
+                }
+
+                // M5_ELEMENT_REACTION_AFTER_ACTION
+                // flag가 켜진 경우에만 원소 흔적/반응을 적용합니다.
+                // 기본값 false에서는 기존 전투 로그/데미지/상태가 그대로 유지됩니다.
+                const elementReactionLog = appendElementReactionAfterAction({
+                    attacker,
+                    defender,
+                    skill,
+                    preHp,
+                    actionResolved: normalActionResolved,
+                });
+
+                if (elementReactionLog) {
+                    log += elementReactionLog;
                 }
 
                 // --- ⚔️ 반격 (Counter) 시스템 처리 ---
