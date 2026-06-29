@@ -1,3 +1,3 @@
 export const FEATURE_FLAGS = {
-    ELEMENT_REACTION_ENABLED: false,
+    ELEMENT_REACTION_ENABLED: true,
 };

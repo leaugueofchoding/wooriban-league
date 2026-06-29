@@ -126,8 +126,12 @@ export function normalizeTraces(rawTraces = {}, balanceConfig = ELEMENT_REACTION
     }, {});
 }
 
-export function getElementTracesFromPet(pet, balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG) {
-    return normalizeTraces(pet?.status?.elementTraces || {}, balanceConfig);
+export function getElementTracesFromPet(petOrParticipant, balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG) {
+    // M10_5_PARTICIPANT_TRACE_READ_FIX
+    // 실제 BattlePage에서는 defender가 participant 형태({ pet })로 전달될 수 있습니다.
+    // pet/status 양쪽 형태를 모두 허용해 기존 흔적을 안정적으로 읽습니다.
+    const status = petOrParticipant?.status || petOrParticipant?.pet?.status || {};
+    return normalizeTraces(status.elementTraces || {}, balanceConfig);
 }
 
 export function createEmptyReactionResult({ reason = null, nextTraces = {} } = {}) {

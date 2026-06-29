@@ -17,12 +17,10 @@ import {
 
 const ON = {
     ELEMENT_REACTION_ENABLED: true,
-    LEGACY_TYPE_CHART_ENABLED: true,
 };
 
 const OFF = {
     ELEMENT_REACTION_ENABLED: false,
-    LEGACY_TYPE_CHART_ENABLED: true,
 };
 
 function makeDefender(maxHp = 100) {
@@ -94,6 +92,22 @@ function testWaterLightningElectroChargedConsumesWaterTrace() {
     assert.deepEqual(result.nextTraces, {});
     assert.equal(result.flatDamage, 8);
     assert.ok(result.logParts.join(' ').includes('감전'));
+}
+
+function testParticipantDefenderShapeReadsExistingTraces() {
+    const defender = makeDefender(200);
+    defender.pet.status.elementTraces = { water: 2 };
+
+    const result = resolveElementReaction({
+        defender,
+        skillElement: '번개',
+        baseDamage: 40,
+        flags: ON,
+    });
+
+    assert.equal(result.reason, 'REACTION_TRIGGERED');
+    assert.equal(result.reactionKey, 'electroCharged');
+    assert.deepEqual(result.consumeTraces, [ELEMENT_KEYS.WATER]);
 }
 
 function testReactionPairsAreDirectionInsensitive() {
@@ -210,6 +224,7 @@ function run() {
     testElementNormalization();
     testTraceApplicationWhenNoReaction();
     testWaterLightningElectroChargedConsumesWaterTrace();
+    testParticipantDefenderShapeReadsExistingTraces();
     testReactionPairsAreDirectionInsensitive();
     testCoreReactionInventory();
     testNormalizeTracesAcceptsKoreanKeys();
@@ -217,7 +232,7 @@ function run() {
     testCustomBalanceConfigCanChangeNumbersWithoutEngineEdit();
     testBuildReactionLookupUsesConfig();
 
-    console.log('✅ M4 reaction config tests passed');
+    console.log('✅ M10.5 element reaction tests passed');
 }
 
 run();

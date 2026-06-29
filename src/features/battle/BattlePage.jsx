@@ -131,6 +131,13 @@ const switchToNextAlivePetIfNeeded = (participant) => {
 // 기본값은 ELEMENT_REACTION_ENABLED=false라 기존 배틀에는 영향이 없습니다.
 const tickElementTraces = (pet) => {
     if (!FEATURE_FLAGS.ELEMENT_REACTION_ENABLED) return;
+    if (pet?.status?.elementTraceJustApplied) {
+        // M10_5_ELEMENT_TRACE_SAME_TURN_TICK_GUARD
+        // 이번 행동으로 막 붙은 원소 흔적은 같은 턴 종료 처리에서 바로 감소시키지 않습니다.
+        delete pet.status.elementTraceJustApplied;
+        return;
+    }
+
     const traces = pet?.status?.elementTraces;
     if (!traces || typeof traces !== 'object') return;
 
@@ -170,11 +177,18 @@ const appendElementReactionAfterAction = ({
         defender,
         skill,
         baseDamage,
+        // M10_5_EXISTING_TRACE_EXPLICIT_PASS
+        // defender는 participant 형태이므로, 기존 흔적을 명시적으로 전달합니다.
+        existingTraces: defender.pet?.status?.elementTraces || {},
     });
 
     if (!reactionResult?.enabled) return '';
 
     applyReactionResultToPet(defender.pet, reactionResult);
+
+    if (reactionResult.applyTraces?.length && defender.pet.status) {
+        defender.pet.status.elementTraceJustApplied = true;
+    }
 
     // M9_WAVE_MARK_WATER_TRACE_LINK
     // 물결표식은 물 원소 흔적과 별개 상태지만,
@@ -2858,6 +2872,12 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         const eligibleStatusKeys = options.eligibleStatusKeys || null;
         const hasEligibilityGate = eligibleStatusKeys instanceof Set;
 
+        // M10_5_TRACE_OWNER_ATTACK_RETAIN
+        // 원소 흔적은 상대에게 묻혀 놓는 약점/반응 재료입니다.
+        // 흔적이 묻은 펫이 직접 공격했다는 이유만으로 자기 흔적이 사라지면
+        // 학생 입장에서는 "내가 공격했더니 표식이 없어졌다"처럼 보여 납득하기 어렵습니다.
+        const shouldTickElementTrace = options.tickElementTrace !== false;
+
         const messages = [];
 
         const isEligible = key => {
@@ -2914,7 +2934,9 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         // M5_ELEMENT_TRACE_TURN_TICK
         // 원소 흔적은 큰 상태이상 카드와 분리된 작은 흔적 UI입니다.
         // 기본 flag가 꺼져 있으면 아무 변화도 없습니다.
-        tickElementTraces(pet);
+        if (shouldTickElementTrace) {
+            tickElementTraces(pet);
+        }
 
         return messages.join(' ');
     };
@@ -4114,7 +4136,10 @@ if (defender.pet.status?.stunned) {
                 // 공격/스킬 처리 후 쓰러진 active 펫 처리:
                 // 대기 0마리: 종료, 대기 1마리: 자동교체, 대기 2마리 이상: 직접 선택
                 const ccDotLogs = [
-                    applyEndOfTurnDotAndStatus(attacker, { eligibleStatusKeys: initialAttackerStatusKeys }),
+                    applyEndOfTurnDotAndStatus(attacker, {
+                        eligibleStatusKeys: initialAttackerStatusKeys,
+                        tickElementTrace: false,
+                    }),
                     applyEndOfTurnDotAndStatus(defender, { eligibleStatusKeys: initialDefenderStatusKeys }),
                 ].filter(Boolean);
 
