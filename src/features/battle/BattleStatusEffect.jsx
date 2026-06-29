@@ -2,6 +2,69 @@
 
 import React from 'react';
 
+
+const ELEMENT_TRACE_STATUS_META = {
+    fire: {
+        icon: '🔥',
+        label: '불 흔적',
+        tone: '#f03e3e',
+    },
+    water: {
+        icon: '💧',
+        label: '물 흔적',
+        tone: '#228be6',
+    },
+    grass: {
+        icon: '🌿',
+        label: '풀 흔적',
+        tone: '#2f9e44',
+    },
+    wind: {
+        icon: '🌪️',
+        label: '바람 흔적',
+        tone: '#15aabf',
+    },
+    lightning: {
+        icon: '⚡',
+        label: '번개 흔적',
+        tone: '#f08c00',
+    },
+    ice: {
+        icon: '❄️',
+        label: '얼음 흔적',
+        tone: '#4dabf7',
+    },
+};
+
+export function getElementTraceStatusList(petStatus = {}) {
+    const traces = petStatus?.elementTraces;
+    if (!traces || typeof traces !== 'object') return [];
+
+    return Object.entries(traces)
+        .map(([element, rawTurns]) => {
+            const meta = ELEMENT_TRACE_STATUS_META[element];
+            if (!meta) return null;
+
+            const turns = typeof rawTurns === 'object'
+                ? Number(rawTurns.turns ?? 1)
+                : Number(rawTurns);
+
+            const safeTurns = Number.isFinite(turns) && turns > 0
+                ? Math.ceil(turns)
+                : 1;
+
+            return {
+                kind: 'elementTrace-' + element,
+                icon: meta.icon,
+                label: meta.label,
+                detail: safeTurns + '턴 원소 흔적',
+                tone: meta.tone,
+                isElementTrace: true,
+            };
+        })
+        .filter(Boolean);
+}
+
 export function getBattleStatusList(petStatus = {}) {
     const statuses = [];
 
@@ -156,6 +219,10 @@ export function getBattleStatusList(petStatus = {}) {
             tone: '#37b24d',
         });
     }
+
+    // M5_ELEMENT_TRACE_STATUS_LIST
+    // 원소 흔적은 큰 상태 카드가 아니라 작은 트레이 전용 상태로 분리합니다.
+    statuses.push(...getElementTraceStatusList(petStatus));
 
     return statuses;
 }
@@ -312,6 +379,8 @@ function BattleStatusEffect({
 }) {
     const rawStatusList = statuses || getBattleStatusList(petStatus);
     const statusList = getUniqueStatuses(rawStatusList);
+    const battleStatusList = statusList.filter(status => !status.isElementTrace);
+    const elementTraceStatuses = statusList.filter(status => status.isElementTrace);
 
     if (!statusList || statusList.length === 0) return null;
 
@@ -345,18 +414,21 @@ function BattleStatusEffect({
     const badgeBorderWidth = isBattle ? 3 : 2;
 
     // 배틀 화면:
-    // 1순위 상태 = 큰 카드 + 큰 오라
-    // 나머지 상태 = 작은 아이콘 트레이
-    const primaryStatus = statusList[0];
-    const secondaryStatuses = isBattle ? statusList.slice(1) : [];
+    // 1순위 전투 상태 = 큰 카드 + 큰 오라
+    // 나머지 전투 상태 + 원소 흔적 = 작은 아이콘 트레이
+    // 원소 흔적만 있을 때는 큰 카드/오라 없이 작은 트레이만 보여줍니다.
+    const primaryStatus = battleStatusList[0] || null;
+    const secondaryStatuses = isBattle
+        ? [...battleStatusList.slice(1), ...elementTraceStatuses]
+        : elementTraceStatuses;
 
     const visibleAuras = isBattle
-        ? [primaryStatus]
-        : statusList;
+        ? (primaryStatus ? [primaryStatus] : [])
+        : battleStatusList;
 
     const visibleBadges = isBattle
-        ? [primaryStatus]
-        : statusList.slice(0, 4);
+        ? (primaryStatus ? [primaryStatus] : [])
+        : battleStatusList.slice(0, 4);
 
     return (
         <div className={`battleStatusLayer battleStatusLayer--${variant}`}>
