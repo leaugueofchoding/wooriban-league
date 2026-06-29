@@ -10,7 +10,7 @@ import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS, clearWaveMarks } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
-import { playSkillSound, playHitSound, playHealSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
+import { playSkillSound, playHitSound, playHealSound, playElementReactionSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
 import BattleStatusEffect from './BattleStatusEffect';
 import { BattleHpBar, BattleSpBar } from './BattleStatBars';
 import BattlePetSlot from './BattlePetSlot';
@@ -1033,6 +1033,76 @@ const PetImage = styled.img`
   transition: filter 0.3s, opacity 0.3s, transform 0.35s ease;
 `;
 
+const reactionFlashPop = keyframes`
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.58) rotate(-4deg); filter: brightness(1); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.16) rotate(2deg); filter: brightness(1.42); }
+  52% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); filter: brightness(1.16); }
+  100% { opacity: 0; transform: translate(-50%, -58%) scale(1.22); filter: brightness(1); }
+`;
+
+const reactionFlashRing = keyframes`
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.42); }
+  24% { opacity: 0.78; transform: translate(-50%, -50%) scale(1.0); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.85); }
+`;
+
+const ReactionFlashOverlay = styled.div`
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 90;
+  pointer-events: none;
+  min-width: 240px;
+  padding: 0.9rem 1.55rem;
+  border-radius: 999px;
+  border: 3px solid color-mix(in srgb, ${props => props.$toneA} 58%, ${props => props.$toneB});
+  background:
+    radial-gradient(circle at 18% 30%, color-mix(in srgb, ${props => props.$toneA} 38%, transparent), transparent 42%),
+    radial-gradient(circle at 82% 72%, color-mix(in srgb, ${props => props.$toneB} 42%, transparent), transparent 46%),
+    rgba(255,255,255,0.88);
+  box-shadow:
+    0 0 28px color-mix(in srgb, ${props => props.$toneA} 46%, transparent),
+    0 0 44px color-mix(in srgb, ${props => props.$toneB} 38%, transparent),
+    inset 0 0 18px rgba(255,255,255,0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  animation: ${reactionFlashPop} 1.15s ease-out forwards;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 360px;
+    height: 150px;
+    border-radius: 999px;
+    border: 4px solid color-mix(in srgb, ${props => props.$toneA} 42%, ${props => props.$toneB});
+    box-shadow: 0 0 30px color-mix(in srgb, ${props => props.$toneB} 36%, transparent);
+    animation: ${reactionFlashRing} 1.05s ease-out forwards;
+  }
+
+  .reactionIcon {
+    position: relative;
+    z-index: 1;
+    font-size: 2.25rem;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px rgba(255,255,255,0.9));
+  }
+
+  .reactionLabel {
+    position: relative;
+    z-index: 1;
+    font-size: 1.65rem;
+    font-weight: 1000;
+    color: ${props => props.$text};
+    letter-spacing: -0.03em;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.92), 0 0 10px rgba(255,255,255,0.9);
+    white-space: nowrap;
+  }
+`;
+
 const QuizArea = styled.div`
   padding: 1.5rem; background-color: #fff; border: 2px solid #339af0;
   border-radius: 20px; display: grid; grid-template-columns: 1fr 320px;
@@ -1252,6 +1322,20 @@ const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '
 const SWITCH_RESUME_DELAY_MS = 2200;
 const SWITCH_CHOICE_LIMIT_MS = 10000;
 
+const REACTION_FLASH_META = {
+    electroCharged: { label: '감전', icon: '⚡💧', toneA: '#228be6', toneB: '#f08c00', text: '#1c7ed6' },
+    vaporize: { label: '증발', icon: '💧🔥', toneA: '#228be6', toneB: '#ff6b35', text: '#e8590c' },
+    combustion: { label: '연소', icon: '🔥🌿', toneA: '#ff6b35', toneB: '#2f9e44', text: '#e03131' },
+    overload: { label: '과부하', icon: '🔥⚡', toneA: '#ff6b35', toneB: '#f08c00', text: '#d9480f' },
+    pollenSpread: { label: '꽃가루 확산', icon: '🌿🌪️', toneA: '#2f9e44', toneB: '#15aabf', text: '#087f5b' },
+    frozen: { label: '빙결', icon: '💧❄️', toneA: '#228be6', toneB: '#4dabf7', text: '#1971c2' },
+};
+
+const detectElementReactionFromLog = (log = '') => {
+    const text = String(log || '');
+    return Object.entries(REACTION_FLASH_META).find(([, meta]) => text.includes(meta.label))?.[0] || null;
+};
+
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -1285,6 +1369,9 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
+    const [reactionFlash, setReactionFlash] = useState(null);
+    const lastReactionLogRef = useRef(null);
+    const reactionFlashTimerRef = useRef(null);
 
     const [shuffledOptions, setShuffledOptions] = useState([]);
     const [battleScale, setBattleScale] = useState(() => {
@@ -2357,6 +2444,27 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     }, [battleState, myPlayerData]);
 
     
+    useEffect(() => {
+        // M10_6_REACTION_FLASH_AND_SOUND
+        const reactionKey = detectElementReactionFromLog(battleState?.log);
+        if (!reactionKey) return;
+
+        const logKey = `${battleState?.turnStartTime ?? ''}:${battleState?.log ?? ''}`;
+        if (lastReactionLogRef.current === logKey) return;
+        lastReactionLogRef.current = logKey;
+
+        const meta = REACTION_FLASH_META[reactionKey];
+        setReactionFlash({ id: `${Date.now()}-${reactionKey}`, reactionKey, ...meta });
+        playElementReactionSound(reactionKey);
+
+        clearTimeout(reactionFlashTimerRef.current);
+        reactionFlashTimerRef.current = setTimeout(() => {
+            setReactionFlash(null);
+        }, 1250);
+
+        return () => clearTimeout(reactionFlashTimerRef.current);
+    }, [battleState?.log, battleState?.turnStartTime]);
+
     useEffect(() => {
         // M5_MANUAL_SWITCH_RESET_SUBMENU_V3
         // 행동 선택 상태를 벗어나면 교체/스킬/아이템 하위 메뉴를 닫습니다.
@@ -4445,6 +4553,18 @@ if (defender.pet.status?.stunned) {
                                     ✨ {switchMessage}
                                 </div>
                             )}
+                            {reactionFlash && (
+                                <ReactionFlashOverlay
+                                    key={reactionFlash.id}
+                                    $toneA={reactionFlash.toneA}
+                                    $toneB={reactionFlash.toneB}
+                                    $text={reactionFlash.text}
+                                >
+                                    <span className="reactionIcon">{reactionFlash.icon}</span>
+                                    <span className="reactionLabel">{reactionFlash.label}</span>
+                                </ReactionFlashOverlay>
+                            )}
+
                             {/* M1_BATTLE_EFFECT_DISPLAY_STABILIZE_PATCH: 실제 배틀 이펙트는 currentEffect -> BattleSkillEffect 단일 경로로 호출합니다. */}
                             {currentEffect && (
                                 <BattleSkillEffect

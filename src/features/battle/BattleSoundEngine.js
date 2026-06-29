@@ -384,6 +384,51 @@ const HIT_SOUND_MAP = {
 
 const DEFAULT_HIT = (ctx) => playTone(ctx, { type: 'square', freqStart: 150, freqEnd: 20, duration: 0.15, gainStart: 0.3, gainAttack: 0.002 });
 
+// M10_6_ELEMENT_REACTION_SOUND
+const REACTION_SOUND_MAP = {
+    electroCharged: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.16 });
+        playCrackle(ctx, { startTime: 0.08, count: 9, spread: 0.34, baseGain: 0.13 });
+        playTone(ctx, { startTime: 0.12, type: 'square', freqStart: 1400, freqEnd: 160, duration: 0.28, gainStart: 0.16, gainAttack: 0.002 });
+    },
+    vaporize: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.18 });
+        SOUND_RECIPES.FIRE_WHOOSH(ctx, 0.05, { duration: 0.42, intensity: 0.18 });
+        playNoise(ctx, { startTime: 0.12, duration: 0.34, filterType: 'highpass', freqStart: 2800, freqEnd: 5800, gainStart: 0.16, gainAttack: 0.008, Q: 0.7 });
+    },
+    combustion: (ctx) => {
+        playNoise(ctx, { duration: 0.28, filterType: 'bandpass', freqStart: 900, freqEnd: 1800, gainStart: 0.12, gainAttack: 0.01, Q: 1.2 });
+        SOUND_RECIPES.FIRE_WHOOSH(ctx, 0.08, { duration: 0.55, intensity: 0.24 });
+        playCrackle(ctx, { startTime: 0.18, count: 6, spread: 0.4, baseGain: 0.07 });
+    },
+    overload: (ctx) => {
+        playCrackle(ctx, { startTime: 0, count: 7, spread: 0.2, baseGain: 0.12 });
+        playTone(ctx, { startTime: 0.2, type: 'sawtooth', freqStart: 110, freqEnd: 24, duration: 0.38, gainStart: 0.34, gainAttack: 0.003 });
+        playNoise(ctx, { startTime: 0.2, duration: 0.38, filterType: 'lowpass', freqStart: 2400, freqEnd: 100, gainStart: 0.28, Q: 0.45 });
+    },
+    pollenSpread: (ctx) => {
+        playNoise(ctx, { duration: 0.52, filterType: 'bandpass', freqStart: 650, freqEnd: 2600, gainStart: 0.13, gainAttack: 0.05, Q: 1.8 });
+        playTone(ctx, { startTime: 0.08, type: 'sine', freqStart: 520, freqEnd: 980, duration: 0.34, gainStart: 0.08, gainAttack: 0.03, freqCurve: 'linear' });
+        playTone(ctx, { startTime: 0.22, type: 'triangle', freqStart: 840, freqEnd: 1320, duration: 0.26, gainStart: 0.07, gainAttack: 0.02, freqCurve: 'linear' });
+    },
+    frozen: (ctx) => {
+        playTone(ctx, { type: 'sine', freqStart: 1400, freqEnd: 620, duration: 0.18, gainStart: 0.12, gainAttack: 0.002 });
+        playTone(ctx, { startTime: 0.12, type: 'triangle', freqStart: 2100, freqEnd: 320, duration: 0.32, gainStart: 0.14, gainAttack: 0.002 });
+        playNoise(ctx, { startTime: 0.16, duration: 0.28, filterType: 'highpass', freqStart: 4200, freqEnd: 6200, gainStart: 0.10, gainAttack: 0.004, Q: 0.9 });
+    },
+};
+
+export const playElementReactionSound = (reactionKey) => {
+    try {
+        const ctx = getCtx();
+        if (!ctx) return;
+        const recipe = REACTION_SOUND_MAP[reactionKey];
+        if (recipe) recipe(ctx);
+    } catch (e) {
+        console.log('battleSoundEngine: reaction sound unavailable', e);
+    }
+};
+
 /**
  * 스킬/액션 발동 시점에 호출합니다. actionType은 SKILLS의 키
  * (예: 'FLAME_DASH', 'WIND_BLADE', 'TACKLE' 등)를 그대로 받습니다.
