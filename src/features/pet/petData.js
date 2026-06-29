@@ -32,27 +32,10 @@ export const PET_BATTLE_ROLES = {
     CONTROL_SUPPORT: 'control_support',
 };
 
-const ELEMENT_CHART = {
-    ['불']: { strongAgainst: ['풀', '바람'] },
-    ['바람']: { strongAgainst: ['풀', '흙'] },
-    ['풀']: { strongAgainst: ['물', '번개'] },
-    ['물']: { strongAgainst: ['불', '흙'] },
-    ['번개']: { strongAgainst: ['물', '바람'] },
-    ['흙']: { strongAgainst: ['번개', '불'] }
-};
-
-const getPetElement = (appearanceId = '') => {
-    if (appearanceId.includes('dragon')) return '불';
-    if (appearanceId.includes('fox')) return '불';
-    if (appearanceId.includes('rabbit')) return '바람';
-    if (appearanceId.includes('bird') || appearanceId.includes('turtle')) return '풀';
-    if (appearanceId.includes('monkey')) return '번개';
-    if (appearanceId.includes('frog')) return '물';
-    if (appearanceId.includes('manta')) return '물';
-    return null;
-};
-
-const calculateDamage = (basePower, attackerPlayer, defenderPlayer, skillElement = null, skillMult = 1.0, atkMult = 0.7) => {
+// M9_REMOVE_LEGACY_TYPE_CHART
+// 기존 불/물/풀/바람/번개/흙 단순 상성 배율은 삭제합니다.
+// 앞으로 강한 결과는 원소 흔적/원소반응에서 발생합니다.
+const calculateDamage = (basePower, attackerPlayer, defenderPlayer, _skillElement = null, skillMult = 1.0, atkMult = 0.7) => {
     const attacker = attackerPlayer.pet;
     const defender = defenderPlayer.pet;
 
@@ -60,14 +43,6 @@ const calculateDamage = (basePower, attackerPlayer, defenderPlayer, skillElement
     let multiplier = 1.0;
     let isEffective = false;
     let isCritical = false;
-
-    if (skillElement) {
-        const defenderElement = defender.element || getPetElement(defender.appearanceId);
-        if (defenderElement && ELEMENT_CHART[skillElement]?.strongAgainst.includes(defenderElement)) {
-            multiplier *= 1.3;
-            isEffective = true;
-        }
-    }
 
     const critChance = (attackerPlayer.equippedTitle === 'ruler_of_the_league') ? 0.15 : 0.10;
     if (Math.random() < critChance) {
@@ -150,7 +125,7 @@ const addWaveMark = (targetPet) => {
     };
 };
 
-const clearWaveMarks = (targetPet) => {
+export const clearWaveMarks = (targetPet) => {
     const markCount = getWaveMarkCount(targetPet);
     setWaveMarkCount(targetPet, 0);
     return markCount;
@@ -472,7 +447,7 @@ export const SKILLS = {
         type: 'basic',
         element: null,
         basePower: 20,
-        description: '가장 기본적인 몸통박치기로 적에게 물리적인 피해를 줍니다. 만타 계열은 상대에게 물결표식이 있을 때 표식 수에 따라 피해가 조금 증가합니다.',
+        description: '가장 기본적인 몸통박치기로 적에게 물리적인 피해를 줍니다. 상대에게 물결표식이 있으면 아군 누구의 기본공격도 표식 수에 따라 조금 강해집니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
@@ -527,16 +502,13 @@ export const SKILLS = {
             }
 
             const waveMarkCount = getWaveMarkCount(defender);
-            const isMantaAttacker = String(attacker.appearanceId ?? '').includes('manta');
-            const waveMarkBasicMultipliers = [1, 1.25, 1.6, 2.0];
+            const waveMarkBasicMultipliers = [1, 1.2, 1.45, 1.75];
             const safeWaveMarkCount = Math.min(3, Math.max(0, waveMarkCount));
-            const waveMarkBasicMultiplier = isMantaAttacker
-                ? (waveMarkBasicMultipliers[safeWaveMarkCount] ?? 1)
-                : 1;
+            const waveMarkBasicMultiplier = waveMarkBasicMultipliers[safeWaveMarkCount] ?? 1;
 
             if (damage > 0 && waveMarkBasicMultiplier > 1) {
                 damage *= waveMarkBasicMultiplier;
-                log += ` 🌊 물결표식 ${safeWaveMarkCount}개의 물살을 타고 공격이 강해졌다!`;
+                log += ` 🌊 물결표식 ${safeWaveMarkCount}개의 물살이 약점을 드러냈다! 기본공격이 강해졌다!`;
             }
 
             damage = Math.round(damage);

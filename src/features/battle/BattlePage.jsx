@@ -7,7 +7,7 @@ import { useLeagueStore, useClassStore } from '../../store/leagueStore';
 import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost , processBattleResults} from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
-import { SKILLS } from '../pet/petData';
+import { SKILLS, clearWaveMarks } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
 import { playSkillSound, playHitSound, playHealSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
@@ -176,6 +176,15 @@ const appendElementReactionAfterAction = ({
 
     applyReactionResultToPet(defender.pet, reactionResult);
 
+    // M9_WAVE_MARK_WATER_TRACE_LINK
+    // 물결표식은 물 원소 흔적과 별개 상태지만,
+    // 원소반응으로 water trace가 소모되면 함께 씻겨 사라집니다.
+    const consumedWaterTrace = Array.isArray(reactionResult.consumeTraces)
+        && reactionResult.consumeTraces.includes('water');
+    const clearedWaveMarkCount = consumedWaterTrace
+        ? clearWaveMarks(defender.pet)
+        : 0;
+
     const logParts = [];
 
     if (reactionResult.reactionKey) {
@@ -192,6 +201,10 @@ const appendElementReactionAfterAction = ({
 
         if (reactionResult.logParts?.length) {
             logParts.push(...reactionResult.logParts);
+        }
+
+        if (clearedWaveMarkCount > 0) {
+            logParts.push(`물 원소 흔적이 소모되며 물결표식 ${clearedWaveMarkCount}개도 함께 씻겨 사라졌습니다.`);
         }
 
         return logParts.length ? ' ' + logParts.join(' ') : '';
