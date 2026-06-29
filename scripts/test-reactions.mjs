@@ -1,13 +1,16 @@
 // scripts/test-reactions.mjs
-// M3_REACTION_ENGINE_CORE 검증 스크립트
+// M4_REACTION_BALANCE_CONFIG 검증 스크립트
 // 실행: node .\scripts\test-reactions.mjs
 
 import assert from 'node:assert/strict';
+import { ELEMENT_REACTION_BALANCE_CONFIG } from '../src/features/battle/elementReactionConfig.js';
 import {
     ELEMENT_KEYS,
     ELEMENT_TRACE_DEFAULT_TURNS,
+    buildReactionLookup,
     findReaction,
     normalizeElement,
+    normalizeReactionConfig,
     normalizeTraces,
     resolveElementReaction,
 } from '../src/features/battle/elementReactionEngine.js';
@@ -135,6 +138,73 @@ function testNormalizeTracesAcceptsKoreanKeys() {
     );
 }
 
+function testReactionConfigIsDataDriven() {
+    const electroCharged = ELEMENT_REACTION_BALANCE_CONFIG.reactions.electroCharged;
+
+    assert.equal(electroCharged.damage.multiplier, 1.15);
+    assert.equal(electroCharged.damage.flatDamageRatio, 0.04);
+    assert.equal(electroCharged.traceRules.consumeMatchedTrace, true);
+    assert.equal(ELEMENT_REACTION_BALANCE_CONFIG.adminSchema.damageMultiplier.step, 0.05);
+
+    const normalized = normalizeReactionConfig(electroCharged);
+    assert.deepEqual(normalized.elements, [ELEMENT_KEYS.WATER, ELEMENT_KEYS.LIGHTNING]);
+    assert.equal(normalized.damageMultiplier, 1.15);
+    assert.equal(normalized.flatDamageRatio, 0.04);
+}
+
+function testCustomBalanceConfigCanChangeNumbersWithoutEngineEdit() {
+    const customConfig = {
+        ...ELEMENT_REACTION_BALANCE_CONFIG,
+        traces: {
+            ...ELEMENT_REACTION_BALANCE_CONFIG.traces,
+            defaultTurns: 3,
+        },
+        reactions: {
+            ...ELEMENT_REACTION_BALANCE_CONFIG.reactions,
+            electroCharged: {
+                ...ELEMENT_REACTION_BALANCE_CONFIG.reactions.electroCharged,
+                damage: {
+                    multiplier: 1.5,
+                    flatDamageRatio: 0.1,
+                },
+            },
+        },
+    };
+
+    const traceOnly = resolveElementReaction({
+        defender: makeDefender(100),
+        skillElement: '물',
+        existingTraces: {},
+        flags: ON,
+        balanceConfig: customConfig,
+    });
+
+    assert.equal(traceOnly.nextTraces.water, 3);
+
+    const reaction = resolveElementReaction({
+        defender: makeDefender(200),
+        skillElement: '번개',
+        existingTraces: { water: 2 },
+        baseDamage: 40,
+        flags: ON,
+        balanceConfig: customConfig,
+    });
+
+    assert.equal(reaction.reactionKey, 'electroCharged');
+    assert.equal(reaction.damageMultiplier, 1.5);
+    assert.equal(reaction.flatDamage, 20);
+}
+
+function testBuildReactionLookupUsesConfig() {
+    const lookup = buildReactionLookup(ELEMENT_REACTION_BALANCE_CONFIG);
+    const keys = Array.from(lookup.values()).map(item => item.reactionKey).sort();
+
+    assert.deepEqual(
+        keys,
+        ['combustion', 'electroCharged', 'frozen', 'overload', 'pollenSpread', 'vaporize'].sort()
+    );
+}
+
 function run() {
     testDisabledFlagSkipsEverything();
     testElementNormalization();
@@ -143,8 +213,11 @@ function run() {
     testReactionPairsAreDirectionInsensitive();
     testCoreReactionInventory();
     testNormalizeTracesAcceptsKoreanKeys();
+    testReactionConfigIsDataDriven();
+    testCustomBalanceConfigCanChangeNumbersWithoutEngineEdit();
+    testBuildReactionLookupUsesConfig();
 
-    console.log('✅ M3 reaction engine tests passed');
+    console.log('✅ M4 reaction config tests passed');
 }
 
 run();
