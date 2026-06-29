@@ -76,9 +76,39 @@ export function getBattleStatusList(petStatus = {}) {
         statuses.push({
             kind: 'stun',
             icon: '💫',
-            label: '행동 불가',
-            detail: `${petStatus.stunnedTurns ?? 1}턴 행동 불가`,
+            label: '기절',
+            detail: `${petStatus.stunnedTurns ?? 1}턴 퀴즈/방어 불가`,
             tone: '#f08c00',
+        });
+    }
+
+    if (petStatus.staggered) {
+        statuses.push({
+            kind: 'staggered',
+            icon: '⚡',
+            label: '경직',
+            detail: `${petStatus.staggeredTurns ?? 1}턴 퀴즈 불가 · 웅크림 판정`,
+            tone: '#f08c00',
+        });
+    }
+
+    if (petStatus.frozen) {
+        statuses.push({
+            kind: 'frozen',
+            icon: '❄️',
+            label: '빙결',
+            detail: `${petStatus.frozenTurns ?? 1}턴 퀴즈/방어 불가`,
+            tone: '#4dabf7',
+        });
+    }
+
+    if (petStatus.confused) {
+        statuses.push({
+            kind: 'confused',
+            icon: '🌀',
+            label: '혼란',
+            detail: `${petStatus.confusedTurns ?? 1}턴 오작동 가능`,
+            tone: '#7950f2',
         });
     }
 

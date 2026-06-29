@@ -733,8 +733,9 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
 
             if (Math.random() < 0.15) {
                 if (!defender.status) defender.status = {};
-                defender.status.stunned = true;
-                log += ` 💫 약한 전류에 감전되어 상대가 기절했습니다!`;
+                defender.status.staggered = true;
+                defender.status.staggeredTurns = 1;
+                log += ` ⚡ 약한 전류에 몸이 굳어 경직되었습니다!`;
             }
 
             return log;
@@ -883,8 +884,9 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
             let log = `'${attacker.name}'의 재빠른 교란! 💨`;
             if (isEffective) log += ` 🎯 [효과가 굉장했다!]`;
             if (Math.random() < 0.45) {
-                defender.status.stunned = true;
-                log += ` 💫 상대가 혼란에 빠졌다!`;
+                defender.status.confused = true;
+                defender.status.confusedTurns = 1;
+                log += ` 🌀 상대가 혼란에 빠졌다! 다음 공격이 엉뚱하게 나갈 수 있다!`;
             }
 
             damage = Math.round(damage);
@@ -933,7 +935,7 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
         type: 'signature',
         element: '바람',
         basePower: 60,
-        description: '거대한 회오리바람을 일으켜 전장을 휩씁니다. 30% 확률로 적을 1턴 스턴시킵니다.',
+        description: '거대한 회오리바람을 일으켜 전장을 휩씁니다. 30% 확률로 적을 1턴 경직시킵니다.',
         previewStatus: PREVIEW_STATUS.TORNADO_STUN,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
@@ -948,8 +950,9 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
 
             if (Math.random() < 0.30) {
                 if (!defender.status) defender.status = {};
-                defender.status.stunned = true;
-                log += ` 💫 강풍에 휩쓸려 상대가 기절했습니다!`;
+                defender.status.staggered = true;
+                defender.status.staggeredTurns = 1;
+                log += ` 🌪️ 강풍에 휩쓸려 몸이 굳었습니다!`;
             }
 
             return log;
@@ -1061,7 +1064,7 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
         type: 'signature',
         element: '번개',
         basePower: 25,
-        description: '번개를 두른 손톱으로 할큅니다. 15% 확률로 상대를 1턴 스턴시킵니다.',
+        description: '번개를 두른 손톱으로 할큅니다. 15% 확률로 상대를 1턴 경직시킵니다.',
         previewStatus: PREVIEW_STATUS.SHOCK_SCRATCH,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
@@ -1070,12 +1073,15 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
 
             let { damage, isCritical } = calculateDamage(25, attackerPlayer, defenderPlayer, '번개', 1.15, 0.6);
             if (defenderAction === 'BRACE') damage *= 0.7;
-            if (Math.random() < 0.15) defender.status.stunned = true;
+            if (Math.random() < 0.15) {
+                defender.status.staggered = true;
+                defender.status.staggeredTurns = 1;
+            }
 
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
-            return `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 따끔할퀴기! ${damage}의 피해! ${defender.status?.stunned ? '💫 마비되었다!' : ''}`;
+            return `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 따끔할퀴기! ${damage}의 피해! ${defender.status?.staggered ? '⚡ 경직되었다!' : ''}`;
         }
     },
 
@@ -1107,7 +1113,7 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
         type: 'signature',
         element: '번개',
         basePower: 65,
-        description: '천둥구름을 불러내 거대한 번개를 내리칩니다. 25% 확률로 1턴 기절시킵니다.',
+        description: '천둥구름을 불러내 거대한 번개를 내리칩니다. 25% 확률로 1턴 경직시킵니다.',
         previewStatus: PREVIEW_STATUS.THUNDERSTORM_STUN,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
@@ -1116,12 +1122,15 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
 
             let { damage, isCritical: stormCrit } = calculateDamage(65, attackerPlayer, defenderPlayer, '번개', 4.0, 0.6);
             if (defenderAction === 'BRACE') damage *= 0.7;
-            if (Math.random() < 0.25) defender.status.stunned = true;
+            if (Math.random() < 0.25) {
+                defender.status.staggered = true;
+                defender.status.staggeredTurns = 1;
+            }
 
             damage = Math.round(damage);
             defender.hp = Math.max(0, defender.hp - damage);
 
-            return `${stormCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 뇌우! ⚡🌩️ ${damage}의 피해! ${defender.status?.stunned ? '💫 기절했습니다!' : ''}`;
+            return `${stormCrit ? '💥 [치명타!] ' : ''}'${attacker.name}'의 뇌우! ⚡🌩️ ${damage}의 피해! ${defender.status?.staggered ? '⚡ 경직되었습니다!' : ''}`;
         }
     },
 
@@ -1291,8 +1300,9 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
         cost: 90,
         type: 'signature',
         element: null,
+        displayElement: '일반',
         basePower: 70,
-        description: '갓을 깊게 눌러쓰고 눈에 보이지 않는 속도로 적의 사각을 베어 가릅니다. 묵직한 검기가 전장을 갈라버리는 무속성의 치명적인 일격입니다.',
+        description: '갓을 깊게 눌러쓰고 눈에 보이지 않는 속도로 적의 사각을 베어 가릅니다. 묵직한 검기가 전장을 갈라버리는 일반 타입의 치명적인 연속 참격입니다.',
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
@@ -1312,16 +1322,16 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
         name: '부들화살',
         cost: 35,
         type: 'signature',
-        element: '물',
+        element: '풀',
         basePower: 15,
-        description: '부들 화살을 쏴 약간의 피해를 주고, 상대를 1턴간 속박하여 방어 행동과 도망치기를 봉쇄합니다.',
+        description: '부들 화살을 쏴 약간의 풀 타입 피해를 주고, 상대를 1턴간 속박하여 방어 행동과 도망치기를 봉쇄합니다.',
         previewStatus: PREVIEW_STATUS.REED_BOW,
         effect: (attackerPlayer, defenderPlayer, defenderAction) => {
             const attacker = attackerPlayer.pet;
             const defender = defenderPlayer.pet;
             if (!defender.status) defender.status = {};
 
-            let { damage, isCritical } = calculateDamage(15, attackerPlayer, defenderPlayer, '물', 0.9, 0.45);
+            let { damage, isCritical } = calculateDamage(15, attackerPlayer, defenderPlayer, SKILLS.REED_BOW.element, 0.9, 0.45);
             if (defenderAction === 'BRACE') damage *= 0.7;
 
             damage = Math.round(damage);
@@ -1330,7 +1340,7 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
             defender.status.bound = true;
             defender.status.boundTurns = 1;
 
-            return `${isCritical ? '💥 [급소 강타!] ' : ''}'${attacker.name}'의 부들활! 🏹 ${damage}의 피해! 질긴 덩굴이 상대를 꽁꽁 묶어버렸습니다! (1턴간 방어/도망 불가)`;
+            return `${isCritical ? '💥 [급소 강타!] ' : ''}'${attacker.name}'의 부들화살! 🌿🏹 ${damage}의 피해! 질긴 덩굴이 상대를 꽁꽁 묶어버렸습니다! (1턴간 방어/도망 불가)`;
         }
     }
 ,
