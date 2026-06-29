@@ -588,7 +588,7 @@ function BattleStatusEffect({
 
           .battleStatusLayer--battle .battleMiniStatusTray {
             top: auto;
-            bottom: -10px;
+            bottom: 18px;
             padding: 0.12rem 0.18rem;
             background: rgba(255,255,255,0.52);
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);

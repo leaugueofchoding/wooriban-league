@@ -3341,7 +3341,12 @@ const handleUseItem = async (itemId) => {
 
                 // 두뇌간식도 한 턴 종료로 간주합니다.
                 // 따라서 행동한 쪽뿐 아니라 양쪽 active pet 모두 DOT/턴수 감소를 받습니다.
-                const myStatusLog = applyEndOfTurnDotAndStatus(nextMyParticipantBase, { eligibleStatusKeys: getActiveStatusKeys(nextMyParticipantBase.pet?.status) });
+                const myStatusLog = applyEndOfTurnDotAndStatus(nextMyParticipantBase, {
+                    eligibleStatusKeys: getActiveStatusKeys(nextMyParticipantBase.pet?.status),
+                    // M10_5_TRACE_RETAIN_ON_NON_ATTACK_ACTION
+                    // 아이템 사용은 원소반응을 발생시키는 공격이 아니므로, 사용자 몸에 묻은 원소 흔적을 이 행동으로 깎지 않습니다.
+                    tickElementTrace: false,
+                });
                 const opponentStatusLog = applyEndOfTurnDotAndStatus(nextOpponentParticipantBase, { eligibleStatusKeys: getActiveStatusKeys(nextOpponentParticipantBase.pet?.status) });
 
                 // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
@@ -3663,7 +3668,12 @@ const handleUseItem = async (itemId) => {
 
                 // 펫 교체도 한 턴 종료로 간주합니다.
                 // 따라서 교체하는 쪽뿐 아니라 상대 active pet도 DOT/턴수 감소를 받습니다.
-                const switcherStatusLog = applyEndOfTurnDotAndStatus(currentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(currentTurnParticipant.pet?.status) });
+                const switcherStatusLog = applyEndOfTurnDotAndStatus(currentTurnParticipant, {
+                    eligibleStatusKeys: getActiveStatusKeys(currentTurnParticipant.pet?.status),
+                    // M10_5_TRACE_RETAIN_ON_SWITCH
+                    // 교체는 원소반응을 발생시키는 공격이 아니므로, 교체하는 펫의 원소 흔적을 이 행동으로 깎지 않습니다.
+                    tickElementTrace: false,
+                });
                 const opponentStatusLog = applyEndOfTurnDotAndStatus(opponentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(opponentTurnParticipant.pet?.status) });
 
                 // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
