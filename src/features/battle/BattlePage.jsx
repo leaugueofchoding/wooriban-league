@@ -1046,6 +1046,77 @@ const reactionFlashRing = keyframes`
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.85); }
 `;
 
+const floatingDamagePop = keyframes`
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.72);
+    filter: brightness(1);
+  }
+  16% {
+    opacity: 1;
+    transform: translate(-50%, -10px) scale(1.22);
+    filter: brightness(1.35);
+  }
+  42% {
+    opacity: 1;
+    transform: translate(-50%, -26px) scale(1);
+    filter: brightness(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -72px) scale(0.92);
+    filter: brightness(1);
+  }
+`;
+
+const FloatingDamageNumber = styled.div`
+  position: absolute;
+  z-index: 92;
+  pointer-events: none;
+  left: ${props => props.$side === 'my' ? '210px' : 'auto'};
+  right: ${props => props.$side === 'opponent' ? '210px' : 'auto'};
+  bottom: ${props => props.$side === 'my' ? '258px' : 'auto'};
+  top: ${props => props.$side === 'opponent' ? '168px' : 'auto'};
+  min-width: 118px;
+  text-align: center;
+  font-family: inherit;
+  font-weight: 1000;
+  letter-spacing: -0.04em;
+  color: ${props => props.$color};
+  text-shadow:
+    -2px -2px 0 ${props => props.$stroke},
+    2px -2px 0 ${props => props.$stroke},
+    -2px 2px 0 ${props => props.$stroke},
+    2px 2px 0 ${props => props.$stroke},
+    0 0 14px ${props => props.$glow},
+    0 5px 10px rgba(0,0,0,0.26);
+  opacity: 0;
+  margin-left: ${props => `${Number(props.$lane ?? 0) * 32}px`};
+  animation: ${floatingDamagePop} 1.05s cubic-bezier(.16,.88,.31,1.16) forwards;
+  animation-delay: ${props => props.$delay ?? 0}ms;
+
+  .damageLabel {
+    display: block;
+    margin-bottom: -0.08rem;
+    font-size: ${props => props.$kind === 'critical' ? '1.18rem' : props.$kind === 'reaction' ? '0.88rem' : '0.74rem'};
+    line-height: 1;
+    letter-spacing: 0.02em;
+  }
+
+  .damageAmount {
+    display: block;
+    font-size: ${props => props.$kind === 'critical' ? '3.45rem' : props.$kind === 'reaction' ? '2.55rem' : '2.12rem'};
+    line-height: 1;
+  }
+
+  @media (max-width: 768px) {
+    left: ${props => props.$side === 'my' ? '160px' : 'auto'};
+    right: ${props => props.$side === 'opponent' ? '160px' : 'auto'};
+    bottom: ${props => props.$side === 'my' ? '220px' : 'auto'};
+    top: ${props => props.$side === 'opponent' ? '150px' : 'auto'};
+  }
+`;
+
 const ReactionFlashOverlay = styled.div`
   position: absolute;
   left: 50%;
@@ -1332,8 +1403,217 @@ const REACTION_FLASH_META = {
 };
 
 const detectElementReactionFromLog = (log = '') => {
+    // M10_7_POLLEN_SPREAD_ALIAS_FIX
     const text = String(log || '');
+
+    if (text.includes('감전')) return 'electroCharged';
+    if (text.includes('빙결')) return 'frozen';
+    if (text.includes('증발')) return 'vaporize';
+    if (text.includes('연소')) return 'combustion';
+    if (text.includes('과부하')) return 'overload';
+    if (
+        text.includes('꽃가루 확산') ||
+        text.includes('확산 반응') ||
+        text.includes('꽃가루가 퍼져') ||
+        (text.includes('바람을 타고') && text.includes('꽃가루'))
+    ) {
+        return 'pollenSpread';
+    }
+
     return Object.entries(REACTION_FLASH_META).find(([, meta]) => text.includes(meta.label))?.[0] || null;
+};
+
+// M10_7_FLOATING_DAMAGE_NUMBERS_V2B
+const FLOATING_DAMAGE_META = {
+    normal: { label: '', color: '#212529', stroke: '#ffffff', glow: 'rgba(33,37,41,0.22)' },
+    fire: { label: '', color: '#f03e3e', stroke: '#fff5f5', glow: 'rgba(240,62,62,0.45)' },
+    water: { label: '', color: '#1c7ed6', stroke: '#e7f5ff', glow: 'rgba(28,126,214,0.42)' },
+    grass: { label: '', color: '#2f9e44', stroke: '#ebfbee', glow: 'rgba(47,158,68,0.42)' },
+    wind: { label: '', color: '#adb5bd', stroke: '#111111', glow: 'rgba(0,0,0,0.34)' },
+    lightning: { label: '', color: '#f08c00', stroke: '#fff9db', glow: 'rgba(240,140,0,0.48)' },
+    ice: { label: '', color: '#4dabf7', stroke: '#e7f5ff', glow: 'rgba(77,171,247,0.45)' },
+    reaction: { label: 'REACTION', color: '#9c36b5', stroke: '#f8f0fc', glow: 'rgba(156,54,181,0.50)' },
+    critical: { label: 'CRITICAL', color: '#ff922b', stroke: '#111111', glow: 'rgba(255,146,43,0.72)' },
+    heal: { label: 'HEAL', color: '#2b8a3e', stroke: '#ebfbee', glow: 'rgba(43,138,62,0.42)' },
+};
+
+const detectFloatingDamageKindFromLog = (log = '', options = {}) => {
+    const text = String(log || '');
+    const allowHeal = options.allowHeal === true;
+
+    if (detectElementReactionFromLog(text)) return 'reaction';
+    if (text.includes('치명') || text.includes('급소') || text.toLowerCase().includes('critical')) return 'critical';
+
+    if (text.includes('🔥') || text.includes('불') || text.includes('화상') || text.includes('연소')) return 'fire';
+    if (text.includes('💧') || text.includes('물') || text.includes('해류') || text.includes('물결')) return 'water';
+    if (text.includes('🌿') || text.includes('풀') || text.includes('씨앗') || text.includes('덩굴')) return 'grass';
+    if (text.includes('🌪') || text.includes('바람') || text.includes('토네이도')) return 'wind';
+    if (text.includes('⚡') || text.includes('번개') || text.includes('감전') || text.includes('전기')) return 'lightning';
+    if (text.includes('❄') || text.includes('얼음') || text.includes('빙결')) return 'ice';
+
+    if (allowHeal && (text.includes('회복') || text.includes('HP +'))) return 'heal';
+    return 'normal';
+};
+
+const getFloatingHitCountFromLog = (log = '') => {
+    const text = String(log || '');
+
+    if (text.includes('바람의 칼날')) return 3;
+    if (text.includes('용의 발톱')) return 2;
+    if (text.includes('오의필살') || text.includes('비전 오의')) return 3;
+    if (text.includes('재빠른 교란')) return 2;
+
+    return 1;
+};
+
+const splitFloatingDamageAmount = (amount, count) => {
+    const total = Math.max(0, Math.round(Number(amount) || 0));
+    const safeCount = Math.max(1, Math.min(5, Number(count) || 1));
+    if (safeCount <= 1 || total <= 1) return [total];
+
+    const base = Math.max(1, Math.floor(total / safeCount));
+    const parts = Array.from({ length: safeCount }, () => base);
+    let remain = total - base * safeCount;
+    let index = 0;
+
+    while (remain > 0) {
+        parts[index % parts.length] += 1;
+        remain -= 1;
+        index += 1;
+    }
+
+    return parts.filter(value => value > 0);
+};
+
+const getCompactBattleLogElementIcon = (text = '') => {
+    if (text.includes('🔥') || text.includes('불') || text.includes('화염') || text.includes('화상') || text.includes('연소')) return '🔥';
+    if (text.includes('💧') || text.includes('물') || text.includes('해류') || text.includes('물결')) return '💧';
+    if (text.includes('🌿') || text.includes('풀') || text.includes('씨앗') || text.includes('덩굴') || text.includes('꽃')) return '🌿';
+    if (text.includes('🌪') || text.includes('바람') || text.includes('토네이도') || text.includes('교란')) return '🌪️';
+    if (text.includes('⚡') || text.includes('번개') || text.includes('전기') || text.includes('감전')) return '⚡';
+    if (text.includes('❄') || text.includes('얼음') || text.includes('빙결')) return '❄️';
+    return '';
+};
+
+const getCompactBattleReactionLines = (text = '') => {
+    const lines = [];
+
+    if (text.includes('연소')) {
+        lines.push('연소 반응! 🔥🌿 풀에 불이 옮겨붙었다!');
+    }
+    if (text.includes('감전')) {
+        lines.push('감전 반응! 💧⚡ 전류가 퍼졌다!');
+    }
+    if (text.includes('증발')) {
+        lines.push('증발 반응! 💧🔥 수증기가 터졌다!');
+    }
+    if (text.includes('과부하')) {
+        lines.push('과부하 반응! 🔥⚡ 폭발이 일어났다!');
+    }
+    if (
+        text.includes('꽃가루 확산') ||
+        text.includes('확산 반응') ||
+        text.includes('꽃가루가 퍼져') ||
+        (text.includes('바람을 타고') && text.includes('꽃가루'))
+    ) {
+        lines.push('꽃가루 확산! 🌿🌪️ 꽃가루가 퍼졌다!');
+    }
+    if (text.includes('빙결')) {
+        lines.push('빙결 반응! 💧❄️ 몸이 얼어붙었다!');
+    }
+
+    return [...new Set(lines)];
+};
+
+const getCompactBattleStatusLines = (text = '') => {
+    const lines = [];
+
+    if (text.includes('기절') || text.includes('혼란')) {
+        lines.push('상대가 움직이지 못한다!');
+    }
+    if (text.includes('묶') || text.includes('속박')) {
+        lines.push('상대가 묶였다!');
+    }
+    if (text.includes('화상')) {
+        lines.push('상대가 화상을 입었다!');
+    }
+    if (text.includes('씨앗')) {
+        lines.push('씨앗이 붙었다!');
+    }
+    if (text.includes('욱신') || text.includes('공격/방어') || text.includes('방어') && text.includes('감소')) {
+        lines.push('상대가 약해졌다!');
+    }
+    if (text.includes('물결표식') && text.includes('사라')) {
+        lines.push('물결표식이 씻겨 사라졌다!');
+    } else if (text.includes('물결표식') || text.includes('물방울 낙인')) {
+        lines.push('물결표식이 새겨졌다!');
+    }
+
+    return [...new Set(lines)];
+};
+
+const getCompactTraceLine = (text = '') => {
+    if (!text.includes('원소 흔적') || !text.includes('남')) return null;
+
+    const traceMatch = text.match(/(불|물|풀|바람|번개|얼음)\s*원소 흔적/);
+    const elementLabel = traceMatch?.[1] || '';
+    if (!elementLabel) return '원소 흔적이 남았다!';
+
+    const iconMap = {
+        불: '🔥',
+        물: '💧',
+        풀: '🌿',
+        바람: '🌪️',
+        번개: '⚡',
+        얼음: '❄️',
+    };
+
+    return `${elementLabel} 흔적이 남았다! ${iconMap[elementLabel] || ''}`.trim();
+};
+
+const formatBattleLogForDisplay = (log = '') => {
+    const text = String(log || '');
+    if (!text.trim()) return '';
+
+    const lines = [];
+
+    const actionMatch = text.match(/'([^']+)'의\s*([^!]+)!/);
+    if (actionMatch) {
+        const [, petName, skillName] = actionMatch;
+        const actionIcons = [];
+
+        const elementIcon = getCompactBattleLogElementIcon(text);
+        if (elementIcon) actionIcons.push(elementIcon);
+        if (text.includes('치명') || text.includes('급소')) actionIcons.push('💥');
+        if (text.includes('효과가 굉장')) actionIcons.push('💢');
+
+        lines.push(`'${petName}'의 ${skillName}! ${actionIcons.join(' ')}`.trim());
+    } else {
+        const fallback = text
+            .replace(/\s*\d+의\s*(?:예리한|광역|강한|엄청난|추가)?\s*피해!?/g, '')
+            .replace(/\s*적에게\s*\d+의\s*피해!?/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (fallback) lines.push(fallback);
+    }
+
+    const reactionLines = getCompactBattleReactionLines(text);
+    lines.push(...reactionLines);
+
+    // 반응이 터진 경우에는 흔적 소모/부가 상태 설명이 너무 길어지므로 숨긴다.
+    // 반응이 없는 턴에는 상태이상이나 원소 흔적 정보를 간단히 보여준다.
+    if (reactionLines.length === 0) {
+        const traceLine = getCompactTraceLine(text);
+        if (traceLine) lines.push(traceLine);
+        lines.push(...getCompactBattleStatusLines(text));
+    }
+
+    if (lines.length === 0) return text;
+
+    return [...new Set(lines)]
+        .map(line => line.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\n');
 };
 
 function BattlePage() {
@@ -1370,8 +1650,10 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
     const [reactionFlash, setReactionFlash] = useState(null);
+    const [floatingNumbers, setFloatingNumbers] = useState([]);
     const lastReactionLogRef = useRef(null);
     const reactionFlashTimerRef = useRef(null);
+    const floatingNumberTimersRef = useRef([]);
 
     const [shuffledOptions, setShuffledOptions] = useState([]);
     const [battleScale, setBattleScale] = useState(() => {
@@ -1403,7 +1685,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
     const timerRef = useRef(null);
     const timeoutRef = useRef(null);
-    const prevHpRef = useRef({ my: null, opponent: null });
+    const prevHpRef = useRef({ my: null, opponent: null, myPetId: null, opponentPetId: null });
     const processedTurnRef = useRef(null);
 
     const usableItems = Object.entries(myPlayerData?.petInventory || {})
@@ -1790,7 +2072,29 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         ? data.pendingUsedQuestions
                         : [...(data.usedQuestions || []), nextQuiz.question];
 
+                    // M10_7_DELAY_AUTO_SWITCH_UNTIL_SWITCHING_RESUME
+                    // KO 직후에는 쓰러진 펫을 잠깐 보여주고, switching pause가 끝날 때 자동교체를 실제 반영합니다.
+                    // 이렇게 해야 원소반응/데미지 숫자가 다음 펫에게 맞은 것처럼 보이지 않습니다.
+                    const autoSwitchRoles = data.pendingSwitch?.autoSelect && Array.isArray(data.pendingSwitch?.roles)
+                        ? data.pendingSwitch.roles
+                        : [];
+
+                    const autoSwitchUpdates = {};
+                    const autoSwitchLogs = [];
+
+                    autoSwitchRoles.forEach(role => {
+                        const selected = applyPendingSwitchSelection(data[role]);
+                        if (!selected?.participant) return;
+
+                        autoSwitchUpdates[role] = selected.participant;
+                        autoSwitchLogs.push(`🔁 ${selected.participant.name}의 ${selected.selectedPetName}이(가) 대신 나섰다!`);
+                    });
+
                     transaction.update(battleRef, {
+                        ...autoSwitchUpdates,
+                        ...(autoSwitchLogs.length > 0
+                            ? { log: [data.log, ...autoSwitchLogs].filter(Boolean).join(' ') }
+                            : {}),
                         status: 'quiz',
                         question: nextQuiz,
                         usedQuestions,
@@ -2010,6 +2314,50 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                 const isAttackerMe = battleState.turn === myPlayerData.id;
                 const actionType = battleState.attackerAction ? battleState.attackerAction.toUpperCase() : '';
 
+                // M10_7_SYNC_RESOLUTION_WITH_HIT
+                // 데미지 숫자는 Firestore HP 변화량을 보고 표시됩니다.
+                // 따라서 resolution을 애니메이션 종료 시점까지 미루면 숫자가 늦게 뜹니다.
+                // 각 스킬의 첫 피격 타이밍에 resolution을 1회만 먼저 실행해
+                // 이펙트, 피격 진동, 데미지 숫자가 동시에 느껴지게 합니다.
+                let resolvedThisAnimation = false;
+
+                const getFirstHitDelayMs = (skillId) => {
+                    const hitDelayMap = {
+                        TACKLE: 200,
+                        // M10_7_WIND_BLADE_HIT_TIMING_POLISH
+                        // 바람의 칼날은 데미지 숫자가 이펙트 직후 따라오도록 resolution을 더 일찍 시작합니다.
+                        WIND_BLADE: 90,
+                        TORNADO_SWEEP: 500,
+                        QUICK_DISTURBANCE: 500,
+                        FLAME_DASH: 420,
+                        THUNDER_PUNCH: 350,
+                        THUNDERSTORM: 500,
+                        UPHWA: 600,
+                        SOLAR_BEAM: 650,
+                        STELLAR_BLAST: 600,
+                        DRAGON_CLAW: 280,
+                        WAVE_MARK: 420,
+                        BLOSSOM_CURRENT: 520,
+                        ARA_BLOOM: 700,
+                        WATER_BALL: 400,
+                        COUNTER_STANCE: 500,
+                        ULTIMATE_SECRET: 760,
+                        REED_BOW: 750,
+                    };
+
+                    return hitDelayMap[skillId] ?? 520;
+                };
+
+                const resolveBattleOnce = () => {
+                    if (!iAmChallenger || resolvedThisAnimation) return;
+                    resolvedThisAnimation = true;
+                    handleResolution(battleRef);
+                };
+
+                if (actionType !== 'SWITCH_PET') {
+                    setTimeout(resolveBattleOnce, getFirstHitDelayMs(actionType));
+                }
+
                 if (actionType === 'SWITCH_PET') {
                     const switchName = battleState.turn === myPlayerData.id
                         ? myInfo?.pet?.name
@@ -2037,7 +2385,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 900);
 
                 } else if (actionType === 'TACKLE') {
@@ -2053,8 +2401,8 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
-                    }, 600);
+                        resolveBattleOnce();
+                    }, 430);
 
                 } else if (actionType === 'WIND_BLADE') {
                     if (isAttackerMe) setAnimState(prev => ({ ...prev, my: 'WIND_BLADE' }));
@@ -2063,23 +2411,23 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
-                    }, 350);
-                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 500);
+                    }, 180);
+                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 330);
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
                     }, 600);
-                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 750);
+                    setTimeout(() => { setHitState({ my: false, opponent: false }); }, 580);
                     setTimeout(() => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
-                    }, 850);
+                    }, 680);
                     setTimeout(() => {
                         setCurrentEffect(null);
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1400);
 
                 } else if (actionType === 'TORNADO_SWEEP') {
@@ -2100,7 +2448,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 2200);
 
                 } else if (actionType === 'QUICK_DISTURBANCE') {
@@ -2125,7 +2473,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1600);
 
                 } else if (actionType === 'FLAME_DASH') {
@@ -2143,7 +2491,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1300);
 
                 } else if (actionType === 'THUNDER_PUNCH') {
@@ -2159,7 +2507,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 900);
 
                 } else if (actionType === 'THUNDERSTORM') {
@@ -2175,7 +2523,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1800);
 
                 } else if (actionType === 'UPHWA') {
@@ -2191,7 +2539,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1900);
 
                 } else if (actionType === 'SOLAR_BEAM') {
@@ -2207,7 +2555,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1900);
 
                 } else if (actionType === 'STELLAR_BLAST') {
@@ -2223,7 +2571,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 2000);
 
                 } else if (actionType === 'DRAGON_CLAW') {
@@ -2244,7 +2592,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1200);
 
                 } else if (actionType === 'WAVE_MARK' || actionType === 'BLOSSOM_CURRENT' || actionType === 'ARA_BLOOM') {
@@ -2271,7 +2619,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                             setAnimState({ my: null, opponent: null });
                             setHitState({ my: false, opponent: false });
                             setIsProcessing(false);
-                            if (iAmChallenger) handleResolution(battleRef);
+                            resolveBattleOnce();
                         }, 2300);
                     } else if (actionType === 'BLOSSOM_CURRENT') {
                         setTimeout(triggerHit, 520);
@@ -2282,7 +2630,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                             setAnimState({ my: null, opponent: null });
                             setHitState({ my: false, opponent: false });
                             setIsProcessing(false);
-                            if (iAmChallenger) handleResolution(battleRef);
+                            resolveBattleOnce();
                         }, 1550);
                     } else {
                         setTimeout(triggerHit, 420);
@@ -2293,7 +2641,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                             setAnimState({ my: null, opponent: null });
                             setHitState({ my: false, opponent: false });
                             setIsProcessing(false);
-                            if (iAmChallenger) handleResolution(battleRef);
+                            resolveBattleOnce();
                         }, 1350);
                     }
                 } else if (actionType === 'WATER_BALL') {
@@ -2309,7 +2657,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1200);
 
                 } else if (actionType === 'COUNTER_STANCE') {
@@ -2325,7 +2673,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1000);
 
                 } else if (actionType === 'ULTIMATE_SECRET') {
@@ -2362,7 +2710,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 2350);
 
                 } else if (actionType === 'REED_BOW') {
@@ -2378,7 +2726,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1500);
 
                 } else {
@@ -2407,7 +2755,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
                         setIsProcessing(false);
-                        if (iAmChallenger) handleResolution(battleRef);
+                        resolveBattleOnce();
                     }, 1450);
                 }
             }
@@ -2420,36 +2768,145 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     }, [battleState, myPlayerData, isProcessing, classId, battleId]);
 
     useEffect(() => {
+        // M10_7_FLOATING_DAMAGE_HP_WATCH
+        // Firestore에 반영된 HP 변화량을 기준으로 RPG식 숫자를 띄웁니다.
         if (!battleState || !myPlayerData) return;
 
         const iAmChallenger = myPlayerData.id === battleState.challenger.id;
         const myRole = iAmChallenger ? 'challenger' : 'opponent';
         const opponentRole = iAmChallenger ? 'opponent' : 'challenger';
 
-        const currentMyHp = battleState[myRole].pet.hp;
-        const currentOpponentHp = battleState[opponentRole].pet.hp;
+        const currentMyHp = Number(battleState[myRole]?.pet?.hp ?? 0);
+        const currentOpponentHp = Number(battleState[opponentRole]?.pet?.hp ?? 0);
+        const currentMyPetId = battleState[myRole]?.pet?.id || battleState[myRole]?.activePetId || null;
+        const currentOpponentPetId = battleState[opponentRole]?.pet?.id || battleState[opponentRole]?.activePetId || null;
 
-        if (prevHpRef.current.my !== null && prevHpRef.current.opponent !== null) {
-            if (currentMyHp < prevHpRef.current.my && !hitState.my) {
-                setHitState(prev => ({ ...prev, my: true }));
-                setTimeout(() => setHitState(prev => ({ ...prev, my: false })), 500);
+        const previousMyHp = prevHpRef.current.my;
+        const previousOpponentHp = prevHpRef.current.opponent;
+        const previousMyPetId = prevHpRef.current.myPetId;
+        const previousOpponentPetId = prevHpRef.current.opponentPetId;
+        const isSameMyPet = previousMyPetId && currentMyPetId && previousMyPetId === currentMyPetId;
+        const isSameOpponentPet = previousOpponentPetId && currentOpponentPetId && previousOpponentPetId === currentOpponentPetId;
+        const nextFloatingNumbers = [];
+
+        const triggerDamageTextSyncedHitPulse = (side, hitCount = 1) => {
+            // M10_7_DAMAGE_TEXT_SYNCED_HIT_PULSE
+            // 데미지 숫자가 Firestore HP 변화 감지 후 뜨므로,
+            // 숫자가 만들어지는 바로 이 시점에 피격 진동도 다시 맞춰 줍니다.
+            // 바람의 칼날 같은 연타 숫자는 진동도 짧게 여러 번 울립니다.
+            const safeCount = Math.max(1, Math.min(5, Number(hitCount) || 1));
+
+            Array.from({ length: safeCount }).forEach((_, index) => {
+                const delay = index * 145;
+
+                const pulseTimer = setTimeout(() => {
+                    setHitState(prev => ({ ...prev, [side]: false }));
+
+                    const onTimer = setTimeout(() => {
+                        setHitState(prev => ({ ...prev, [side]: true }));
+                    }, 16);
+
+                    const offTimer = setTimeout(() => {
+                        setHitState(prev => ({ ...prev, [side]: false }));
+                    }, 190);
+
+                    floatingNumberTimersRef.current.push(onTimer, offTimer);
+                }, delay);
+
+                floatingNumberTimersRef.current.push(pulseTimer);
+            });
+        };
+
+        const pushFloatingNumber = (side, amount, kindOverride = null) => {
+            // M10_7_FLOATING_DAMAGE_PUSH_V2B
+            const absAmount = Math.abs(Number(amount) || 0);
+            if (absAmount <= 0) return;
+
+            const explicitHeal = kindOverride === 'heal';
+            const detectedKind = detectFloatingDamageKindFromLog(battleState.log, { allowHeal: explicitHeal });
+            const kind = kindOverride || (detectedKind === 'heal' ? 'normal' : detectedKind);
+            const meta = FLOATING_DAMAGE_META[kind] || FLOATING_DAMAGE_META.normal;
+            const isHeal = kind === 'heal';
+            const label = meta.label;
+
+            const hitCount = isHeal ? 1 : getFloatingHitCountFromLog(battleState.log);
+            const parts = splitFloatingDamageAmount(absAmount, hitCount);
+            const center = (parts.length - 1) / 2;
+
+            parts.forEach((part, index) => {
+                nextFloatingNumbers.push({
+                    id: `${Date.now()}-${side}-${kind}-${part}-${index}-${Math.random().toString(36).slice(2)}`,
+                    side,
+                    amount: `${isHeal ? '+' : ''}${part}`,
+                    kind,
+                    label,
+                    color: meta.color,
+                    stroke: meta.stroke,
+                    glow: meta.glow,
+                    delay: index * 145,
+                    lane: index - center,
+                });
+            });
+        };
+
+        if (previousMyHp !== null && previousOpponentHp !== null) {
+            // M10_7_IGNORE_FLOATING_DAMAGE_ON_PET_ID_CHANGE
+            // 교체로 active pet id가 바뀐 경우, 이전 펫과 다음 펫의 HP 차이를 피해/회복으로 오인하지 않습니다.
+            if (isSameMyPet) {
+                if (currentMyHp < previousMyHp) {
+                    triggerDamageTextSyncedHitPulse('my', getFloatingHitCountFromLog(battleState.log));
+                    pushFloatingNumber('my', previousMyHp - currentMyHp);
+                } else if (currentMyHp > previousMyHp) {
+                    pushFloatingNumber('my', currentMyHp - previousMyHp, 'heal');
+                }
             }
-            if (currentOpponentHp < prevHpRef.current.opponent && !hitState.opponent) {
-                setHitState(prev => ({ ...prev, opponent: true }));
-                setTimeout(() => setHitState(prev => ({ ...prev, opponent: false })), 500);
+
+            if (isSameOpponentPet) {
+                if (currentOpponentHp < previousOpponentHp) {
+                    triggerDamageTextSyncedHitPulse('opponent', getFloatingHitCountFromLog(battleState.log));
+                    pushFloatingNumber('opponent', previousOpponentHp - currentOpponentHp);
+                } else if (currentOpponentHp > previousOpponentHp) {
+                    pushFloatingNumber('opponent', currentOpponentHp - previousOpponentHp, 'heal');
+                }
             }
         }
-        prevHpRef.current = { my: currentMyHp, opponent: currentOpponentHp };
+
+        if (nextFloatingNumbers.length > 0) {
+            setFloatingNumbers(prev => [...prev, ...nextFloatingNumbers].slice(-8));
+
+            const timer = setTimeout(() => {
+                const ids = new Set(nextFloatingNumbers.map(item => item.id));
+                setFloatingNumbers(prev => prev.filter(item => !ids.has(item.id)));
+            }, 1750);
+            floatingNumberTimersRef.current.push(timer);
+        }
+
+        prevHpRef.current = {
+            my: currentMyHp,
+            opponent: currentOpponentHp,
+            myPetId: currentMyPetId,
+            opponentPetId: currentOpponentPetId,
+        };
 
     }, [battleState, myPlayerData]);
 
     
     useEffect(() => {
+        // M10_7_FLOATING_DAMAGE_CLEANUP
+        return () => {
+            floatingNumberTimersRef.current.forEach(timer => clearTimeout(timer));
+            floatingNumberTimersRef.current = [];
+        };
+    }, []);
+
+    useEffect(() => {
         // M10_6_REACTION_FLASH_AND_SOUND
         const reactionKey = detectElementReactionFromLog(battleState?.log);
         if (!reactionKey) return;
 
-        const logKey = `${battleState?.turnStartTime ?? ''}:${battleState?.log ?? ''}`;
+        // M10_7_REACTION_BADGE_DEDUP_BY_LOG
+        // KO 이후 switching/quiz로 넘어가며 turnStartTime이 바뀌어도 같은 반응 로그는 한 번만 재생합니다.
+        const logKey = String(battleState?.log ?? '');
         if (lastReactionLogRef.current === logKey) return;
         lastReactionLogRef.current = logKey;
 
@@ -2463,7 +2920,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         }, 1250);
 
         return () => clearTimeout(reactionFlashTimerRef.current);
-    }, [battleState?.log, battleState?.turnStartTime]);
+    }, [battleState?.log]);
 
     useEffect(() => {
         // M5_MANUAL_SWITCH_RESET_SUBMENU_V3
@@ -3267,12 +3724,16 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         if (state.choices.length === 1) {
             const selected = applyPendingSwitchSelection(state.participant, state.choices[0].pet.id);
             return {
-                participant: selected.participant,
+                // M10_7_DELAY_SINGLE_BENCH_AUTO_SWITCH
+                // 대기 펫이 1마리뿐이어도 즉시 교체하지 않습니다.
+                // KO/원소반응/데미지 숫자 연출이 끝난 뒤 switching resume에서 자동교체합니다.
+                participant: state.participant,
                 teamDefeated: false,
                 needsChoice: false,
                 autoSwitched: true,
-                switchedPetName: selected.selectedPetName,
-                log: `${activePet.name || '펫'}이(가) 쓰러져 ${selected.selectedPetName}이(가) 대신 나섭니다!`,
+                autoSwitchPetId: state.choices[0].pet.id,
+                switchedPetName: selected?.selectedPetName || state.choices[0].pet.name || '다음 펫',
+                log: `${activePet.name || '펫'}이(가) 쓰러졌다! ${selected?.selectedPetName || state.choices[0].pet.name || '다음 펫'}이(가) 곧 나선다!`,
             };
         }
 
@@ -4283,6 +4744,7 @@ if (defender.pet.status?.stunned) {
                 defender = defenderFaintState.participant;
 
                 const pendingSwitchRoles = [];
+                const autoSwitchRoles = [];
                 const switchMessages = [];
 
                 if (attackerFaintState.log) switchMessages.push(attackerFaintState.log);
@@ -4290,10 +4752,14 @@ if (defender.pet.status?.stunned) {
 
                 if (attackerFaintState.needsChoice) {
                     pendingSwitchRoles.push(isChallengerAttacker ? 'challenger' : 'opponent');
+                } else if (attackerFaintState.autoSwitched) {
+                    autoSwitchRoles.push(isChallengerAttacker ? 'challenger' : 'opponent');
                 }
 
                 if (defenderFaintState.needsChoice) {
                     pendingSwitchRoles.push(isChallengerAttacker ? 'opponent' : 'challenger');
+                } else if (defenderFaintState.autoSwitched) {
+                    autoSwitchRoles.push(isChallengerAttacker ? 'opponent' : 'challenger');
                 }
 
                 const isFinished = attackerFaintState.teamDefeated || defenderFaintState.teamDefeated;
@@ -4309,11 +4775,24 @@ if (defender.pet.status?.stunned) {
 
                 const nextQuiz = getNextQuizObj(data.usedQuestions);
                 const hasPendingSwitch = !isFinished && pendingSwitchRoles.length > 0;
+                const hasAutoSwitchPause = !isFinished && autoSwitchRoles.length > 0;
                 const hasSwitchPause = !isFinished && !hasPendingSwitch && switchMessages.length > 0;
                 const nextTurnUpdate = hasPendingSwitch
                     ? buildPendingSwitchUpdate(data, nextQuiz, pendingSwitchRoles)
                     : hasSwitchPause
-                        ? buildSwitchPauseUpdate(data, nextQuiz)
+                        ? {
+                            ...buildSwitchPauseUpdate(data, nextQuiz),
+                            ...(hasAutoSwitchPause
+                                ? {
+                                    pendingSwitch: {
+                                        roles: autoSwitchRoles,
+                                        autoSelect: true,
+                                        createdAt: Date.now(),
+                                        expiresAt: Date.now() + SWITCH_RESUME_DELAY_MS,
+                                    },
+                                }
+                                : {}),
+                        }
                         : buildNextQuizUpdate(data, nextQuiz);
 
                 const updateData = {
@@ -4553,6 +5032,22 @@ if (defender.pet.status?.stunned) {
                                     ✨ {switchMessage}
                                 </div>
                             )}
+                            {floatingNumbers.map(item => (
+                                <FloatingDamageNumber
+                                    key={item.id}
+                                    $side={item.side}
+                                    $kind={item.kind}
+                                    $color={item.color}
+                                    $stroke={item.stroke}
+                                    $glow={item.glow}
+                                    $delay={item.delay}
+                                    $lane={item.lane}
+                                >
+                                    {item.label && <span className="damageLabel">{item.label}</span>}
+                                    <span className="damageAmount">{item.amount}</span>
+                                </FloatingDamageNumber>
+                            ))}
+
                             {reactionFlash && (
                                 <ReactionFlashOverlay
                                     key={reactionFlash.id}
@@ -4639,7 +5134,7 @@ if (defender.pet.status?.stunned) {
 
                         <QuizArea>
                             <div>
-                                <LogText>{battleState.log}</LogText>
+                                <LogText>{formatBattleLogForDisplay(battleState.log)}</LogText>
                                 {battleState.status === 'switching' && (
                                     <div style={{
                                         marginTop: '1rem',

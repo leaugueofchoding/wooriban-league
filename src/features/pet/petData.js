@@ -1738,7 +1738,7 @@ export const PET_DATA = {
             },
             lv20: {
                 appearanceId: 'manta_lv3',
-                name: '아라가오',
+                name: '아라오리',
                 statBoost: { hp: 2.0, sp: 1.55, atk: 1.75 },
                 newSkill: SKILLS.ARA_BLOOM,
                 description: "깊은 바다의 꽃물살을 다스리는 우아한 수호 가오리입니다. 오래 쌓인 물결표식을 한순간에 만개시켜 전장을 뒤덮습니다. (💧물 속성)"
