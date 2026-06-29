@@ -1616,6 +1616,66 @@ const formatBattleLogForDisplay = (log = '') => {
         .join('\n');
 };
 
+// M11_HARD_CC_RULES
+// 하드 CC는 퀴즈 풀이 자체를 막지 않고, 전투 행동 선택만 제한합니다.
+// 1차 범위: 방어/회피/도망/교체 제한 통일. 공격자 행동 봉쇄는 M11.2에서 별도 안정화.
+const HARD_CC_RULES = {
+    stunned: {
+        key: 'stunned',
+        label: '기절',
+        icon: '💫',
+        forcedDefenderAction: 'STUNNED',
+        blocksDefense: true,
+        blocksSwitch: true,
+        message: '기절해서 제대로 움직이지 못한다!',
+    },
+    frozen: {
+        key: 'frozen',
+        label: '빙결',
+        icon: '❄️',
+        forcedDefenderAction: 'FROZEN',
+        blocksDefense: true,
+        blocksSwitch: true,
+        message: '얼어붙어서 움직이지 못한다!',
+    },
+    bound: {
+        key: 'bound',
+        label: '속박',
+        icon: '🪢',
+        forcedDefenderAction: 'BOUND',
+        blocksDefense: true,
+        blocksSwitch: true,
+        message: '묶여 있어서 피하거나 도망칠 수 없다!',
+    },
+};
+
+const HARD_CC_PRIORITY = ['frozen', 'stunned', 'bound'];
+
+const getHardCcState = (pet) => {
+    const status = pet?.status || {};
+    const key = HARD_CC_PRIORITY.find(statusKey => !!status[statusKey]);
+    if (!key) return null;
+
+    return HARD_CC_RULES[key] || null;
+};
+
+const getHardCcSwitchBlockMessage = (pet) => {
+    const cc = getHardCcState(pet);
+    if (!cc?.blocksSwitch) return '';
+
+    return `${cc.icon} ${cc.label} 상태에서는 펫을 교체할 수 없습니다.`;
+};
+
+const getHardCcDefenseLog = (pet, attackerName = '상대') => {
+    const cc = getHardCcState(pet);
+    if (!cc?.blocksDefense) return null;
+
+    return {
+        action: cc.forcedDefenderAction,
+        log: `${attackerName}의 공격! ${cc.icon} 상대는 ${cc.label} 상태라 방어하지 못한다!`,
+    };
+};
+
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -4161,8 +4221,9 @@ const handleUseItem = async (itemId) => {
             return;
         }
 
-        if (myInfo?.pet?.status?.bound) {
-            alert('속박 상태에서는 펫을 교체할 수 없습니다.');
+        const hardCcSwitchBlockMessage = getHardCcSwitchBlockMessage(myInfo?.pet);
+        if (hardCcSwitchBlockMessage) {
+            alert(hardCcSwitchBlockMessage);
             return;
         }
 
@@ -4197,7 +4258,7 @@ const handleUseItem = async (itemId) => {
                 const participant = data[myRole];
                 const opponentParticipant = data[opponentRole];
 
-                if (participant?.pet?.status?.bound) {
+                if (getHardCcState(participant?.pet)?.blocksSwitch) {
                     return null;
                 }
 
@@ -4425,15 +4486,13 @@ const handleActionSelect = async (actionId) => {
                 }
 
                 const updates = { attackerAction: resolvedActionId };
-                const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
-                const opponentIsBound = battleState[opponentRole].pet.status?.bound;
+                // M11_HARD_CC_FORCED_DEFENSE_FROM_ATTACKER_SELECT
+                // 방어자가 하드 CC 상태라면 방어/회피/도망 선택을 기다리지 않고 자동으로 방어 불가 처리합니다.
+                const opponentHardCcDefense = getHardCcDefenseLog(battleState[opponentRole]?.pet, myPet.name);
 
-                if (opponentIsStunned) {
-                    updates.defenderAction = 'STUNNED';
-                    updates.log = `${myPet.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
-                } else if (opponentIsBound) {
-                    updates.defenderAction = 'BOUND';
-                    updates.log = `${myPet.name}의 공격! (상대방은 속박 상태라 방어 불가!)`;
+                if (opponentHardCcDefense) {
+                    updates.defenderAction = opponentHardCcDefense.action;
+                    updates.log = opponentHardCcDefense.log;
                 }
 
                 if (myPet.status?.recharging === false && resolvedActionId === 'TACKLE') {
@@ -4443,6 +4502,20 @@ const handleActionSelect = async (actionId) => {
 
                 await updateDoc(battleRef, updates);
             } else {
+                // M11_HARD_CC_DEFENDER_SELECT_GUARD
+                // 하드 CC 상태에서는 방어/회피/도망 버튼을 눌러도 실제 선택은 방어 불가로 고정됩니다.
+                const defenderRoleForCc = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
+                const defenderPetForCc = battleState[defenderRoleForCc]?.pet;
+                const hardCcDefense = getHardCcDefenseLog(defenderPetForCc, '상대');
+
+                if (hardCcDefense) {
+                    await updateDoc(battleRef, {
+                        defenderAction: hardCcDefense.action,
+                        log: hardCcDefense.log,
+                    });
+                    return;
+                }
+
                 if (actionId === 'FLEE') {
                     const myId = myPlayerData.id;
                     const opponentId = battleState.turn;
