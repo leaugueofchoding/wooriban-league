@@ -4278,8 +4278,10 @@ if (defender.pet.status?.stunned) {
                                     ✨ {switchMessage}
                                 </div>
                             )}
+                            {/* M1_BATTLE_EFFECT_DISPLAY_STABILIZE_PATCH: 실제 배틀 이펙트는 currentEffect -> BattleSkillEffect 단일 경로로 호출합니다. */}
                             {currentEffect && (
                                 <BattleSkillEffect
+                                    key={`${currentEffect.type}-${currentEffect.isMine ? 'mine' : 'opponent'}-${battleState?.turnStartTime ?? 'static'}`}
                                     type={currentEffect.type}
                                     isMine={currentEffect.isMine}
                                 />

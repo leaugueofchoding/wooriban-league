@@ -1128,17 +1128,9 @@ const BattleSkillEffect = ({ type, isMine }) => {
     );
   }
 
-  // ── 🌸 벚꽃해류: 해류 공격 후 자기 회복 연출
-  if (config.type === 'BLOSSOM_CURRENT_HEAL_MULTI') {
-    return (
-      <EffectContainer $icon="" $duration="1.45s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#f783ac">
-        <MultiIcon $anim={isMine ? flyToOpponent : flyToMe} $duration="0.95s" $glow="#74c0fc" $size="3.7rem">🌊</MultiIcon>
-        <MultiIcon $anim={isMine ? flyToOpponent : flyToMe} $duration="0.9s" $glow="#f783ac" $size="3.0rem" $delay="0.12s">🌸</MultiIcon>
-        <MultiIcon $anim={buffSelf(isMine)} $duration="0.85s" $glow="#f783ac" $size="3.5rem" $delay="0.52s">💗</MultiIcon>
-        <MultiIcon $anim={buffSelf(isMine)} $duration="0.75s" $glow="#fcc2d7" $size="2.5rem" $delay="0.66s">🌸</MultiIcon>
-      </EffectContainer>
-    );
-  }
+  // M1_REMOVE_DUPLICATE_BLOSSOM_EFFECT_BRANCH
+  // BLOSSOM_CURRENT_HEAL_MULTI는 위의 전용 이펙트 블록으로 통일했습니다.
+  // 기존 중복 분기는 같은 조건이라 도달하지 않아 제거합니다.
 
   // ── 🐸 반격태세: 돌격 → X자 검기 교차 + 반격 오라
   if (config.type === 'COUNTER_STANCE_MULTI') {
