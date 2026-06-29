@@ -4038,6 +4038,22 @@ if (defender.pet.status?.stunned) {
                     attacker.pet.sp = Math.max(0, Number(attacker.pet.sp ?? 0) - actualCost);
                 }
 
+                // HOTFIX_FOCUS_CHARGE_INTERMITTENT
+                // 방어자가 기 모으기(FOCUS)를 골랐을 때, 모든 공격/스킬 경로에서 중앙 처리합니다.
+                // 기존 TACKLE effect는 이미 FOCUS를 처리하므로 중복 적용을 피합니다.
+                // 그 외 스킬, 빗나감, 아이템/교체가 아닌 일반 resolution 경로에서는 여기서 안정적으로 적용합니다.
+                const skillEffectAlreadyHandledDefensiveFocus =
+                    defenderAction === 'FOCUS' &&
+                    normalActionResolved &&
+                    skillId === 'TACKLE';
+
+                if (defenderAction === 'FOCUS' && !skillEffectAlreadyHandledDefensiveFocus) {
+                    const defensiveFocusLog = applyDefensiveFocusAction(defender, defenderAction);
+                    if (defensiveFocusLog) {
+                        log += ` ${defensiveFocusLog}`;
+                    }
+                }
+
                 // M5_ELEMENT_REACTION_AFTER_ACTION
                 // flag가 켜진 경우에만 원소 흔적/반응을 적용합니다.
                 // 기본값 false에서는 기존 전투 로그/데미지/상태가 그대로 유지됩니다.
