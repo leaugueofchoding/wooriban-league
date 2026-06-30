@@ -125,6 +125,7 @@ function SkillPreview({
     targetImageSrc,
     replayKey,
     onClose,
+    displayMode = 'fixed',
 }) {
     const skillType = getSkillType(skill);
     const statusPreview = getStatusPreview(skill);
@@ -168,6 +169,8 @@ function SkillPreview({
 
     if (!skill) return null;
 
+    const isCardOverlay = displayMode === 'cardOverlay';
+
     const skillName = skill.name || '스킬';
     const skillElement = skill.element || '무';
     const skillPower = skill.basePower || 0;
@@ -175,16 +178,20 @@ function SkillPreview({
     return (
         <div
             style={{
-                position: 'fixed',
-                right: '22px',
-                bottom: '22px',
-                width: 'min(460px, calc(100vw - 32px))',
+                position: isCardOverlay ? 'absolute' : 'fixed',
+                left: isCardOverlay ? '0.65rem' : 'auto',
+                right: isCardOverlay ? '0.65rem' : '22px',
+                top: isCardOverlay ? '0.65rem' : 'auto',
+                bottom: isCardOverlay ? '0.65rem' : '22px',
+                width: isCardOverlay ? 'auto' : 'min(460px, calc(100vw - 32px))',
+                maxHeight: isCardOverlay ? 'calc(100% - 1.3rem)' : 'none',
+                overflowY: isCardOverlay ? 'auto' : 'visible',
                 background: 'rgba(17, 24, 39, 0.96)',
                 color: 'white',
                 borderRadius: '20px',
-                padding: '1rem',
+                padding: isCardOverlay ? '0.85rem' : '1rem',
                 boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
-                zIndex: 100000,
+                zIndex: isCardOverlay ? 40 : 100000,
                 border: '1px solid rgba(255,255,255,0.12)',
                 fontFamily: "'Pretendard', sans-serif",
             }}
