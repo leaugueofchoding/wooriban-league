@@ -103,146 +103,310 @@ const playEvolutionSound = (phase) => {
 // --- Styled Components ---
 
 const PageWrapper = styled.div`
-  max-width: 1040px;
-  margin: 1rem auto;
-  padding: 0.75rem;
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 0.8rem 0.65rem 3.5rem;
   font-family: 'Pretendard', sans-serif;
   animation: ${fadeIn} 0.5s ease-out;
-  padding-bottom: 4rem;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+  color: #1f2937;
 
   @media (max-width: 1080px) {
-    max-width: 960px;
-    margin: 0.5rem auto;
-    padding: 0.6rem;
+    max-width: 970px;
+    padding: 0.55rem 0.5rem 3.5rem;
   }
 `;
 
 const MainLayout = styled.div`
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 2rem;
-  
-  @media (max-width: 992px) {
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+  justify-content: center;
+
+  @media (min-width: 901px) and (max-width: 1080px) {
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 0.7rem;
+  }
+
+  @media (max-width: 900px) {
     grid-template-columns: 1fr;
   }
 `;
 
 const PetDashboard = styled.div`
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 235px minmax(0, 1fr);
   align-items: start;
-  gap: 2rem;
-  background-color: white;
-  padding: 2.5rem;
-  border-radius: 24px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.05);
-  
-  @media (max-width: 768px) {
+  gap: 0.75rem;
+  min-height: clamp(500px, calc(100dvh - 130px), 640px);
+  max-height: clamp(500px, calc(100dvh - 130px), 640px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0.72rem;
+  border: 4px solid #2f6fdb;
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(47,111,219,0.08) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(47,111,219,0.07) 1px, transparent 1px),
+    #ffffff;
+  background-size: 24px 24px;
+  box-shadow: 0 14px 36px rgba(0,0,0,0.10);
+
+  &::-webkit-scrollbar { width: 11px; }
+  &::-webkit-scrollbar-track { background: #dbe4ff; border-left: 2px solid #2f6fdb; }
+  &::-webkit-scrollbar-thumb { background: #748ffc; border: 2px solid #2f6fdb; border-radius: 999px; }
+
+  @media (min-width: 901px) and (max-width: 1080px) {
+    grid-template-columns: 215px minmax(0, 1fr);
+    gap: 0.62rem;
+    padding: 0.62rem;
+  }
+
+  @media (max-width: 900px) {
+    grid-column: 1;
+    grid-row: 2;
     grid-template-columns: 1fr;
-    padding: 1.5rem;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
   }
 `;
 
 const PetListPanel = styled.div`
-  background-color: white;
-  padding: 1.5rem;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  height: fit-content;
-  
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: clamp(500px, calc(100dvh - 130px), 640px);
+  overflow: hidden;
+  padding: 0;
+  border: 4px solid #2f6fdb;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(0,0,0,0.10);
+
+  &::before {
+    content: 'PET';
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    background: linear-gradient(180deg, #ff4d5e 0%, #e03131 100%);
+    color: white;
+    border-right: 4px solid #143d8f;
+    font-size: 0.68rem;
+    font-weight: 1000;
+    letter-spacing: 0.08em;
+  }
+
   h4 {
-    margin: 0 0 1rem 0;
-    font-size: 1.1rem;
+    grid-column: 2;
+    margin: 0;
+    padding: 0.5rem 0.62rem;
+    font-size: 0.88rem;
     color: #343a40;
-    font-weight: 800;
+    font-weight: 1000;
+    background: #f1f3f5;
+    border-bottom: 3px solid #2f6fdb;
+  }
+
+  > div:last-child {
+    grid-column: 2;
+    padding: 0.55rem;
+    border-top: 3px solid #2f6fdb;
+    background: #edf2ff;
+  }
+
+  @media (max-width: 900px) {
+    grid-column: 1;
+    grid-row: 1;
+    height: auto;
+    min-height: 0;
   }
 `;
 
 const PetListWrapper = styled.div`
+  grid-column: 2;
+  min-height: 0;
   overflow-y: auto;
-  max-height: 400px; 
-  padding-right: 0.5rem;
-  
-  &::-webkit-scrollbar { width: 6px; }
-  &::-webkit-scrollbar-thumb { background-color: #dee2e6; border-radius: 3px; }
+  padding: 0.55rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 0.38rem;
+  align-content: start;
+  background:
+    linear-gradient(90deg, rgba(47,111,219,0.10) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(47,111,219,0.08) 1px, transparent 1px),
+    #ffffff;
+  background-size: 24px 24px;
+
+  &::-webkit-scrollbar { width: 10px; }
+  &::-webkit-scrollbar-track { background: #dbe4ff; border-left: 2px solid #2f6fdb; }
+  &::-webkit-scrollbar-thumb { background: #748ffc; border: 2px solid #2f6fdb; border-radius: 999px; }
+
+  @media (max-width: 900px) {
+    max-height: 260px;
+    grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  }
 `;
 
 const PetListItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.8rem;
-  border-radius: 12px;
+  position: relative;
+  min-height: 82px;
+  padding: 0.3rem;
+  border-radius: 10px;
   cursor: pointer;
-  border: 2px solid ${props => props.$isSelected ? '#339af0' : 'transparent'};
-  background-color: ${props => props.$isSelected ? '#e7f5ff' : '#f8f9fa'};
-  margin-bottom: 0.8rem;
-  transition: all 0.2s;
-  
+  border: ${props => props.$isSelected ? "4px solid #ff6b6b" : "2px solid #ced4da"};
+  background-color: ${props => props.$isSelected ? "#fff5f5" : "#f1f3f5"};
+  margin-bottom: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
   &:hover {
-    background-color: ${props => props.$isSelected ? '#e7f5ff' : '#f1f3f5'};
     transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.10);
   }
 
-  img { 
-    width: 50px; height: 50px; 
-    border-radius: 50%; object-fit: cover; 
-    border: 2px solid white;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  img {
+    width: 48px;
+    height: 48px;
+    border-radius: 0;
+    object-fit: contain;
+    border: none;
+    box-shadow: none;
+    filter: drop-shadow(0 7px 9px rgba(0,0,0,0.14));
   }
-  
-  strong { font-size: 0.95rem; color: #343a40; display: block; }
-  p { margin: 0; font-size: 0.8rem; color: #868e96; font-weight: 600; }
+
+  strong {
+    max-width: 68px;
+    margin-top: 0.08rem;
+    font-size: 0.6rem;
+    font-weight: 1000;
+    color: #343a40;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  p {
+    margin: 0.08rem 0 0;
+    font-size: 0.54rem;
+    color: #495057;
+    font-weight: 1000;
+  }
 `;
 
 const PetProfile = styled.div`
-  display: flex; flex-direction: column; align-items: center; text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  padding: 0.7rem;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid #e9ecef;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.06);
+  box-sizing: border-box;
+
+  @media (max-width: 900px) {
+    max-width: 420px;
+    margin: 0 auto;
+  }
 `;
 
 const PetImage = styled.img`
-  width: 220px; height: 220px; 
-  border-radius: 50%; 
-  background: radial-gradient(circle, #fff 30%, #f1f3f5 70%);
-  margin-bottom: 1.5rem; 
-  border: 6px solid #fff;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-  filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'none'};
+  width: 154px;
+  height: 154px;
+  border-radius: 16px;
+  object-fit: contain;
+  background: radial-gradient(circle, #fff 20%, #f1f3f5 72%);
+  margin-bottom: 0.62rem;
+  border: 2px solid #dee2e6;
+  box-shadow: inset 0 0 0 6px white, 0 10px 22px rgba(0,0,0,0.10);
+  filter: ${props => props.$isFainted ? "grayscale(100%)" : "drop-shadow(0 10px 14px rgba(0,0,0,0.16))"};
   transition: transform 0.3s;
-  
-  &:hover { transform: scale(1.05); }
+
+  &:hover { transform: scale(1.04); }
+
+  @media (min-width: 901px) and (max-width: 1080px) {
+    width: 138px;
+    height: 138px;
+  }
 `;
 
 const PetNameContainer = styled.div`
-  display: flex; align-items: center; gap: 0.5rem; min-height: 48px; margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 36px;
+  margin-bottom: 0.22rem;
 `;
 
-const PetName = styled.h1` 
-  margin: 0; font-size: 1.45rem; font-weight: 900; color: #343a40; 
+const PetName = styled.h1`
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 1000;
+  color: #1f2937;
 `;
 
 const PetNameInput = styled.input`
-  font-size: 1.45rem; font-weight: 900; border: none;
-  border-bottom: 2px solid #ccc; background: transparent;
-  text-align: center; width: 180px; color: #343a40;
+  font-size: 1.12rem;
+  font-weight: 1000;
+  border: none;
+  border-bottom: 2px solid #748ffc;
+  background: transparent;
+  text-align: center;
+  width: 150px;
+  color: #343a40;
   &:focus { outline: none; border-bottom-color: #339af0; }
 `;
 
-const PetLevel = styled.h3` 
-  margin: 0; font-size: 1rem; font-weight: 700; color: #868e96;
-  background: #f8f9fa; padding: 0.4rem 1rem; border-radius: 20px;
+const PetLevel = styled.h3`
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 1000;
+  color: #1971c2;
+  background: #e7f5ff;
+  padding: 0.24rem 0.68rem;
+  border-radius: 999px;
 `;
 
 const PetInfo = styled.div`
-  width: 100%; display: flex; flex-direction: column; gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid #e9ecef;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.06);
+  box-sizing: border-box;
 `;
 
 const StatBarContainer = styled.div`
-  width: 100%; height: 23px; background-color: #e9ecef;
-  border-radius: 14px; position: relative; overflow: hidden;
+  width: 100%;
+  height: 20px;
+  background-color: #e9ecef;
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
 `;
 
@@ -254,18 +418,26 @@ const StatBar = styled.div`
 `;
 
 const StatText = styled.span`
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%); color: #343a40;
-  font-weight: 800; font-size: 0.85rem; text-shadow: 0 0 4px rgba(255,255,255,0.8);
-  white-space: nowrap; z-index: 2;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #1f2937;
+  font-weight: 1000;
+  font-size: 0.74rem;
+  text-shadow: 0 0 4px rgba(255,255,255,0.9);
+  white-space: nowrap;
+  z-index: 2;
 `;
 
 const InfoCard = styled.div`
-  padding: 1.2rem; background-color: #f8f9fa; border-radius: 16px;
-  border: 1px solid #f1f3f5;
-  
-  h4 { margin: 0 0 0.8rem 0; font-size: 1rem; font-weight: 800; color: #495057; }
-  p { margin: 0; font-size: 0.95rem; color: #495057; line-height: 1.5; }
+  padding: 0.68rem;
+  background-color: #f8f9fa;
+  border-radius: 13px;
+  border: 1px solid #e9ecef;
+
+  h4 { margin: 0 0 0.42rem 0; font-size: 0.84rem; font-weight: 1000; color: #343a40; }
+  p { margin: 0; font-size: 0.78rem; color: #495057; line-height: 1.4; font-weight: 750; }
 `;
 
 const InventoryItem = styled.p`
@@ -275,16 +447,27 @@ const InventoryItem = styled.p`
 `;
 
 const ActionButtonGroup = styled.div`
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 0.6rem; margin-top: 0.5rem; 
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.48rem;
+  margin-top: 0.25rem;
+
+  @media (max-width: 560px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const StyledButton = styled.button`
-  padding: 0.68rem; font-size: 0.9rem; font-weight: 800;
-  border: none; border-radius: 12px; cursor: pointer;
-  transition: all 0.2s; color: white;
-  box-shadow: 0 4px 0 rgba(0,0,0,0.1);
-  
+  padding: 0.58rem;
+  font-size: 0.82rem;
+  font-weight: 1000;
+  border: none;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.12);
+
   &:active { transform: translateY(2px); box-shadow: none; }
   &:disabled { background-color: #adb5bd; cursor: not-allowed; box-shadow: none; transform: none; }
 `;
@@ -399,81 +582,354 @@ const ModalContent = styled.div`
 `;
 
 const AccordionContainer = styled.div`
-  width: 100%; margin-top: 1rem;
+  width: 100%;
+  margin-top: 0.65rem;
 `;
 
 const AccordionButtonRow = styled.div`
-  display: flex; gap: 0.8rem; margin-bottom: 0.35rem;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.3rem;
 `;
 
 const AccordionButton = styled(StyledButton)`
-  background-color: ${props => props.$isActive ? '#1864ab' : '#339af0'};
-  flex: 1; padding: 0.7rem; font-size: 0.9rem; box-shadow: none;
+  background-color: ${props => props.$isActive ? "#1864ab" : "#339af0"};
+  flex: 1;
+  padding: 0.54rem;
+  font-size: 0.78rem;
+  box-shadow: none;
   &:hover { background-color: #1c7ed6; }
 `;
 
 const AccordionContent = styled.div`
-  background-color: #f8f9fa; border-radius: 12px; padding: 0.9rem;
-  border: 1px solid #e9ecef; animation: ${fadeIn} 0.3s ease-out;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  padding: 0.68rem;
+  border: 1px solid #e9ecef;
+  animation: ${fadeIn} 0.3s ease-out;
 `;
 
+const SkillMiniGuide = styled.div`
+  padding: 0.42rem 0.52rem;
+  margin-bottom: 0.48rem;
+  border-radius: 10px;
+  background: #edf2ff;
+  color: #364fc7;
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1.3;
+  text-align: left;
+`;
+
+const SkillSectionLabel = styled.h5`
+  margin: 0.45rem 0 0.35rem;
+  color: #343a40;
+  font-size: 0.74rem;
+  font-weight: 1000;
+  text-align: left;
+`;
 const SkillGrid = styled.div`
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
 `;
 
 const SkillSlot = styled.div`
-  border: 2px dashed ${props => props.$isSelected ? '#fa5252' : '#dee2e6'};
-  border-radius: 12px; padding: 0.8rem;
-  background-color: ${props => props.$isSignature ? '#fff9db' : '#fff'};
-  cursor: ${props => props.$isSignature ? 'not-allowed' : 'pointer'};
-  transition: all 0.2s;
+  min-height: 76px;
+  border: 2px dashed ${props => props.$isSelected ? "#fa5252" : props.$isEquipped ? "#74c0fc" : "#dee2e6"};
+  border-radius: 12px;
+  padding: 0.48rem;
+  background-color: ${props => props.$isSelected ? "#fff5f5" : props.$isSignature ? "#fff9db" : props.$isEquipped ? "#e7f5ff" : "#fff"};
+  cursor: ${props => props.$isSignature ? "not-allowed" : "pointer"};
+  transition: all 0.15s;
   position: relative;
-  
-  &:hover { border-color: ${props => !props.$isSignature && '#339af0'}; transform: ${props => !props.$isSignature && 'translateY(-2px)'}; }
-  &:hover .skill-tooltip { display: block; }
-  
-  p { font-weight: 800; margin: 0 0 0.4rem 0; font-size: 0.95rem; }
-  small { font-size: 0.8rem; color: #868e96; font-weight: 600; }
+  overflow: hidden;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.12rem;
 
-  .skill-tooltip {
-    display: none;
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: #212529;
-    color: #fff;
-    padding: 0.6rem 0.8rem;
-    border-radius: 10px;
+  &:hover {
+    border-color: ${props => props.$isSignature ? "#ffe066" : "#339af0"};
+    transform: ${props => props.$isSignature ? "none" : "translateY(-2px)"};
+    box-shadow: ${props => props.$isSignature ? "none" : "0 7px 15px rgba(0,0,0,0.09)"};
+  }
+
+  .skill-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.28rem;
+    min-width: 0;
+  }
+
+  p {
+    min-width: 0;
+    font-weight: 1000;
+    margin: 0;
     font-size: 0.78rem;
-    font-weight: 600;
+    line-height: 1.18;
+    color: #343a40;
     white-space: nowrap;
-    z-index: 999;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    pointer-events: none;
-    line-height: 1.5;
-    min-width: 160px;
-    white-space: normal;
-    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
-    &::after {
-      content: '';
-      position: absolute;
-      top: 100%; left: 50%;
-      transform: translateX(-50%);
-      border: 6px solid transparent;
-      border-top-color: #212529;
-    }
+  .empty-title {
+    color: #adb5bd;
+    text-align: center;
+    margin-top: 0.35rem;
+  }
+
+  small {
+    font-size: 0.66rem;
+    color: #868e96;
+    font-weight: 900;
+  }
+
+  .skill-desc {
+    color: #667085;
+    font-size: 0.66rem;
+    font-weight: 750;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .mini-badge {
+    flex: 0 0 auto;
+    padding: 0.08rem 0.32rem;
+    border-radius: 999px;
+    background: #f1f3f5;
+    color: #495057;
+    font-size: 0.56rem;
+    font-weight: 1000;
+  }
+
+  .mini-badge.signature {
+    background: #fff3bf;
+    color: #e67700;
+  }
+
+  .skill-status {
+    margin-top: auto;
+    align-self: flex-end;
+    color: #1971c2;
+    font-size: 0.62rem;
+    font-weight: 1000;
+  }
+
+  .skill-status.equipped {
+    color: #868e96;
   }
 `;
 
 const SkillList = styled.div`
-  margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px dashed #dee2e6;
-  h5 { margin: 0 0 0.55rem 0; color: #495057; font-weight: 800; }
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #dee2e6;
+  h5 { margin: 0 0 0.4rem 0; color: #495057; font-weight: 800; }
+`;
+
+const SkillManagePanel = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+`;
+
+const SkillHelpText = styled.div`
+  padding: 0.48rem 0.58rem;
+  border-radius: 10px;
+  background: #edf2ff;
+  color: #364fc7;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.35;
+  text-align: left;
+`;
+
+const PendingNotice = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.48rem 0.58rem;
+  border-radius: 10px;
+  background: #fff3bf;
+  color: #7c4a03;
+  border: 1px solid #ffe066;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: left;
+`;
+
+const SkillSectionTitle = styled.h5`
+  margin: 0.15rem 0 0;
+  color: #343a40;
+  font-size: 0.78rem;
+  font-weight: 1000;
+  text-align: left;
+`;
+
+const EquippedSkillGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 0.42rem;
+`;
+
+const EquippedSkillSlot = styled.button`
+  min-height: 74px;
+  padding: 0.48rem;
+  border-radius: 12px;
+  border: ${props => props.$isSelected ? "3px solid #ff6b6b" : props.$isSignature ? "2px dashed #ffe066" : "2px dashed #ced4da"};
+  background: ${props => props.$isSelected ? "#fff5f5" : props.$isSignature ? "#fff9db" : "#ffffff"};
+  cursor: ${props => props.$isSignature ? "not-allowed" : "pointer"};
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.16rem;
+  text-align: center;
+  transition: all 0.12s ease;
+
+  &:hover {
+    transform: ${props => props.$isSignature ? "none" : "translateY(-2px)"};
+    box-shadow: ${props => props.$isSignature ? "none" : "0 7px 15px rgba(0,0,0,0.10)"};
+    border-color: ${props => props.$isSignature ? "#ffe066" : "#339af0"};
+  }
+
+  .slot-label {
+    font-size: 0.58rem;
+    font-weight: 1000;
+    color: #868e96;
+  }
+
+  .slot-name {
+    font-size: 0.76rem;
+    font-weight: 1000;
+    color: #343a40;
+    line-height: 1.18;
+  }
+
+  .slot-meta {
+    font-size: 0.62rem;
+    font-weight: 900;
+    color: #667085;
+  }
+
+  .slot-empty {
+    font-size: 0.78rem;
+    font-weight: 1000;
+    color: #adb5bd;
+  }
+`;
+
+const SkillListCompact = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.36rem;
+  max-height: 230px;
+  overflow-y: auto;
+  padding-right: 0.12rem;
+
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-track { background: #e9ecef; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 999px; }
+`;
+
+const SkillListRow = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.48rem 0.52rem;
+  border-radius: 12px;
+  border: 1px solid ${props => props.$isPending ? "#ffd43b" : props.$isEquipped ? "#74c0fc" : "#e9ecef"};
+  background: ${props => props.$isPending ? "#fff9db" : props.$isEquipped ? "#e7f5ff" : "#ffffff"};
+  text-align: left;
+
+  .skill-row-main {
+    min-width: 0;
+  }
+
+  .skill-row-head {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+
+  .skill-row-name {
+    min-width: 0;
+    color: #343a40;
+    font-size: 0.82rem;
+    font-weight: 1000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .skill-row-badge {
+    flex: 0 0 auto;
+    padding: 0.12rem 0.34rem;
+    border-radius: 999px;
+    background: #f1f3f5;
+    color: #495057;
+    font-size: 0.6rem;
+    font-weight: 1000;
+  }
+
+  .skill-row-desc {
+    margin-top: 0.14rem;
+    color: #667085;
+    font-size: 0.68rem;
+    font-weight: 750;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+`;
+
+const SkillActionButton = styled.button`
+  min-width: 72px;
+  padding: 0.42rem 0.48rem;
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 1000;
+  cursor: pointer;
+  background: ${props => props.$variant === "muted" ? "#adb5bd" : props.$variant === "warning" ? "#f08c00" : "#339af0"};
+  box-shadow: 0 3px 0 rgba(0,0,0,0.12);
+
+  &:disabled {
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+`;
+
+const SkillManageFooter = styled.div`
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.42rem;
+  align-items: center;
+
+  @media (max-width: 520px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const NotebookButton = styled(StyledButton)`
-  background-color: #845ef7; width: 100%; margin-bottom: 1rem;
+  background-color: #845ef7;
+  width: 100%;
+  margin: 0 0 0.48rem;
+  padding: 0.5rem;
+  font-size: 0.76rem;
   &:hover:not(:disabled) { background-color: #7048e8; }
 `;
 
@@ -510,14 +966,22 @@ const TooltipWrapper = styled.div`
 `;
 
 const ButtonGroup = styled.div`
-  display: flex; justify-content: center; gap: 1rem; margin-top: 3rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.7rem;
+  margin-top: 1.1rem;
 `;
 
 const ActionButton = styled.button`
-  padding: 0.8rem 2rem; font-size: 1rem; font-weight: 800;
-  color: ${props => props.$primary ? 'white' : '#495057'};
-  background: ${props => props.$primary ? '#339af0' : '#f1f3f5'};
-  border: none; border-radius: 16px; cursor: pointer; transition: all 0.2s;
+  padding: 0.72rem 1.8rem;
+  font-size: 0.92rem;
+  font-weight: 900;
+  color: ${props => props.$primary ? "white" : "#495057"};
+  background: ${props => props.$primary ? "#339af0" : "#f1f3f5"};
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
   box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 
   &:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); filter: brightness(0.95); }
@@ -541,6 +1005,7 @@ function PetPage() {
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [equippedSkills, setEquippedSkills] = useState([]);
   const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
+  const [pendingSkillId, setPendingSkillId] = useState(null);
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
   
   const [battleTeamDraft, setBattleTeamDraft] = useState({
@@ -720,18 +1185,37 @@ function PetPage() {
   };
 
   const handleSkillSlotClick = (index) => {
-    const signatureSkillId = PET_DATA[selectedPet.species].skill.id;
-    if (equippedSkills[index] === signatureSkillId) return alert("고유 스킬은 교체할 수 없습니다.");
-    setSelectedSkillSlot(index);
+    const signatureSkillIdForSlot = PET_DATA[selectedPet.species].skill.id;
+    if (equippedSkills[index] === signatureSkillIdForSlot) return alert("고유 스킬은 교체할 수 없습니다.");
+    setSelectedSkillSlot(prev => prev === index ? null : index);
   };
 
   const handleLearnedSkillClick = (skillId) => {
-    if (selectedSkillSlot === null) return;
-    if (equippedSkills.includes(skillId)) return alert("이미 장착된 스킬입니다.");
-    const newEquippedSkills = [...equippedSkills];
-    newEquippedSkills[selectedSkillSlot] = skillId;
-    setEquippedSkills(newEquippedSkills);
-    setSelectedSkillSlot(null);
+    if ((equippedSkills || []).includes(skillId)) return;
+
+    if (selectedSkillSlot !== null) {
+      const signatureSkillIdForSlot = PET_DATA[selectedPet.species].skill.id;
+      if (equippedSkills[selectedSkillSlot] === signatureSkillIdForSlot) {
+        setSelectedSkillSlot(null);
+        return alert("고유 스킬은 교체할 수 없습니다.");
+      }
+
+      const newEquippedSkills = [...(equippedSkills || [])];
+      newEquippedSkills[selectedSkillSlot] = skillId;
+      setEquippedSkills(newEquippedSkills);
+      setSelectedSkillSlot(null);
+      return;
+    }
+
+    const firstEmptySlot = Array.from({ length: skillSlotsCount }).findIndex((_, index) => !equippedSkills[index]);
+    if (firstEmptySlot >= 0) {
+      const newEquippedSkills = [...(equippedSkills || [])];
+      newEquippedSkills[firstEmptySlot] = skillId;
+      setEquippedSkills(newEquippedSkills);
+      return;
+    }
+
+    alert("교체할 장착 슬롯을 먼저 선택해주세요.");
   };
 
   const handleSaveSkills = async () => {
@@ -948,55 +1432,95 @@ function PetPage() {
                   )}
                   {activeAccordion === 'skills' && (
                     <>
+                      <SkillMiniGuide>
+                        {selectedSkillSlot === null
+                          ? "교체할 슬롯을 먼저 고르거나, 빈 슬롯이 있으면 보유 스킬을 눌러 바로 장착하세요."
+                          : `${selectedSkillSlot + 1}번 슬롯에 넣을 스킬을 선택하세요.`}
+                      </SkillMiniGuide>
+
+                      <SkillSectionLabel>장착 슬롯</SkillSectionLabel>
                       <SkillGrid>
                         {Array.from({ length: skillSlotsCount }).map((_, index) => {
                           const skillId = equippedSkills[index];
                           const skill = skillId ? SKILLS[skillId.toUpperCase()] : null;
                           const scaledCost = skill ? getScaledSkillCost(skill.cost, selectedPet.level) : 0;
+                          const isSignature = skill?.id === signatureSkillId;
+
                           return (
-                            <SkillSlot key={index} $isSignature={skill?.id === signatureSkillId} $isSelected={selectedSkillSlot === index} onClick={() => handleSkillSlotClick(index)}>
+                            <SkillSlot
+                              key={index}
+                              $isSignature={isSignature}
+                              $isSelected={selectedSkillSlot === index}
+                              onClick={() => handleSkillSlotClick(index)}
+                            >
                               {skill ? (
                                 <>
-                                  <p>{skill.name}</p>
-                                  <small>SP {scaledCost}{skill.cost > 0 && scaledCost !== skill.cost ? ` (기본 ${skill.cost})` : ''}</small>
-                                  <div className="skill-tooltip">
-                                    <strong>{skill.name}</strong> {skill.$isSignature ? '⭐ 고유스킬' : ''}<br />
-                                    {skill.description}<br />
-                                    <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span><br />
-                                    <span style={{ color: '#ffd43b' }}>SP 소모: {scaledCost} (Lv.{selectedPet.level} 기준)</span>
+                                  <div className="skill-head">
+                                    <p>{skill.name}</p>
+                                    {isSignature && <span className="mini-badge signature">고유</span>}
                                   </div>
+                                  <small>SP {scaledCost}{skill.cost > 0 && scaledCost !== skill.cost ? ` · 기본 ${skill.cost}` : ""}</small>
+                                  <span className="skill-desc">{skill.description}</span>
                                 </>
-                              ) : <p style={{ color: '#adb5bd' }}>비어있음</p>}
+                              ) : (
+                                <>
+                                  <p className="empty-title">비어있음</p>
+                                  <small>보유 스킬을 선택하면 장착</small>
+                                </>
+                              )}
                             </SkillSlot>
                           );
                         })}
                       </SkillGrid>
+
                       <SkillList>
-                        <NotebookButton onClick={() => handleUseItem('secret_notebook')} disabled={secretNotebookCount <= 0}>
+                        <NotebookButton onClick={() => handleUseItem("secret_notebook")} disabled={secretNotebookCount <= 0}>
                           📖 비법 노트 사용 ({secretNotebookCount}개)
                         </NotebookButton>
-                        <h5>보유 스킬 (클릭하여교체)</h5>
+                        <SkillSectionLabel>보유 스킬</SkillSectionLabel>
                         <SkillGrid>
-                          {unequippedSkills.map(skillId => {
+                          {learnedSkills.map(skillId => {
                             const skill = SKILLS[skillId.toUpperCase()];
                             if (!skill) return null;
+                            const isEquipped = (equippedSkills || []).includes(skillId);
                             const scaledCostUnequipped = getScaledSkillCost(skill.cost, selectedPet.level);
                             return (
-                              <SkillSlot key={skillId} onClick={() => handleLearnedSkillClick(skillId)}>
-                                <p>{skill.name}</p>
-                                <small>SP {scaledCostUnequipped}{skill.cost > 0 && scaledCostUnequipped !== skill.cost ? ` (기본 ${skill.cost})` : ''}</small>
-                                <div className="skill-tooltip">
-                                  <strong>{skill.name}</strong><br />
-                                  {skill.description}<br />
-                                  <span style={{ color: '#74c0fc' }}>위력 {skill.basePower} · 속성 {skill.element ?? '무'}</span><br />
-                                  <span style={{ color: '#ffd43b' }}>SP 소모: {scaledCostUnequipped} (Lv.{selectedPet.level} 기준)</span>
+                              <SkillSlot
+                                key={skillId}
+                                $isSelected={false}
+                                $isSignature={false}
+                                $isEquipped={isEquipped}
+                                onClick={() => handleLearnedSkillClick(skillId)}
+                              >
+                                <div className="skill-head">
+                                  <p>{skill.name}</p>
+                                  <span className="mini-badge">{skill.element ?? "무"}</span>
                                 </div>
+                                <small>SP {scaledCostUnequipped}{skill.cost > 0 && scaledCostUnequipped !== skill.cost ? ` · 기본 ${skill.cost}` : ""}</small>
+                                <span className="skill-desc">{skill.description}</span>
+                                <span className={isEquipped ? "skill-status equipped" : "skill-status"}>
+                                  {isEquipped ? "장착중" : selectedSkillSlot !== null ? "선택칸에 장착" : "장착"}
+                                </span>
                               </SkillSlot>
                             );
                           })}
                         </SkillGrid>
                       </SkillList>
-                      <StyledButton onClick={handleSaveSkills} style={{ backgroundColor: '#20c997', width: '100%', marginTop: '1rem' }}>저장하기</StyledButton>
+
+                      <div style={{ display: "grid", gridTemplateColumns: selectedSkillSlot !== null ? "1fr auto" : "1fr", gap: "0.45rem", marginTop: "0.65rem" }}>
+                        <StyledButton onClick={handleSaveSkills} style={{ backgroundColor: "#20c997", width: "100%", marginTop: 0 }}>
+                          저장하기
+                        </StyledButton>
+                        {selectedSkillSlot !== null && (
+                          <StyledButton
+                            type="button"
+                            onClick={() => setSelectedSkillSlot(null)}
+                            style={{ backgroundColor: "#868e96", minWidth: "78px", marginTop: 0 }}
+                          >
+                            해제
+                          </StyledButton>
+                        )}
+                      </div>
                     </>
                   )}
                 </AccordionContent>

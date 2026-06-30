@@ -259,7 +259,7 @@ function PetDexPage() {
     <div className="dex-page">
       <style>{`
         .dex-page { min-height: 100vh; padding: 0.85rem 0.65rem 3rem; font-family: 'Pretendard', sans-serif; background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%); color: #1f2937; }
-        .dex-shell { max-width: 1040px; margin: 0 auto; }
+        .dex-shell { width: min(1120px, calc(100vw - 1.3rem)); max-width: 1120px; margin: 0 auto; }
         .dex-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 0.8rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
         .back-button { border: none; background: #e7f5ff; color: #1971c2; font-weight: 900; border-radius: 999px; padding: 0.42rem 0.8rem; cursor: pointer; margin-bottom: 0.35rem; }
         .dex-title { margin: 0; font-size: 1.65rem; font-weight: 1000; }
@@ -268,7 +268,7 @@ function PetDexPage() {
         .progress-label { font-size: 0.74rem; color: #868e96; font-weight: 900; margin-bottom: 0.18rem; }
         .progress-count { font-size: 1.12rem; font-weight: 1000; }
 
-        .pokedex-layout { display: grid; grid-template-columns: minmax(500px, 560px) minmax(300px, 360px); gap: 0.85rem; align-items: start; justify-content: center; }
+        .pokedex-layout { display: grid; grid-template-columns: minmax(560px, 1fr) minmax(310px, 360px); gap: 0.85rem; align-items: start; width: 100%; }
         .pokedex-layout.card-hidden { grid-template-columns: 1fr; }
         .pokedex-left, .detail-card { height: clamp(500px, calc(100dvh - 128px), 620px); }
         .pokedex-left { display: grid; grid-template-columns: 38px minmax(0, 1fr); border: 4px solid #2f6fdb; border-radius: 18px; overflow: hidden; background: #f8f9fa; box-shadow: 0 14px 36px rgba(0,0,0,0.10); }
@@ -334,9 +334,9 @@ function PetDexPage() {
 
         /* M15_V3F_TABLET_TWO_COLUMN_COMPACT */
         @media (min-width: 861px) and (max-width: 1080px) {
-          .dex-shell { max-width: 960px; }
+          .dex-shell { width: min(1010px, calc(100vw - 1rem)); max-width: none; }
           .pokedex-layout {
-            grid-template-columns: minmax(470px, 535px) minmax(285px, 335px);
+            grid-template-columns: minmax(520px, 1fr) minmax(285px, 330px);
             gap: 0.7rem;
           }
           .dex-grid { grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); }
@@ -438,6 +438,7 @@ function PetDexPage() {
         }
 
         @media (max-width: 860px) {
+          .dex-shell { width: min(100%, calc(100vw - 0.72rem)); max-width: none; }
           .pokedex-layout { grid-template-columns: 1fr; }
           .detail-card { position: static; height: auto; max-height: 420px; }
           .pokedex-left { height: clamp(470px, calc(100dvh - 128px), 590px); }
