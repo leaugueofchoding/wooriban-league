@@ -12,7 +12,8 @@ import {
     normalizeElement,
     normalizeReactionConfig,
     normalizeTraces,
-    resolveElementReaction,
+    resolveElementReaction,,
+    getElementReactionTriggerAffinity,
 } from '../src/features/battle/elementReactionEngine.js';
 
 const ON = {
@@ -236,3 +237,10 @@ function run() {
 }
 
 run();
+
+
+// M14 affinity smoke test
+console.log('\n[M14 affinity smoke test]');
+console.log('물 -> 불:', getElementReactionTriggerAffinity('물', '불'));
+console.log('물 -> 얼음:', getElementReactionTriggerAffinity('물', '얼음'));
+console.log('물 -> 풀:', getElementReactionTriggerAffinity('물', '풀'));
