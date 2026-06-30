@@ -1025,12 +1025,18 @@ const PetImage = styled.img`
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: ${props => props.$isFainted
-        ? 'grayscale(100%) brightness(0.75)'
-        : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'};
-  opacity: ${props => props.$isFainted ? 0.55 : 1};
-  transform: ${props => props.$isFainted ? 'translateY(18px) rotate(-4deg) scale(0.92)' : 'none'};
-  transition: filter 0.3s, opacity 0.3s, transform 0.35s ease;
+  filter: ${props => props.$forceHidden
+        ? 'brightness(1.35) drop-shadow(0 0 18px rgba(255,255,255,0.95))'
+        : props.$isFainted
+            ? 'grayscale(100%) brightness(0.75)'
+            : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'};
+  opacity: ${props => props.$forceHidden ? 0 : props.$isFainted ? 0.55 : 1};
+  transform: ${props => props.$forceHidden
+        ? 'translateY(-18px) scale(0.78)'
+        : props.$isFainted
+            ? 'translateY(18px) rotate(-4deg) scale(0.92)'
+            : 'none'};
+  transition: filter 0.22s, opacity 0.16s ease, transform 0.22s ease;
 `;
 
 const reactionFlashPop = keyframes`
@@ -1726,6 +1732,9 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
+    // M11_6_ULTIMATE_SECRET_BLACKOUT_HIDE
+    // 오의필살 암전/섬광 구간에서 공격자 스프라이트를 숨겨 순간이동 느낌을 강화합니다.
+    const [ultimateSecretHide, setUltimateSecretHide] = useState({ my: false, opponent: false });
     const [reactionFlash, setReactionFlash] = useState(null);
     const [floatingNumbers, setFloatingNumbers] = useState([]);
     const lastReactionLogRef = useRef(null);
@@ -2762,6 +2771,23 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
                     setCurrentEffect({ type: 'ULTIMATE_SECRET', isMine: isAttackerMe });
 
+                    // M11_6_ULTIMATE_SECRET_HIDE_TIMERS
+                    // 암전/고속 참격 중 공격자 펫을 잠시 숨겼다가 마지막 섬광 뒤 재등장시킵니다.
+                    const attackerSideForUltimate = isAttackerMe ? 'my' : 'opponent';
+                    const showUltimateAttacker = () => {
+                        setUltimateSecretHide(prev => ({ ...prev, [attackerSideForUltimate]: false }));
+                    };
+                    const hideUltimateAttacker = () => {
+                        setUltimateSecretHide(prev => ({ ...prev, [attackerSideForUltimate]: true }));
+                    };
+
+                    hideUltimateAttacker();
+                    setTimeout(showUltimateAttacker, 420);
+                    setTimeout(hideUltimateAttacker, 720);
+                    setTimeout(showUltimateAttacker, 1320);
+                    setTimeout(hideUltimateAttacker, 1560);
+                    setTimeout(showUltimateAttacker, 2020);
+
                     const triggerUltimateHit = () => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
@@ -2786,6 +2812,8 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setCurrentEffect(null);
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
+                        // M11_6_ULTIMATE_SECRET_CLEANUP
+                        setUltimateSecretHide({ my: false, opponent: false });
                         setIsProcessing(false);
                         resolveBattleOnce();
                     }, 2350);
@@ -4717,7 +4745,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 const resolveConfusionMisfire = () => {
                     // M11_CONFUSION_MISFIRE_RESOLUTION
-                    // 혼란은 퀴즈와 공격 선택은 허용하지만, 공격이 엉뚱한 곳으로 나갈 수 있습니다.
+                    // 혼란은 퀴즈와 공격 선택은 허용하지만, 45% 자해 / 30% 대기펫 오폭 / 25% 정상 공격으로 분기합니다.
                     if (!attacker.pet.status?.confused) return false;
 
                     delete attacker.pet.status.confused;
@@ -4732,7 +4760,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         return true;
                     }
 
-                    if (roll < 0.50) {
+                    if (roll < 0.75) {
                         const team = Array.isArray(attacker.team) ? attacker.team : [];
                         const activePetId = attacker.pet.id || attacker.activePetId || null;
                         const benchCandidates = team
@@ -5258,6 +5286,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 imageSrc={getPetImageSrc(opponentInfo, false)}
                                 hitState={hitState.opponent}
                                 animType={animState.opponent}
+                                forceHidden={ultimateSecretHide.opponent}
                                 introActive={(typeof introActive !== 'undefined' ? introActive : false) || switchIntro.opponent}
                                 dotEffect={dotEffect}
                                 chatEntry={battleState.chat?.[opponentInfo.id]}
@@ -5272,6 +5301,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 imageSrc={getPetImageSrc(myInfo, true)}
                                 hitState={hitState.my}
                                 animType={animState.my}
+                                forceHidden={ultimateSecretHide.my}
                                 introActive={(typeof introActive !== 'undefined' ? introActive : false) || switchIntro.my}
                                 dotEffect={dotEffect}
                                 chatEntry={battleState.chat?.[myInfo.id]}
