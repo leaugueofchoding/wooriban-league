@@ -1025,12 +1025,18 @@ const PetImage = styled.img`
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: ${props => props.$isFainted
-        ? 'grayscale(100%) brightness(0.75)'
-        : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'};
-  opacity: ${props => props.$isFainted ? 0.55 : 1};
-  transform: ${props => props.$isFainted ? 'translateY(18px) rotate(-4deg) scale(0.92)' : 'none'};
-  transition: filter 0.3s, opacity 0.3s, transform 0.35s ease;
+  filter: ${props => props.$forceHidden
+        ? 'brightness(1.35) drop-shadow(0 0 18px rgba(255,255,255,0.95))'
+        : props.$isFainted
+            ? 'grayscale(100%) brightness(0.75)'
+            : 'drop-shadow(0 10px 10px rgba(0,0,0,0.1))'};
+  opacity: ${props => props.$forceHidden ? 0 : props.$isFainted ? 0.55 : 1};
+  transform: ${props => props.$forceHidden
+        ? 'translateY(-18px) scale(0.78)'
+        : props.$isFainted
+            ? 'translateY(18px) rotate(-4deg) scale(0.92)'
+            : 'none'};
+  transition: filter 0.22s, opacity 0.16s ease, transform 0.22s ease;
 `;
 
 const reactionFlashPop = keyframes`
@@ -1460,7 +1466,7 @@ const getFloatingHitCountFromLog = (log = '') => {
 
     if (text.includes('바람의 칼날')) return 3;
     if (text.includes('용의 발톱')) return 2;
-    if (text.includes('오의필살') || text.includes('비전 오의')) return 3;
+    if (text.includes('오의필살') || text.includes('비전 오의')) return 7;
     if (text.includes('재빠른 교란')) return 2;
 
     return 1;
@@ -1616,6 +1622,83 @@ const formatBattleLogForDisplay = (log = '') => {
         .join('\n');
 };
 
+// M11_HARD_CC_RULES
+// CC는 퀴즈 차단, 방어 판정, 교체 제한을 분리해서 처리합니다.
+const BATTLE_CC_RULES = {
+    stunned: {
+        key: 'stunned',
+        label: '기절',
+        icon: '💫',
+        blocksQuizSubmit: true,
+        blocksSwitch: true,
+        defenderAction: 'STUNNED',
+        defenseMode: 'exposed',
+        message: '기절해서 무방비합니다!',
+    },
+    staggered: {
+        key: 'staggered',
+        label: '경직',
+        icon: '⚡',
+        blocksQuizSubmit: true,
+        blocksSwitch: true,
+        defenderAction: 'BRACE',
+        defenseMode: 'brace',
+        message: '경직되어 겨우 웅크립니다!',
+    },
+    frozen: {
+        key: 'frozen',
+        label: '빙결',
+        icon: '❄️',
+        blocksQuizSubmit: true,
+        blocksSwitch: true,
+        defenderAction: 'FROZEN',
+        defenseMode: 'exposed',
+        message: '얼어붙어 무방비합니다!',
+    },
+    bound: {
+        key: 'bound',
+        label: '속박',
+        icon: '🌿',
+        blocksQuizSubmit: false,
+        blocksSwitch: true,
+        defenderAction: 'BOUND',
+        defenseMode: 'exposed',
+        message: '묶여 있어서 피하지 못합니다!',
+    },
+};
+
+const BATTLE_CC_PRIORITY = ['frozen', 'stunned', 'staggered', 'bound'];
+
+const getBattleCcState = (pet) => {
+    const status = pet?.status || {};
+    const key = BATTLE_CC_PRIORITY.find(statusKey => !!status[statusKey]);
+    if (!key) return null;
+    return BATTLE_CC_RULES[key] || null;
+};
+
+// M11 v1 호환 이름
+const getHardCcState = getBattleCcState;
+
+const getCcSwitchBlockMessage = (pet) => {
+    const cc = getBattleCcState(pet);
+    if (!cc?.blocksSwitch) return '';
+    return `${cc.icon} ${cc.label} 상태에서는 펫을 교체할 수 없습니다.`;
+};
+
+const getHardCcSwitchBlockMessage = getCcSwitchBlockMessage;
+
+const getCcDefenseLog = (pet, attackerName = '상대') => {
+    const cc = getBattleCcState(pet);
+    if (!cc?.defenderAction) return null;
+
+    return {
+        action: cc.defenderAction,
+        log: `${attackerName}의 공격! ${cc.icon} 상대는 ${cc.message}`,
+    };
+};
+
+const getHardCcDefenseLog = getCcDefenseLog;
+
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
@@ -1649,6 +1732,9 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
+    // M11_6_ULTIMATE_SECRET_BLACKOUT_HIDE
+    // 오의필살 암전/섬광 구간에서 공격자 스프라이트를 숨겨 순간이동 느낌을 강화합니다.
+    const [ultimateSecretHide, setUltimateSecretHide] = useState({ my: false, opponent: false });
     const [reactionFlash, setReactionFlash] = useState(null);
     const [floatingNumbers, setFloatingNumbers] = useState([]);
     const lastReactionLogRef = useRef(null);
@@ -2685,6 +2771,23 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
                     setCurrentEffect({ type: 'ULTIMATE_SECRET', isMine: isAttackerMe });
 
+                    // M11_6_ULTIMATE_SECRET_HIDE_TIMERS
+                    // 암전/고속 참격 중 공격자 펫을 잠시 숨겼다가 마지막 섬광 뒤 재등장시킵니다.
+                    const attackerSideForUltimate = isAttackerMe ? 'my' : 'opponent';
+                    const showUltimateAttacker = () => {
+                        setUltimateSecretHide(prev => ({ ...prev, [attackerSideForUltimate]: false }));
+                    };
+                    const hideUltimateAttacker = () => {
+                        setUltimateSecretHide(prev => ({ ...prev, [attackerSideForUltimate]: true }));
+                    };
+
+                    hideUltimateAttacker();
+                    setTimeout(showUltimateAttacker, 420);
+                    setTimeout(hideUltimateAttacker, 720);
+                    setTimeout(showUltimateAttacker, 1320);
+                    setTimeout(hideUltimateAttacker, 1560);
+                    setTimeout(showUltimateAttacker, 2020);
+
                     const triggerUltimateHit = () => {
                         if (isAttackerMe) setHitState(prev => ({ ...prev, opponent: true }));
                         else setHitState(prev => ({ ...prev, my: true }));
@@ -2709,6 +2812,8 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         setCurrentEffect(null);
                         setAnimState({ my: null, opponent: null });
                         setHitState({ my: false, opponent: false });
+                        // M11_6_ULTIMATE_SECRET_CLEANUP
+                        setUltimateSecretHide({ my: false, opponent: false });
                         setIsProcessing(false);
                         resolveBattleOnce();
                     }, 2350);
@@ -2961,13 +3066,11 @@ const handleCancel = async () => {
                 const defenderPet = isChallengerTurn ? data.opponent.pet : data.challenger.pet;
 
                 if (!data.defenderAction) {
-                    if (defenderPet.status?.bound) {
-                        updates.defenderAction = 'BOUND';
-                    } else if (defenderPet.status?.stunned) {
-                        updates.defenderAction = 'STUNNED';
-                    } else {
-                        updates.defenderAction = 'BRACE';
-                    }
+                    const defenderCcDefense = typeof getCcDefenseLog === 'function'
+                        ? getCcDefenseLog(defenderPet, '상대')
+                        : null;
+
+                    updates.defenderAction = defenderCcDefense?.action || 'BRACE';
                 }
 
                 if (Object.keys(updates).length > 0) transaction.update(battleRef, updates);
@@ -3002,8 +3105,10 @@ const handleCancel = async () => {
                 challenger.pet.hp = Math.max(0, challenger.pet.hp - damageChallenger);
                 opponent.pet.hp = Math.max(0, opponent.pet.hp - damageOpponent);
 
-                if (challenger.pet.status?.stunned) delete challenger.pet.status.stunned;
-                if (opponent.pet.status?.stunned) delete opponent.pet.status.stunned;
+                ['stunned', 'staggered', 'frozen'].forEach(key => {
+                    if (challenger.pet.status?.[key]) delete challenger.pet.status[key];
+                    if (opponent.pet.status?.[key]) delete opponent.pet.status[key];
+                });
 
                 let switchMessages = [];
 
@@ -3490,7 +3595,7 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
             messages.push(`☠️ ${pet.name}은(는) 중독으로 ${poisonDamage}의 피해를 입었습니다!`);
         }
 
-        ['burned', 'poisoned', 'bound', 'stunned', 'blind', 'dazzled', 'aching', 'healPulse'].forEach(key => {
+        ['burned', 'poisoned', 'bound', 'stunned', 'staggered', 'frozen', 'confused', 'blind', 'dazzled', 'aching', 'healPulse'].forEach(key => {
             if (canTickStatus(key)) {
                 tickBattleStatusTurn(pet, key, messages);
             }
@@ -4161,8 +4266,12 @@ const handleUseItem = async (itemId) => {
             return;
         }
 
-        if (myInfo?.pet?.status?.bound) {
-            alert('속박 상태에서는 펫을 교체할 수 없습니다.');
+        const ccSwitchBlockMessage = typeof getCcSwitchBlockMessage === 'function'
+            ? getCcSwitchBlockMessage(myInfo?.pet)
+            : '';
+
+        if (ccSwitchBlockMessage) {
+            alert(ccSwitchBlockMessage);
             return;
         }
 
@@ -4197,7 +4306,7 @@ const handleUseItem = async (itemId) => {
                 const participant = data[myRole];
                 const opponentParticipant = data[opponentRole];
 
-                if (participant?.pet?.status?.bound) {
+                if (typeof getBattleCcState === 'function' && getBattleCcState(participant?.pet)?.blocksSwitch) {
                     return null;
                 }
 
@@ -4425,15 +4534,13 @@ const handleActionSelect = async (actionId) => {
                 }
 
                 const updates = { attackerAction: resolvedActionId };
-                const opponentIsStunned = battleState[opponentRole].pet.status?.stunned;
-                const opponentIsBound = battleState[opponentRole].pet.status?.bound;
+                const defenderCcDefense = typeof getCcDefenseLog === 'function'
+                    ? getCcDefenseLog(battleState[opponentRole]?.pet, myPet.name)
+                    : null;
 
-                if (opponentIsStunned) {
-                    updates.defenderAction = 'STUNNED';
-                    updates.log = `${myPet.name}의 공격! (상대방은 혼란 상태라 방어 불가!)`;
-                } else if (opponentIsBound) {
-                    updates.defenderAction = 'BOUND';
-                    updates.log = `${myPet.name}의 공격! (상대방은 속박 상태라 방어 불가!)`;
+                if (defenderCcDefense) {
+                    updates.defenderAction = defenderCcDefense.action;
+                    updates.log = defenderCcDefense.log;
                 }
 
                 if (myPet.status?.recharging === false && resolvedActionId === 'TACKLE') {
@@ -4443,6 +4550,20 @@ const handleActionSelect = async (actionId) => {
 
                 await updateDoc(battleRef, updates);
             } else {
+                // M11_HARD_CC_DEFENDER_SELECT_GUARD
+                // 하드 CC 상태에서는 방어/회피/도망 버튼을 눌러도 실제 선택은 방어 불가로 고정됩니다.
+                const defenderRoleForCc = myPlayerData.id === battleState.challenger.id ? 'challenger' : 'opponent';
+                const defenderPetForCc = battleState[defenderRoleForCc]?.pet;
+                const hardCcDefense = getHardCcDefenseLog(defenderPetForCc, '상대');
+
+                if (hardCcDefense) {
+                    await updateDoc(battleRef, {
+                        defenderAction: hardCcDefense.action,
+                        log: hardCcDefense.log,
+                    });
+                    return;
+                }
+
                 if (actionId === 'FLEE') {
                     const myId = myPlayerData.id;
                     const opponentId = battleState.turn;
@@ -4543,9 +4664,15 @@ const handleActionSelect = async (actionId) => {
                 // 이번 공격으로 새로 걸린 화상/중독/속박은 같은 턴에는 DOT/턴감소가 없습니다.
                 const initialAttackerStatusKeys = getActiveStatusKeys(attacker.pet.status);
                 const initialDefenderStatusKeys = getActiveStatusKeys(defender.pet.status);
-if (defender.pet.status?.stunned) {
-                    delete defender.pet.status.stunned;
-                }
+// M11_CC_CLEAR_DEFENDER_ONE_TURN_CC
+
+// 기절/경직/빙결은 해당 턴 방어 판정에 반영된 뒤 소거합니다.
+
+if (defender.pet.status?.stunned) delete defender.pet.status.stunned;
+
+if (defender.pet.status?.staggered) delete defender.pet.status.staggered;
+
+if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 let skillId = String(attackerAction || '').toUpperCase();
                 let skill = SKILLS[skillId];
@@ -4616,34 +4743,82 @@ if (defender.pet.status?.stunned) {
                     }
                 };
 
+                const resolveConfusionMisfire = () => {
+                    // M11_CONFUSION_MISFIRE_RESOLUTION
+                    // 혼란은 퀴즈와 공격 선택은 허용하지만, 45% 자해 / 30% 대기펫 오폭 / 25% 정상 공격으로 분기합니다.
+                    if (!attacker.pet.status?.confused) return false;
+
+                    delete attacker.pet.status.confused;
+                    delete attacker.pet.status.confusedTurns;
+
+                    const roll = Math.random();
+                    const confusionDamage = Math.max(1, Math.round((Number(skill?.basePower ?? 20) * 0.55) + (Number(attacker.pet.atk ?? 0) * 0.8)));
+
+                    if (roll < 0.45) {
+                        attacker.pet.hp = Math.max(0, Number(attacker.pet.hp ?? 0) - confusionDamage);
+                        log = `🌀 '${attacker.pet.name}'은(는) 혼란에 빠져 자기 자신을 공격했다! ${confusionDamage}의 피해!`;
+                        return true;
+                    }
+
+                    if (roll < 0.75) {
+                        const team = Array.isArray(attacker.team) ? attacker.team : [];
+                        const activePetId = attacker.pet.id || attacker.activePetId || null;
+                        const benchCandidates = team
+                            .map((pet, index) => ({ pet, index }))
+                            .filter(({ pet }) => pet?.id && pet.id !== activePetId && Number(pet.hp ?? 0) > 0);
+
+                        if (benchCandidates.length > 0) {
+                            const target = benchCandidates[Math.floor(Math.random() * benchCandidates.length)];
+                            const nextHp = Math.max(0, Number(target.pet.hp ?? 0) - confusionDamage);
+                            attacker.team = team.map((pet, index) => (
+                                index === target.index
+                                    ? { ...pet, hp: nextHp, status: { ...(pet.status || {}) } }
+                                    : pet
+                            ));
+                            log = `🌀 '${attacker.pet.name}'은(는) 혼란에 빠져 대기 중인 '${target.pet.name || '팀원'}'을(를) 공격했다! ${confusionDamage}의 피해!`;
+                            return true;
+                        }
+                    }
+
+                    return false;
+                };
+
                 // ☀️ 눈부심: 다음 공격 1회 무조건 빗나감
                 // 🙈 실명/도발: 다음 공격 1회 50% 확률로 빗나감
                 // 둘 다 skill.effect 실행 전에 전역 처리해야 기본공격/스킬 모두에 동일하게 적용됩니다.
                 const isDazzled = !!attacker.pet.status?.dazzled;
                 const isBlinded = !!attacker.pet.status?.blind;
 
-                if (isDazzled) {
-                    delete attacker.pet.status.dazzled;
+                const resolveAccuracyAndAction = () => {
+                    if (isDazzled) {
+                        delete attacker.pet.status.dazzled;
 
-                    log = `☀️ ${attacker.pet.name}은(는) 눈부심 때문에 ${actionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
-
-                    if (isSpInsufficient) {
-                        log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
-                    }
-                } else if (isBlinded) {
-                    delete attacker.pet.status.blind;
-
-                    if (Math.random() < 0.5) {
-                        log = `🙈 ${attacker.pet.name}은(는) 시야가 흔들려 ${actionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
+                        log = `☀️ ${attacker.pet.name}은(는) 눈부심 때문에 ${actionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
 
                         if (isSpInsufficient) {
                             log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
                         }
+                    } else if (isBlinded) {
+                        delete attacker.pet.status.blind;
+
+                        if (Math.random() < 0.5) {
+                            log = `🙈 ${attacker.pet.name}은(는) 시야가 흔들려 ${actionName}을(를) 제대로 쓰지 못했습니다! 공격이 빗나갔습니다!`;
+
+                            if (isSpInsufficient) {
+                                log = `(SP 부족!) ${originalSkillName} 실패.. 대신 ${log}`;
+                            }
+                        } else {
+                            resolveNormalAction();
+                        }
                     } else {
                         resolveNormalAction();
                     }
-                } else {
-                    resolveNormalAction();
+                };
+
+                // M11_CONFUSION_CHECK_BEFORE_ACCURACY
+                // 혼란 오작동이 발생하면 실제 공격/원소반응은 발생하지 않습니다.
+                if (!resolveConfusionMisfire()) {
+                    resolveAccuracyAndAction();
                 }
 
                 // SP 소모는 명중/빗나감과 관계없이 스킬을 선택했다면 여기서 확정 처리합니다.
@@ -4963,6 +5138,9 @@ if (defender.pet.status?.stunned) {
 
     const showTimer = (battleState.status === 'quiz' || battleState.status === 'action' || battleState.status === 'pending_switch');
     const isStunned = myInfo.pet.status?.stunned;
+    const isStaggered = myInfo.pet.status?.staggered;
+    const isFrozen = myInfo.pet.status?.frozen;
+    const isQuizBlockedByCc = !!(isStunned || isStaggered || isFrozen);
     const isBound = myInfo.pet.status?.bound;
     const hasSubmitted = battleState.chat?.[myPlayerData?.id] !== undefined;
 
@@ -5108,6 +5286,7 @@ if (defender.pet.status?.stunned) {
                                 imageSrc={getPetImageSrc(opponentInfo, false)}
                                 hitState={hitState.opponent}
                                 animType={animState.opponent}
+                                forceHidden={ultimateSecretHide.opponent}
                                 introActive={(typeof introActive !== 'undefined' ? introActive : false) || switchIntro.opponent}
                                 dotEffect={dotEffect}
                                 chatEntry={battleState.chat?.[opponentInfo.id]}
@@ -5122,6 +5301,7 @@ if (defender.pet.status?.stunned) {
                                 imageSrc={getPetImageSrc(myInfo, true)}
                                 hitState={hitState.my}
                                 animType={animState.my}
+                                forceHidden={ultimateSecretHide.my}
                                 introActive={(typeof introActive !== 'undefined' ? introActive : false) || switchIntro.my}
                                 dotEffect={dotEffect}
                                 chatEntry={battleState.chat?.[myInfo.id]}
@@ -5174,10 +5354,10 @@ if (defender.pet.status?.stunned) {
                                 {battleState.status === 'quiz' && battleState.question && (
                                     <>
                                         <BattlePrompt>Q. {battleState.question.question}</BattlePrompt>
-                                        {isStunned ? (
+                                        {isQuizBlockedByCc ? (
                                             <RightTaskCard style={{ marginTop: '1rem', color: '#e03131', background: '#fff5f5', borderColor: '#ffc9c9' }}>
-                                                <div style={{ fontSize: '1.15rem' }}>😵 혼란 상태!</div>
-                                                <div style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>아무것도 할 수 없습니다. 상대방의 행동을 기다립니다.</div>
+                                                <div style={{ fontSize: '1.15rem' }}>{isFrozen ? '❄️ 빙결 상태!' : isStaggered ? '⚡ 경직 상태!' : '💫 기절 상태!'}</div>
+                                                <div style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>문제는 보이지만 이번 턴에는 정답을 제출할 수 없습니다.</div>
                                             </RightTaskCard>
                                         ) : hasSubmitted && (isOX || hasOptions) ? (
                                             <RightTaskCard style={{ marginTop: '1rem', color: battleState.chat?.[myPlayerData.id]?.isCorrect ? '#2b8a3e' : '#c92a2a', background: battleState.chat?.[myPlayerData.id]?.isCorrect ? '#ebfbee' : '#fff5f5', borderColor: battleState.chat?.[myPlayerData.id]?.isCorrect ? '#b2f2bb' : '#ffc9c9' }}>
@@ -5237,7 +5417,7 @@ if (defender.pet.status?.stunned) {
                                     </RightTaskCard>
                                 )}
 
-                                {battleState.status === 'quiz' && battleState.question && !isStunned && (
+                                {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && (
                                     <RightTaskCard style={{ background: '#ffffff', borderColor: '#339af0' }}>
                                         <div style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#1864ab' }}>✏️ 정답 선택</div>
                                         {(() => {
@@ -5300,6 +5480,8 @@ if (defender.pet.status?.stunned) {
 
                                 <BattleActionMenu
                                     isStunned={isStunned}
+                                    isStaggered={isStaggered}
+                                    isFrozen={isFrozen}
                                     isBound={isBound}
                                     showActionMenu={showActionMenu}
                                     showDefenseMenu={showDefenseMenu}

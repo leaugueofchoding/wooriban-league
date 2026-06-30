@@ -19,6 +19,7 @@ export default function BattlePetSlot({
     introActive,
     dotEffect,
     chatEntry,
+    forceHidden = false,
     WrapperComponent,
     PetContainerComponent,
     PetImageComponent,
@@ -61,6 +62,7 @@ export default function BattlePetSlot({
                     src={imageSrc}
                     alt={altText}
                     $isFainted={info.pet.hp <= 0}
+                    $forceHidden={forceHidden}
                 />
             </PetContainerComponent>
         </WrapperComponent>
