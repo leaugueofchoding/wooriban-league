@@ -416,6 +416,34 @@ const REACTION_SOUND_MAP = {
         playTone(ctx, { startTime: 0.12, type: 'triangle', freqStart: 2100, freqEnd: 320, duration: 0.32, gainStart: 0.14, gainAttack: 0.002 });
         playNoise(ctx, { startTime: 0.16, duration: 0.28, filterType: 'highpass', freqStart: 4200, freqEnd: 6200, gainStart: 0.10, gainAttack: 0.004, Q: 0.9 });
     },
+    bloom: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.16 });
+        playTone(ctx, { startTime: 0.08, type: 'triangle', freqStart: 360, freqEnd: 760, duration: 0.32, gainStart: 0.12, gainAttack: 0.02, freqCurve: 'linear' });
+        playNoise(ctx, { startTime: 0.12, duration: 0.34, filterType: 'bandpass', freqStart: 700, freqEnd: 1800, gainStart: 0.10, Q: 1.1 });
+    },
+    whirlpool: (ctx) => {
+        SOUND_RECIPES.WATER_DROP(ctx, 0, { gainStart: 0.18 });
+        playNoise(ctx, { startTime: 0.04, duration: 0.58, filterType: 'bandpass', freqStart: 420, freqEnd: 2200, gainStart: 0.16, gainAttack: 0.04, Q: 1.3 });
+        playTone(ctx, { startTime: 0.08, type: 'sine', freqStart: 420, freqEnd: 120, duration: 0.45, gainStart: 0.10, gainAttack: 0.02 });
+    },
+    storm: (ctx) => {
+        playNoise(ctx, { duration: 0.45, filterType: 'bandpass', freqStart: 500, freqEnd: 2600, gainStart: 0.15, gainAttack: 0.03, Q: 1.2 });
+        playCrackle(ctx, { startTime: 0.08, count: 9, spread: 0.36, baseGain: 0.12 });
+    },
+    superconduct: (ctx) => {
+        playTone(ctx, { type: 'sine', freqStart: 1600, freqEnd: 420, duration: 0.22, gainStart: 0.11, gainAttack: 0.002 });
+        playCrackle(ctx, { startTime: 0.08, count: 5, spread: 0.18, baseGain: 0.08 });
+        playNoise(ctx, { startTime: 0.12, duration: 0.28, filterType: 'highpass', freqStart: 3800, freqEnd: 6200, gainStart: 0.08, Q: 0.9 });
+    },
+    overgrowth: (ctx) => {
+        playCrackle(ctx, { startTime: 0, count: 4, spread: 0.18, baseGain: 0.07 });
+        playTone(ctx, { startTime: 0.05, type: 'sine', freqStart: 320, freqEnd: 920, duration: 0.42, gainStart: 0.13, gainAttack: 0.04, freqCurve: 'linear' });
+        playNoise(ctx, { startTime: 0.12, duration: 0.36, filterType: 'bandpass', freqStart: 800, freqEnd: 2200, gainStart: 0.09, Q: 1.4 });
+    },
+    frostWither: (ctx) => {
+        playTone(ctx, { type: 'triangle', freqStart: 980, freqEnd: 240, duration: 0.35, gainStart: 0.10, gainAttack: 0.004 });
+        playNoise(ctx, { startTime: 0.08, duration: 0.38, filterType: 'highpass', freqStart: 3000, freqEnd: 5200, gainStart: 0.07, Q: 0.8 });
+    },
 };
 
 export const playElementReactionSound = (reactionKey) => {
