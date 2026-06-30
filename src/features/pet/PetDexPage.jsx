@@ -217,6 +217,10 @@ function PetDexPage() {
     ? (discoverersBySpeciesStage[selectedEntry.speciesKey]?.[selectedEntry.stage] || [])
     : [];
 
+  const visibleDiscoverers = discoverers.slice(0, 8);
+  const hiddenDiscovererCount = Math.max(0, discoverers.length - visibleDiscoverers.length);
+  const discovererTooltipText = discoverers.join(', ');
+
   const normalizedSearch = normalizeSearchText(searchText);
   const filteredDexEntries = useMemo(() => {
     if (!normalizedSearch) return dexEntries;
@@ -339,6 +343,98 @@ function PetDexPage() {
           .dex-cell { min-height: 80px; }
           .dex-sprite { width: 50px; height: 50px; }
           .detail-card { padding: 0.75rem; }
+        }
+
+        .discoverer-section {
+          position: relative;
+        }
+
+        .discoverer-name-line {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.28rem;
+          align-items: center;
+        }
+
+        .discoverer-chip {
+          display: inline-flex;
+          align-items: center;
+          max-width: 92px;
+          padding: 0.18rem 0.42rem;
+          border-radius: 999px;
+          background: #e7f5ff;
+          color: #1971c2;
+          font-size: 0.72rem;
+          font-weight: 950;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .discoverer-more {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.18rem 0.42rem;
+          border-radius: 999px;
+          background: #fff3bf;
+          color: #e67700;
+          font-size: 0.72rem;
+          font-weight: 1000;
+        }
+
+        .discoverer-tooltip {
+          display: none;
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: calc(100% + 8px);
+          z-index: 80;
+          padding: 0.65rem;
+          border-radius: 14px;
+          background: rgba(33, 37, 41, 0.97);
+          color: white;
+          box-shadow: 0 14px 32px rgba(0,0,0,0.26);
+          border: 1px solid rgba(255,255,255,0.12);
+          max-height: 180px;
+          overflow-y: auto;
+          font-size: 0.78rem;
+          font-weight: 850;
+          line-height: 1.45;
+        }
+
+        .discoverer-tooltip::after {
+          content: '';
+          position: absolute;
+          top: 100%;
+          left: 28px;
+          border: 7px solid transparent;
+          border-top-color: rgba(33, 37, 41, 0.97);
+        }
+
+        .discoverer-section:hover .discoverer-tooltip,
+        .discoverer-section:focus-within .discoverer-tooltip {
+          display: block;
+        }
+
+        .discoverer-tooltip-title {
+          margin-bottom: 0.35rem;
+          color: #ffd43b;
+          font-size: 0.78rem;
+          font-weight: 1000;
+        }
+
+        .discoverer-tooltip-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.3rem;
+        }
+
+        .discoverer-tooltip-chip {
+          padding: 0.18rem 0.42rem;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.12);
+          color: white;
+          white-space: nowrap;
         }
 
         @media (max-width: 860px) {
@@ -537,9 +633,32 @@ function PetDexPage() {
 
                   {/* M15_DISCOVERERS_ALWAYS_BOTTOM */}
                   {discoverers.length > 0 && (
-                    <section className="info-section">
+                    <section
+                      className="info-section discoverer-section"
+                      tabIndex={0}
+                      aria-label={`발견한 사람 전체 명단: ${discovererTooltipText}`}
+                    >
+                      {/* M15_DISCOVERER_HOVER_TOOLTIP */}
                       <h3>발견한 사람</h3>
-                      <p>{discoverers.slice(0, 8).join(', ')}{discoverers.length > 8 ? ` 외 ${discoverers.length - 8}명` : ''}</p>
+                      <div className="discoverer-name-line">
+                        {visibleDiscoverers.map(name => (
+                          <span className="discoverer-chip" key={name}>{name}</span>
+                        ))}
+                        {hiddenDiscovererCount > 0 && (
+                          <span className="discoverer-more">외 {hiddenDiscovererCount}명</span>
+                        )}
+                      </div>
+
+                      <div className="discoverer-tooltip" role="tooltip">
+                        <div className="discoverer-tooltip-title">
+                          전체 발견자 {discoverers.length}명
+                        </div>
+                        <div className="discoverer-tooltip-list">
+                          {discoverers.map(name => (
+                            <span className="discoverer-tooltip-chip" key={name}>{name}</span>
+                          ))}
+                        </div>
+                      </div>
                     </section>
                   )}
                 </>
