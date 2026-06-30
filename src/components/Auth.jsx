@@ -314,6 +314,109 @@ const OpponentItem = styled.div`
   }
 `;
 
+const ChallengerTeamPreview = styled.div`
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.7rem 0.7rem;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff9db 0%, #fff4e6 100%);
+  border: 2px solid #ffe066;
+  box-sizing: border-box;
+
+  .preview-title {
+    margin: 0 0 0.5rem;
+    color: #7c4a03;
+    font-weight: 900;
+    font-size: 0.92rem;
+    text-align: center;
+  }
+
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  @media (max-width: 520px) {
+    padding: 0.55rem;
+    .preview-grid {
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      gap: 0.4rem;
+    }
+  }
+`;
+
+const ChallengerPetCard = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.26rem;
+  min-width: 0;
+  padding: 0.55rem 0.45rem 0.7rem;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(245,159,0,0.35);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  text-align: center;
+
+  img {
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #fff3bf;
+    flex-shrink: 0;
+  }
+
+  .pet-meta {
+    min-width: 0;
+    width: 100%;
+    text-align: center;
+    line-height: 1.25;
+  }
+
+  .pet-name {
+    display: block;
+    color: #343a40;
+    font-size: 0.82rem;
+    font-weight: 900;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  .pet-level {
+    display: block;
+    margin-top: 0.16rem;
+    color: #f08c00;
+    font-size: 0.74rem;
+    font-weight: 900;
+  }
+
+  .pet-hp {
+    display: block;
+    margin-top: 0.12rem;
+    color: #868e96;
+    font-size: 0.7rem;
+    font-weight: 800;
+  }
+
+  @media (max-width: 520px) {
+    padding: 0.45rem 0.35rem 0.6rem;
+
+    img {
+      width: 48px;
+      height: 48px;
+    }
+
+    .pet-name {
+      font-size: 0.78rem;
+    }
+  }
+`;
 const StyledButton = styled.button`
   padding: 0.8rem; font-size: 1rem; font-weight: bold;
   border: none; border-radius: 8px; cursor: pointer;
@@ -821,6 +924,15 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     const targetTeamSize = challengerTeamSize;
                     const needsBenchSelect = targetTeamSize >= 2;
 
+                    // M12_ACCEPT_MODAL_CHALLENGER_TEAM_PREVIEW_DATA
+                    const challengerTeamForPreview = (
+                        Array.isArray(battleChallenge.challenger?.team) && battleChallenge.challenger.team.length > 0
+                            ? battleChallenge.challenger.team
+                            : [battleChallenge.challenger?.pet]
+                    )
+                        .filter(Boolean)
+                        .slice(0, targetTeamSize);
+
                     const aliveIds = new Set(alivePets.map(pet => pet.id));
                     const selectedLeadId = aliveIds.has(acceptBattleTeamDraft.leadPetId)
                         ? acceptBattleTeamDraft.leadPetId
@@ -899,21 +1011,29 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     return (
                         <ModalBackground>
                             <ModalContent style={{ maxWidth: needsBenchSelect ? '640px' : '400px' }}>
-                                <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 도전장이 도착했습니다!</h2>
+                                <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 {battleChallenge?.challenger?.name || '상대'}님의 도전장이 도착했습니다!</h2>
 
                                 <OpponentItem>
                                     <div className="user-info">
-                                        <img
-                                            src={petImageMap[`${battleChallenge.challenger?.pet?.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
-                                            alt="도전자 펫"
-                                        />
-                                        <div>
-                                            <strong>{battleChallenge.challenger?.name}</strong>
-                                            <span>
-                                                {battleChallenge.challenger?.pet?.name} (Lv.{battleChallenge.challenger?.pet?.level})
-                                                {challengerTeamSize > 1 ? ` 외 ${challengerTeamSize - 1}마리` : ''}
-                                            </span>
-                                        </div>
+                                        {/* M12_ACCEPT_MODAL_CHALLENGER_TEAM_PREVIEW_RENDER */}
+                                        <ChallengerTeamPreview>
+                                            <p className="preview-title">상대 출전 펫</p>
+                                            <div className="preview-grid">
+                                                {challengerTeamForPreview.map((pet, index) => (
+                                                    <ChallengerPetCard key={pet.id || `challenger-pet-${index}`}>
+                                                        <img
+                                                            src={petImageMap[`${pet.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                                                            alt={pet.name || `상대 펫 ${index + 1}`}
+                                                        />
+                                                        <div className="pet-meta">
+                                                            <strong className="pet-name">{pet.name || '이름 없는 펫'}</strong>
+                                                            <span className="pet-level">Lv.{pet.level ?? '?'}</span>
+                                                            <span className="pet-hp">HP {pet.hp ?? '?'}/{pet.maxHp ?? '?'}</span>
+                                                        </div>
+                                                    </ChallengerPetCard>
+                                                ))}
+                                            </div>
+                                        </ChallengerTeamPreview>
                                     </div>
                                 </OpponentItem>
 
