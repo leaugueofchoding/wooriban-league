@@ -1406,6 +1406,12 @@ const REACTION_FLASH_META = {
     overload: { label: '과부하', icon: '🔥⚡', toneA: '#ff6b35', toneB: '#f08c00', text: '#d9480f' },
     pollenSpread: { label: '꽃가루 확산', icon: '🌿🌪️', toneA: '#2f9e44', toneB: '#15aabf', text: '#087f5b' },
     frozen: { label: '빙결', icon: '💧❄️', toneA: '#228be6', toneB: '#4dabf7', text: '#1971c2' },
+    bloom: { label: '만개', icon: '💧🌿', toneA: '#228be6', toneB: '#2f9e44', text: '#2b8a3e' },
+    whirlpool: { label: '소용돌이', icon: '💧🌪️', toneA: '#228be6', toneB: '#15aabf', text: '#0b7285' },
+    storm: { label: '폭풍', icon: '⚡🌪️', toneA: '#f08c00', toneB: '#15aabf', text: '#e67700' },
+    superconduct: { label: '초전도', icon: '⚡❄️', toneA: '#f08c00', toneB: '#4dabf7', text: '#1971c2' },
+    overgrowth: { label: '과성장', icon: '⚡🌿', toneA: '#f08c00', toneB: '#2f9e44', text: '#2b8a3e' },
+    frostWither: { label: '서리덩굴', icon: '🌿❄️', toneA: '#2f9e44', toneB: '#4dabf7', text: '#087f5b' },
 };
 
 const detectElementReactionFromLog = (log = '') => {
@@ -1414,6 +1420,12 @@ const detectElementReactionFromLog = (log = '') => {
 
     if (text.includes('감전')) return 'electroCharged';
     if (text.includes('빙결')) return 'frozen';
+    if (text.includes('만개')) return 'bloom';
+    if (text.includes('소용돌이')) return 'whirlpool';
+    if (text.includes('폭풍')) return 'storm';
+    if (text.includes('초전도')) return 'superconduct';
+    if (text.includes('과성장')) return 'overgrowth';
+    if (text.includes('서리덩굴')) return 'frostWither';
     if (text.includes('증발')) return 'vaporize';
     if (text.includes('연소')) return 'combustion';
     if (text.includes('과부하')) return 'overload';
@@ -1526,6 +1538,24 @@ const getCompactBattleReactionLines = (text = '') => {
     }
     if (text.includes('빙결')) {
         lines.push('빙결 반응! 💧❄️ 몸이 얼어붙었다!');
+    }
+    if (text.includes('만개')) {
+        lines.push('만개 반응! 💧🌿 덩굴이 피어났다!');
+    }
+    if (text.includes('소용돌이')) {
+        lines.push('소용돌이 반응! 💧🌪️ 방향감각을 잃었다!');
+    }
+    if (text.includes('폭풍')) {
+        lines.push('폭풍 반응! ⚡🌪️ 몸이 굳었다!');
+    }
+    if (text.includes('초전도')) {
+        lines.push('초전도 반응! ⚡❄️ 방어가 약해졌다!');
+    }
+    if (text.includes('과성장')) {
+        lines.push('과성장 반응! ⚡🌿 생명력이 솟았다!');
+    }
+    if (text.includes('서리덩굴')) {
+        lines.push('서리덩굴 반응! 🌿❄️ 차가운 덩굴이 휘감았다!');
     }
 
     return [...new Set(lines)];
@@ -3446,6 +3476,9 @@ const handleCancel = async () => {
         poisoned: 3,
         bound: 2,
         stunned: 1,
+        staggered: 1,
+        frozen: 1,
+        confused: 1,
         blind: 1,
         dazzled: 1,
         aching: 2,
@@ -3457,6 +3490,9 @@ const handleCancel = async () => {
         poisoned: 'poisonTurns',
         bound: 'boundTurns',
         stunned: 'stunnedTurns',
+        staggered: 'staggeredTurns',
+        frozen: 'frozenTurns',
+        confused: 'confusedTurns',
         blind: 'blindTurns',
         dazzled: 'dazzledTurns',
         aching: 'achingTurns',
@@ -3468,6 +3504,9 @@ const handleCancel = async () => {
         poisoned: petName => `☠️ ${petName}의 독 기운이 빠져나갔습니다!`,
         bound: petName => `🌿 ${petName}이(가) 속박을 완전히 풀었습니다!`,
         stunned: petName => `💫 ${petName}이(가) 정신을 차렸습니다!`,
+        staggered: petName => `⚡ ${petName}의 경직이 풀렸습니다!`,
+        frozen: petName => `❄️ ${petName}이(가) 얼음에서 풀려났습니다!`,
+        confused: petName => `🌀 ${petName}이(가) 정신을 차렸습니다!`,
         blind: petName => `🙈 ${petName}의 시야가 다시 또렷해졌습니다!`,
         dazzled: petName => `☀️ ${petName}이(가) 눈부심에 적응했습니다!`,
         aching: petName => `💢 ${petName}의 욱신거림이 가라앉았습니다!`,
@@ -4856,6 +4895,23 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 if (elementReactionLog) {
                     log += elementReactionLog;
+
+                    // M13_OVERGROWTH_ATTACKER_HEAL
+                    // 번개+풀 과성장은 방어자 CC가 아니라 공격자 소량 회복 반응입니다.
+                    if (elementReactionLog.includes('과성장')) {
+                        const maxHp = Number(attacker.pet.maxHp ?? 0);
+                        const currentHp = Number(attacker.pet.hp ?? 0);
+                        const heal = maxHp > 0 ? Math.max(1, Math.floor(maxHp * 0.08)) : 0;
+
+                        if (heal > 0 && currentHp > 0 && currentHp < maxHp) {
+                            attacker.pet.hp = Math.min(maxHp, currentHp + heal);
+                            if (!attacker.pet.status) attacker.pet.status = {};
+                            attacker.pet.status.healPulse = true;
+                            attacker.pet.status.healPulseTurns = 1;
+                            attacker.pet.status.healPulseKind = 'overgrowth';
+                            log += ` ⚡🌿 ${attacker.pet.name || '펫'} HP +${heal} 회복!`;
+                        }
+                    }
                 }
 
                 // --- ⚔️ 반격 (Counter) 시스템 처리 ---
