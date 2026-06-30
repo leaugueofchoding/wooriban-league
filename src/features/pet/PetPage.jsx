@@ -103,12 +103,18 @@ const playEvolutionSound = (phase) => {
 // --- Styled Components ---
 
 const PageWrapper = styled.div`
-  max-width: 1100px;
-  margin: 2rem auto;
-  padding: 1rem;
+  max-width: 1040px;
+  margin: 1rem auto;
+  padding: 0.75rem;
   font-family: 'Pretendard', sans-serif;
   animation: ${fadeIn} 0.5s ease-out;
-  padding-bottom: 6rem;
+  padding-bottom: 4rem;
+
+  @media (max-width: 1080px) {
+    max-width: 960px;
+    margin: 0.5rem auto;
+    padding: 0.6rem;
+  }
 `;
 
 const MainLayout = styled.div`
@@ -211,15 +217,15 @@ const PetImage = styled.img`
 `;
 
 const PetNameContainer = styled.div`
-  display: flex; align-items: center; gap: 0.5rem; min-height: 48px; margin-bottom: 0.5rem;
+  display: flex; align-items: center; gap: 0.5rem; min-height: 48px; margin-bottom: 0.35rem;
 `;
 
 const PetName = styled.h1` 
-  margin: 0; font-size: 1.8rem; font-weight: 900; color: #343a40; 
+  margin: 0; font-size: 1.45rem; font-weight: 900; color: #343a40; 
 `;
 
 const PetNameInput = styled.input`
-  font-size: 1.8rem; font-weight: 900; border: none;
+  font-size: 1.45rem; font-weight: 900; border: none;
   border-bottom: 2px solid #ccc; background: transparent;
   text-align: center; width: 180px; color: #343a40;
   &:focus { outline: none; border-bottom-color: #339af0; }
@@ -231,11 +237,11 @@ const PetLevel = styled.h3`
 `;
 
 const PetInfo = styled.div`
-  width: 100%; display: flex; flex-direction: column; gap: 1.2rem;
+  width: 100%; display: flex; flex-direction: column; gap: 0.75rem;
 `;
 
 const StatBarContainer = styled.div`
-  width: 100%; height: 28px; background-color: #e9ecef;
+  width: 100%; height: 23px; background-color: #e9ecef;
   border-radius: 14px; position: relative; overflow: hidden;
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
 `;
@@ -263,18 +269,18 @@ const InfoCard = styled.div`
 `;
 
 const InventoryItem = styled.p`
-  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem;
+  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.35rem;
   font-weight: 600; font-size: 0.9rem;
   img { width: 24px; height: 24px; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1)); }
 `;
 
 const ActionButtonGroup = styled.div`
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 1rem; margin-top: 1rem; 
+  gap: 0.6rem; margin-top: 0.5rem; 
 `;
 
 const StyledButton = styled.button`
-  padding: 0.9rem; font-size: 1rem; font-weight: 800;
+  padding: 0.68rem; font-size: 0.9rem; font-weight: 800;
   border: none; border-radius: 12px; cursor: pointer;
   transition: all 0.2s; color: white;
   box-shadow: 0 4px 0 rgba(0,0,0,0.1);
@@ -397,7 +403,7 @@ const AccordionContainer = styled.div`
 `;
 
 const AccordionButtonRow = styled.div`
-  display: flex; gap: 0.8rem; margin-bottom: 0.5rem;
+  display: flex; gap: 0.8rem; margin-bottom: 0.35rem;
 `;
 
 const AccordionButton = styled(StyledButton)`
@@ -407,7 +413,7 @@ const AccordionButton = styled(StyledButton)`
 `;
 
 const AccordionContent = styled.div`
-  background-color: #f8f9fa; border-radius: 12px; padding: 1.5rem;
+  background-color: #f8f9fa; border-radius: 12px; padding: 0.9rem;
   border: 1px solid #e9ecef; animation: ${fadeIn} 0.3s ease-out;
 `;
 
@@ -462,8 +468,8 @@ const SkillSlot = styled.div`
 `;
 
 const SkillList = styled.div`
-  margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px dashed #dee2e6;
-  h5 { margin: 0 0 0.8rem 0; color: #495057; font-weight: 800; }
+  margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px dashed #dee2e6;
+  h5 { margin: 0 0 0.55rem 0; color: #495057; font-weight: 800; }
 `;
 
 const NotebookButton = styled(StyledButton)`

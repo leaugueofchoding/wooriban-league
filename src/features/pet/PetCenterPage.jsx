@@ -18,9 +18,9 @@ const fadeIn = keyframes`
 // --- Styled Components ---
 
 const PageWrapper = styled.div`
-  max-width: 1000px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 2rem 1rem 6rem 1rem;
+  padding: 1rem 0.75rem 4rem 0.75rem;
   font-family: 'Pretendard', sans-serif;
   min-height: 100vh;
   background-color: #f8f9fa;
@@ -28,29 +28,33 @@ const PageWrapper = styled.div`
 
 const HeaderSection = styled.div`
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   animation: ${fadeIn} 0.5s ease-out;
 `;
 
 const Title = styled.h1`
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 900;
   color: #343a40;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
   span { color: #20c997; }
+
+  @media (max-width: 768px) {
+    font-size: 1.55rem;
+  }
 `;
 
 const TabContainer = styled.div`
   display: flex;
   justify-content: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
 `;
 
 const TabButton = styled.button`
-  padding: 0.8rem 2rem;
-  font-size: 1.1rem;
+  padding: 0.58rem 1.15rem;
+  font-size: 0.96rem;
   font-weight: 800;
   border-radius: 12px;
   border: none;
@@ -72,11 +76,15 @@ const TabButton = styled.button`
 
 const ContentBox = styled.div`
   background: white;
-  padding: 2rem;
-  border-radius: 24px;
+  padding: 1rem;
+  border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-  min-height: 400px;
+  min-height: 0;
   animation: ${fadeIn} 0.3s ease-out;
+
+  @media (max-width: 768px) {
+    padding: 0.8rem;
+  }
 `;
 
 // 상점 (Item) 관련 스타일
@@ -96,16 +104,34 @@ const ShopHeader = styled.div`
 `;
 
 const ItemGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1.5rem;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.8rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15rem 0.1rem 0.85rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar { height: 10px; }
+  &::-webkit-scrollbar-track { background: #f1f3f5; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 999px; }
+
+  > * {
+    flex: 0 0 178px;
+    scroll-snap-align: start;
+  }
+
+  @media (max-width: 768px) {
+    > * { flex-basis: 164px; }
+  }
 `;
 
 const ItemCard = styled.div`
   background: white;
   border: 1px solid #f1f3f5;
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 15px;
+  padding: 0.9rem;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -114,16 +140,16 @@ const ItemCard = styled.div`
   transition: transform 0.2s;
   
   &:hover {
-    transform: translateY(-5px);
+    transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(0,0,0,0.08);
     border-color: #20c997;
   }
 `;
 
 const ItemImage = styled.img`
-  width: 100px;
-  height: 100px;
-  margin: 0 auto 1rem;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.55rem;
   object-fit: contain;
   filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
 `;
@@ -135,11 +161,11 @@ const ItemName = styled.h3`
 `;
 
 const ItemDescription = styled.p`
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #868e96;
   flex-grow: 1;
-  margin-bottom: 1rem;
-  line-height: 1.4;
+  margin-bottom: 0.65rem;
+  line-height: 1.35;
 `;
 
 const ItemPrice = styled.p`
@@ -189,8 +215,8 @@ const QuantityInput = styled.input`
 
 const BuyButton = styled.button`
   width: 100%;
-  padding: 0.8rem;
-  font-size: 1rem;
+  padding: 0.62rem;
+  font-size: 0.88rem;
   font-weight: 800;
   border: none;
   border-radius: 12px;
@@ -215,11 +241,11 @@ const ClinicHeader = styled.div`
 
 const HealAllButton = styled.button`
   width: 100%;
-  max-width: 400px;
+  max-width: 360px;
   display: block;
-  margin: 0 auto 2rem;
-  padding: 1rem;
-  font-size: 1.1rem;
+  margin: 0 auto 1rem;
+  padding: 0.72rem;
+  font-size: 0.98rem;
   font-weight: 800;
   color: white;
   background-color: #ff6b6b;
@@ -235,16 +261,34 @@ const HealAllButton = styled.button`
 `;
 
 const PetGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1.5rem;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.8rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15rem 0.1rem 0.85rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar { height: 10px; }
+  &::-webkit-scrollbar-track { background: #f1f3f5; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 999px; }
+
+  > * {
+    flex: 0 0 164px;
+    scroll-snap-align: start;
+  }
+
+  @media (max-width: 768px) {
+    > * { flex-basis: 150px; }
+  }
 `;
 
 const PetCard = styled.div`
   background-color: #fff;
   border: 1px solid #f1f3f5;
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 15px;
+  padding: 0.9rem;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -253,16 +297,16 @@ const PetCard = styled.div`
   transition: transform 0.2s;
   
   &:hover {
-    transform: translateY(-5px);
+    transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(0,0,0,0.08);
     border-color: #ff6b6b;
   }
 `;
 
 const PetImage = styled.img`
-  width: 100px;
-  height: 100px;
-  margin: 0 auto 1rem;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.55rem;
   object-fit: contain;
   filter: ${props => props.$isFainted ? 'grayscale(100%)' : 'none'};
   transition: filter 0.3s;
@@ -274,10 +318,10 @@ const PetName = styled.h3`
 `;
 
 const PetStatus = styled.div`
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  margin-bottom: 1rem;
-  min-height: 40px;
+  margin-bottom: 0.6rem;
+  min-height: 34px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -290,8 +334,8 @@ const PetStatus = styled.div`
 `;
 
 const HealButton = styled.button`
-  padding: 0.8rem;
-  font-size: 0.95rem;
+  padding: 0.62rem;
+  font-size: 0.86rem;
   font-weight: 800;
   border: none;
   border-radius: 10px;
@@ -311,7 +355,7 @@ const SkillCard = styled.div`
   background: ${props => props.$isEquipped ? '#e7f5ff' : 'white'};
   border: 2px solid ${props => props.$isEquipped ? '#339af0' : '#dee2e6'};
   border-radius: 12px;
-  padding: 1rem;
+  padding: 0.72rem;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;

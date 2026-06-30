@@ -177,6 +177,13 @@ function SkillPreview({
 
     return (
         <div
+            // M15_CARD_OVERLAY_BLANK_CLICK_CLOSE
+            // 카드 오버레이 모드에서는 내부 요소가 아닌 빈 배경을 클릭하면 닫습니다.
+            onMouseDown={(event) => {
+                if (!isCardOverlay) return;
+                if (event.target !== event.currentTarget) return;
+                onClose?.();
+            }}
             style={{
                 position: isCardOverlay ? 'absolute' : 'fixed',
                 left: isCardOverlay ? '0.65rem' : 'auto',
