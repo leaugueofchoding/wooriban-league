@@ -29,6 +29,42 @@ export const ELEMENT_LABELS = Object.freeze({
     [ELEMENT_KEYS.ICE]: '얼음',
 });
 
+// M14_REACTION_TRIGGER_AFFINITY
+// 일반 타입 상성이 아니라 "원소반응을 마지막에 터뜨린 스킬 속성" 기준 보정입니다.
+// 원소반응 이름/CC/상태효과는 바꾸지 않고, 반응 추가 피해만 조정합니다.
+export const ELEMENT_REACTION_TRIGGER_AFFINITY = Object.freeze({
+    [ELEMENT_KEYS.WATER]: Object.freeze({
+        strongAgainst: ELEMENT_KEYS.FIRE,
+        weakAgainst: ELEMENT_KEYS.ICE,
+    }),
+    [ELEMENT_KEYS.FIRE]: Object.freeze({
+        strongAgainst: ELEMENT_KEYS.GRASS,
+        weakAgainst: ELEMENT_KEYS.WATER,
+    }),
+    [ELEMENT_KEYS.GRASS]: Object.freeze({
+        strongAgainst: ELEMENT_KEYS.LIGHTNING,
+        weakAgainst: ELEMENT_KEYS.FIRE,
+    }),
+    [ELEMENT_KEYS.LIGHTNING]: Object.freeze({
+        strongAgainst: ELEMENT_KEYS.WIND,
+        weakAgainst: ELEMENT_KEYS.GRASS,
+    }),
+    [ELEMENT_KEYS.WIND]: Object.freeze({
+        strongAgainst: ELEMENT_KEYS.ICE,
+        weakAgainst: ELEMENT_KEYS.LIGHTNING,
+    }),
+    [ELEMENT_KEYS.ICE]: Object.freeze({
+        strongAgainst: ELEMENT_KEYS.WATER,
+        weakAgainst: ELEMENT_KEYS.WIND,
+    }),
+});
+
+export const ELEMENT_REACTION_AFFINITY_MULTIPLIERS = Object.freeze({
+    favorable: 1.2,
+    neutral: 1.0,
+    resisted: 0.8,
+});
+
 const ELEMENT_ALIASES = Object.freeze({
     fire: ELEMENT_KEYS.FIRE,
     '불': ELEMENT_KEYS.FIRE,
@@ -60,6 +96,49 @@ export function getTraceDefaultTurns(balanceConfig = ELEMENT_REACTION_BALANCE_CO
 export function normalizeElement(element) {
     if (element === null || element === undefined || element === '') return null;
     return ELEMENT_ALIASES[String(element).trim()] || null;
+}
+
+export function getElementReactionTriggerAffinity(triggerElement, defenderElement) {
+    const normalizedTrigger = normalizeElement(triggerElement);
+    const normalizedDefender = normalizeElement(defenderElement);
+
+    const neutral = {
+        state: 'neutral',
+        multiplier: ELEMENT_REACTION_AFFINITY_MULTIPLIERS.neutral,
+        triggerElement: normalizedTrigger,
+        defenderElement: normalizedDefender,
+        logPart: '',
+    };
+
+    if (!normalizedTrigger || !normalizedDefender) return neutral;
+
+    const rule = ELEMENT_REACTION_TRIGGER_AFFINITY[normalizedTrigger];
+    if (!rule) return neutral;
+
+    const triggerLabel = ELEMENT_LABELS[normalizedTrigger] || normalizedTrigger;
+    const defenderLabel = ELEMENT_LABELS[normalizedDefender] || normalizedDefender;
+
+    if (rule.strongAgainst === normalizedDefender) {
+        return {
+            state: 'favorable',
+            multiplier: ELEMENT_REACTION_AFFINITY_MULTIPLIERS.favorable,
+            triggerElement: normalizedTrigger,
+            defenderElement: normalizedDefender,
+            logPart: `상성 유리! ${triggerLabel} 기운이 ${defenderLabel} 속성에게 강해 반응 피해가 커졌습니다.`,
+        };
+    }
+
+    if (rule.weakAgainst === normalizedDefender) {
+        return {
+            state: 'resisted',
+            multiplier: ELEMENT_REACTION_AFFINITY_MULTIPLIERS.resisted,
+            triggerElement: normalizedTrigger,
+            defenderElement: normalizedDefender,
+            logPart: `상성 불리! ${defenderLabel} 속성이 ${triggerLabel} 기운을 견뎌 반응 피해가 줄었습니다.`,
+        };
+    }
+
+    return neutral;
 }
 
 export function makePairKey(firstElement, secondElement) {
@@ -149,6 +228,15 @@ export function createEmptyReactionResult({ reason = null, nextTraces = {} } = {
         statusEffects: [],
         visualEffectType: null,
         logParts: [],
+        affinityState: 'neutral',
+        affinityMultiplier: 1,
+        affinity: {
+            state: 'neutral',
+            multiplier: 1,
+            triggerElement: null,
+            defenderElement: null,
+            logPart: '',
+        },
     };
 }
 
@@ -219,9 +307,21 @@ function makeReactionTriggeredResult({
     currentTraces,
     defender,
     baseDamage,
+    defenderElement = null,
 }) {
     const safeBaseDamage = Math.max(0, Number(baseDamage) || 0);
     const flatDamage = calculateFlatReactionDamage({ reaction, defender });
+
+    // M14_REACTION_TRIGGER_AFFINITY_DAMAGE
+    // 마지막 공격 스킬 속성(reaction.triggerElement)과 방어자 active pet 속성만 비교합니다.
+    // 일반 스킬 피해나 CC는 바꾸지 않고, 원소반응 추가 피해만 보정합니다.
+    const effectiveDefenderElement = defenderElement ?? defender?.pet?.element ?? defender?.element ?? null;
+    const affinity = getElementReactionTriggerAffinity(reaction.triggerElement, effectiveDefenderElement);
+    const rawBonusDamage = Math.max(
+        0,
+        Math.round(safeBaseDamage * ((reaction.damageMultiplier ?? 1) - 1))
+    ) + flatDamage;
+    const estimatedBonusDamage = Math.max(0, Math.round(rawBonusDamage * affinity.multiplier));
 
     const nextTraces = { ...currentTraces };
     const consumeTraces = reaction.consumeMatchedTrace ? [reaction.traceElement] : [];
@@ -242,16 +342,19 @@ function makeReactionTriggeredResult({
         label: reaction.label,
         damageMultiplier: reaction.damageMultiplier ?? 1,
         flatDamage,
-        estimatedBonusDamage: Math.max(
-            0,
-            Math.round(safeBaseDamage * ((reaction.damageMultiplier ?? 1) - 1))
-        ) + flatDamage,
+        estimatedBonusDamage,
+        affinityState: affinity.state,
+        affinityMultiplier: affinity.multiplier,
+        affinity,
         consumeTraces,
         applyTraces: reaction.applyTriggerTraceAfterReaction ? [reaction.triggerElement] : [],
         nextTraces,
         statusEffects: reaction.statusEffects || [],
         visualEffectType: reaction.visualEffectType || null,
-        logParts: reaction.log ? [reaction.log] : [],
+        logParts: [
+            ...(reaction.log ? [reaction.log] : []),
+            ...(affinity.logPart ? [affinity.logPart] : []),
+        ],
     };
 }
 
@@ -262,6 +365,7 @@ export function resolveElementReaction({
     skillElement = null,
     baseDamage = 0,
     existingTraces = null,
+    defenderElement = null,
     flags = FEATURE_FLAGS,
     balanceConfig = ELEMENT_REACTION_BALANCE_CONFIG,
 } = {}) {
@@ -300,6 +404,7 @@ export function resolveElementReaction({
         currentTraces,
         defender,
         baseDamage,
+        defenderElement,
     });
 }
 

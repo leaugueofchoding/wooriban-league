@@ -7,7 +7,7 @@ import { useLeagueStore, useClassStore } from '../../store/leagueStore';
 import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost , processBattleResults} from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
-import { SKILLS, clearWaveMarks } from '../pet/petData';
+import { SKILLS, clearWaveMarks, PET_DATA } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
 import { playSkillSound, playHitSound, playHealSound, playElementReactionSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
@@ -129,6 +129,23 @@ const switchToNextAlivePetIfNeeded = (participant) => {
 // M5_ELEMENT_TRACES_UI_PATCH
 // flag가 켜졌을 때만 원소 흔적/반응 결과를 실제 전투 상태에 반영합니다.
 // 기본값은 ELEMENT_REACTION_ENABLED=false라 기존 배틀에는 영향이 없습니다.
+const getBattlePetElement = (pet) => {
+    // M14_BATTLE_PET_ELEMENT_FALLBACK
+    // 기존 저장된 battle pet 객체에는 element가 없고 species/appearanceId만 있는 경우가 있습니다.
+    // 원소반응 상성은 방어자 펫 속성이 필요하므로 PET_DATA에서 안전하게 보강합니다.
+    if (!pet) return null;
+    if (pet.element) return pet.element;
+
+    const speciesElement = pet.species ? PET_DATA?.[pet.species]?.element : null;
+    if (speciesElement) return speciesElement;
+
+    const appearanceSpecies = typeof pet.appearanceId === 'string'
+        ? pet.appearanceId.split('_lv')[0]
+        : null;
+
+    return appearanceSpecies ? PET_DATA?.[appearanceSpecies]?.element || null : null;
+};
+
 const tickElementTraces = (pet) => {
     if (!FEATURE_FLAGS.ELEMENT_REACTION_ENABLED) return;
     if (pet?.status?.elementTraceJustApplied) {
@@ -180,6 +197,7 @@ const appendElementReactionAfterAction = ({
         // M10_5_EXISTING_TRACE_EXPLICIT_PASS
         // defender는 participant 형태이므로, 기존 흔적을 명시적으로 전달합니다.
         existingTraces: defender.pet?.status?.elementTraces || {},
+        defenderElement: getBattlePetElement(defender.pet),
     });
 
     if (!reactionResult?.enabled) return '';
@@ -206,7 +224,14 @@ const appendElementReactionAfterAction = ({
             0,
             Math.round(baseDamage * ((reactionResult.damageMultiplier ?? 1) - 1))
         );
-        const bonusDamage = multiplierBonus + Math.max(0, Number(reactionResult.flatDamage ?? 0));
+        // M14_USE_ENGINE_ESTIMATED_REACTION_DAMAGE
+        // 상성 보정은 elementReactionEngine에서 estimatedBonusDamage에 반영합니다.
+        // 구버전 결과와의 호환을 위해 estimatedBonusDamage가 없으면 기존 계산식으로 fallback합니다.
+        const fallbackBonusDamage = multiplierBonus + Math.max(0, Number(reactionResult.flatDamage ?? 0));
+        const estimatedBonusDamage = Number(reactionResult.estimatedBonusDamage);
+        const bonusDamage = Number.isFinite(estimatedBonusDamage)
+            ? Math.max(0, Math.round(estimatedBonusDamage))
+            : fallbackBonusDamage;
 
         if (bonusDamage > 0) {
             defender.pet.hp = Math.max(0, Number(defender.pet.hp ?? 0) - bonusDamage);
@@ -1556,6 +1581,15 @@ const getCompactBattleReactionLines = (text = '') => {
     }
     if (text.includes('서리덩굴')) {
         lines.push('서리덩굴 반응! 🌿❄️ 차가운 덩굴이 휘감았다!');
+    }
+
+    // M14_COMPACT_AFFINITY_LOG_LINES
+    // raw log에 들어간 상성 보정 문구가 compact log 과정에서 사라지지 않게 표시합니다.
+    if (text.includes('상성 유리')) {
+        lines.push('상성 유리! 반응 피해 증가!');
+    }
+    if (text.includes('상성 불리')) {
+        lines.push('상성 불리! 반응 피해 감소!');
     }
 
     return [...new Set(lines)];
