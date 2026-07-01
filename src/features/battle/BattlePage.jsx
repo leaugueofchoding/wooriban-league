@@ -1641,8 +1641,41 @@ const getCompactTraceLine = (text = '') => {
     return `${elementLabel} 흔적이 남았다! ${iconMap[elementLabel] || ''}`.trim();
 };
 
+const normalizeBattleLogTone = (line = '') => {
+    return String(line || '')
+        .replace(/이번\s*턴에는\s*더\s*이상\s*교체할\s*수\s*없습니다\.?/g, '')
+        .replace(/움직할 수 없습니다/g, '움직일 수 없다')
+        .replace(/움직일 수 없습니다/g, '움직일 수 없다')
+        .replace(/정답을 제출할 수 없습니다/g, '정답을 제출할 수 없다')
+        .replace(/교체할 수 없습니다/g, '교체할 수 없다')
+        .replace(/도망칠 수 없습니다/g, '도망칠 수 없다')
+        .replace(/고르는 중입니다/g, '고르는 중이다')
+        .replace(/시작됩니다/g, '시작된다')
+        .replace(/처리됩니다/g, '처리된다')
+        .replace(/실패했습니다/g, '실패했다')
+        .replace(/빗나갔습니다/g, '빗나갔다')
+        .replace(/못했습니다/g, '못했다')
+        .replace(/받았습니다/g, '받았다')
+        .replace(/입었습니다/g, '입었다')
+        .replace(/회복했습니다/g, '회복했다')
+        .replace(/풀렸습니다/g, '풀렸다')
+        .replace(/쓰러졌습니다/g, '쓰러졌다')
+        .replace(/등장했습니다/g, '등장했다')
+        .replace(/무방비합니다/g, '무방비 상태다')
+        .replace(/웅크립니다/g, '웅크렸다')
+        .replace(/못합니다/g, '못한다')
+        .replace(/강해집니다/g, '강해진다')
+        .replace(/나섭니다/g, '나선다')
+        .replace(/되었습니다/g, '되었다')
+        .replace(/됩니다/g, '된다')
+        .replace(/합니다/g, '한다')
+        .replace(/했습니다/g, '했다')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+};
+
 const formatBattleLogForDisplay = (log = '') => {
-    const text = String(log || '');
+    const text = normalizeBattleLogTone(String(log || ''));
     if (!text.trim()) return '';
 
     const lines = [];
@@ -1697,7 +1730,7 @@ const BATTLE_CC_RULES = {
         blocksSwitch: true,
         defenderAction: 'STUNNED',
         defenseMode: 'exposed',
-        message: '기절해서 무방비합니다!',
+        message: '기절해서 무방비 상태다!',
     },
     staggered: {
         key: 'staggered',
@@ -1707,7 +1740,7 @@ const BATTLE_CC_RULES = {
         blocksSwitch: true,
         defenderAction: 'BRACE',
         defenseMode: 'brace',
-        message: '경직되어 겨우 웅크립니다!',
+        message: '경직되어 겨우 웅크렸다!',
     },
     frozen: {
         key: 'frozen',
@@ -1717,7 +1750,7 @@ const BATTLE_CC_RULES = {
         blocksSwitch: true,
         defenderAction: 'FROZEN',
         defenseMode: 'exposed',
-        message: '얼어붙어 무방비합니다!',
+        message: '얼어붙어 무방비 상태다!',
     },
     bound: {
         key: 'bound',
@@ -1727,7 +1760,7 @@ const BATTLE_CC_RULES = {
         blocksSwitch: true,
         defenderAction: 'BOUND',
         defenseMode: 'exposed',
-        message: '묶여 있어서 피하지 못합니다!',
+        message: '묶여 있어서 피하지 못한다!',
     },
 };
 
@@ -4477,7 +4510,7 @@ const handleUseItem = async (itemId) => {
                 const winnerId = null;
                 const nextTurnStartTime = Date.now();
 
-                const switchLog = `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회는 유지됩니다. 이번 턴에는 더 이상 교체할 수 없습니다.`;
+                const switchLog = `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회는 유지된다!`;
 
                 const log = [switchLog].filter(Boolean).join(' ');
 
@@ -4779,6 +4812,34 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 
                 const preHp = defender.pet.hp;
+
+
+                
+                const preDefenderTeamSnapshotForAoe = Array.isArray(defender.team)
+
+
+                
+                    ? defender.team.map((pet, index) => ({
+
+
+                
+                        index,
+
+
+                
+                        id: pet?.id || null,
+
+
+                
+                        hp: Number(pet?.hp ?? 0),
+
+
+                
+                    }))
+
+
+                
+                    : [];
                 const actionName = skill?.name || '공격';
                 let normalActionResolved = false;
 
@@ -4883,9 +4944,237 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                 };
 
                 // M11_CONFUSION_CHECK_BEFORE_ACCURACY
+
+
                 // 혼란 오작동이 발생하면 실제 공격/원소반응은 발생하지 않습니다.
+
+
                 if (!resolveConfusionMisfire()) {
+
+
                     resolveAccuracyAndAction();
+
+
+                }
+
+
+
+                // M21B_TORNADO_SWEEP_BENCH_DAMAGE_FALLBACK
+
+
+                // petData의 스킬 효과에서 대기 펫 피해가 저장 흐름에 남지 않는 경우를 보정합니다.
+
+
+                // 이미 대기 펫 HP가 줄어든 경우에는 중복 적용하지 않습니다.
+
+
+                if (skillId === 'TORNADO_SWEEP' && normalActionResolved) {
+
+
+                    const activeDamage = Math.max(0, Number(preHp ?? 0) - Number(defender.pet?.hp ?? 0));
+
+
+                
+
+
+                    if (activeDamage > 0) {
+
+
+                        const rawTeam = Array.isArray(defender.team) && defender.team.length > 0
+
+
+                            ? defender.team
+
+
+                            : defender.pet
+
+
+                                ? [defender.pet]
+
+
+                                : [];
+
+
+                
+
+
+                        const activePetId = defender.activePetId || defender.pet?.id || null;
+
+
+                        const activeIndexById = activePetId
+
+
+                            ? rawTeam.findIndex(pet => pet?.id === activePetId)
+
+
+                            : -1;
+
+
+                        const activeIndex = activeIndexById >= 0
+
+
+                            ? activeIndexById
+
+
+                            : Math.min(Math.max(Number(defender.activePetIndex ?? 0), 0), Math.max(rawTeam.length - 1, 0));
+
+
+                
+
+
+                        const teamWithSyncedActive = rawTeam.map((pet, index) => (
+
+
+                            index === activeIndex
+
+
+                                ? { ...(defender.pet || pet), status: { ...((defender.pet || pet)?.status || {}) } }
+
+
+                                : { ...pet, status: { ...(pet?.status || {}) } }
+
+
+                        ));
+
+
+                
+
+
+                        const benchDamage = Math.max(1, Math.round(activeDamage * 0.35));
+
+
+                        const benchEntries = [];
+
+
+                        const preHpByIndex = new Map(preDefenderTeamSnapshotForAoe.map(entry => [entry.index, entry.hp]));
+
+
+                
+
+
+                        const nextTeam = teamWithSyncedActive.map((pet, index) => {
+
+
+                            if (!pet || index === activeIndex || Number(pet.hp ?? 0) <= 0) return pet;
+
+
+                
+
+
+                            const beforeBattlePageHp = Number(pet.hp ?? 0);
+
+
+                            const originalHp = preHpByIndex.has(index)
+
+
+                                ? Number(preHpByIndex.get(index))
+
+
+                                : beforeBattlePageHp;
+
+
+                
+
+
+                            // petData 쪽에서 이미 대기 펫 피해를 적용했다면 여기서는 건드리지 않습니다.
+
+
+                            if (originalHp > beforeBattlePageHp) return pet;
+
+
+                
+
+
+                            const afterHp = Math.max(1, beforeBattlePageHp - benchDamage);
+
+
+                            const appliedDamage = Math.max(0, beforeBattlePageHp - afterHp);
+
+
+                
+
+
+                            if (appliedDamage <= 0) return pet;
+
+
+                
+
+
+                            benchEntries.push({
+
+
+                                name: pet.name || '대기 펫',
+
+
+                                damage: appliedDamage,
+
+
+                            });
+
+
+                
+
+
+                            return {
+
+
+                                ...pet,
+
+
+                                hp: afterHp,
+
+
+                                status: { ...(pet.status || {}) },
+
+
+                            };
+
+
+                        });
+
+
+                
+
+
+                        if (benchEntries.length > 0) {
+
+
+                            defender.team = nextTeam;
+
+
+                            defender.activePetIndex = activeIndex;
+
+
+                            defender.activePetId = nextTeam[activeIndex]?.id || defender.activePetId || defender.pet?.id || null;
+
+
+                            defender.pet = nextTeam[activeIndex] || defender.pet;
+
+
+                
+
+
+                            const benchTotal = benchEntries.reduce((sum, entry) => sum + Number(entry.damage ?? 0), 0);
+
+
+                            const shownNames = benchEntries.slice(0, 2).map(entry => entry.name).join(', ');
+
+
+                            const moreCount = Math.max(0, benchEntries.length - 2);
+
+
+                            const moreText = moreCount > 0 ? ` 외 ${moreCount}마리` : '';
+
+
+                            log += ` 대기 펫 ${shownNames}${moreText}도 회오리에 휘말려 합계 ${benchTotal}의 피해를 받았다!`;
+
+
+                        }
+
+
+                    }
+
+
                 }
 
                 // SP 소모는 명중/빗나감과 관계없이 스킬을 선택했다면 여기서 확정 처리합니다.
