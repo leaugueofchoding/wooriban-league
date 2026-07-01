@@ -137,6 +137,31 @@ export const ELEMENT_REACTION_BALANCE_CONFIG = Object.freeze({
             }),
         }),
 
+
+        flameSpread: Object.freeze({
+            elements: ['fire', 'wind'],
+            label: '화염확산',
+            damage: Object.freeze({
+                multiplier: 1.15,
+                flatDamageRatio: 0.03,
+            }),
+            crowdControl: Object.freeze({
+                enabled: false,
+                statusEffects: Object.freeze([]),
+            }),
+            traceRules: Object.freeze({
+                consumeMatchedTrace: true,
+                applyTriggerTraceAfterReaction: false,
+            }),
+            visualEffectType: 'REACTION_FLAME_SPREAD',
+            log: '🔥🌪️ 뜨거운 바람이 불꽃을 흩뿌려 화염확산 반응이 발생했다!',
+            adminMeta: Object.freeze({
+                role: 'support_spread',
+                tuningGroup: 'fire_wind',
+                notes: '화염확산은 대기 펫에게 직접 피해나 화상을 주지 않고, M22에서 불 흔적 확산으로 팀 압박을 만든다.',
+            }),
+        }),
+
         pollenSpread: Object.freeze({
             elements: ['grass', 'wind'],
             label: '꽃가루 확산',

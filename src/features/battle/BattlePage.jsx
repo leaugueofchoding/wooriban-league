@@ -19,7 +19,7 @@ import BattlePlayerPanel from './BattlePlayerPanel';
 import BattleActionMenu from './BattleActionMenu';
 import { normalizeBattleParticipantForBattle, replaceActiveBattlePet } from './battlePetUtils';
 import { FEATURE_FLAGS } from './featureFlags';
-import { resolveElementReaction, applyReactionResultToPet } from './elementReactionEngine';
+import { resolveElementReaction, applyReactionResultToPet, normalizeElement, ELEMENT_LABELS, getTraceDefaultTurns } from './elementReactionEngine';
 
 
 const syncBattleParticipantActivePet = (participant) => {
@@ -178,6 +178,95 @@ const tickElementTraces = (pet) => {
     }
 };
 
+
+const WIND_SPREAD_TRACE_ICON_MAP = Object.freeze({
+    fire: '🔥',
+    water: '💧',
+    grass: '🌿',
+    lightning: '⚡',
+    ice: '❄️',
+});
+
+const getWindSpreadTraceElement = ({ skill, reactionResult }) => {
+    const triggerElement = normalizeElement(skill?.element);
+    const consumedTraces = Array.isArray(reactionResult?.consumeTraces)
+        ? reactionResult.consumeTraces.map(normalizeElement).filter(Boolean)
+        : [];
+
+    if (triggerElement === 'wind') {
+        return consumedTraces.find(element => element && element !== 'wind') || null;
+    }
+
+    if (consumedTraces.includes('wind')) {
+        return triggerElement && triggerElement !== 'wind' ? triggerElement : null;
+    }
+
+    return null;
+};
+
+const applyWindSpreadTraceToBench = ({ defender, skill, reactionResult }) => {
+    // M22_WIND_SPREAD_TRACES
+    // 바람이 포함된 원소반응은 피해/CC 대신 상대 대기 펫에게 비바람 원소 흔적을 퍼뜨립니다.
+    const spreadElement = getWindSpreadTraceElement({ skill, reactionResult });
+    if (!spreadElement || spreadElement === 'wind') return '';
+
+    const team = Array.isArray(defender?.team) && defender.team.length > 0
+        ? defender.team
+        : defender?.pet
+            ? [defender.pet]
+            : [];
+
+    if (team.length <= 1) return '';
+
+    const activePetId = defender.activePetId || defender.pet?.id || null;
+    const activeIndexById = activePetId
+        ? team.findIndex(pet => pet?.id === activePetId)
+        : -1;
+    const activeIndex = activeIndexById >= 0
+        ? activeIndexById
+        : Math.min(Math.max(Number(defender.activePetIndex ?? 0), 0), team.length - 1);
+
+    const traceTurns = getTraceDefaultTurns();
+    const affectedNames = [];
+
+    const nextTeam = team.map((pet, index) => {
+        if (!pet) return pet;
+
+        if (index === activeIndex) {
+            return {
+                ...(defender.pet || pet),
+                status: { ...((defender.pet || pet)?.status || {}) },
+            };
+        }
+
+        if (!pet.id || Number(pet.hp ?? 0) <= 0) return pet;
+
+        const nextStatus = { ...(pet.status || {}) };
+        nextStatus.elementTraces = {
+            ...(nextStatus.elementTraces || {}),
+            [spreadElement]: traceTurns,
+        };
+
+        affectedNames.push(pet.name || '대기 펫');
+
+        return {
+            ...pet,
+            status: nextStatus,
+        };
+    });
+
+    if (affectedNames.length === 0) return '';
+
+    defender.team = nextTeam;
+    defender.activePetIndex = activeIndex;
+    defender.activePetId = nextTeam[activeIndex]?.id || defender.activePetId || defender.pet?.id || null;
+    defender.pet = nextTeam[activeIndex] || defender.pet;
+
+    const label = ELEMENT_LABELS[spreadElement] || spreadElement;
+    const icon = WIND_SPREAD_TRACE_ICON_MAP[spreadElement] || '';
+    return ` ${icon}🌪️ 대기 펫들에게 ${label} 흔적이 퍼졌다!`;
+};
+
 const appendElementReactionAfterAction = ({
     attacker,
     defender,
@@ -245,6 +334,32 @@ const appendElementReactionAfterAction = ({
         if (clearedWaveMarkCount > 0) {
             logParts.push(`물 원소 흔적이 소모되며 물결표식 ${clearedWaveMarkCount}개도 함께 씻겨 사라졌습니다.`);
         }
+
+        const windSpreadLog = applyWindSpreadTraceToBench({
+
+
+            defender,
+
+
+            skill,
+
+
+            reactionResult,
+
+
+        });
+
+
+
+        if (windSpreadLog) {
+
+
+            logParts.push(windSpreadLog.trim());
+
+
+        }
+
+
 
         return logParts.length ? ' ' + logParts.join(' ') : '';
     }
@@ -1429,6 +1544,7 @@ const REACTION_FLASH_META = {
     vaporize: { label: '증발', icon: '💧🔥', toneA: '#228be6', toneB: '#ff6b35', text: '#e8590c' },
     combustion: { label: '연소', icon: '🔥🌿', toneA: '#ff6b35', toneB: '#2f9e44', text: '#e03131' },
     overload: { label: '과부하', icon: '🔥⚡', toneA: '#ff6b35', toneB: '#f08c00', text: '#d9480f' },
+    flameSpread: { label: '화염확산', icon: '🔥🌪️', toneA: '#ff6b35', toneB: '#15aabf', text: '#e8590c' },
     pollenSpread: { label: '꽃가루 확산', icon: '🌿🌪️', toneA: '#2f9e44', toneB: '#15aabf', text: '#087f5b' },
     frozen: { label: '빙결', icon: '💧❄️', toneA: '#228be6', toneB: '#4dabf7', text: '#1971c2' },
     bloom: { label: '만개', icon: '💧🌿', toneA: '#228be6', toneB: '#2f9e44', text: '#2b8a3e' },
@@ -1454,9 +1570,9 @@ const detectElementReactionFromLog = (log = '') => {
     if (text.includes('증발')) return 'vaporize';
     if (text.includes('연소')) return 'combustion';
     if (text.includes('과부하')) return 'overload';
+    if (text.includes('화염확산')) return 'flameSpread';
     if (
         text.includes('꽃가루 확산') ||
-        text.includes('확산 반응') ||
         text.includes('꽃가루가 퍼져') ||
         (text.includes('바람을 타고') && text.includes('꽃가루'))
     ) {
@@ -1541,6 +1657,11 @@ const getCompactBattleLogElementIcon = (text = '') => {
 const getCompactBattleReactionLines = (text = '') => {
     const lines = [];
 
+    const windSpreadTraceMatch = text.match(/대기 펫들에게\s*(불|물|풀|바람|번개|얼음)\s*흔적이\s*퍼졌다/);
+    if (windSpreadTraceMatch) {
+        lines.push(`대기 펫들에게 ${windSpreadTraceMatch[1]} 흔적이 퍼졌다!`);
+    }
+
     if (text.includes('연소')) {
         lines.push('연소 반응! 🔥🌿 풀에 불이 옮겨붙었다!');
     }
@@ -1553,9 +1674,11 @@ const getCompactBattleReactionLines = (text = '') => {
     if (text.includes('과부하')) {
         lines.push('과부하 반응! 🔥⚡ 폭발이 일어났다!');
     }
+    if (text.includes('화염확산')) {
+        lines.push('화염확산 반응! 🔥🌪️ 불꽃이 바람을 타고 퍼졌다!');
+    }
     if (
         text.includes('꽃가루 확산') ||
-        text.includes('확산 반응') ||
         text.includes('꽃가루가 퍼져') ||
         (text.includes('바람을 타고') && text.includes('꽃가루'))
     ) {
@@ -3334,7 +3457,12 @@ const handleCancel = async () => {
                 const opponentRole = isChallenger ? 'opponent' : 'challenger';
                 const opponentId = data[opponentRole].id;
                 const opponentChat = data.chat?.[opponentId];
-                const opponentIsStunned = data[opponentRole].pet.status?.stunned;
+                const opponentStatusForQuizBlock = data[opponentRole].pet?.status || {};
+                const opponentIsQuizBlockedByCc = !!(
+                    opponentStatusForQuizBlock.stunned ||
+                    opponentStatusForQuizBlock.staggered ||
+                    opponentStatusForQuizBlock.frozen
+                );
 
                 const myPet = data[myRole].pet;
                 const normalizeAns = (s) => (s || '').replace('○', 'O').replace('×', 'X').trim().toLowerCase();
@@ -3375,7 +3503,7 @@ const handleCancel = async () => {
                     let shouldEndTurn = false;
 
                     if (txIsQuestionObjective) {
-                        if ((opponentChat && opponentChat.isCorrect === false) || opponentIsStunned) {
+                        if ((opponentChat && opponentChat.isCorrect === false) || opponentIsQuizBlockedByCc) {
                             shouldEndTurn = true;
                         }
                     }
