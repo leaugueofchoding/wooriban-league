@@ -4339,6 +4339,11 @@ const handleUseItem = async (itemId) => {
             return;
         }
 
+        if (hasUsedManualSwitchThisTurn) {
+            alert('이번 공격 턴에는 이미 펫을 교체했습니다. 교체한 펫으로 공격을 선택하세요.');
+            return;
+        }
+
         const ccSwitchBlockMessage = typeof getCcSwitchBlockMessage === 'function'
             ? getCcSwitchBlockMessage(myInfo?.pet)
             : '';
@@ -4371,6 +4376,14 @@ const handleUseItem = async (itemId) => {
                     !data.attackerAction;
 
                 if (!txCanAct) return null;
+
+                const txManualSwitchUsedBy = data.manualSwitchTurnStartTime === data.turnStartTime && Array.isArray(data.manualSwitchUsedBy)
+                    ? data.manualSwitchUsedBy
+                    : [];
+
+                if (txManualSwitchUsedBy.includes(myPlayerData.id)) {
+                    return null;
+                }
 
                 const iAmChallenger = myPlayerData.id === data.challenger.id;
                 const myRole = iAmChallenger ? 'challenger' : 'opponent';
@@ -4417,27 +4430,14 @@ const handleUseItem = async (itemId) => {
                     pet: opponentPet,
                 };
 
-                // 펫 교체도 한 턴 종료로 간주합니다.
-                // 따라서 교체하는 쪽뿐 아니라 상대 active pet도 DOT/턴수 감소를 받습니다.
-                const switcherStatusLog = applyEndOfTurnDotAndStatus(currentTurnParticipant, {
-                    eligibleStatusKeys: getActiveStatusKeys(currentTurnParticipant.pet?.status),
-                    // M10_5_TRACE_RETAIN_ON_SWITCH
-                    // 교체는 원소반응을 발생시키는 공격이 아니므로, 교체하는 펫의 원소 흔적을 이 행동으로 깎지 않습니다.
-                    tickElementTrace: false,
-                });
-                const opponentStatusLog = applyEndOfTurnDotAndStatus(opponentTurnParticipant, { eligibleStatusKeys: getActiveStatusKeys(opponentTurnParticipant.pet?.status) });
-
-                // M20C_TEAM_TITLE_AND_FOCUS_ACTIONS_PATCH
-                // 공격자가 펫을 교체해도 방어자의 FOCUS는 정상 처리합니다.
-                const defenderFocusLog = applyDefensiveFocusAction(opponentTurnParticipant, data.defenderAction);
-                const switcherTitleTurnEndLog = applyEndOfTurnTitleEffects(currentTurnParticipant);
-                const opponentTitleTurnEndLog = applyEndOfTurnTitleEffects(opponentTurnParticipant);
-
-                const currentPetAfterTurn = currentTurnParticipant.pet;
+                // M20_SWITCH_WITHOUT_CONSUMING_TURN
+                // 수동 펫 교체는 더 이상 턴 종료로 처리하지 않습니다.
+                // DOT/상태 턴 감소/턴 종료 칭호/방어자 FOCUS는 실제 공격 resolution에서 처리합니다.
+                const currentPetBeforeSwitch = currentTurnParticipant.pet;
 
                 const syncedTeam = team.map((pet, index) => (
                     index === activeIndex
-                        ? { ...currentPetAfterTurn, status: { ...(currentPetAfterTurn.status || {}) } }
+                        ? { ...currentPetBeforeSwitch, status: { ...(currentPetBeforeSwitch.status || {}) } }
                         : { ...pet, status: { ...(pet?.status || {}) } }
                 ));
 
@@ -4459,7 +4459,7 @@ const handleUseItem = async (itemId) => {
                 const participatedPetIds = [
                     ...new Set([
                         ...(Array.isArray(participant.participatedPetIds) ? participant.participatedPetIds : []),
-                        currentPetAfterTurn.id,
+                        currentPetBeforeSwitch.id,
                         nextPet.id,
                     ].filter(Boolean)),
                 ];
@@ -4473,40 +4473,34 @@ const handleUseItem = async (itemId) => {
                     participatedPetIds,
                 };
 
-                const opponentResolved = resolveFaintedActiveParticipant(opponentTurnParticipant);
-                const nextOpponentParticipant = opponentResolved.participant;
+                const isFinished = false;
+                const winnerId = null;
+                const nextTurnStartTime = Date.now();
 
-                const opponentTeamDefeated = opponentResolved.teamDefeated;
-                const isFinished = opponentTeamDefeated;
-                const winnerId = isFinished ? nextParticipantBeforeResolve.id : null;
+                const switchLog = `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회는 유지됩니다. 이번 턴에는 더 이상 교체할 수 없습니다.`;
 
-                const nextQuiz = getNextQuizObj(data.usedQuestions);
+                const log = [switchLog].filter(Boolean).join(' ');
 
-                const switchLog = `🔁 ${participant.name}이(가) ${currentPetAfterTurn.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회를 사용했습니다.`;
-
-                const log = [
-                    switcherStatusLog,
-                    opponentStatusLog,
-                    defenderFocusLog,
-                    switcherTitleTurnEndLog,
-                    opponentTitleTurnEndLog,
-                    switchLog,
-                    opponentResolved.log,
-                    isFinished ? '전투가 종료되었습니다!' : null,
-                ].filter(Boolean).join(' ');
+                const nextManualSwitchUsedBy = [
+                    ...new Set([
+                        ...txManualSwitchUsedBy,
+                        myPlayerData.id,
+                    ].filter(Boolean)),
+                ];
 
                 const updateData = {
                     [myRole]: nextParticipantBeforeResolve,
-                    [opponentRole]: nextOpponentParticipant,
-                    status: isFinished ? 'finished' : 'switching',
-                    winner: winnerId,
-                    turn: null,
+                    [opponentRole]: opponentTurnParticipant,
+                    status: 'action',
+                    winner: null,
+                    turn: data.turn,
+                    turnStartTime: nextTurnStartTime,
                     attackerAction: null,
                     attackerActionPayload: null,
                     defenderAction: null,
-                    chat: {},
+                    manualSwitchUsedBy: nextManualSwitchUsedBy,
+                    manualSwitchTurnStartTime: nextTurnStartTime,
                     log,
-                    ...(isFinished ? {} : buildSwitchPauseUpdate(data, nextQuiz))
                 };
 
                 transaction.update(battleRef, updateData);
@@ -4514,8 +4508,8 @@ const handleUseItem = async (itemId) => {
                 return {
                     isFinished,
                     winnerId,
-                    finalChallenger: myRole === 'challenger' ? nextParticipantBeforeResolve : nextOpponentParticipant,
-                    finalOpponent: myRole === 'opponent' ? nextParticipantBeforeResolve : nextOpponentParticipant,
+                    finalChallenger: myRole === 'challenger' ? nextParticipantBeforeResolve : opponentTurnParticipant,
+                    finalOpponent: myRole === 'opponent' ? nextParticipantBeforeResolve : opponentTurnParticipant,
                     switchedPetName: nextPet.name,
                 };
             });
@@ -5162,8 +5156,17 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
     const opponentInfo = normalizeBattleParticipantForBattle(rawOpponentInfo);
 
     const isAttacker = battleState.turn === myPlayerData.id;
+
+    // M20_SWITCH_WITHOUT_CONSUMING_TURN
+    // 교체는 공격권을 소모하지 않지만, 같은 action 턴에 1회만 허용합니다.
+    const manualSwitchUsedByThisTurn = battleState.manualSwitchTurnStartTime === battleState.turnStartTime && Array.isArray(battleState.manualSwitchUsedBy)
+        ? battleState.manualSwitchUsedBy
+        : [];
+    const hasUsedManualSwitchThisTurn = manualSwitchUsedByThisTurn.includes(myPlayerData.id);
+
     // M5_MANUAL_SWITCH_PATCH_V1
     const switchablePets = (() => {
+        if (hasUsedManualSwitchThisTurn) return [];
         // M5_CC_FIXED_TURNS_SWITCH_BOUND_GUARD
         if (myInfo?.pet?.status?.bound) return [];
         // M5_CC_DOT_SWITCH_GUARD_PATCH_V2
