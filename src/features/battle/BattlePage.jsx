@@ -101,7 +101,26 @@ const switchToNextAlivePetIfNeeded = (participant) => {
         status: { ...(syncedTeam[nextIndex]?.status || {}) },
     };
 
-    const nextTeam = syncedTeam.map((pet, index) => (
+    
+                // M24B_SWITCH_IN_CC_SKIP_TURN
+                // 뇌우 등으로 행동불가 상태가 된 대기 펫을 수동교체로 꺼내면,
+                // 등장 연출은 보여주되 공격 기회는 스킵하고 다음 문제턴으로 넘깁니다.
+                const getSwitchInCcSkipState = (pet) => {
+                    const status = pet?.status || {};
+                    if (status.stunned) return { key: 'stunned', turnsKey: 'stunnedTurns', label: '기절', icon: '💫' };
+                    if (status.staggered) return { key: 'staggered', turnsKey: 'staggeredTurns', label: '경직', icon: '⚡' };
+                    if (status.frozen) return { key: 'frozen', turnsKey: 'frozenTurns', label: '빙결', icon: '❄️' };
+                    return null;
+                };
+
+                const switchInCcSkipState = getSwitchInCcSkipState(nextPet);
+
+                if (switchInCcSkipState) {
+                    delete nextPet.status[switchInCcSkipState.key];
+                    delete nextPet.status[switchInCcSkipState.turnsKey];
+                }
+
+const nextTeam = syncedTeam.map((pet, index) => (
         index === nextIndex ? nextPet : pet
     ));
 
@@ -265,6 +284,81 @@ const applyWindSpreadTraceToBench = ({ defender, skill, reactionResult }) => {
     const label = ELEMENT_LABELS[spreadElement] || spreadElement;
     const icon = WIND_SPREAD_TRACE_ICON_MAP[spreadElement] || '';
     return ` ${icon}🌪️ 대기 펫들에게 ${label} 흔적이 퍼졌다!`;
+};
+
+
+const applyThunderstormBenchStun = (defender) => {
+    // M24_THUNDERSTORM_BENCH_STUN
+    // 콰릉숭의 뇌우는 상대 대기 펫 각각에게 25% 기절 판정을 합니다.
+    // 대기 펫에게 직접 피해는 주지 않고, 이미 행동 불가 상태인 펫에는 중복 적용하지 않습니다.
+    const team = Array.isArray(defender?.team) && defender.team.length > 0
+        ? defender.team
+        : defender?.pet
+            ? [defender.pet]
+            : [];
+
+    if (team.length <= 1) return '';
+
+    const activePetId = defender.activePetId || defender.pet?.id || null;
+    const activeIndexById = activePetId
+        ? team.findIndex(pet => pet?.id === activePetId)
+        : -1;
+    const activeIndex = activeIndexById >= 0
+        ? activeIndexById
+        : Math.min(Math.max(Number(defender.activePetIndex ?? 0), 0), team.length - 1);
+
+    const stunnedNames = [];
+
+    const nextTeam = team.map((pet, index) => {
+        if (!pet) return pet;
+
+        if (index === activeIndex) {
+            return {
+                ...(defender.pet || pet),
+                status: { ...((defender.pet || pet)?.status || {}) },
+            };
+        }
+
+        if (!pet.id || Number(pet.hp ?? 0) <= 0) return pet;
+
+        const nextStatus = { ...(pet.status || {}) };
+        const alreadyBlocked = !!(
+            nextStatus.stunned ||
+            nextStatus.staggered ||
+            nextStatus.frozen
+        );
+
+        if (alreadyBlocked) {
+            return {
+                ...pet,
+                status: nextStatus,
+            };
+        }
+
+        if (Math.random() < 0.25) {
+            nextStatus.stunned = true;
+            nextStatus.stunnedTurns = 1;
+            stunnedNames.push(pet.name || '대기 펫');
+        }
+
+        return {
+            ...pet,
+            status: nextStatus,
+        };
+    });
+
+    if (stunnedNames.length === 0) return '';
+
+    defender.team = nextTeam;
+    defender.activePetIndex = activeIndex;
+    defender.activePetId = nextTeam[activeIndex]?.id || defender.activePetId || defender.pet?.id || null;
+    defender.pet = nextTeam[activeIndex] || defender.pet;
+
+    const shownNames = stunnedNames.slice(0, 2).join(', ');
+    const moreCount = Math.max(0, stunnedNames.length - 2);
+    const moreText = moreCount > 0 ? ` 외 ${moreCount}마리` : '';
+
+    return ` ⛈️ 번개가 대기열까지 번져 ${shownNames}${moreText}이(가) 기절했다!`;
 };
 
 const appendElementReactionAfterAction = ({
@@ -1721,7 +1815,15 @@ const getCompactBattleReactionLines = (text = '') => {
 const getCompactBattleStatusLines = (text = '') => {
     const lines = [];
 
-    if (text.includes('기절') || text.includes('혼란')) {
+    // M24D_THUNDERSTORM_BENCH_STUN_DISPLAY
+    // 뇌우로 대기열 펫이 기절했을 때는 일반 문구 대신 이름을 표시합니다.
+    const benchStunMatch = text.match(/대기열까지\s*번져\s*([^!]+?)이\(가\)\s*기절/);
+    if (benchStunMatch) {
+        const stunnedName = benchStunMatch[1].trim();
+        lines.push(`${stunnedName}이 기절했습니다.`);
+    } else if (text.includes('기절')) {
+        lines.push('상대가 기절했습니다!');
+    } else if (text.includes('혼란')) {
         lines.push('상대가 움직이지 못한다!');
     }
     if (text.includes('묶') || text.includes('속박')) {
@@ -2396,8 +2498,64 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                         autoSwitchLogs.push(`🔁 ${selected.participant.name}의 ${selected.selectedPetName}이(가) 대신 나섰다!`);
                     });
 
+
+                    const clearSwitchInCcSkipFromParticipant = (participant) => {
+                        // M24D_THUNDERSTORM_BENCH_STUN_DISPLAY
+                        // 기절/경직/빙결 대기 펫이 수동교체로 등장한 뒤,
+                        // 잠깐 보여준 CC 카드/테두리를 다음 문제턴 시작 전에 제거합니다.
+                        if (!participant?.pet?.status?.switchInCcSkipConsumed) return participant;
+
+                        const activePetId = participant.activePetId || participant.pet?.id || null;
+                        const team = Array.isArray(participant.team) && participant.team.length > 0
+                            ? participant.team
+                            : participant.pet
+                                ? [participant.pet]
+                                : [];
+
+                        const key = participant.pet.status.switchInCcSkipKey;
+                        const turnsKey = participant.pet.status.switchInCcSkipTurnsKey;
+
+                        const cleanedActivePet = {
+                            ...participant.pet,
+                            status: { ...(participant.pet.status || {}) },
+                        };
+
+                        delete cleanedActivePet.status[key];
+                        delete cleanedActivePet.status[turnsKey];
+                        delete cleanedActivePet.status.switchInCcSkipConsumed;
+                        delete cleanedActivePet.status.switchInCcSkipKey;
+                        delete cleanedActivePet.status.switchInCcSkipTurnsKey;
+
+                        const activeIndexById = activePetId
+                            ? team.findIndex(pet => pet?.id === activePetId)
+                            : -1;
+                        const activeIndex = activeIndexById >= 0
+                            ? activeIndexById
+                            : Math.min(Math.max(Number(participant.activePetIndex ?? 0), 0), Math.max(team.length - 1, 0));
+
+                        const nextTeam = team.map((pet, index) => (
+                            index === activeIndex
+                                ? cleanedActivePet
+                                : { ...pet, status: { ...(pet?.status || {}) } }
+                        ));
+
+                        return {
+                            ...participant,
+                            pet: cleanedActivePet,
+                            team: nextTeam,
+                            activePetIndex: activeIndex,
+                            activePetId: cleanedActivePet.id || participant.activePetId || null,
+                        };
+                    };
+
+                    const switchInCcClearUpdates = {
+                        challenger: clearSwitchInCcSkipFromParticipant(autoSwitchUpdates.challenger || data.challenger),
+                        opponent: clearSwitchInCcSkipFromParticipant(autoSwitchUpdates.opponent || data.opponent),
+                    };
+
                     transaction.update(battleRef, {
                         ...autoSwitchUpdates,
+                        ...switchInCcClearUpdates,
                         ...(autoSwitchLogs.length > 0
                             ? { log: [data.log, ...autoSwitchLogs].filter(Boolean).join(' ') }
                             : {}),
@@ -4638,7 +4796,29 @@ const handleUseItem = async (itemId) => {
                 const winnerId = null;
                 const nextTurnStartTime = Date.now();
 
-                const switchLog = `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회는 유지된다!`;
+                // M24C_FIX_SWITCH_IN_CC_REFERENCE
+                // M24b 적용 과정에서 switchInCcSkipState 참조가 먼저 들어간 경우를 보정합니다.
+                const switchInCcSkipState = (() => {
+                    const status = nextPet?.status || {};
+                    if (status.stunned) return { key: 'stunned', turnsKey: 'stunnedTurns', label: '기절', icon: '💫' };
+                    if (status.staggered) return { key: 'staggered', turnsKey: 'staggeredTurns', label: '경직', icon: '⚡' };
+                    if (status.frozen) return { key: 'frozen', turnsKey: 'frozenTurns', label: '빙결', icon: '❄️' };
+                    return null;
+                })();
+
+                if (switchInCcSkipState) {
+                    if (!nextPet.status) nextPet.status = {};
+                    // M24D_THUNDERSTORM_BENCH_STUN_DISPLAY
+                    // 교체 직후에는 CC 테두리/카드가 보이도록 상태를 유지하고,
+                    // switching pause가 끝나 다음 문제턴으로 넘어갈 때 상태를 제거합니다.
+                    nextPet.status.switchInCcSkipConsumed = true;
+                    nextPet.status.switchInCcSkipKey = switchInCcSkipState.key;
+                    nextPet.status.switchInCcSkipTurnsKey = switchInCcSkipState.turnsKey;
+                }
+
+                const switchLog = switchInCcSkipState
+                    ? `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! ${switchInCcSkipState.icon} ${nextPet.name}은(는) ${switchInCcSkipState.label} 상태라 잠시 움직일 수 없습니다. 공격 기회를 넘깁니다!`
+                    : `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회는 유지된다!`;
 
                 const log = [switchLog].filter(Boolean).join(' ');
 
@@ -4663,6 +4843,22 @@ const handleUseItem = async (itemId) => {
                     manualSwitchTurnStartTime: nextTurnStartTime,
                     log,
                 };
+
+
+                if (switchInCcSkipState) {
+                    const nextQuiz = getNextQuizObj(data.usedQuestions || []);
+                    updateData.status = 'switching';
+                    updateData.question = null;
+                    updateData.pendingNextQuestion = nextQuiz;
+                    updateData.pendingUsedQuestions = [...(data.usedQuestions || []), nextQuiz.question];
+                    updateData.switchResumeAt = Date.now() + SWITCH_RESUME_DELAY_MS;
+                    updateData.pendingSwitch = null;
+                    updateData.turn = null;
+                    updateData.attackerAction = null;
+                    updateData.attackerActionPayload = null;
+                    updateData.defenderAction = null;
+                    updateData.chat = {};
+                }
 
                 transaction.update(battleRef, updateData);
 
@@ -5304,6 +5500,16 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
 
                 }
+                // M24_THUNDERSTORM_BENCH_STUN
+                // 뇌우는 출전 펫 피해/기절 판정 이후, 상대 대기 펫 각각에게 25% 기절 판정을 합니다.
+                if (skillId === 'THUNDERSTORM' && normalActionResolved) {
+                    const thunderstormBenchStunLog = applyThunderstormBenchStun(defender);
+                    if (thunderstormBenchStunLog) {
+                        log += thunderstormBenchStunLog;
+                    }
+                }
+
+
 
                 // SP 소모는 명중/빗나감과 관계없이 스킬을 선택했다면 여기서 확정 처리합니다.
                 // 단, SP 부족으로 기본공격으로 대체된 경우 actualCost는 0입니다.
