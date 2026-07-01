@@ -6077,27 +6077,61 @@ export const finalizeNoticeVote = async (classId, noticeId, playerId) => {
   await updateDoc(voteDocRef, { isFinalized: true });
 };
 
-export async function giftPetEventItemsToAllStudents(classId) {
+export async function giftPetItemsToStudents(classId, playerIds, giftPayload = {}) {
+  // M23_SELECTABLE_PET_GIFTS
   if (!classId) throw new Error("학급 정보가 없습니다.");
+
+  const requestedIds = Array.isArray(playerIds)
+    ? [...new Set(playerIds.filter(Boolean))]
+    : [];
+
+  if (requestedIds.length === 0) {
+    throw new Error("선물을 받을 학생을 선택해주세요.");
+  }
+
+  const rawItems = Array.isArray(giftPayload.items) ? giftPayload.items : [];
+  const items = rawItems
+    .map(item => ({
+      id: String(item?.id || '').trim(),
+      name: item?.name || null,
+      amount: Math.max(1, Math.min(99, Math.round(Number(item?.amount ?? 1) || 1))),
+    }))
+    .filter(item => item.id);
+
+  if (items.length === 0) {
+    throw new Error("지급할 아이템을 1개 이상 선택해주세요.");
+  }
 
   const playersRef = collection(db, "classes", classId, "players");
   const snapshot = await getDocs(playersRef);
+  const selectedIdSet = new Set(requestedIds);
 
   const targets = snapshot.docs.filter(playerDoc => {
+    if (!selectedIdSet.has(playerDoc.id)) return false;
+
     const player = playerDoc.data();
-
-    // 관리자 계정 제외, 학생/기록원 등은 포함
     if (player.role === "admin") return false;
-
-    // 비활성 학생이 있다면 제외
     if (player.status === "inactive") return false;
 
     return true;
   });
 
   if (targets.length === 0) {
-    return { count: 0 };
+    return { count: 0, items };
   }
+
+  const giftId = `pet_gift_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const title = String(giftPayload.title || "🎁 선물이 도착했어요!").trim() || "🎁 선물이 도착했어요!";
+  const message = String(giftPayload.message || "선생님이 특별한 선물을 보내셨어요.").trim() || "선생님이 특별한 선물을 보내셨어요.";
+  const createdAtIso = new Date().toISOString();
+
+  const latestGift = {
+    id: giftId,
+    title,
+    message,
+    items,
+    createdAt: createdAtIso,
+  };
 
   let batch = writeBatch(db);
   let opCount = 0;
@@ -6112,25 +6146,23 @@ export async function giftPetEventItemsToAllStudents(classId) {
   };
 
   for (const playerDoc of targets) {
-    batch.update(playerDoc.ref, {
-      "petInventory.evolution_stone": increment(1),
-      "petInventory.pet_egg": increment(1),
-      latestGift: {
-        id: `pet_gift_${Date.now()}`,
-        title: "🎁 선물이 도착했어요!",
-        message: "진화의 돌 1개와 펫 알 1개를 받았어요!",
-        items: [
-          { id: "evolution_stone", name: "진화의 돌", amount: 1 },
-          { id: "pet_egg", name: "펫 알", amount: 1 },
-        ],
-        createdAt: new Date().toISOString(),
-      },
+    const updateData = {
+      latestGift,
+      giftHistory: arrayUnion({
+        ...latestGift,
+        giftedAt: createdAtIso,
+      }),
+    };
+
+    items.forEach(item => {
+      updateData[`petInventory.${item.id}`] = increment(item.amount);
     });
+
+    batch.update(playerDoc.ref, updateData);
 
     giftedCount += 1;
     opCount += 1;
 
-    // Firestore batch 제한 대비
     if (opCount >= 450) {
       await commitAndReset();
     }
@@ -6138,5 +6170,30 @@ export async function giftPetEventItemsToAllStudents(classId) {
 
   await commitAndReset();
 
-  return { count: giftedCount };
+  return { count: giftedCount, items };
 }
+
+export async function giftPetEventItemsToAllStudents(classId) {
+  if (!classId) throw new Error("학급 정보가 없습니다.");
+
+  const playersRef = collection(db, "classes", classId, "players");
+  const snapshot = await getDocs(playersRef);
+  const studentIds = snapshot.docs
+    .filter(playerDoc => {
+      const player = playerDoc.data();
+      if (player.role === "admin") return false;
+      if (player.status === "inactive") return false;
+      return true;
+    })
+    .map(playerDoc => playerDoc.id);
+
+  return giftPetItemsToStudents(classId, studentIds, {
+    title: "🎁 선물이 도착했어요!",
+    message: "진화의 돌 1개와 펫 알 1개를 받았어요!",
+    items: [
+      { id: "evolution_stone", name: "진화의 돌", amount: 1 },
+      { id: "pet_egg", name: "펫 알", amount: 1 },
+    ],
+  });
+}
+

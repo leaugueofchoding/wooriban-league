@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLeagueStore } from '../store/leagueStore';
 import { useClassStore } from '../store/leagueStore';
-import { auth, listenCommentReports, giftPetEventItemsToAllStudents } from '../api/firebase.js';
+import { auth, listenCommentReports, giftPetItemsToStudents } from '../api/firebase.js';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ImageModal from '../components/ImageModal';
 import QuizManager from '../components/QuizManager';
 import RecorderDashboardPage from './RecorderDashboardPage';
+import { PET_ITEMS } from '../features/pet/petItems';
 
 // --- 분리된 탭 컴포넌트 임포트 ---
 import MissionTab from './admin/tabs/MissionTab';
@@ -176,37 +177,119 @@ const ResultBox = styled.div`
 `;
 
 function GiftTab({ classId, players }) {
+    // M23_SELECTABLE_PET_GIFTS
+    const defaultGiftMessage = '대규모 배틀 업데이트 기념 선물이야!\n새로운 속성 흔적 반응을 재미있게 즐겨 봐!';
     const [isGifting, setIsGifting] = useState(false);
     const [lastResult, setLastResult] = useState(null);
+    const [giftTitle, setGiftTitle] = useState('🎁 업데이트 기념 선물이 도착했어!');
+    const [giftMessage, setGiftMessage] = useState(defaultGiftMessage);
+    const [selectedItemId, setSelectedItemId] = useState('vitamin_jelly');
+    const [selectedAmount, setSelectedAmount] = useState(3);
+    const [giftItems, setGiftItems] = useState([
+        { id: 'vitamin_jelly', amount: 3 },
+    ]);
+    const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+    const [studentSearch, setStudentSearch] = useState('');
 
-    const eligibleStudents = players.filter(player => (
-        player.role !== 'admin' &&
-        player.status !== 'inactive'
-    ));
+    const eligibleStudents = players
+        .filter(player => player.role !== 'admin' && player.status !== 'inactive')
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
 
-    const handleGiftAll = async () => {
+    useEffect(() => {
+        setSelectedStudentIds(prev => {
+            const validIds = new Set(eligibleStudents.map(student => student.id));
+            const kept = prev.filter(id => validIds.has(id));
+            return kept.length > 0 ? kept : eligibleStudents.map(student => student.id);
+        });
+    }, [players.length]);
+
+    const itemOptions = Object.values(PET_ITEMS);
+
+    const selectedStudents = eligibleStudents.filter(student => selectedStudentIds.includes(student.id));
+    const filteredStudents = eligibleStudents.filter(student => {
+        const keyword = studentSearch.trim().toLowerCase();
+        if (!keyword) return true;
+        return String(student.name || '').toLowerCase().includes(keyword);
+    });
+
+    const getGiftItemLabel = (item) => {
+        const info = PET_ITEMS[item.id];
+        return `${info?.name || item.name || item.id} × ${item.amount}`;
+    };
+
+    const handleToggleAllStudents = () => {
+        if (selectedStudentIds.length === eligibleStudents.length) {
+            setSelectedStudentIds([]);
+        } else {
+            setSelectedStudentIds(eligibleStudents.map(student => student.id));
+        }
+    };
+
+    const handleToggleStudent = (studentId) => {
+        setSelectedStudentIds(prev => (
+            prev.includes(studentId)
+                ? prev.filter(id => id !== studentId)
+                : [...prev, studentId]
+        ));
+    };
+
+    const handleAddGiftItem = () => {
+        const amount = Math.max(1, Math.min(99, Number(selectedAmount) || 1));
+        setGiftItems(prev => {
+            const existing = prev.find(item => item.id === selectedItemId);
+            if (existing) {
+                return prev.map(item => (
+                    item.id === selectedItemId
+                        ? { ...item, amount: Math.min(99, Number(item.amount || 0) + amount) }
+                        : item
+                ));
+            }
+            return [...prev, { id: selectedItemId, amount }];
+        });
+    };
+
+    const handleRemoveGiftItem = (itemId) => {
+        setGiftItems(prev => prev.filter(item => item.id !== itemId));
+    };
+
+    const handleGiftSelected = async () => {
         if (!classId) {
             alert('학급 정보가 아직 로딩되지 않았습니다.');
             return;
         }
 
-        if (eligibleStudents.length === 0) {
-            alert('선물을 지급할 학생이 없습니다.');
+        if (selectedStudentIds.length === 0) {
+            alert('선물을 받을 학생을 선택해주세요.');
             return;
         }
 
+        if (giftItems.length === 0) {
+            alert('지급할 아이템을 1개 이상 추가해주세요.');
+            return;
+        }
+
+        const itemSummary = giftItems.map(getGiftItemLabel).join(', ');
         const ok = window.confirm(
-            `전체 학생 ${eligibleStudents.length}명에게 진화의 돌 1개와 펫 알 1개를 지급할까요?\n\n이미 지급한 학생에게도 1개씩 추가 지급됩니다.`
+            `선택한 학생 ${selectedStudentIds.length}명에게 선물을 지급할까요?\n\n아이템: ${itemSummary}\n\n이미 가진 아이템에도 수량이 추가됩니다.`
         );
 
         if (!ok) return;
 
         try {
             setIsGifting(true);
-            const result = await giftPetEventItemsToAllStudents(classId);
-            const count = result?.count ?? eligibleStudents.length;
-            setLastResult({ count, giftedAt: new Date() });
-            alert(`선물 지급 완료! ${count}명에게 진화의 돌 1개와 펫 알 1개를 지급했습니다.`);
+            const result = await giftPetItemsToStudents(classId, selectedStudentIds, {
+                title: giftTitle,
+                message: giftMessage,
+                items: giftItems,
+            });
+
+            const count = result?.count ?? selectedStudentIds.length;
+            setLastResult({
+                count,
+                itemSummary,
+                giftedAt: new Date(),
+            });
+            alert(`선물 지급 완료! ${count}명에게 ${itemSummary} 지급했습니다.`);
         } catch (error) {
             console.error(error);
             alert(`선물 지급 실패: ${error.message || error}`);
@@ -219,46 +302,153 @@ function GiftTab({ classId, players }) {
         <GiftWrapper>
             <GiftHeader>
                 <div>
-                    <h2>🎁 전체 선물 지급</h2>
+                    <h2>🎁 선물 지급</h2>
                     <p>
-                        학급 학생들에게 펫 아이템을 한 번에 지급합니다.<br />
+                        학생과 아이템을 직접 골라 선물을 지급합니다.<br />
                         지급 후 학생이 접속하면 선물 도착 모달이 나타납니다.
                     </p>
                 </div>
             </GiftHeader>
 
-            <GiftCards>
-                <GiftCard $border="#ffd43b" $bg="#fff9db">
-                    <div className="gift-icon">✨</div>
-                    <div>
-                        <h3>진화의 돌 × 1</h3>
-                        <p>펫을 다음 단계로 진화시킬 수 있는 신비한 돌입니다.</p>
-                    </div>
-                </GiftCard>
+            <GiftActionBox style={{ alignItems: 'stretch', flexDirection: 'column' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.8rem' }}>
+                    <label style={{ fontWeight: 900, color: '#343a40' }}>
+                        선물 제목
+                        <input
+                            value={giftTitle}
+                            onChange={(event) => setGiftTitle(event.target.value)}
+                            style={{ width: '100%', marginTop: '0.35rem', padding: '0.8rem', borderRadius: '12px', border: '1px solid #dee2e6', fontWeight: 800 }}
+                        />
+                    </label>
 
-                <GiftCard $border="#91a7ff" $bg="#edf2ff">
-                    <div className="gift-icon">🥚</div>
-                    <div>
-                        <h3>펫 알 × 1</h3>
-                        <p>새로운 펫을 만날 수 있는 특별한 알입니다.</p>
-                    </div>
-                </GiftCard>
-            </GiftCards>
+                    <label style={{ fontWeight: 900, color: '#343a40' }}>
+                        학생 모달 메시지
+                        <textarea
+                            value={giftMessage}
+                            onChange={(event) => setGiftMessage(event.target.value)}
+                            rows={3}
+                            style={{ width: '100%', marginTop: '0.35rem', padding: '0.8rem', borderRadius: '12px', border: '1px solid #dee2e6', fontWeight: 800, resize: 'vertical' }}
+                        />
+                    </label>
+                </div>
+            </GiftActionBox>
 
-            <GiftActionBox>
-                <div>
-                    <strong>지급 대상: {eligibleStudents.length}명</strong>
-                    <p>관리자 계정과 비활성 학생은 제외합니다.</p>
+            <GiftActionBox style={{ marginTop: '1rem', alignItems: 'stretch', flexDirection: 'column' }}>
+                <strong>지급 아이템 선택</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 110px auto', gap: '0.6rem' }}>
+                    <select
+                        value={selectedItemId}
+                        onChange={(event) => setSelectedItemId(event.target.value)}
+                        style={{ padding: '0.8rem', borderRadius: '12px', border: '1px solid #dee2e6', fontWeight: 800 }}
+                    >
+                        {itemOptions.map(item => (
+                            <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                    </select>
+
+                    <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={selectedAmount}
+                        onChange={(event) => setSelectedAmount(event.target.value)}
+                        style={{ padding: '0.8rem', borderRadius: '12px', border: '1px solid #dee2e6', fontWeight: 800 }}
+                    />
+
+                    <GiftButton type="button" onClick={handleAddGiftItem}>
+                        추가
+                    </GiftButton>
                 </div>
 
-                <GiftButton onClick={handleGiftAll} disabled={isGifting}>
-                    {isGifting ? '지급 중...' : '전체 학생에게 선물 지급'}
+                <GiftCards style={{ margin: '0.8rem 0 0' }}>
+                    {giftItems.map(item => {
+                        const itemInfo = PET_ITEMS[item.id];
+                        const image = itemInfo?.image || itemInfo?.icon;
+
+                        return (
+                            <GiftCard key={item.id} $border="#91a7ff" $bg="#edf2ff">
+                                <div className="gift-icon">
+                                    {image ? (
+                                        <img src={image} alt={itemInfo?.name || item.id} style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                                    ) : '🎁'}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <h3>{itemInfo?.name || item.id} × {item.amount}</h3>
+                                    <p>{itemInfo?.description || '펫 가방으로 지급됩니다.'}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveGiftItem(item.id)}
+                                    style={{ border: 'none', borderRadius: '10px', padding: '0.55rem 0.75rem', background: '#fa5252', color: '#fff', fontWeight: 900, cursor: 'pointer' }}
+                                >
+                                    삭제
+                                </button>
+                            </GiftCard>
+                        );
+                    })}
+                </GiftCards>
+            </GiftActionBox>
+
+            <GiftActionBox style={{ marginTop: '1rem', alignItems: 'stretch', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                        <strong>지급 대상: {selectedStudents.length}명 / {eligibleStudents.length}명</strong>
+                        <p>관리자 계정과 비활성 학생은 제외합니다.</p>
+                    </div>
+
+                    <GiftButton type="button" onClick={handleToggleAllStudents}>
+                        {selectedStudentIds.length === eligibleStudents.length ? '전체 해제' : '전체 선택'}
+                    </GiftButton>
+                </div>
+
+                <input
+                    value={studentSearch}
+                    onChange={(event) => setStudentSearch(event.target.value)}
+                    placeholder="학생 이름 검색"
+                    style={{ width: '100%', marginTop: '0.8rem', padding: '0.8rem', borderRadius: '12px', border: '1px solid #dee2e6', fontWeight: 800 }}
+                />
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.6rem', marginTop: '0.8rem', maxHeight: '260px', overflowY: 'auto' }}>
+                    {filteredStudents.map(student => (
+                        <label
+                            key={student.id}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                border: selectedStudentIds.includes(student.id) ? '2px solid #339af0' : '1px solid #dee2e6',
+                                background: selectedStudentIds.includes(student.id) ? '#e7f5ff' : '#fff',
+                                borderRadius: '12px',
+                                padding: '0.7rem',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={selectedStudentIds.includes(student.id)}
+                                onChange={() => handleToggleStudent(student.id)}
+                            />
+                            {student.name || '이름 없음'}
+                        </label>
+                    ))}
+                </div>
+            </GiftActionBox>
+
+            <GiftActionBox style={{ marginTop: '1rem' }}>
+                <div>
+                    <strong>미리보기</strong>
+                    <p>{giftItems.map(getGiftItemLabel).join(', ') || '선택한 아이템 없음'}</p>
+                </div>
+
+                <GiftButton onClick={handleGiftSelected} disabled={isGifting}>
+                    {isGifting ? '지급 중...' : '선택 학생에게 선물 지급'}
                 </GiftButton>
             </GiftActionBox>
 
             {lastResult && (
                 <ResultBox>
-                    ✅ 최근 지급 완료: {lastResult.count}명 · {lastResult.giftedAt.toLocaleTimeString()}
+                    ✅ 최근 지급 완료: {lastResult.count}명 · {lastResult.itemSummary} · {lastResult.giftedAt.toLocaleTimeString()}
                 </ResultBox>
             )}
         </GiftWrapper>
@@ -498,7 +688,7 @@ function AdminPage() {
                             )}
                         </NavItem>
                         <NavItem>
-                            <NavButton $active={activeMenu === 'gift'} onClick={() => handleMenuClick('gift')}>🎁 전체 선물 지급</NavButton>
+                            <NavButton $active={activeMenu === 'gift'} onClick={() => handleMenuClick('gift')}>🎁 선물 지급</NavButton>
                         </NavItem>
                         <NavItem>
                             <NavButton $active={activeMenu === 'league'} onClick={() => handleMenuClick('league')}>가가볼 리그 관리</NavButton>
