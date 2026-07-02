@@ -76,19 +76,14 @@ classes/{classId}/randomBattleQueue/{playerId}
 }
 ```
 
-### `src/features/battle/RandomBattlePage.jsx`
+### `src/features/battle/RandomBattleLauncher.jsx`
 
-학생용 랜덤 대전 화면의 1차 뼈대를 추가했다.
+학생용 랜덤 대전 UI를 별도 페이지가 아니라 전역 모달 런처로 추가했다.
 
-현재 경로:
+구성:
 
-```txt
-/battle/random
-```
-
-화면 구성:
-
-- 🎲 랜덤 대전 제목
+- 화면 우하단 `🎲 랜덤 대전` 버튼
+- 클릭 시 기존 수락창처럼 모달 표시
 - 나의 출전팀 3마리 표시
 - 각 펫 레벨, HP, 오늘 대전 0/2 표시
 - 평균 Lv 표시
@@ -97,9 +92,17 @@ classes/{classId}/randomBattleQueue/{playerId}
 - 매칭 완료 상태일 때 입장하기 / 이번엔 쉬기 버튼 표시 구조
 - 상대 정보는 표시하지 않음
 
-## App 라우트 추가
+## App 연결 방식
 
-`src/App.jsx`에 다음 라우트를 추가했다.
+`src/App.jsx`에서 로그인한 사용자에게 전역 모달 런처를 렌더링한다.
+
+```jsx
+{currentUser && <RandomBattleLauncher />}
+```
+
+별도 페이지 라우트는 만들지 않는다.
+
+제거한 구조:
 
 ```jsx
 <Route path="/battle/random" element={<ProtectedRoute><RandomBattlePage /></ProtectedRoute>} />
