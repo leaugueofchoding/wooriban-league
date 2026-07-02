@@ -14,6 +14,7 @@ import {
   createRandom1v1QueueEntry,
   createRandomTeamQueueEntry,
   getRandomBattleQueueDocIds,
+  tryMatchRandomBattleQueue,
 } from '../battle/randomBattleApi';
 import {
   getAveragePetLevel,
@@ -1248,6 +1249,53 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     return () => subscriptions.forEach(unsubscribe => unsubscribe());
   }, [myPlayerData?.id, classId]);
 
+
+  // WAITING_AUTO_RETRY_RANDOM_BATTLE_PATCH
+  useEffect(() => {
+    if (!classId || !myPlayerData?.id) return;
+
+    const waitingModes = [
+      randomBattleQueueEntries['random-1v1']?.status === 'waiting' ? 'random-1v1' : null,
+      randomBattleQueueEntries['random-team']?.status === 'waiting' ? 'random-team' : null,
+    ].filter(Boolean);
+
+    if (waitingModes.length === 0) return;
+
+    let cancelled = false;
+    let isTrying = false;
+
+    const tryWaitingMatches = async () => {
+      if (cancelled || isTrying) return;
+      isTrying = true;
+
+      try {
+        for (const mode of waitingModes) {
+          if (cancelled) break;
+          await tryMatchRandomBattleQueue(classId, myPlayerData.id, mode);
+        }
+      } catch (error) {
+        // 대기 중 자동 재시도는 학생에게 매번 alert를 띄우지 않습니다.
+        // 큐가 이미 취소/매칭된 경우도 있을 수 있으므로 콘솔 경고만 남깁니다.
+        console.warn('랜덤대전 자동 매칭 재시도 실패:', error);
+      } finally {
+        isTrying = false;
+      }
+    };
+
+    tryWaitingMatches();
+    const intervalId = window.setInterval(tryWaitingMatches, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    classId,
+    myPlayerData?.id,
+    randomBattleQueueEntries['random-1v1']?.status,
+    randomBattleQueueEntries['random-team']?.status,
+  ]);
+
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
       navigate('/pet/select');
@@ -1575,12 +1623,20 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     try {
       setRandomBattleDraft(prev => ({ ...prev, isSubmitting: true }));
 
+      let matchResult = null;
+
       if (randomBattleDraft.mode === 'random-1v1') {
         await createRandom1v1QueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedPetIds);
-        alert("1:1 랜덤대전 대기열에 참가했습니다. 아직 자동 매칭은 다음 패치에서 연결됩니다.");
+        matchResult = await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-1v1');
+        alert(matchResult?.matched
+          ? "1:1 랜덤대전 상대가 잡혔습니다. 입장 기능은 다음 패치에서 연결됩니다."
+          : "1:1 랜덤대전 매칭을 기다리는 중입니다.");
       } else {
         await createRandomTeamQueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedTeamPetId, { teamSize: 2 });
-        alert("3:3 팀대전 대기열에 참가했습니다. 현재는 2:2 베타 기준으로 대기합니다.");
+        matchResult = await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
+        alert(matchResult?.matched
+          ? "3:3 팀대전 상대가 잡혔습니다. 현재는 2:2 베타 기준입니다. 입장 기능은 다음 패치에서 연결됩니다."
+          : "3:3 팀대전 매칭을 기다리는 중입니다. 현재는 2:2 베타 기준입니다.");
       }
 
       closeRandomBattleDraft();
@@ -1800,9 +1856,14 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
   ].filter(isActiveRandomBattleQueue);
   const activeRandomBattleQueue = activeRandomBattleQueueEntries.length > 0;
   const isRandomBattleLockedByMatch = activeRandomBattleQueueEntries.some(entry => ['matched', 'entering'].includes(entry.status));
+  // AUTO_MATCH_RANDOM_BATTLE_PATCH
   const randomBattleQueueLabels = [
-    isRandom1v1QueueActive ? '1:1 대전 매칭중' : null,
-    isRandomTeamQueueActive ? '3:3 대전 매칭중' : null,
+    isRandom1v1QueueActive
+      ? (['matched', 'entering'].includes(random1v1QueueEntry?.status) ? '1:1 대전 매칭 완료' : '1:1 대전 매칭중')
+      : null,
+    isRandomTeamQueueActive
+      ? (['matched', 'entering'].includes(randomTeamQueueEntry?.status) ? '3:3 대전 매칭 완료' : '3:3 대전 매칭중')
+      : null,
     isLegacyRandomQueueActive ? '이전 랜덤대전 매칭중' : null,
   ].filter(Boolean);
 
