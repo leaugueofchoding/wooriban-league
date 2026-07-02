@@ -196,6 +196,8 @@ export async function createRandom1v1QueueEntry(classId, playerId, selectedPetId
         queuedAt: serverTimestamp(),
         matchedBattleId: null,
         matchedOpponentId: null,
+        battleReady: false,
+        battleReadyAt: null,
         entrantConfirmedAt: null,
       };
     },
@@ -239,48 +241,101 @@ export async function createRandomTeamQueueEntry(classId, playerId, selectedPetI
         queuedAt: serverTimestamp(),
         matchedBattleId: null,
         matchedOpponentId: null,
+        battleReady: false,
+        battleReadyAt: null,
         entrantConfirmedAt: null,
       };
     },
   });
 }
 
-export async function cancelRandomBattleQueueEntry(classId, playerId, reason = 'cancelled_by_player', mode = null) {
+export async function cancelRandomBattleQueueEntry(classId, playerId) {
+  // CANCEL_RANDOM_1V1_WAITING_ROOM_PATCH
   assertClassAndPlayer(classId, playerId);
 
   const playerRef = playerRefOf(classId, playerId);
-  const queueRefs = {
-    'random-1v1': queueRefOf(classId, playerId, 'random-1v1'),
-    'random-team': queueRefOf(classId, playerId, 'random-team'),
-    legacy: queueRefOf(classId, playerId, 'legacy'),
-  };
+  const queueModes = ['random-1v1', 'random-team', 'legacy'];
+  const queueRefs = queueModes.map(mode => ({ mode, ref: queueRefOf(classId, playerId, mode) }));
 
-  return await runTransaction(db, async (transaction) => {
-    const oneVOneSnap = await transaction.get(queueRefs['random-1v1']);
-    const teamSnap = await transaction.get(queueRefs['random-team']);
-    const legacySnap = await transaction.get(queueRefs.legacy);
+  await runTransaction(db, async (transaction) => {
+    const queueSnaps = [];
+    for (const entry of queueRefs) {
+      queueSnaps.push({
+        mode: entry.mode,
+        ref: entry.ref,
+        snap: await transaction.get(entry.ref),
+      });
+    }
 
-    const queueMap = {
-      'random-1v1': queueDataFromSnap(oneVOneSnap, 'random-1v1'),
-      'random-team': queueDataFromSnap(teamSnap, 'random-team'),
-    };
-    const legacyQueue = queueDataFromSnap(legacySnap, 'legacy');
+    const random1v1Entry = queueSnaps
+      .map(entry => ({
+        ...entry,
+        data: queueDataFromSnap(entry.snap, entry.mode),
+      }))
+      .find(entry => entry.mode === 'random-1v1' && entry.data && isActiveQueueStatus(entry.data.status));
 
-    const modesToCancel = mode ? [mode] : RANDOM_QUEUE_MODES;
+    let opponentId = null;
+    let battleId = null;
+    let opponentQueueRef = null;
+    let opponentQueueSnap = null;
+    let battleRef = null;
+    let battleSnap = null;
+    let opponentPlayerRef = null;
 
-    modesToCancel.forEach((queueMode) => {
-      setQueueCancelled(transaction, queueRefs[queueMode], queueMap[queueMode], reason);
-      if (queueMap[queueMode]) queueMap[queueMode] = { ...queueMap[queueMode], status: 'cancelled' };
+    if (
+      random1v1Entry?.data &&
+      ['matched', 'entering'].includes(random1v1Entry.data.status) &&
+      random1v1Entry.data.matchedOpponentId
+    ) {
+      opponentId = random1v1Entry.data.matchedOpponentId;
+      battleId = random1v1Entry.data.matchedBattleId || [playerId, opponentId].sort().join('_');
+      opponentQueueRef = queueRefOf(classId, opponentId, 'random-1v1');
+      battleRef = doc(db, 'classes', classId, 'battles', battleId);
+      opponentPlayerRef = playerRefOf(classId, opponentId);
+
+      opponentQueueSnap = await transaction.get(opponentQueueRef);
+      battleSnap = await transaction.get(battleRef);
+    }
+
+    queueSnaps.forEach(({ mode, ref, snap }) => {
+      setQueueCancelled(transaction, ref, queueDataFromSnap(snap, mode), 'cancelled_by_player');
     });
 
-    setQueueCancelled(transaction, queueRefs.legacy, legacyQueue, reason);
+    if (opponentQueueRef && opponentQueueSnap) {
+      const opponentQueueData = queueDataFromSnap(opponentQueueSnap, 'random-1v1');
 
-    const remainingActiveModes = mode
-      ? getActiveModeList(queueMap)
-      : [];
+      if (
+        opponentQueueData &&
+        opponentQueueData.matchId === random1v1Entry.data.matchId &&
+        opponentQueueData.matchedOpponentId === playerId &&
+        isActiveQueueStatus(opponentQueueData.status)
+      ) {
+        setQueueCancelled(transaction, opponentQueueRef, opponentQueueData, 'opponent_cancelled');
+        transaction.update(opponentPlayerRef, clearPlayerQueueState());
+      }
+    }
 
-    updatePlayerQueueSummary(transaction, playerRef, remainingActiveModes, queueMap);
-    return true;
+    if (battleRef && battleSnap?.exists()) {
+      const battleData = battleSnap.data();
+      // STALE_RANDOM_1V1_WAITING_ROOM_FIX
+      // 취소 시에는 matchId가 조금 어긋났더라도 같은 pair의 랜덤대전 대기방이면 정리합니다.
+      // 단, 이미 quiz/action 등 실제 전투가 시작된 문서는 건드리지 않습니다.
+      const cancellableRandomWaitingRoom =
+        battleData.randomBattle === true &&
+        ['pending', 'starting'].includes(battleData.status);
+
+      if (cancellableRandomWaitingRoom) {
+        transaction.set(battleRef, {
+          status: 'cancelled',
+          cancelledBy: playerId,
+          cancelReason: 'opponent_cancelled_before_start',
+          log: '상대가 입장을 취소했습니다.',
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+    }
+
+    transaction.update(playerRef, clearPlayerQueueState());
   });
 }
 
@@ -475,6 +530,9 @@ async function tryMatchRandom1v1Queue(classId, playerId) {
       matchedAt: serverTimestamp(),
       matchExpiresAtMs: nowMs + RANDOM_BATTLE_CONFIG.ENTRANCE_TIMEOUT_MS,
       opponentHidden: true,
+      battleReady: false,
+      battleReadyAt: null,
+      matchedBattleId: null,
     };
 
     transaction.set(myQueueRef, {
@@ -629,6 +687,7 @@ async function tryMatchRandomTeamQueue(classId, playerId) {
 }
 
 // ENTER_RANDOM_1V1_BATTLE_PATCH
+// ENTER_RANDOM_1V1_FIX_PATCH
 const buildRandomBattleParticipant = (playerData, queueData) => {
   const team = Array.isArray(queueData?.lockedTeam) && queueData.lockedTeam.length > 0
     ? queueData.lockedTeam.map((pet) => ({ ...pet, status: { ...(pet?.status || {}) } }))
@@ -659,6 +718,36 @@ const buildRandomBattleFallbackQuestion = () => ({
   answer: 'O',
   type: 'ox',
 });
+
+const isReusableRandomBattleDoc = (battleData, matchId) => {
+  // STALE_RANDOM_1V1_WAITING_ROOM_FIX
+  if (!battleData) return true;
+
+  const status = battleData.status;
+  const isRandomWaitingRoom =
+    battleData.randomBattle === true &&
+    ['pending', 'starting'].includes(status);
+
+  // 같은 두 학생의 이전 랜덤대전 대기방이 남아 있으면 새 매칭이 덮어쓸 수 있게 허용합니다.
+  // 실제 진행 중인 quiz/action/switching 계열만 막습니다.
+  if (isRandomWaitingRoom && battleData.randomBattleMatchId !== matchId) {
+    return true;
+  }
+
+  if (battleData.randomBattleMatchId === matchId) {
+    return true;
+  }
+
+  return ['finished', 'cancelled', 'rejected'].includes(status);
+};
+
+const markRandomQueueBattleStarted = (transaction, queueRef, battleId) => {
+  transaction.set(queueRef, {
+    status: 'battle_started',
+    matchedBattleId: battleId,
+    battleStartedAt: serverTimestamp(),
+  }, { merge: true });
+};
 
 export async function enterRandom1v1Battle(classId, playerId, options = {}) {
   assertClassAndPlayer(classId, playerId);
@@ -718,13 +807,32 @@ export async function enterRandom1v1Battle(classId, playerId, options = {}) {
 
     const opponentQueue = { id: opponentQueueSnap.id, ...opponentQueueSnap.data() };
 
+    // ENTER_RANDOM_1V1_OPPONENT_STARTED_FIX
+    // 두 번째 입장자가 배틀 문서를 만들면 본인 큐는 battle_started로 정리됩니다.
+    // 이후 첫 번째 입장자의 자동 입장에서는 상대 큐가 battle_started여도
+    // 같은 matchId/battleId라면 정상적인 상태로 봐야 합니다.
+    const opponentAlreadyStartedSameBattle =
+      opponentQueue.status === 'battle_started' &&
+      opponentQueue.matchedBattleId === battleId &&
+      opponentQueue.matchId === myQueue.matchId;
+
+    const opponentIsStillEnterable =
+      ['matched', 'entering'].includes(opponentQueue.status) ||
+      opponentAlreadyStartedSameBattle;
+
     if (
       opponentQueue.mode !== 'random-1v1' ||
-      !['matched', 'entering'].includes(opponentQueue.status) ||
+      !opponentIsStillEnterable ||
       opponentQueue.matchedOpponentId !== playerId ||
       opponentQueue.matchId !== myQueue.matchId
     ) {
       throw new Error('상대의 매칭 상태가 변경되었습니다.');
+    }
+
+    const currentBattleData = battleSnap.exists() ? battleSnap.data() : null;
+
+    if (!isReusableRandomBattleDoc(currentBattleData, myQueue.matchId)) {
+      throw new Error('이전 대전이 아직 진행 중입니다.');
     }
 
     transaction.set(myQueueRef, {
@@ -733,14 +841,71 @@ export async function enterRandom1v1Battle(classId, playerId, options = {}) {
       matchedBattleId: battleId,
     }, { merge: true });
 
-    transaction.set(opponentQueueRef, {
-      matchedBattleId: battleId,
-    }, { merge: true });
-
     setQueueCancelled(transaction, queueRefOf(classId, playerId, 'random-team'), queueDataFromSnap(myTeamQueueSnap, 'random-team'), 'entering_1v1');
-    setQueueCancelled(transaction, queueRefOf(classId, opponentId, 'random-team'), queueDataFromSnap(opponentTeamQueueSnap, 'random-team'), 'entering_1v1');
     setQueueCancelled(transaction, queueRefOf(classId, playerId, 'legacy'), queueDataFromSnap(myLegacyQueueSnap, 'legacy'), 'entering_1v1');
-    setQueueCancelled(transaction, queueRefOf(classId, opponentId, 'legacy'), queueDataFromSnap(opponentLegacyQueueSnap, 'legacy'), 'entering_1v1');
+
+    // STRICT_RANDOM_1V1_WAITING_ROOM_PATCH
+    // M10B_DUPLICATE_CONST_FIX
+    // opponentAlreadyStartedSameBattle는 위의 매칭 상태 검증 블록에서 이미 선언되어 있으므로 재사용합니다.
+    const opponentHasEntered =
+      opponentQueue.status === 'entering' ||
+      opponentAlreadyStartedSameBattle;
+
+    if (!opponentHasEntered && (!currentBattleData || currentBattleData.randomBattleMatchId !== myQueue.matchId)) {
+      const waitingMyPlayerData = { id: myPlayerSnap.id, ...myPlayerSnap.data() };
+      const waitingOpponentPlayerData = { id: opponentPlayerSnap.id, ...opponentPlayerSnap.data() };
+      const waitingSortedIds = [playerId, opponentId].sort();
+      const waitingChallengerId = waitingSortedIds[0];
+      const waitingChallengerQueue = waitingChallengerId === playerId ? myQueue : opponentQueue;
+      const waitingOpponentQueue = waitingChallengerId === playerId ? opponentQueue : myQueue;
+      const waitingChallengerData = waitingChallengerId === playerId ? waitingMyPlayerData : waitingOpponentPlayerData;
+      const waitingOpponentData = waitingChallengerId === playerId ? waitingOpponentPlayerData : waitingMyPlayerData;
+
+      const waitingChallenger = buildRandomBattleParticipant(waitingChallengerData, waitingChallengerQueue);
+      const waitingOpponent = buildRandomBattleParticipant(waitingOpponentData, waitingOpponentQueue);
+
+      transaction.set(battleRef, {
+        id: battleId,
+        battleId,
+        randomBattle: true,
+        battleMode: 'random-1v1',
+        randomBattleMatchId: myQueue.matchId || null,
+        challenger: waitingChallenger,
+        opponent: waitingOpponent,
+        status: 'pending',
+        readyPlayerIds: [playerId],
+        question: null,
+        usedQuestions: [],
+        turn: null,
+        attackerAction: null,
+        attackerActionPayload: null,
+        defenderAction: null,
+        pendingNextQuestion: null,
+        pendingUsedQuestions: null,
+        switchResumeAt: null,
+        pendingSwitch: null,
+        chat: {},
+        log: '🎲 입장 확인! 상대가 들어오면 랜덤 1:1 대전이 시작됩니다.',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: false });
+
+      transaction.update(myPlayerRef, {
+        randomBattleQueueStatus: 'entering',
+        randomBattleQueueModes: ['random-1v1'],
+        randomBattleMode: 'random-1v1',
+        randomBattleLockedPetIds: myQueue.lockedPetIds || [],
+        randomBattleMatchLevel: myQueue.matchLevel || null,
+      });
+
+      return {
+        battleId,
+        opponentId,
+        matchId: myQueue.matchId || null,
+        waitingForOpponent: true,
+        battleReady: false,
+      };
+    }
 
     const myPlayerData = { id: myPlayerSnap.id, ...myPlayerSnap.data() };
     const opponentPlayerData = { id: opponentPlayerSnap.id, ...opponentPlayerSnap.data() };
@@ -752,11 +917,19 @@ export async function enterRandom1v1Battle(classId, playerId, options = {}) {
     const challengerData = challengerId === playerId ? myPlayerData : opponentPlayerData;
     const opponentData = challengerId === playerId ? opponentPlayerData : myPlayerData;
 
-    const challenger = buildRandomBattleParticipant(challengerData, challengerQueue);
-    const opponent = buildRandomBattleParticipant(opponentData, opponentBattleQueue);
-    const firstQuestion = options.question || buildRandomBattleFallbackQuestion();
+    // RANDOM_1V1_BATTLEPAGE_WAITING_ROOM_PATCH
+    const startAtMs = Date.now() + 1800;
 
-    if (!battleSnap.exists()) {
+    const shouldWriteBattle = (
+      !currentBattleData ||
+      currentBattleData.randomBattleMatchId !== myQueue.matchId ||
+      ['pending', 'finished', 'cancelled', 'rejected'].includes(currentBattleData.status)
+    );
+
+    if (shouldWriteBattle) {
+      const challenger = buildRandomBattleParticipant(challengerData, challengerQueue);
+      const opponent = buildRandomBattleParticipant(opponentData, opponentBattleQueue);
+
       const nextChallengerPets = applyRandomBattleFatigueToPets({
         pets: challengerData.pets || [],
         petIds: challengerQueue.lockedPetIds || [],
@@ -777,9 +950,12 @@ export async function enterRandom1v1Battle(classId, playerId, options = {}) {
         randomBattleMatchId: myQueue.matchId || null,
         challenger,
         opponent,
-        status: 'quiz',
-        question: firstQuestion,
-        usedQuestions: [firstQuestion.question].filter(Boolean),
+        status: 'starting',
+        startAtMs,
+        readyPlayerIds: [challenger.id, opponent.id],
+        bothPlayersReadyAt: serverTimestamp(),
+        question: null,
+        usedQuestions: [],
         turn: null,
         attackerAction: null,
         attackerActionPayload: null,
@@ -789,24 +965,27 @@ export async function enterRandom1v1Battle(classId, playerId, options = {}) {
         switchResumeAt: null,
         pendingSwitch: null,
         chat: {},
-        log: '🎲 랜덤 1:1 대전이 시작되었습니다!',
+        log: '🎲 양쪽 입장 완료! 곧 랜덤 1:1 대전이 시작됩니다.',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
 
-    transaction.update(myPlayerRef, {
-      randomBattleQueueStatus: 'entering',
-      randomBattleQueueModes: ['random-1v1'],
-      randomBattleMode: 'random-1v1',
-      randomBattleLockedPetIds: myQueue.lockedPetIds || [],
-      randomBattleMatchLevel: myQueue.matchLevel || null,
-    });
+    markRandomQueueBattleStarted(transaction, myQueueRef, battleId);
+    markRandomQueueBattleStarted(transaction, opponentQueueRef, battleId);
+
+    setQueueCancelled(transaction, queueRefOf(classId, opponentId, 'random-team'), queueDataFromSnap(opponentTeamQueueSnap, 'random-team'), 'entering_1v1');
+    setQueueCancelled(transaction, queueRefOf(classId, opponentId, 'legacy'), queueDataFromSnap(opponentLegacyQueueSnap, 'legacy'), 'entering_1v1');
+
+    transaction.update(myPlayerRef, clearPlayerQueueState());
+    transaction.update(opponentPlayerRef, clearPlayerQueueState());
 
     return {
       battleId,
       opponentId,
       matchId: myQueue.matchId || null,
+      waitingForOpponent: false,
+      battleReady: true,
     };
   });
 }

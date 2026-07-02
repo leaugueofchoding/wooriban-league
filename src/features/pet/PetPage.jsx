@@ -1179,6 +1179,8 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   const [randomBattleQueueEntries, setRandomBattleQueueEntries] = useState({});
   const [isRandomBattleCancelling, setIsRandomBattleCancelling] = useState(false);
   const [isRandomBattleEntering, setIsRandomBattleEntering] = useState(false);
+  // ENTER_RANDOM_1V1_FIX_PATCH
+  const randomBattleAutoEnterRef = useRef(null);
   const [randomBattleDraft, setRandomBattleDraft] = useState({
     show: false,
     mode: null,
@@ -1625,20 +1627,13 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     try {
       setRandomBattleDraft(prev => ({ ...prev, isSubmitting: true }));
 
-      let matchResult = null;
-
+      // STRICT_RANDOM_1V1_WAITING_ROOM_PATCH
       if (randomBattleDraft.mode === 'random-1v1') {
         await createRandom1v1QueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedPetIds);
-        matchResult = await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-1v1');
-        alert(matchResult?.matched
-          ? "1:1 랜덤대전 상대가 잡혔습니다. 입장 기능은 다음 패치에서 연결됩니다."
-          : "1:1 랜덤대전 매칭을 기다리는 중입니다.");
+        await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-1v1');
       } else {
         await createRandomTeamQueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedTeamPetId, { teamSize: 2 });
-        matchResult = await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
-        alert(matchResult?.matched
-          ? "3:3 팀대전 상대가 잡혔습니다. 현재는 2:2 베타 기준입니다. 입장 기능은 다음 패치에서 연결됩니다."
-          : "3:3 팀대전 매칭을 기다리는 중입니다. 현재는 2:2 베타 기준입니다.");
+        await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
       }
 
       closeRandomBattleDraft();
@@ -1662,19 +1657,44 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   };
 
   // ENTER_RANDOM_1V1_BATTLE_PATCH
-  const enterMatchedRandom1v1Battle = async () => {
+  // ENTER_RANDOM_1V1_FIX_PATCH
+  const enterMatchedRandom1v1Battle = async ({ silent = false } = {}) => {
     if (!classId || !myPlayerData?.id) return;
 
     try {
       setIsRandomBattleEntering(true);
       const result = await enterRandom1v1Battle(classId, myPlayerData.id);
-      navigate('/battle/' + result.opponentId);
+
+      // STRICT_RANDOM_1V1_WAITING_ROOM_PATCH
+      const matchQuery = result?.matchId ? '?randomMatchId=' + encodeURIComponent(result.matchId) : '';
+      navigate('/battle/' + result.opponentId + matchQuery);
     } catch (error) {
-      alert("랜덤대전 입장 실패: " + error.message);
+      randomBattleAutoEnterRef.current = null;
+      if (!silent) alert("랜덤대전 입장 실패: " + error.message);
+      else console.warn("랜덤대전 자동 입장 실패:", error);
     } finally {
       setIsRandomBattleEntering(false);
     }
   };
+
+  useEffect(() => {
+    const entry = randomBattleQueueEntries['random-1v1'];
+    if (!entry || entry.status !== 'entering' || entry.battleReady !== true) return;
+    if (!entry.matchedOpponentId) return;
+
+    const autoEnterKey = entry.matchId || entry.id || entry.matchedOpponentId;
+    if (randomBattleAutoEnterRef.current === autoEnterKey) return;
+
+    randomBattleAutoEnterRef.current = autoEnterKey;
+    enterMatchedRandom1v1Battle({ silent: true });
+  }, [
+    classId,
+    myPlayerData?.id,
+    randomBattleQueueEntries['random-1v1']?.status,
+    randomBattleQueueEntries['random-1v1']?.battleReady,
+    randomBattleQueueEntries['random-1v1']?.matchId,
+    randomBattleQueueEntries['random-1v1']?.matchedOpponentId,
+  ]);
 
   const openBattleTeamDraft = (opponent) => {
     // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
@@ -1874,12 +1894,17 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
   const activeRandomBattleQueue = activeRandomBattleQueueEntries.length > 0;
   const isRandomBattleLockedByMatch = activeRandomBattleQueueEntries.some(entry => ['matched', 'entering'].includes(entry.status));
   // ENTER_RANDOM_1V1_BATTLE_PATCH
-  const canEnterRandom1v1Battle = ['matched', 'entering'].includes(random1v1QueueEntry?.status);
+  const isRandom1v1WaitingForOpponent = random1v1QueueEntry?.status === 'entering' && random1v1QueueEntry?.battleReady !== true;
+  const canEnterRandom1v1Battle = random1v1QueueEntry?.status === 'matched' || (
+    random1v1QueueEntry?.status === 'entering' && random1v1QueueEntry?.battleReady === true
+  );
   const hasMatchedTeamBattle = ['matched', 'entering'].includes(randomTeamQueueEntry?.status);
   // AUTO_MATCH_RANDOM_BATTLE_PATCH
   const randomBattleQueueLabels = [
     isRandom1v1QueueActive
-      ? (['matched', 'entering'].includes(random1v1QueueEntry?.status) ? '1:1 대전 매칭 완료' : '1:1 대전 매칭중')
+      ? (isRandom1v1WaitingForOpponent
+        ? '1:1 대전 상대 입장 대기중'
+        : (canEnterRandom1v1Battle ? '1:1 대전 매칭 완료' : '1:1 대전 매칭중'))
       : null,
     isRandomTeamQueueActive
       ? (['matched', 'entering'].includes(randomTeamQueueEntry?.status) ? '3:3 대전 매칭 완료' : '3:3 대전 매칭중')
@@ -2180,6 +2205,15 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                       ))}
                     </div>
                     <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {isRandom1v1WaitingForOpponent && (
+                        <button
+                          type="button"
+                          disabled
+                          style={{ background: '#adb5bd', boxShadow: 'none' }}
+                        >
+                          상대 입장 대기중
+                        </button>
+                      )}
                       {canEnterRandom1v1Battle && (
                         <button
                           type="button"

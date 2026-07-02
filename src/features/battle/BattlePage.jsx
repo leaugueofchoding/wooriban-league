@@ -2905,6 +2905,66 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     }, [battleState?.status]);
 
 
+    // RANDOM_1V1_BATTLEPAGE_WAITING_ROOM_PATCH
+    useEffect(() => {
+        if (!battleState || !myPlayerData || !classId) return;
+        if (!battleState.randomBattle || battleState.status !== 'starting') return;
+
+        // STRICT_RANDOM_1V1_WAITING_ROOM_PATCH
+        const readyPlayerIds = Array.isArray(battleState.readyPlayerIds)
+            ? battleState.readyPlayerIds.filter(Boolean)
+            : [];
+        if (readyPlayerIds.length < 2) return;
+
+        const startAtMs = Number(battleState.startAtMs || Date.now() + 1200);
+        const delayMs = Math.max(0, startAtMs - Date.now());
+        const battleRef = doc(db, 'classes', classId, 'battles', battleId);
+
+        const timer = setTimeout(async () => {
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const battleDoc = await transaction.get(battleRef);
+                    if (!battleDoc.exists()) return;
+
+                    const data = battleDoc.data();
+                    if (data.status !== 'starting') return;
+
+                    const nextQuiz = getNextQuizObj(data.usedQuestions || []);
+
+                    transaction.update(battleRef, {
+                        status: 'quiz',
+                        question: nextQuiz,
+                        usedQuestions: [nextQuiz.question].filter(Boolean),
+                        turnStartTime: Date.now(),
+                        turn: null,
+                        attackerAction: null,
+                        attackerActionPayload: null,
+                        defenderAction: null,
+                        pendingNextQuestion: null,
+                        pendingUsedQuestions: null,
+                        switchResumeAt: null,
+                        pendingSwitch: null,
+                        chat: {},
+                        log: '🎲 랜덤 1:1 대전 시작!',
+                    });
+                });
+            } catch (error) {
+                console.error('Random battle start transition failed:', error);
+            }
+        }, delayMs);
+
+        return () => clearTimeout(timer);
+    }, [
+        battleState?.status,
+        battleState?.startAtMs,
+        battleState?.randomBattle,
+        battleId,
+        classId,
+        myPlayerData?.id,
+        quizPool.length,
+    ]);
+
+
     // M1_BATTLE_BGM_PATCH: 배틀 BGM ON/OFF 및 화면 이탈 시 정지
     useEffect(() => {
         if (!battleState) {
@@ -6332,14 +6392,13 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
     };
 
     if (!myPlayerData) return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
-    if (!battleState) return <Arena><WaitingText>상대방의 수락을 기다리는 중...</WaitingText></Arena>;
+    if (!battleState) return <Arena><WaitingText>상대 입장을 기다리는 중...</WaitingText></Arena>;
 
     if (battleState.status === 'pending' && myPlayerData.id === battleState.challenger.id) {
         return (
             <Arena>
                 <WaitingText>
-                    <p>{battleState.log}</p>
-                    <CancelButton onClick={handleCancel}>신청 취소</CancelButton>
+                    <p>{battleState.log || '상대 입장을 기다리는 중...'}</p>
                 </WaitingText>
             </Arena>
         );
