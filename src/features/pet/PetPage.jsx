@@ -9,6 +9,18 @@ import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '../../utils/petImageMap';
 import { PET_DATA, SKILLS } from './petData';
 import { PET_ITEMS } from './petItems';
+import {
+  cancelRandomBattleQueueEntry,
+  createRandom1v1QueueEntry,
+  createRandomTeamQueueEntry,
+  getRandomBattleQueueDocIds,
+} from '../battle/randomBattleApi';
+import {
+  getAveragePetLevel,
+  getRandomBattleCount,
+  isPetEligibleForRandomBattle,
+  sortRecommendedRandomBattlePets,
+} from '../battle/randomBattleRules';
 import confetti from 'canvas-confetti';
 import { filterProfanity } from '../../utils/profanityFilter';
 
@@ -476,6 +488,82 @@ const EvolveButton = styled(StyledButton)` background-color: #fcc419; color: #34
 const FeedButton = styled(StyledButton)` background-color: #ff6b6b; &:hover:not(:disabled) { background-color: #fa5252; } `;
 const PetCenterButton = styled(StyledButton)` background-color: #22b8cf; grid-column: 1 / -1; &:hover:not(:disabled) { background-color: #15aabf; } `;
 const BattleRequestButton = styled(StyledButton)` background-color: #fa5252; grid-column: 1 / -1; box-shadow: 0 4px 0 #c92a2a; &:hover:not(:disabled) { background-color: #e03131; } `;
+
+// RANDOM_BATTLE_PETPAGE_ENTRY_PATCH
+const BattleEntryPanel = styled.div`
+  /* RANDOM_BATTLE_ENTRY_SIMPLIFIED_PATCH */
+  grid-column: 1 / -1;
+`;
+
+const BattleEntryGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.46rem;
+
+  @media (max-width: 560px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const RandomBattleEntryButton = styled(StyledButton)`
+  min-height: 54px;
+  padding: 0.62rem 0.45rem;
+  background: ${props => props.$variant === "team" ? "linear-gradient(135deg, #845ef7, #5f3dc4)" : "linear-gradient(135deg, #fa5252, #e03131)"};
+  box-shadow: ${props => props.$variant === "team" ? "0 4px 0 #4527a0" : "0 4px 0 #c92a2a"};
+  line-height: 1.25;
+
+  .main {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 1000;
+  }
+
+  .sub {
+    display: block;
+    margin-top: 0.12rem;
+    font-size: 0.62rem;
+    font-weight: 850;
+    opacity: 0.88;
+  }
+
+  &:hover:not(:disabled) {
+    filter: brightness(0.96);
+  }
+`;
+
+const RandomQueueNotice = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.52rem;
+  padding: 0.55rem 0.62rem;
+  border-radius: 12px;
+  background: #fff3bf;
+  border: 1px solid #ffd43b;
+  color: #7c4a03;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: left;
+
+  button {
+    border: none;
+    border-radius: 10px;
+    padding: 0.42rem 0.55rem;
+    background: #f08c00;
+    color: white;
+    font-weight: 1000;
+    cursor: pointer;
+    box-shadow: 0 2px 0 #c46a00;
+  }
+
+  button:disabled {
+    background: #adb5bd;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+`;
+
 
 const OpponentList = styled.div`
   display: flex;
@@ -1085,6 +1173,16 @@ function PetPage() {
     const [skillTooltip, setSkillTooltip] = useState({ show: false, text: '', x: 0, y: 0 });
 const [pendingSkillId, setPendingSkillId] = useState(null);
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
+  // DUAL_QUEUE_RANDOM_BATTLE_PATCH
+  const [randomBattleQueueEntries, setRandomBattleQueueEntries] = useState({});
+  const [isRandomBattleCancelling, setIsRandomBattleCancelling] = useState(false);
+  const [randomBattleDraft, setRandomBattleDraft] = useState({
+    show: false,
+    mode: null,
+    selectedPetIds: [],
+    selectedTeamPetId: null,
+    isSubmitting: false,
+  });
   
   const [battleTeamDraft, setBattleTeamDraft] = useState({
     // M11_ENABLE_3V3_TEAM_SELECTION_PATCH
@@ -1111,6 +1209,43 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
       }
     });
     return () => unsubscribe();
+  }, [myPlayerData?.id, classId]);
+
+
+  // RANDOM_BATTLE_PETPAGE_ENTRY_PATCH
+  // DUAL_QUEUE_RANDOM_BATTLE_PATCH
+  useEffect(() => {
+    if (!myPlayerData?.id || !classId) {
+      setRandomBattleQueueEntries({});
+      return;
+    }
+
+    const queueDocIds = getRandomBattleQueueDocIds(myPlayerData.id);
+    const subscriptions = [
+      ['random-1v1', queueDocIds['random-1v1']],
+      ['random-team', queueDocIds['random-team']],
+      ['legacy', queueDocIds.legacy],
+    ].map(([key, queueDocId]) => onSnapshot(doc(db, 'classes', classId, 'randomBattleQueue', queueDocId), (docSnap) => {
+      setRandomBattleQueueEntries(prev => {
+        const next = { ...prev };
+
+        if (!docSnap.exists()) {
+          delete next[key];
+          return next;
+        }
+
+        const entry = { id: docSnap.id, queueKey: key, ...docSnap.data() };
+        if (['waiting', 'matched', 'entering'].includes(entry.status)) {
+          next[key] = entry;
+        } else {
+          delete next[key];
+        }
+
+        return next;
+      });
+    }));
+
+    return () => subscriptions.forEach(unsubscribe => unsubscribe());
   }, [myPlayerData?.id, classId]);
 
   useEffect(() => {
@@ -1313,6 +1448,161 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     return (myPlayerData?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0);
   };
 
+
+  // RANDOM_BATTLE_PETPAGE_ENTRY_PATCH
+  const isActiveRandomBattleQueue = (entry) => ['waiting', 'matched', 'entering'].includes(entry?.status);
+
+  const getRandomBattleEligiblePets = () => {
+    return sortRecommendedRandomBattlePets(myPlayerData?.pets || []);
+  };
+
+  const getRandomBattlePetImage = (pet) => {
+    if (!pet) return '';
+    return petImageMap[(pet.appearanceId || '') + '_idle'] || petImageMap[pet.appearanceId] || '';
+  };
+
+  const getDefaultRandom1v1PetIds = () => {
+    const eligiblePets = getRandomBattleEligiblePets();
+    const eligibleIdSet = new Set(eligiblePets.map(pet => pet.id));
+    const preferredIds = [
+      selectedPet?.id,
+      ...eligiblePets.map(pet => pet.id),
+    ].filter(Boolean).filter(id => eligibleIdSet.has(id));
+
+    return [...new Set(preferredIds)].slice(0, 3);
+  };
+
+  const openRandom1v1Draft = () => {
+    if (isRandomBattleLockedByMatch) {
+      alert("이미 매칭된 랜덤대전이 있습니다. 먼저 입장하거나 대기를 취소해주세요.");
+      return;
+    }
+
+    if (isRandom1v1QueueActive) {
+      alert("이미 1:1 대전 매칭을 기다리는 중입니다.");
+      return;
+    }
+
+    const defaultPetIds = getDefaultRandom1v1PetIds();
+    if (defaultPetIds.length === 0) {
+      alert("랜덤 1:1 대전에 참가할 수 있는 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.");
+      return;
+    }
+
+    setRandomBattleDraft({
+      show: true,
+      mode: 'random-1v1',
+      selectedPetIds: defaultPetIds,
+      selectedTeamPetId: null,
+      isSubmitting: false,
+    });
+  };
+
+  const openRandomTeamBattleDraft = () => {
+    if (isRandomBattleLockedByMatch) {
+      alert("이미 매칭된 랜덤대전이 있습니다. 먼저 입장하거나 대기를 취소해주세요.");
+      return;
+    }
+
+    if (isRandomTeamQueueActive) {
+      alert("이미 3:3 팀대전 매칭을 기다리는 중입니다.");
+      return;
+    }
+
+    const eligiblePets = getRandomBattleEligiblePets();
+    if (eligiblePets.length === 0) {
+      alert("팀대전에 참가할 수 있는 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.");
+      return;
+    }
+
+    const defaultPetId = isPetEligibleForRandomBattle({ pet: selectedPet })
+      ? selectedPet.id
+      : eligiblePets[0].id;
+
+    setRandomBattleDraft({
+      show: true,
+      mode: 'random-team',
+      selectedPetIds: [],
+      selectedTeamPetId: defaultPetId,
+      isSubmitting: false,
+    });
+  };
+
+  const closeRandomBattleDraft = () => {
+    if (randomBattleDraft.isSubmitting) return;
+    setRandomBattleDraft({
+      show: false,
+      mode: null,
+      selectedPetIds: [],
+      selectedTeamPetId: null,
+      isSubmitting: false,
+    });
+  };
+
+  const toggleRandom1v1Pet = (petId) => {
+    setRandomBattleDraft(prev => {
+      if (prev.mode !== 'random-1v1') return prev;
+      const exists = prev.selectedPetIds.includes(petId);
+      if (exists) {
+        return { ...prev, selectedPetIds: prev.selectedPetIds.filter(id => id !== petId) };
+      }
+
+      if (prev.selectedPetIds.length >= 3) {
+        alert("1:1 대전에는 최대 3마리까지 선택할 수 있습니다.");
+        return prev;
+      }
+
+      return { ...prev, selectedPetIds: [...prev.selectedPetIds, petId] };
+    });
+  };
+
+  const confirmRandomBattleDraft = async () => {
+    if (!classId || !myPlayerData?.id) {
+      alert("학급 또는 플레이어 정보를 불러오지 못했습니다.");
+      return;
+    }
+
+    if (randomBattleDraft.mode === 'random-1v1' && randomBattleDraft.selectedPetIds.length === 0) {
+      alert("1:1 대전에 참가할 펫을 최소 1마리 선택해주세요.");
+      return;
+    }
+
+    if (randomBattleDraft.mode === 'random-team' && !randomBattleDraft.selectedTeamPetId) {
+      alert("팀대전에 참가할 펫을 1마리 선택해주세요.");
+      return;
+    }
+
+    try {
+      setRandomBattleDraft(prev => ({ ...prev, isSubmitting: true }));
+
+      if (randomBattleDraft.mode === 'random-1v1') {
+        await createRandom1v1QueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedPetIds);
+        alert("1:1 랜덤대전 대기열에 참가했습니다. 아직 자동 매칭은 다음 패치에서 연결됩니다.");
+      } else {
+        await createRandomTeamQueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedTeamPetId, { teamSize: 2 });
+        alert("3:3 팀대전 대기열에 참가했습니다. 현재는 2:2 베타 기준으로 대기합니다.");
+      }
+
+      closeRandomBattleDraft();
+    } catch (error) {
+      setRandomBattleDraft(prev => ({ ...prev, isSubmitting: false }));
+      alert("랜덤대전 참가 실패: " + error.message);
+    }
+  };
+
+  const cancelActiveRandomBattleQueue = async () => {
+    if (!classId || !myPlayerData?.id) return;
+    try {
+      setIsRandomBattleCancelling(true);
+      await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+      setRandomBattleQueueEntries({});
+    } catch (error) {
+      alert("대기 취소 실패: " + error.message);
+    } finally {
+      setIsRandomBattleCancelling(false);
+    }
+  };
+
   const openBattleTeamDraft = (opponent) => {
     // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
     // 신청자는 상대가 실제로 받을 수 있는 규모까지만 팀을 선택할 수 있습니다.
@@ -1494,6 +1784,27 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
       ? Math.min(skillTooltip.y + 18, 180)
       : Math.max(skillTooltip.y - 14, 24)
     : 0;
+
+  // RANDOM_BATTLE_PETPAGE_ENTRY_PATCH
+  // DUAL_QUEUE_RANDOM_BATTLE_PATCH
+  const random1v1QueueEntry = randomBattleQueueEntries['random-1v1'] || null;
+  const randomTeamQueueEntry = randomBattleQueueEntries['random-team'] || null;
+  const legacyRandomQueueEntry = randomBattleQueueEntries.legacy || null;
+  const isRandom1v1QueueActive = isActiveRandomBattleQueue(random1v1QueueEntry);
+  const isRandomTeamQueueActive = isActiveRandomBattleQueue(randomTeamQueueEntry);
+  const isLegacyRandomQueueActive = isActiveRandomBattleQueue(legacyRandomQueueEntry);
+  const activeRandomBattleQueueEntries = [
+    random1v1QueueEntry,
+    randomTeamQueueEntry,
+    legacyRandomQueueEntry,
+  ].filter(isActiveRandomBattleQueue);
+  const activeRandomBattleQueue = activeRandomBattleQueueEntries.length > 0;
+  const isRandomBattleLockedByMatch = activeRandomBattleQueueEntries.some(entry => ['matched', 'entering'].includes(entry.status));
+  const randomBattleQueueLabels = [
+    isRandom1v1QueueActive ? '1:1 대전 매칭중' : null,
+    isRandomTeamQueueActive ? '3:3 대전 매칭중' : null,
+    isLegacyRandomQueueActive ? '이전 랜덤대전 매칭중' : null,
+  ].filter(Boolean);
 
   return (
     <PageWrapper>
@@ -1777,7 +2088,47 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
               </ExchangeContainer>
 
               <PetCenterButton onClick={() => navigate('/pet-center')}>🏥 펫 센터 (상점/치료소)</PetCenterButton>
-              <BattleRequestButton onClick={handleOpenOpponentModal} disabled={isFainted}>⚔️ 대결 신청 (친구 목록)</BattleRequestButton>
+
+              {/* RANDOM_BATTLE_PETPAGE_ENTRY_PATCH */}
+              <BattleEntryPanel>
+                {activeRandomBattleQueue && (
+                  <RandomQueueNotice>
+                    <div>
+                      {randomBattleQueueLabels.map(label => (
+                        <div key={label}>{label}</div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelActiveRandomBattleQueue}
+                      disabled={isRandomBattleCancelling}
+                    >
+                      {isRandomBattleCancelling ? "취소 중..." : "대기 취소"}
+                    </button>
+                  </RandomQueueNotice>
+                )}
+
+                <BattleEntryGrid>
+                  <RandomBattleEntryButton
+                    type="button"
+                    onClick={openRandom1v1Draft}
+                    disabled={isRandom1v1QueueActive || isRandomBattleLockedByMatch}
+                  >
+                    <span className="main">1:1 대전 참가</span>
+                    <span className="sub">펫 1~3마리 선택</span>
+                  </RandomBattleEntryButton>
+
+                  <RandomBattleEntryButton
+                    type="button"
+                    $variant="team"
+                    onClick={openRandomTeamBattleDraft}
+                    disabled={isRandomTeamQueueActive || isRandomBattleLockedByMatch}
+                  >
+                    <span className="main">3:3 팀대전 참가</span>
+                    <span className="sub">현재 2:2 베타</span>
+                  </RandomBattleEntryButton>
+                </BattleEntryGrid>
+              </BattleEntryPanel>
             </ActionButtonGroup>
           </PetInfo>
         </PetDashboard>
@@ -1887,6 +2238,176 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                 <button onClick={() => setIsHatching(false)} style={{ padding: '0.8rem 2rem', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>확인</button>
               </div>
             )}
+          </ModalContent>
+        </ModalBackground>
+      )}
+
+      {randomBattleDraft.show && (
+        <ModalBackground onClick={closeRandomBattleDraft}>
+          <ModalContent
+            className="white-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '720px',
+              maxHeight: '88vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem', flexShrink: 0 }}>
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ margin: 0 }}>
+                  {randomBattleDraft.mode === 'random-team' ? '👥 3:3 팀대전 참가' : '⚔️ 1:1 대전 참가'}
+                </h3>
+                <p style={{ margin: '0.35rem 0 0', color: '#868e96', fontSize: '0.9rem', fontWeight: 700, lineHeight: 1.45 }}>
+                  {randomBattleDraft.mode === 'random-team'
+                    ? '현재는 2:2 베타로 운영됩니다. 참가할 펫 1마리를 선택하세요.'
+                    : '출전할 펫을 1~3마리 선택하세요. 가능하면 3마리 구성이 유리합니다.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeRandomBattleDraft}
+                disabled={randomBattleDraft.isSubmitting}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: randomBattleDraft.isSubmitting ? 'not-allowed' : 'pointer' }}
+              >
+                ✖
+              </button>
+            </div>
+
+            {(() => {
+              const eligiblePets = getRandomBattleEligiblePets();
+              const selectedIds = randomBattleDraft.mode === 'random-team'
+                ? [randomBattleDraft.selectedTeamPetId].filter(Boolean)
+                : randomBattleDraft.selectedPetIds;
+              const selectedPets = selectedIds
+                .map(id => eligiblePets.find(pet => pet.id === id))
+                .filter(Boolean);
+              const averageLevel = getAveragePetLevel(selectedPets);
+              const hasSelection = selectedPets.length > 0;
+
+              const renderPetCard = (pet, isSelected, onClick) => {
+                const todayCount = getRandomBattleCount(pet);
+                return (
+                  <button
+                    key={pet.id}
+                    type="button"
+                    onClick={onClick}
+                    disabled={randomBattleDraft.isSubmitting}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.65rem',
+                      textAlign: 'left',
+                      padding: '0.65rem',
+                      borderRadius: '14px',
+                      border: isSelected ? '3px solid #fa5252' : '2px solid #e9ecef',
+                      background: isSelected ? '#fff5f5' : '#ffffff',
+                      cursor: randomBattleDraft.isSubmitting ? 'not-allowed' : 'pointer',
+                      boxShadow: isSelected ? '0 6px 18px rgba(250,82,82,0.18)' : '0 3px 10px rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    <img
+                      src={getRandomBattlePetImage(pet)}
+                      alt={pet.name}
+                      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa' }}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', color: '#343a40' }}>{pet.name}</strong>
+                      <span style={{ display: 'block', color: '#868e96', fontSize: '0.78rem', fontWeight: 800 }}>
+                        Lv.{pet.level} · HP {pet.hp}/{pet.maxHp}
+                      </span>
+                      <span style={{ display: 'block', color: '#495057', fontSize: '0.72rem', fontWeight: 800 }}>
+                        랜덤대전 {todayCount}/2회
+                      </span>
+                    </div>
+                  </button>
+                );
+              };
+
+              return (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: randomBattleDraft.mode === 'random-team' ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '0.6rem', marginBottom: '0.9rem', flexShrink: 0 }}>
+                    <div style={{ background: '#f8f9fa', borderRadius: '12px', padding: '0.72rem', border: '1px solid #e9ecef' }}>
+                      <div style={{ color: '#868e96', fontSize: '0.72rem', fontWeight: 900 }}>선택한 펫</div>
+                      <div style={{ color: '#343a40', fontSize: '1.15rem', fontWeight: 1000 }}>
+                        {selectedPets.length}마리
+                      </div>
+                    </div>
+                    <div style={{ background: '#e7f5ff', borderRadius: '12px', padding: '0.72rem', border: '1px solid #a5d8ff' }}>
+                      <div style={{ color: '#1971c2', fontSize: '0.72rem', fontWeight: 900 }}>
+                        {randomBattleDraft.mode === 'random-team' ? '참가 펫 Lv.' : '평균 Lv.'}
+                      </div>
+                      <div style={{ color: '#1864ab', fontSize: '1.15rem', fontWeight: 1000 }}>
+                        {hasSelection ? averageLevel : '-'}
+                      </div>
+                    </div>
+                    {randomBattleDraft.mode === 'random-1v1' && (
+                      <div style={{ background: selectedPets.length < 3 ? '#fff3bf' : '#ebfbee', borderRadius: '12px', padding: '0.72rem', border: selectedPets.length < 3 ? '1px solid #ffd43b' : '1px solid #b2f2bb' }}>
+                        <div style={{ color: selectedPets.length < 3 ? '#7c4a03' : '#2f9e44', fontSize: '0.72rem', fontWeight: 900 }}>권장</div>
+                        <div style={{ color: selectedPets.length < 3 ? '#7c4a03' : '#2f9e44', fontSize: '0.92rem', fontWeight: 1000 }}>
+                          {selectedPets.length < 3 ? '3마리 권장' : '좋은 구성'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ overflowY: 'auto', paddingRight: '0.35rem', flex: 1 }}>
+                    {eligiblePets.length === 0 ? (
+                      <p style={{ color: '#868e96', padding: '2rem 0', margin: 0 }}>
+                        참가 가능한 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.7rem' }}>
+                        {eligiblePets.map(pet => {
+                          const isSelected = randomBattleDraft.mode === 'random-team'
+                            ? randomBattleDraft.selectedTeamPetId === pet.id
+                            : randomBattleDraft.selectedPetIds.includes(pet.id);
+
+                          return renderPetCard(
+                            pet,
+                            isSelected,
+                            () => {
+                              if (randomBattleDraft.mode === 'random-team') {
+                                setRandomBattleDraft(prev => ({ ...prev, selectedTeamPetId: pet.id }));
+                              } else {
+                                toggleRandom1v1Pet(pet.id);
+                              }
+                            }
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {randomBattleDraft.mode === 'random-1v1' && selectedPets.length > 0 && selectedPets.length < 3 && (
+                    <p style={{ margin: '0.8rem 0 0', color: '#f08c00', fontSize: '0.82rem', fontWeight: 900, lineHeight: 1.45, flexShrink: 0 }}>
+                      선택한 펫이 적으면 불리할 수 있어요. 다만 매칭은 가능하며, 상대도 가능한 한 비슷한 펫 수로 찾습니다.
+                    </p>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={closeRandomBattleDraft}
+                      disabled={randomBattleDraft.isSubmitting}
+                      style={{ flex: 1, padding: '0.8rem', borderRadius: '12px', border: '1px solid #dee2e6', background: '#f8f9fa', color: '#495057', fontWeight: 900, cursor: randomBattleDraft.isSubmitting ? 'not-allowed' : 'pointer' }}
+                    >
+                      닫기
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmRandomBattleDraft}
+                      disabled={!hasSelection || randomBattleDraft.isSubmitting}
+                      style={{ flex: 2, padding: '0.8rem', borderRadius: '12px', border: 'none', background: !hasSelection || randomBattleDraft.isSubmitting ? '#adb5bd' : 'linear-gradient(135deg, #fa5252, #e03131)', color: 'white', fontWeight: 1000, cursor: !hasSelection || randomBattleDraft.isSubmitting ? 'not-allowed' : 'pointer', boxShadow: !hasSelection || randomBattleDraft.isSubmitting ? 'none' : '0 4px 0 #c92a2a' }}
+                    >
+                      {randomBattleDraft.isSubmitting ? '참가 중...' : '대기열 참가'}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </ModalContent>
         </ModalBackground>
       )}
