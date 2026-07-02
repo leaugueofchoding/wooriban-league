@@ -13,6 +13,7 @@ import {
   cancelRandomBattleQueueEntry,
   createRandom1v1QueueEntry,
   createRandomTeamQueueEntry,
+  enterRandom1v1Battle,
   getRandomBattleQueueDocIds,
   tryMatchRandomBattleQueue,
 } from '../battle/randomBattleApi';
@@ -1177,6 +1178,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   // DUAL_QUEUE_RANDOM_BATTLE_PATCH
   const [randomBattleQueueEntries, setRandomBattleQueueEntries] = useState({});
   const [isRandomBattleCancelling, setIsRandomBattleCancelling] = useState(false);
+  const [isRandomBattleEntering, setIsRandomBattleEntering] = useState(false);
   const [randomBattleDraft, setRandomBattleDraft] = useState({
     show: false,
     mode: null,
@@ -1659,6 +1661,21 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     }
   };
 
+  // ENTER_RANDOM_1V1_BATTLE_PATCH
+  const enterMatchedRandom1v1Battle = async () => {
+    if (!classId || !myPlayerData?.id) return;
+
+    try {
+      setIsRandomBattleEntering(true);
+      const result = await enterRandom1v1Battle(classId, myPlayerData.id);
+      navigate('/battle/' + result.opponentId);
+    } catch (error) {
+      alert("랜덤대전 입장 실패: " + error.message);
+    } finally {
+      setIsRandomBattleEntering(false);
+    }
+  };
+
   const openBattleTeamDraft = (opponent) => {
     // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
     // 신청자는 상대가 실제로 받을 수 있는 규모까지만 팀을 선택할 수 있습니다.
@@ -1856,6 +1873,9 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
   ].filter(isActiveRandomBattleQueue);
   const activeRandomBattleQueue = activeRandomBattleQueueEntries.length > 0;
   const isRandomBattleLockedByMatch = activeRandomBattleQueueEntries.some(entry => ['matched', 'entering'].includes(entry.status));
+  // ENTER_RANDOM_1V1_BATTLE_PATCH
+  const canEnterRandom1v1Battle = ['matched', 'entering'].includes(random1v1QueueEntry?.status);
+  const hasMatchedTeamBattle = ['matched', 'entering'].includes(randomTeamQueueEntry?.status);
   // AUTO_MATCH_RANDOM_BATTLE_PATCH
   const randomBattleQueueLabels = [
     isRandom1v1QueueActive
@@ -2159,13 +2179,34 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                         <div key={label}>{label}</div>
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={cancelActiveRandomBattleQueue}
-                      disabled={isRandomBattleCancelling}
-                    >
-                      {isRandomBattleCancelling ? "취소 중..." : "대기 취소"}
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {canEnterRandom1v1Battle && (
+                        <button
+                          type="button"
+                          onClick={enterMatchedRandom1v1Battle}
+                          disabled={isRandomBattleEntering}
+                          style={{ background: '#2f9e44', boxShadow: '0 2px 0 #1b6b2a' }}
+                        >
+                          {isRandomBattleEntering ? "입장 중..." : "입장하기"}
+                        </button>
+                      )}
+                      {hasMatchedTeamBattle && !canEnterRandom1v1Battle && (
+                        <button
+                          type="button"
+                          disabled
+                          style={{ background: '#adb5bd', boxShadow: 'none' }}
+                        >
+                          입장 준비중
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={cancelActiveRandomBattleQueue}
+                        disabled={isRandomBattleCancelling || isRandomBattleEntering}
+                      >
+                        {isRandomBattleCancelling ? "취소 중..." : "이번엔 쉬기"}
+                      </button>
+                    </div>
                   </RandomQueueNotice>
                 )}
 
