@@ -643,7 +643,7 @@ const SkillSlot = styled.div`
   cursor: ${props => props.$isSignature ? "not-allowed" : "pointer"};
   transition: all 0.15s;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -725,6 +725,83 @@ const SkillSlot = styled.div`
   .skill-status.equipped {
     color: #868e96;
   }
+
+  /* M25C_PET_SKILL_TOOLTIP */
+  &[data-skill-tooltip] {
+    isolation: isolate;
+  }
+
+  &[data-skill-tooltip]:hover,
+  &[data-skill-tooltip]:focus-visible {
+    z-index: 40;
+  }
+
+  &[data-skill-tooltip]:hover::after,
+  &[data-skill-tooltip]:focus-visible::after {
+    content: attr(data-skill-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%);
+    width: min(300px, 78vw);
+    max-width: 300px;
+    padding: 0.58rem 0.66rem;
+    border-radius: 12px;
+    background: rgba(17, 24, 39, 0.97);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.42;
+    white-space: pre-wrap;
+    text-align: left;
+    box-shadow: 0 14px 34px rgba(0,0,0,0.24);
+    border: 1px solid rgba(255,255,255,0.12);
+    pointer-events: none;
+  }
+
+  &[data-skill-tooltip]:hover::before,
+  &[data-skill-tooltip]:focus-visible::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 3px);
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: rgba(17, 24, 39, 0.97);
+    pointer-events: none;
+  }
+
+  /* M25C_FIXED_SKILL_TOOLTIP_V2 */
+  /* 기존 카드 내부 pseudo 툴팁은 부모 overflow에 잘리므로 fixed 레이어로 대체합니다. */
+  &[data-skill-tooltip]:hover::after,
+  &[data-skill-tooltip]:focus-visible::after,
+  &[data-skill-tooltip]:hover::before,
+  &[data-skill-tooltip]:focus-visible::before {
+    display: none !important;
+    content: none !important;
+  }
+`;
+
+const SkillTooltipPortal = styled.div`
+  /* M25C_FIXED_SKILL_TOOLTIP_V2 */
+  position: fixed;
+  z-index: 999999;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(260px, calc(100vh - 28px));
+  overflow-y: auto;
+  padding: 0.68rem 0.78rem;
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.98);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  text-align: left;
+  box-shadow: 0 18px 44px rgba(0,0,0,0.30);
+  border: 1px solid rgba(255,255,255,0.14);
+  pointer-events: none;
+  word-break: keep-all;
 `;
 
 const SkillList = styled.div`
@@ -1005,7 +1082,8 @@ function PetPage() {
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [equippedSkills, setEquippedSkills] = useState([]);
   const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
-  const [pendingSkillId, setPendingSkillId] = useState(null);
+    const [skillTooltip, setSkillTooltip] = useState({ show: false, text: '', x: 0, y: 0 });
+const [pendingSkillId, setPendingSkillId] = useState(null);
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
   
   const [battleTeamDraft, setBattleTeamDraft] = useState({
@@ -1348,7 +1426,45 @@ function PetPage() {
   const learnedSkills = selectedPet.skills || PET_DATA[selectedPet.species].initialSkills;
   const unequippedSkills = learnedSkills.filter(id => !(equippedSkills || []).includes(id));
 
-  const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp) * 100));
+  
+
+  // M25C_PET_SKILL_TOOLTIP
+  // 스킬 카드 안 설명은 작게 말줄임 처리하되, 마우스 호버/키보드 포커스 시 전체 설명을 보여줍니다.
+  const getSkillTooltipText = (skill, scaledCost) => {
+    if (!skill) return undefined;
+    const elementLabel = skill.element || '무';
+    const costLabel = `SP ${scaledCost ?? skill.cost ?? 0}`;
+    const powerLabel = skill.basePower !== undefined ? `위력 ${skill.basePower}` : '';
+    return [
+      skill.name,
+      [elementLabel, costLabel, powerLabel].filter(Boolean).join(' · '),
+      skill.description,
+    ].filter(Boolean).join('\n');
+  };
+
+
+  // M25C_FIXED_SKILL_TOOLTIP_V2
+  // 부모 overflow에 잘리지 않도록 스킬 툴팁을 fixed 레이어로 표시합니다.
+  const showSkillTooltip = (event, text) => {
+    if (!text) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX || rect.left + rect.width / 2;
+    const y = event.clientY || rect.top;
+    setSkillTooltip({ show: true, text, x, y });
+  };
+
+  const moveSkillTooltip = (event) => {
+    setSkillTooltip(prev => (
+      prev.show
+        ? { ...prev, x: event.clientX || prev.x, y: event.clientY || prev.y }
+        : prev
+    ));
+  };
+
+  const hideSkillTooltip = () => {
+    setSkillTooltip({ show: false, text: '', x: 0, y: 0 });
+  };
+const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp) * 100));
   const spPercent = Math.min(100, Math.max(0, (selectedPet.sp / selectedPet.maxSp) * 100));
   const isMaxLevel = selectedPet.level >= MAX_PET_LEVEL || selectedPet.isMaxLevel === true;
   const expPercent = isMaxLevel
@@ -1368,9 +1484,32 @@ function PetPage() {
   const evolutionConditionText = getEvolutionConditionText(evolutionStoneCount);
   const signatureSkillId = PET_DATA[selectedPet.species].skill.id;
   const secretNotebookCount = petInventory?.secret_notebook || 0;
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 360;
+  const skillTooltipLeft = skillTooltip.show
+    ? Math.min(Math.max(skillTooltip.x, 170), Math.max(170, viewportWidth - 170))
+    : 0;
+  const skillTooltipShouldOpenBelow = skillTooltip.show && skillTooltip.y < 170;
+  const skillTooltipTop = skillTooltip.show
+    ? skillTooltipShouldOpenBelow
+      ? Math.min(skillTooltip.y + 18, 180)
+      : Math.max(skillTooltip.y - 14, 24)
+    : 0;
 
   return (
     <PageWrapper>
+      {skillTooltip.show && (
+        <SkillTooltipPortal
+          style={{
+            left: `${skillTooltipLeft}px`,
+            top: `${skillTooltipTop}px`,
+            transform: skillTooltipShouldOpenBelow
+              ? 'translate(-50%, 0)'
+              : 'translate(-50%, -100%)',
+          }}
+        >
+          {skillTooltip.text}
+        </SkillTooltipPortal>
+      )}
       <MainLayout>
         <PetDashboard>
           <PetProfile>
@@ -1452,7 +1591,16 @@ function PetPage() {
                               $isSignature={isSignature}
                               $isSelected={selectedSkillSlot === index}
                               onClick={() => handleSkillSlotClick(index)}
-                            >
+                            
+                                data-skill-tooltip-disabled={getSkillTooltipText(skill, scaledCost)}
+                                title={getSkillTooltipText(skill, scaledCost)}
+                                tabIndex={0}
+                                onMouseEnter={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCost))}
+                                onMouseMove={moveSkillTooltip}
+                                onMouseLeave={hideSkillTooltip}
+                                onFocus={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCost))}
+                                onBlur={hideSkillTooltip}
+                              >
                               {skill ? (
                                 <>
                                   <div className="skill-head">
@@ -1491,6 +1639,15 @@ function PetPage() {
                                 $isSignature={false}
                                 $isEquipped={isEquipped}
                                 onClick={() => handleLearnedSkillClick(skillId)}
+                              
+                                data-skill-tooltip-disabled={getSkillTooltipText(skill, scaledCostUnequipped)}
+                                title={getSkillTooltipText(skill, scaledCostUnequipped)}
+                                tabIndex={0}
+                                onMouseEnter={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCostUnequipped))}
+                                onMouseMove={moveSkillTooltip}
+                                onMouseLeave={hideSkillTooltip}
+                                onFocus={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCostUnequipped))}
+                                onBlur={hideSkillTooltip}
                               >
                                 <div className="skill-head">
                                   <p>{skill.name}</p>
