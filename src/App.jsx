@@ -41,6 +41,7 @@ import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
 import PetGiftModal from './components/PetGiftModal';
 import BattlePage from './features/battle/BattlePage.jsx';
+import RandomBattlePage from './features/battle/RandomBattlePage.jsx';
 import NoticePage from './pages/NoticePage.jsx';
 import TermsPage from './pages/TermsPage';
 
@@ -241,6 +242,7 @@ function App() {
             <Route path="/pet-dex" element={<ProtectedRoute><PetDexPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
             <Route path="/pet-center" element={<ProtectedRoute><PetCenterPage /></ProtectedRoute>} />
+            <Route path="/battle/random" element={<ProtectedRoute><RandomBattlePage /></ProtectedRoute>} />
             <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} />
             <Route path="/notices" element={<ProtectedRoute><NoticePage /></ProtectedRoute>} />
 
