@@ -9,6 +9,7 @@ export const PET_SPECIES = {
     FOX: 'fox',
     FROG: 'frog',
     MANTA: 'manta',
+    ICE_BEAR: 'ice_bear',
 };
 
 export const ELEMENTS = {
@@ -17,7 +18,8 @@ export const ELEMENTS = {
     GRASS: '풀',
     WATER: '물',
     ELECTRIC: '번개',
-    EARTH: '흙'
+    EARTH: '흙',
+    ICE: '얼음'
 };
 
 // M7_PET_ROLE_SEPARATION
@@ -439,7 +441,64 @@ export const PREVIEW_STATUS = {
             },
         ],
     },
-};
+
+    // ❄️ 눈곰이 계열 미리보기 상태
+    ICE_BEAR_FROST_CLAW: {
+        target: [
+            {
+                kind: 'drain',
+                icon: '❄️',
+                label: '얼음 흡수',
+                detail: '얼음 피해 2타 · 현재 HP 2% 흡수',
+                tone: '#2f9e44',
+            },
+        ],
+        caster: [
+            {
+                kind: 'heal',
+                icon: '💚',
+                label: '체력 흡수',
+                detail: '흡수한 체력 회복',
+                tone: '#2f9e44',
+            },
+        ],
+    },
+
+    ICE_BEAR_WARM_SNOW_BREATH: {
+        caster: [
+            {
+                kind: 'support',
+                icon: '🌨️',
+                label: '대기 SP 지원',
+                detail: 'HP 20% 소모 · 대기 펫 SP 회복',
+                tone: '#2f9e44',
+            },
+        ],
+    },
+
+    ICE_BEAR_WINTER_SLEEP: {
+        caster: [
+            {
+                kind: 'heal',
+                icon: '💚',
+                label: '겨울잠 회복',
+                detail: '전투 중 1회 · 최대 HP 45% 회복',
+                tone: '#2f9e44',
+            },
+        ],
+    },
+
+    ICE_BEAR_ABSOLUTE_ZERO: {
+        target: [
+            {
+                kind: 'frozen',
+                icon: '❄️',
+                label: '빙결 연계',
+                detail: '물 흔적이 있으면 2.2배 + 빙결',
+                tone: '#4dabf7',
+            },
+        ],
+    }};
 
 export const SKILLS = {
     TACKLE: {
@@ -1604,6 +1663,244 @@ return `'${attacker.name}'이(가) 체력을 ${healAmount} 회복했습니다! �
             return log;
         }
     }
+
+,
+    // ❄️ 얼음곰 계열
+    FROST_CLAW: {
+        id: 'frost_claw',
+        name: '서리손톱',
+        cost: 18,
+        type: 'signature',
+        element: ELEMENTS.ICE,
+        basePower: 22,
+        description: '차가운 서리가 맺힌 손톱으로 상대를 할퀴어 얼음 피해를 주고, 상대 현재 체력의 2%만큼 자신의 체력을 회복합니다. 초과 회복은 되지 않습니다.',
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            const defender = defenderPlayer.pet;
+
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
+            if (checkBlindMiss(attacker)) {
+                return `'${attacker.name}'의 서리손톱! ...하지만 차가운 손톱이 허공을 갈랐습니다! 💨`;
+            }
+
+            const defenderHpBefore = Math.max(0, Number(defender.hp ?? 0));
+            let { damage, isEffective, isCritical } = calculateDamage(
+                SKILLS.FROST_CLAW.basePower,
+                attackerPlayer,
+                defenderPlayer,
+                SKILLS.FROST_CLAW.element,
+                1.02,
+                0.45
+            );
+
+            if (defenderAction === 'BRACE') damage *= 0.7;
+
+            damage = Math.max(1, Math.round(damage));
+            defender.hp = Math.max(0, Number(defender.hp ?? 0) - damage);
+
+            const siphonBase = Math.max(0, Math.floor(defenderHpBefore * 0.02));
+            const missingHp = Math.max(0, Number(attacker.maxHp ?? 0) - Number(attacker.hp ?? 0));
+            const heal = Math.min(missingHp, siphonBase);
+
+            if (heal > 0) {
+                attacker.hp = Math.min(Number(attacker.maxHp ?? attacker.hp ?? 0), Number(attacker.hp ?? 0) + heal);
+            }
+            markHealPulse(attacker, 'ice');
+
+            let log = `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 서리손톱! ❄️`;
+            if (isEffective) log += ' 🎯 [효과가 굉장했다!]';
+            log += ` 적에게 ${damage}의 얼음 피해!`;
+            log += heal > 0
+                ? ` 서리 기운으로 ${heal}의 체력을 흡수했습니다!`
+                : ' 서리 기운이 맴돌았지만 이미 체력이 가득합니다!';
+
+            return log;
+        }
+    },
+
+    WARM_SNOW_BREATH: {
+        id: 'warm_snow_breath',
+        name: '포근한 눈숨결',
+        cost: 20,
+        type: 'signature',
+        element: null,
+        displayElement: '일반',
+        basePower: 0,
+        description: '자신의 최대 HP 20%를 소모해 대기 중인 생존 아군 펫들의 SP를 각자 최대 SP의 20%만큼 회복합니다. 자신은 SP 회복 대상에서 제외되며, 이 소모로 쓰러지지 않습니다.',
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            if (!attacker.status) attacker.status = {};
+
+            const maxHp = Math.max(1, Number(attacker.maxHp ?? 1));
+            const hpBefore = Math.max(0, Number(attacker.hp ?? 0));
+            const hpCost = Math.max(1, Math.round(maxHp * 0.20));
+            const actualCost = Math.min(Math.max(0, hpBefore - 1), hpCost);
+            attacker.hp = Math.max(1, hpBefore - actualCost);
+
+            const team = Array.isArray(attackerPlayer.team) && attackerPlayer.team.length > 0
+                ? attackerPlayer.team
+                : [attacker];
+
+            const activePetId = attackerPlayer.activePetId || attacker.id || null;
+            const activeIndexById = activePetId
+                ? team.findIndex(pet => pet?.id === activePetId)
+                : -1;
+            const activeIndex = activeIndexById >= 0
+                ? activeIndexById
+                : Math.min(Math.max(Number(attackerPlayer.activePetIndex ?? 0), 0), team.length - 1);
+
+            const recoveredNames = [];
+            let totalSpGain = 0;
+
+            const nextTeam = team.map((pet, index) => {
+                if (!pet) return pet;
+
+                if (index === activeIndex) {
+                    return {
+                        ...attacker,
+                        status: { ...(attacker.status || {}) },
+                    };
+                }
+
+                if (Number(pet.hp ?? 0) <= 0) {
+                    return {
+                        ...pet,
+                        status: { ...(pet.status || {}) },
+                    };
+                }
+
+                const maxSp = Math.max(0, Number(pet.maxSp ?? 0));
+                const currentSp = Math.max(0, Number(pet.sp ?? 0));
+                const spGain = Math.max(1, Math.round(maxSp * 0.20));
+                const nextSp = Math.min(maxSp, currentSp + spGain);
+                const actualGain = Math.max(0, nextSp - currentSp);
+
+                if (actualGain > 0) {
+                    totalSpGain += actualGain;
+                    recoveredNames.push(pet.name || '대기 펫');
+                }
+
+                return {
+                    ...pet,
+                    sp: nextSp,
+                    status: { ...(pet.status || {}) },
+                };
+            });
+
+            attackerPlayer.team = nextTeam;
+            attackerPlayer.activePetIndex = activeIndex;
+            attackerPlayer.activePetId = nextTeam[activeIndex]?.id || attackerPlayer.activePetId || attacker.id || null;
+            attackerPlayer.pet = nextTeam[activeIndex] || attacker;
+            Object.assign(attacker, attackerPlayer.pet);
+
+            const shownNames = recoveredNames.slice(0, 2).join(', ');
+            const moreCount = Math.max(0, recoveredNames.length - 2);
+            const moreText = moreCount > 0 ? ` 외 ${moreCount}마리` : '';
+
+            let log = `'${attacker.name}'의 포근한 눈숨결! 🌨️ 자신의 체력 ${actualCost}을 나누어 차가운 숨결을 포근하게 퍼뜨렸습니다.`;
+            if (totalSpGain > 0) {
+                log += ` 대기 펫 ${shownNames}${moreText}의 SP가 합계 ${totalSpGain} 회복되었습니다!`;
+            } else {
+                log += ' 회복할 수 있는 대기 펫이 없어 눈숨결이 조용히 흩어졌습니다.';
+            }
+
+            return log;
+        }
+    },
+
+    WINTER_SLEEP: {
+        id: 'winter_sleep',
+        name: '겨울잠',
+        cost: 20,
+        type: 'signature',
+        element: null,
+        displayElement: '일반',
+        basePower: 0,
+        description: '전투 중 한 번만 사용할 수 있습니다. 포근한 눈더미 속에서 잠시 겨울잠을 자 자신의 최대 HP 45%를 회복합니다. 회피나 무적 효과는 아닙니다.',
+        previewStatus: PREVIEW_STATUS.HEALING_PRAYER,
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            if (!attacker.status) attacker.status = {};
+
+            if (attacker.status.winterSleepUsed) {
+                return `'${attacker.name}'은 이미 이번 전투에서 겨울잠을 잤습니다! 다시 잠들 수 없습니다.`;
+            }
+
+            attacker.status.winterSleepUsed = true;
+
+            const maxHp = Math.max(1, Number(attacker.maxHp ?? 1));
+            const heal = Math.max(1, Math.round(maxHp * 0.45));
+            const beforeHp = Math.max(0, Number(attacker.hp ?? 0));
+            const afterHp = Math.min(maxHp, beforeHp + heal);
+            const actualHeal = Math.max(0, afterHp - beforeHp);
+
+            attacker.hp = afterHp;
+            markHealPulse(attacker, 'ice');
+
+            return actualHeal > 0
+                ? `'${attacker.name}'의 겨울잠! 💤❄️ 포근한 눈더미 속에서 잠시 쉬며 체력을 ${actualHeal} 회복했습니다! (전투 중 1회)`
+                : `'${attacker.name}'의 겨울잠! 💤❄️ 이미 체력이 가득하지만 포근한 눈더미 속에서 마음을 가다듬었습니다! (전투 중 1회)`;
+        }
+    },
+
+    ABSOLUTE_ZERO: {
+        id: 'absolute_zero',
+        name: '절대영도',
+        cost: 65,
+        type: 'signature',
+        element: ELEMENTS.ICE,
+        basePower: 40,
+        description: '극한의 냉기를 모아 터뜨리는 얼음 궁극기입니다. 상대에게 물 흔적이 있으면 피해가 2.2배로 증가하고, 물+얼음 빙결 연계와 함께 강력해집니다.',
+        previewStatus: PREVIEW_STATUS.TORNADO_STUN,
+        effect: (attackerPlayer, defenderPlayer, defenderAction) => {
+            const attacker = attackerPlayer.pet;
+            const defender = defenderPlayer.pet;
+
+            if (!attacker.status) attacker.status = {};
+            if (!defender.status) defender.status = {};
+
+            if (checkBlindMiss(attacker)) {
+                return `'${attacker.name}'의 절대영도! ...하지만 냉기의 중심을 놓쳤습니다! 💨`;
+            }
+
+            const traces = defender.status?.elementTraces || {};
+            const hasWaterTrace = !!(traces.water || traces['물']);
+
+            let { damage, isEffective, isCritical } = calculateDamage(
+                SKILLS.ABSOLUTE_ZERO.basePower,
+                attackerPlayer,
+                defenderPlayer,
+                SKILLS.ABSOLUTE_ZERO.element,
+                1.35,
+                0.55
+            );
+
+            let log = `${isCritical ? '💥 [치명타!] ' : ''}'${attacker.name}'의 절대영도! ❄️🌌 극한의 냉기를 모아 전장에 터뜨립니다!`;
+            if (isEffective) log += ' 🎯 [효과가 굉장했다!]';
+
+            if (hasWaterTrace) {
+                damage *= 2.2;
+                defender.status.frozen = true;
+                defender.status.frozenTurns = 1;
+                log += ' 💧 상대의 물 흔적이 얼어붙으며 피해가 2.2배로 증가하고 빙결이 발생했습니다!';
+            } else {
+                log += ' 물 흔적이 없어 절대영도의 힘이 온전히 폭발하지는 못했습니다.';
+            }
+
+            if (defenderAction === 'BRACE') {
+                damage *= 0.7;
+                log += ' (상대는 웅크려 피해를 줄였다!)';
+            }
+
+            damage = Math.max(1, Math.round(damage));
+            defender.hp = Math.max(0, Number(defender.hp ?? 0) - damage);
+
+            log += ` ${damage}의 얼음 피해!`;
+            return log;
+        }
+    }
 };
 
 export const PET_DATA = {
@@ -1786,9 +2083,11 @@ export const PET_DATA = {
             lv20: {
                 appearanceId: 'frog_lv3',
                 name: '별감구리',
+                // M25F_FROG_DEX_GRASS_ATTR: 도감 표시 전용 복합 속성
+                elements: ['물', '풀'],
                 statBoost: { hp: 2.1, sp: 2.0, atk: 2.0 },
                 newSkills: [SKILLS.ULTIMATE_SECRET.id, SKILLS.REED_BOW.id],
-                description: "마침내 무과에 당당히 급제하여 전장을 가르며 섬광을 내뿜는 호위무사 별감구리입니다. (💧물/일반 속성)"
+                description: "마침내 무과에 당당히 급제하여 전장을 가르며 섬광을 내뿜는 호위무사 별감구리입니다. (💧물/🌿풀/일반 속성)"
             },
         }
     }
@@ -1821,6 +2120,38 @@ export const PET_DATA = {
                 newSkill: SKILLS.ARA_BLOOM,
                 description: "깊은 바다의 꽃물살을 다스리는 우아한 수호 가오리입니다. 오래 쌓인 물결표식을 한순간에 만개시켜 전장을 뒤덮습니다. (💧물 속성)"
             },
+        }
+    }
+
+,
+    ['ice_bear']: {
+        name: '눈곰이',
+        element: '얼음',
+        compatibleElements: ['얼음'],
+        battleRole: PET_BATTLE_ROLES.CONTROL_SUPPORT,
+        battleRoleLabel: '빙결·동면 서포터',
+        battleRoleTags: ['얼음', '회복', '대기 SP'],
+        battleRoleNote: '자신의 체력을 활용해 대기 팀원의 SP를 보조하고, 겨울잠으로 버티며, 물 흔적이 쌓인 상대에게 절대영도로 강한 빙결 딜을 넣는 탱커형 서포터입니다.',
+        description: '눈이 소복이 쌓인 운동장 구석에서 태어난 아기 얼음곰 눈곰이입니다. 느긋하지만 친구를 지킬 때는 서리가 맺힌 손톱으로 맞섭니다. (❄️얼음 속성)',
+        baseStats: { maxHp: 115, maxSp: 60, atk: 8 },
+        growth: { hp: 22, sp: 8, atk: 3 },
+        skill: SKILLS.FROST_CLAW,
+        initialSkills: [SKILLS.FROST_CLAW.id],
+        evolution: {
+            lv10: {
+                appearanceId: 'ice_bear_lv2',
+                name: '차고마',
+                statBoost: { hp: 1.45, sp: 1.35, atk: 1.25 },
+                newSkills: [SKILLS.WARM_SNOW_BREATH.id, SKILLS.WINTER_SLEEP.id],
+                description: '눈더미처럼 포근한 몸집으로 친구들을 감싸는 차고마입니다. 자신의 체력을 나누어 대기 중인 팀원의 SP를 북돋고, 위기에는 겨울잠으로 크게 회복합니다. (❄️얼음 속성)'
+            },
+            lv20: {
+                appearanceId: 'ice_bear_lv3',
+                name: '맵차고마',
+                statBoost: { hp: 2.15, sp: 1.75, atk: 1.55 },
+                newSkill: SKILLS.ABSOLUTE_ZERO,
+                description: '거대한 눈산처럼 느긋하게 서 있는 얼음곰의 최종 진화체 맵차고마입니다. 물 기운을 품은 상대를 절대영도로 얼려 전장의 흐름을 멈춥니다. (❄️얼음 속성)'
+            }
         }
     }
 };
