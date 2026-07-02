@@ -1332,7 +1332,7 @@ const FloatingDamageNumber = styled.div`
     0 5px 10px rgba(0,0,0,0.26);
   opacity: 0;
   margin-left: ${props => `${Number(props.$lane ?? 0) * 32}px`};
-  animation: ${floatingDamagePop} 1.05s cubic-bezier(.16,.88,.31,1.16) forwards;
+  animation: ${floatingDamagePop} ${props => props.$kind === 'critical' || props.$kind === 'reaction' ? '1.7s' : '1.45s'} cubic-bezier(.16,.88,.31,1.16) forwards;
   animation-delay: ${props => props.$delay ?? 0}ms;
 
   .damageLabel {
@@ -1684,10 +1684,10 @@ const FLOATING_DAMAGE_META = {
     grass: { label: '', color: '#2f9e44', stroke: '#ebfbee', glow: 'rgba(47,158,68,0.42)' },
     wind: { label: '', color: '#adb5bd', stroke: '#111111', glow: 'rgba(0,0,0,0.34)' },
     lightning: { label: '', color: '#f08c00', stroke: '#fff9db', glow: 'rgba(240,140,0,0.48)' },
-    ice: { label: '', color: '#4dabf7', stroke: '#e7f5ff', glow: 'rgba(77,171,247,0.45)' },
+    ice: { label: '', color: '#ffffff', stroke: '#1c7ed6', glow: 'rgba(77,171,247,0.72)' },
     reaction: { label: 'REACTION', color: '#9c36b5', stroke: '#f8f0fc', glow: 'rgba(156,54,181,0.50)' },
     critical: { label: 'CRITICAL', color: '#ff922b', stroke: '#111111', glow: 'rgba(255,146,43,0.72)' },
-    heal: { label: 'HEAL', color: '#2b8a3e', stroke: '#ebfbee', glow: 'rgba(43,138,62,0.42)' },
+    heal: { label: 'HEAL', color: '#2f9e44', stroke: '#2f9e44', glow: 'rgba(47,158,68,0.62)' },
 };
 
 const detectFloatingDamageKindFromLog = (log = '', options = {}) => {
@@ -1713,6 +1713,7 @@ const getFloatingHitCountFromLog = (log = '') => {
 
     if (text.includes('바람의 칼날')) return 3;
     if (text.includes('용의 발톱')) return 2;
+    if (text.includes('서리손톱')) return 2;
     if (text.includes('오의필살') || text.includes('비전 오의')) return 7;
     if (text.includes('재빠른 교란')) return 2;
 
@@ -3360,7 +3361,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
             const timer = setTimeout(() => {
                 const ids = new Set(nextFloatingNumbers.map(item => item.id));
                 setFloatingNumbers(prev => prev.filter(item => !ids.has(item.id)));
-            }, 1750);
+            }, 2300);
             floatingNumberTimersRef.current.push(timer);
         }
 

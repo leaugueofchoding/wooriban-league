@@ -947,6 +947,11 @@ const SKILL_CONFIG = {
   WAVE_MARK: { icon: '💧', duration: '1.25s', type: 'WAVE_MARK_MULTI' },
   BLOSSOM_CURRENT: { icon: '🌸', duration: '1.45s', type: 'BLOSSOM_CURRENT_HEAL_MULTI' },
   ARA_BLOOM: { icon: '🌊', duration: '2.2s', type: 'ARA_BLOOM_FULL' },
+  // ❄️ 눈곰이 계열
+  FROST_CLAW: { icon: '❄️', duration: '1.15s', type: 'ICE_CLAW_MULTI' },
+  WARM_SNOW_BREATH: { icon: '🌨️', duration: '1.25s', type: 'ICE_SUPPORT_MULTI' },
+  WINTER_SLEEP: { icon: '💤', duration: '1.2s', type: 'ICE_SLEEP_MULTI' },
+  ABSOLUTE_ZERO: { icon: '', duration: '2.2s', type: 'ABSOLUTE_ZERO_FULL' },
   // 독/공용
   POISON_STING: { icon: '☠️', duration: '1.3s', type: 'POISON' },
   STATIC_SHOCK: { icon: '⚡', duration: '0.8s', type: 'PROJECTILE' },
@@ -1035,6 +1040,7 @@ const BattleSkillEffect = ({ type, isMine }) => {
     SOLAR: '#ffd43b', REM_FIRE: '#ff6b35', UPHWA: '#ff4500', UPHWA_FULL: '#ff4500', BREATH: '#ff4500', FLAME_DASH: '#ff6b35', DRAGON_CLAW_MULTI: '#ff4500',
     THUNDER: '#ffd43b', THUNDER_FULL: '#ffd43b', THUNDER_PUNCH_MULTI: '#ffd43b', STELLAR: '#ffd43b', SCRATCH: '#ffd43b',
     TORNADO: '#74c0fc', TORNADO_FULL: '#74c0fc', ZIGZAG: '#74c0fc', DISTURBANCE_MULTI: '#74c0fc', WIND_BLADE_MULTI: '#339af0',
+    FROST_CLAW: '#74c0fc', WARM_SNOW_BREATH: '#a5d8ff', WINTER_SLEEP: '#d0ebff', ABSOLUTE_ZERO: '#4dabf7',
     SIPHON: '#cc5de8',
   };
 
@@ -1131,6 +1137,54 @@ const BattleSkillEffect = ({ type, isMine }) => {
   // M1_REMOVE_DUPLICATE_BLOSSOM_EFFECT_BRANCH
   // BLOSSOM_CURRENT_HEAL_MULTI는 위의 전용 이펙트 블록으로 통일했습니다.
   // 기존 중복 분기는 같은 조건이라 도달하지 않아 제거합니다.
+
+
+  // ── ❄️ 서리손톱: X자 얼음 참격 + 흡수 반짝임
+  if (config.type === 'ICE_CLAW_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.15s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#74c0fc">
+        <MultiIcon $anim={isMine ? xSlash1ToOpp : xSlash1ToMe} $duration="0.52s" $glow="#e7f5ff" $size="3.1rem">❄️</MultiIcon>
+        <MultiIcon $anim={isMine ? xSlash2ToOpp : xSlash2ToMe} $duration="0.52s" $glow="#74c0fc" $size="3.1rem" $delay="0.08s">❄️</MultiIcon>
+        <MultiIcon $anim={isMine ? xImpactToOpp : xImpactToMe} $duration="0.58s" $glow="#a5d8ff" $size="3.6rem" $delay="0.36s">💥</MultiIcon>
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.75s" $glow="#2f9e44" $size="2.5rem" $delay="0.58s">💚</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 🌨️ 포근한 눈숨결: 자기 쪽 눈바람 + 대기 SP 지원 느낌
+  if (config.type === 'ICE_SUPPORT_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.25s" $animType="BUFF" $isMine={isMine} $glowColor="#a5d8ff">
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.95s" $glow="#d0ebff" $size="3.8rem">🌨️</MultiIcon>
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.85s" $glow="#74c0fc" $size="2.7rem" $delay="0.20s">🔷</MultiIcon>
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.80s" $glow="#ffffff" $size="2.2rem" $delay="0.36s">✨</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── 💤 겨울잠: 자기 회복/동면 연출
+  if (config.type === 'ICE_SLEEP_MULTI') {
+    return (
+      <EffectContainer $icon="" $duration="1.2s" $animType="BUFF" $isMine={isMine} $glowColor="#d0ebff">
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.95s" $glow="#e7f5ff" $size="3.7rem">💤</MultiIcon>
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.85s" $glow="#a5d8ff" $size="2.9rem" $delay="0.18s">❄️</MultiIcon>
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.78s" $glow="#2f9e44" $size="2.3rem" $delay="0.34s">💚</MultiIcon>
+      </EffectContainer>
+    );
+  }
+
+  // ── ❄️ 절대영도: 롤 누누 궁처럼 냉기를 모은 뒤 중심 폭발
+  if (config.type === 'ABSOLUTE_ZERO_FULL') {
+    return (
+      <EffectContainer $icon="" $duration="2.2s" $animType="PROJECTILE" $isMine={isMine} $glowColor="#4dabf7">
+        <DarkenOverlay />
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.75s" $glow="#e7f5ff" $size="5rem">❄️</MultiIcon>
+        <MultiIcon $anim={buffSelf(isMine)} $duration="0.95s" $glow="#a5d8ff" $size="4.2rem" $delay="0.35s">🧊</MultiIcon>
+        <MultiIcon $anim={isMine ? araBloomCenterToOpp : araBloomCenterToMe} $duration="1.15s" $glow="#74c0fc" $size="5.2rem" $delay="0.72s">🌌</MultiIcon>
+        <MultiIcon $anim={isMine ? araBloomCenterToOpp : araBloomCenterToMe} $duration="0.95s" $glow="#ffffff" $size="4.4rem" $delay="1.02s">❄️</MultiIcon>
+      </EffectContainer>
+    );
+  }
 
   // ── 🐸 반격태세: 돌격 → X자 검기 교차 + 반격 오라
   if (config.type === 'COUNTER_STANCE_MULTI') {

@@ -113,6 +113,23 @@ import manta3_crunch from '@/assets/pets/manta3_crunch.png';
 import manta3_crunch_back from '@/assets/pets/manta3_crunch_back.png';
 
 
+// --- Ice Bear Assets (눈곰이 계열) ---
+import bear1_portrait from '@/assets/pets/bear1_portrait.png';
+import bear1_back from '@/assets/pets/bear1_back.png';
+import bear1_crunch from '@/assets/pets/bear1_crunch.png';
+import bear1_crunch_back from '@/assets/pets/bear1_crunch_back.png';
+
+import bear2_portrait from '@/assets/pets/bear2_portrait.png';
+import bear2_back from '@/assets/pets/bear2_back.png';
+import bear2_crunch from '@/assets/pets/bear2_crunch.png';
+import bear2_crunch_back from '@/assets/pets/bear2_crunch_back.png';
+
+import bear3_portrait from '@/assets/pets/bear3_portrait.png';
+import bear3_back from '@/assets/pets/bear3_back.png';
+import bear3_crunch from '@/assets/pets/bear3_crunch.png';
+import bear3_crunch_back from '@/assets/pets/bear3_crunch_back.png';
+
+
 export const petImageMap = {
     // === Dragon ===
     dragon_lv1_idle: dragon1_portrait,
@@ -225,4 +242,21 @@ export const petImageMap = {
     manta_lv3_battle: manta3_back,
     manta_lv3_brace: manta3_crunch,
     manta_lv3_brace_back: manta3_crunch_back,
+
+    // === Ice Bear (눈곰이 계열) ===
+    ice_bear_lv1_idle: bear1_portrait,
+    ice_bear_lv1_battle: bear1_back,
+    ice_bear_lv1_brace: bear1_crunch,
+    ice_bear_lv1_brace_back: bear1_crunch_back,
+
+    ice_bear_lv2_idle: bear2_portrait,
+    ice_bear_lv2_battle: bear2_back,
+    ice_bear_lv2_brace: bear2_crunch,
+    ice_bear_lv2_brace_back: bear2_crunch_back,
+
+    ice_bear_lv3_idle: bear3_portrait,
+    ice_bear_lv3_battle: bear3_back,
+    ice_bear_lv3_brace: bear3_crunch,
+    ice_bear_lv3_brace_back: bear3_crunch_back,
+
 };

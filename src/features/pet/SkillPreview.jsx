@@ -29,7 +29,11 @@ function getStatusPreview(skill) {
 
 function getHitDelay(skillType) {
     const delayMap = {
-        TACKLE: 220,
+        
+        FROST_CLAW: 520,
+        WARM_SNOW_BREATH: 360,
+        WINTER_SLEEP: 360,
+        ABSOLUTE_ZERO: 1100,TACKLE: 220,
         WATER_BALL: 520,
         COUNTER_STANCE: 650,
         REED_BOW: 620,
@@ -67,7 +71,9 @@ function isBuffSkill(skillType) {
         'HEALING_PRAYER',
         'MIND_FOCUS',
         'TAUNT',
-    ].includes(skillType);
+    
+        'WARM_SNOW_BREATH',
+        'WINTER_SLEEP',].includes(skillType);
 }
 
 function StatusBadge({ status, side }) {

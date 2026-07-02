@@ -71,6 +71,7 @@ function getStageList(speciesKey, data) {
       name: data.name,
       condition: '처음 만나는 모습',
       description: data.description,
+      elements: data.dexElements || data.compatibleElements || (data.element ? [data.element] : []),
       skills: [data.skill],
     },
     {
@@ -79,7 +80,8 @@ function getStageList(speciesKey, data) {
       name: lv10?.name || '1차 진화',
       condition: 'Lv.10 + 진화의 돌',
       description: lv10?.description || '',
-      skills: [lv10?.newSkill],
+      elements: lv10?.elements || lv10?.dexElements || data.dexElements || data.compatibleElements || (data.element ? [data.element] : []),
+      skills: lv10?.newSkills || [lv10?.newSkill],
     },
     {
       stage: 3,
@@ -87,6 +89,7 @@ function getStageList(speciesKey, data) {
       name: lv20?.name || '최종 진화',
       condition: 'Lv.20 + 진화의 돌',
       description: lv20?.description || '',
+      elements: lv20?.elements || lv20?.dexElements || data.dexElements || data.compatibleElements || (data.element ? [data.element] : []),
       skills: lv20?.newSkills || [lv20?.newSkill],
     },
   ].filter(stage => stage.appearanceId);
@@ -129,6 +132,20 @@ function getAffinitySummary(element) {
     strong: `${elementIconMap[guide.element] || ''} ${guide.element} > ${elementIconMap[guide.strong] || ''} ${guide.strong}`,
     weak: `${elementIconMap[guide.weak] || ''} ${guide.weak} > ${elementIconMap[guide.element] || ''} ${guide.element}`,
   };
+}
+
+
+// M25F_MULTI_ELEMENT_DEX_PATCH
+// 진화 단계별 도감 표시 속성을 지원합니다. 실제 전투 element는 바꾸지 않고 도감 배지만 복수 표시할 수 있습니다.
+function getDexDisplayElements(entry) {
+  const rawElements = entry?.elements
+    || entry?.stageElements
+    || entry?.speciesData?.dexElements
+    || entry?.speciesData?.compatibleElements
+    || (entry?.speciesData?.element ? [entry.speciesData.element] : []);
+
+  const list = Array.isArray(rawElements) ? rawElements : [rawElements];
+  return [...new Set(list.filter(Boolean))];
 }
 
 function buildDexEntries(speciesEntries) {
@@ -199,7 +216,9 @@ function PetDexPage() {
 
   const selectedEntry = dexEntries.find(entry => entry.id === selectedDexId) || fallbackSelectedEntry;
   const selectedSpeciesData = selectedEntry?.speciesData || {};
-  const selectedElement = selectedSpeciesData.element;
+  const selectedElements = getDexDisplayElements(selectedEntry);
+
+  const selectedElement = selectedElements[0] || (selectedSpeciesData.element);
   const selectedElementColor = elementColorMap[selectedElement] || '#495057';
   const selectedImageSrc = selectedEntry ? petImageMap[`${selectedEntry.appearanceId}_idle`] : null;
   const selectedBattleImageSrc = selectedEntry
@@ -231,6 +250,7 @@ function PetDexPage() {
         entry.name,
         entry.speciesData?.name,
         entry.speciesData?.element,
+        ...getDexDisplayElements(entry),
         stageLabelMap[entry.stage],
         skills,
       ].join(' ').toLowerCase();
@@ -567,7 +587,15 @@ function PetDexPage() {
                     <div>
                       <h2 className="detail-name">{selectedClassUnlocked ? selectedEntry.name : '???'}</h2>
                       <div className="pill-row">
-                        <span className="pill" style={{ background: selectedElementColor }}>{elementIconMap[selectedElement] || ''} {selectedElement || '속성 없음'}</span>
+                        {selectedElements.length > 0 ? (
+                          selectedElements.map(element => (
+                            <span key={element} className="pill" style={{ background: elementColorMap[element] || '#495057' }}>
+                              {elementIconMap[element] || ''} {element}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="pill" style={{ background: selectedElementColor }}>{elementIconMap[selectedElement] || ''} {selectedElement || '속성 없음'}</span>
+                        )}
                         <span className="pill" style={{ background: '#495057' }}>{stageLabelMap[selectedEntry.stage]} 단계</span>
                       </div>
                       <p className="detail-sub">
