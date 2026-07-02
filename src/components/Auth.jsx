@@ -278,6 +278,14 @@ const ModalContent = styled.div`
   @media (max-height: 760px) {
     padding: 1rem;
   }
+
+  /* M37_ACCEPT_MODAL_COMPACT_PATCH */
+  @media (orientation: landscape) and (max-height: 850px), (max-width: 820px) {
+    padding: 0.72rem;
+    max-height: calc(100dvh - 18px);
+    width: min(94vw, 760px);
+    overflow-y: auto;
+  }
 `;
 
 const OpponentItem = styled.div`
@@ -423,6 +431,236 @@ const StyledButton = styled.button`
   transition: background-color 0.2s; color: white;
   &:disabled { background-color: #6c757d; cursor: not-allowed; }
 `;
+
+const AcceptModalTitle = styled.h2`
+  margin: 0 0 0.55rem;
+  color: #dc3545;
+  font-size: clamp(1rem, 2.4vw, 1.18rem);
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+`;
+
+const AcceptTeamsLayout = styled.div`
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+
+  @media (orientation: landscape) and (min-width: 720px) {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+`;
+
+const AcceptTeamBox = styled.section`
+  background: ${props => props.$mine ? '#f8f9fa' : 'linear-gradient(180deg, #fff9db 0%, #fff4e6 100%)'};
+  border: 2px solid ${props => props.$mine ? '#d0ebff' : '#ffe066'};
+  border-radius: 14px;
+  padding: 0.48rem;
+  box-sizing: border-box;
+
+  h3 {
+    margin: 0 0 0.35rem;
+    font-size: 0.82rem;
+    font-weight: 900;
+    color: ${props => props.$mine ? '#1864ab' : '#7c4a03'};
+    text-align: center;
+  }
+`;
+
+const AcceptPetRow = styled.div`
+  display: grid;
+  grid-template-columns: repeat(${props => props.$slots || 3}, minmax(0, 1fr));
+  gap: 0.36rem;
+`;
+
+const AcceptPetMiniCard = styled.div`
+  min-width: 0;
+  min-height: 86px;
+  border-radius: 12px;
+  border: 1px solid ${props => props.$empty ? '#dee2e6' : props.$mine ? '#74c0fc' : 'rgba(245,159,0,0.35)'};
+  background: ${props => props.$empty ? '#f8f9fa' : 'rgba(255,255,255,0.95)'};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  padding: 0.34rem 0.28rem;
+  box-sizing: border-box;
+  text-align: center;
+
+  img {
+    width: 42px;
+    height: 42px;
+    object-fit: contain;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid ${props => props.$mine ? '#d0ebff' : '#fff3bf'};
+    flex-shrink: 0;
+  }
+
+  .empty-mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #adb5bd;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 1.25rem;
+  }
+
+  .pet-name {
+    display: block;
+    width: 100%;
+    color: #343a40;
+    font-size: 0.76rem;
+    font-weight: 900;
+    line-height: 1.12;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pet-stat {
+    display: block;
+    width: 100%;
+    color: #868e96;
+    font-size: 0.63rem;
+    font-weight: 800;
+    line-height: 1.12;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @media (max-height: 720px) {
+    min-height: 78px;
+
+    img,
+    .empty-mark {
+      width: 36px;
+      height: 36px;
+    }
+
+    .pet-name {
+      font-size: 0.72rem;
+    }
+
+    .pet-stat {
+      font-size: 0.6rem;
+    }
+  }
+`;
+
+const AcceptChoiceGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(${props => props.$cols || 3}, minmax(0, 1fr));
+  gap: 0.45rem;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 14px;
+  padding: 0.52rem;
+  margin-bottom: 0.55rem;
+
+  @media (max-width: 680px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const AcceptChoiceColumn = styled.div`
+  min-width: 0;
+  text-align: left;
+
+  h4 {
+    margin: 0 0 0.28rem;
+    color: #343a40;
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  .choice-list {
+    display: grid;
+    gap: 0.28rem;
+    max-height: clamp(120px, 23dvh, 180px);
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+`;
+
+const AcceptCompactPetButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.36rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.28rem 0.34rem;
+  border-radius: 10px;
+  border: ${props => props.$selected ? '2px solid #20c997' : '1.5px solid #e9ecef'};
+  background: ${props => props.$selected ? '#e6fcf5' : props.$blocked ? '#f1f3f5' : '#fff'};
+  opacity: ${props => props.$blocked ? 0.42 : 1};
+  cursor: ${props => props.$blocked ? 'not-allowed' : 'pointer'};
+  text-align: left;
+  box-sizing: border-box;
+
+  img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    border-radius: 50%;
+    background: #f8f9fa;
+    flex-shrink: 0;
+  }
+
+  strong {
+    display: block;
+    color: #343a40;
+    font-size: 0.74rem;
+    line-height: 1.12;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  span {
+    display: block;
+    color: #868e96;
+    font-size: 0.6rem;
+    font-weight: 800;
+    line-height: 1.12;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+`;
+
+const AcceptNotice = styled.div`
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  background: ${props => props.$danger ? '#fff5f5' : '#f8f9fa'};
+  border: 1px solid ${props => props.$danger ? '#ffc9c9' : '#e9ecef'};
+  color: ${props => props.$danger ? '#c92a2a' : '#495057'};
+`;
+
+const AcceptActionRow = styled.div`
+  display: flex;
+  gap: 0.55rem;
+  position: sticky;
+  bottom: -0.72rem;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(255,255,255,0.4), #fff 32%);
+  padding-top: 0.45rem;
+  margin-top: 0.05rem;
+`;
+
 // ▲▲▲ 추가 끝 ▲▲▲
 
 function Auth({ user }) {
@@ -964,98 +1202,108 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     const insufficientPets = alivePets.length < targetTeamSize;
                     const acceptDisabled = myPetFainted || insufficientPets || uniqueSelectedCount < targetTeamSize;
 
+                    const selectedPetsForPreview = selectedIdsForAccept
+                        .map(id => alivePets.find(pet => pet.id === id))
+                        .filter(Boolean);
+
+                    const renderMiniPetCard = (pet, index, mine = false) => {
+                        if (!pet) {
+                            return (
+                                <AcceptPetMiniCard key={`empty-pet-${index}`} $empty $mine={mine}>
+                                    <span className="empty-mark">+</span>
+                                    <span className="pet-name">빈 칸</span>
+                                    <span className="pet-stat">펫 선택 필요</span>
+                                </AcceptPetMiniCard>
+                            );
+                        }
+
+                        const spValue = pet.sp ?? pet.currentSp ?? '?';
+                        const maxSpValue = pet.maxSp ?? '?';
+
+                        return (
+                            <AcceptPetMiniCard key={pet.id || `pet-${index}`} $mine={mine}>
+                                <img
+                                    src={petImageMap[`${pet.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
+                                    alt={pet.name || `펫 ${index + 1}`}
+                                />
+                                <span className="pet-name">{pet.name || '이름 없는 펫'}</span>
+                                <span className="pet-stat">Lv.{pet.level ?? '?'} · HP {pet.hp ?? '?'}/{pet.maxHp ?? '?'}</span>
+                                <span className="pet-stat">SP {spValue}/{maxSpValue}</span>
+                            </AcceptPetMiniCard>
+                        );
+                    };
+
                     const renderPetChoice = (slotLabel, selectedId, onSelect, blockedIds = []) => (
-                        <div style={{ marginBottom: '0.55rem', textAlign: 'left' }}>
-                            <h4 style={{ margin: '0 0 0.3rem', color: '#343a40', fontSize: '0.88rem' }}>{slotLabel}</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: '0.55rem' }}>
+                        <AcceptChoiceColumn>
+                            <h4>{slotLabel}</h4>
+                            <div className="choice-list">
                                 {alivePets.map(pet => {
                                     const isSelected = selectedId === pet.id;
                                     const isBlocked = Array.isArray(blockedIds) ? blockedIds.includes(pet.id) : blockedIds === pet.id;
+                                    const spValue = pet.sp ?? pet.currentSp ?? '?';
+                                    const maxSpValue = pet.maxSp ?? '?';
+
                                     return (
-                                        <button
+                                        <AcceptCompactPetButton
                                             key={pet.id}
                                             type="button"
                                             onClick={() => !isBlocked && onSelect(pet.id)}
                                             disabled={isBlocked}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem',
-                                                padding: '0.42rem',
-                                                borderRadius: '12px',
-                                                border: isSelected ? '3px solid #20c997' : '2px solid #e9ecef',
-                                                background: isSelected ? '#e6fcf5' : isBlocked ? '#f1f3f5' : 'white',
-                                                opacity: isBlocked ? 0.45 : 1,
-                                                cursor: isBlocked ? 'not-allowed' : 'pointer',
-                                                textAlign: 'left',
-                                            }}
+                                            $selected={isSelected}
+                                            $blocked={isBlocked}
                                         >
                                             <img
-                                                src={petImageMap[`${pet.appearanceId}_idle`]}
+                                                src={petImageMap[`${pet.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
                                                 alt={pet.name}
-                                                style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa', flexShrink: 0 }}
                                             />
-                                            <div>
-                                                <strong style={{ display: 'block', color: '#343a40', fontSize: '0.86rem' }}>{pet.name}</strong>
-                                                <span style={{ display: 'block', color: '#868e96', fontSize: '0.74rem', fontWeight: 800 }}>
-                                                    Lv.{pet.level} · HP {pet.hp}/{pet.maxHp}
-                                                </span>
+                                            <div style={{ minWidth: 0 }}>
+                                                <strong>{pet.name}</strong>
+                                                <span>Lv.{pet.level} · HP {pet.hp}/{pet.maxHp}</span>
+                                                <span>SP {spValue}/{maxSpValue}</span>
                                             </div>
-                                        </button>
+                                        </AcceptCompactPetButton>
                                     );
                                 })}
                             </div>
-                        </div>
+                        </AcceptChoiceColumn>
                     );
 
                     return (
                         <ModalBackground>
-                            <ModalContent style={{ maxWidth: needsBenchSelect ? '640px' : '400px' }}>
-                                <h2 style={{ color: '#dc3545', margin: '0 0 1rem 0' }}>📢 {battleChallenge?.challenger?.name || '상대'}님의 도전장이 도착했습니다!</h2>
+                            <ModalContent style={{ maxWidth: needsBenchSelect ? '760px' : '420px' }}>
+                                <AcceptModalTitle>📢 {battleChallenge?.challenger?.name || '상대'}님의 도전장이 도착했습니다!</AcceptModalTitle>
 
-                                <OpponentItem>
-                                    <div className="user-info">
-                                        {/* M12_ACCEPT_MODAL_CHALLENGER_TEAM_PREVIEW_RENDER */}
-                                        <ChallengerTeamPreview>
-                                            <p className="preview-title">상대 출전 펫</p>
-                                            <div className="preview-grid">
-                                                {challengerTeamForPreview.map((pet, index) => (
-                                                    <ChallengerPetCard key={pet.id || `challenger-pet-${index}`}>
-                                                        <img
-                                                            src={petImageMap[`${pet.appearanceId}_idle`] || petImageMap['slime_lv1_idle']}
-                                                            alt={pet.name || `상대 펫 ${index + 1}`}
-                                                        />
-                                                        <div className="pet-meta">
-                                                            <strong className="pet-name">{pet.name || '이름 없는 펫'}</strong>
-                                                            <span className="pet-level">Lv.{pet.level ?? '?'}</span>
-                                                            <span className="pet-hp">HP {pet.hp ?? '?'}/{pet.maxHp ?? '?'}</span>
-                                                        </div>
-                                                    </ChallengerPetCard>
-                                                ))}
-                                            </div>
-                                        </ChallengerTeamPreview>
-                                    </div>
-                                </OpponentItem>
+                                <AcceptTeamsLayout>
+                                    <AcceptTeamBox>
+                                        <h3>상대 펫</h3>
+                                        <AcceptPetRow $slots={targetTeamSize}>
+                                            {Array.from({ length: targetTeamSize }).map((_, index) => renderMiniPetCard(challengerTeamForPreview[index], index, false))}
+                                        </AcceptPetRow>
+                                    </AcceptTeamBox>
+
+                                    <AcceptTeamBox $mine>
+                                        <h3>나의 펫</h3>
+                                        <AcceptPetRow $slots={targetTeamSize}>
+                                            {Array.from({ length: targetTeamSize }).map((_, index) => renderMiniPetCard(selectedPetsForPreview[index], index, true))}
+                                        </AcceptPetRow>
+                                    </AcceptTeamBox>
+                                </AcceptTeamsLayout>
 
                                 {myPetFainted && (
-                                    <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center' }}>
+                                    <AcceptNotice $danger>
                                         ⚠️ 내 펫이 모두 기절 상태입니다. 펫 센터에서 치료 후 수락할 수 있습니다.
-                                    </div>
+                                    </AcceptNotice>
                                 )}
 
                                 {!myPetFainted && insufficientPets && (
-                                    <div style={{ background: '#fff5f5', border: '1px solid #ffc9c9', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#c92a2a', textAlign: 'center', fontWeight: 800 }}>
-                                        ⚠️ 상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 수락하려면 살아있는 펫이 {targetTeamSize}마리 필요합니다.
-                                    </div>
+                                    <AcceptNotice $danger>
+                                        ⚠️ 상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 살아있는 펫이 {targetTeamSize}마리 필요합니다.
+                                    </AcceptNotice>
                                 )}
 
                                 {!myPetFainted && needsBenchSelect && !insufficientPets && (
-                                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '14px', padding: '0.65rem', marginBottom: '0.75rem' }}>
-                                        <p style={{ margin: '0 0 0.8rem', color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
-                                            상대가 {targetTeamSize} vs {targetTeamSize}로 신청했습니다. 나도 {targetTeamSize}마리 팀을 선택하세요.
-                                        </p>
-
-                                        {renderPetChoice('1번 선발 펫', selectedLeadId, (petId) => {
+                                    <AcceptChoiceGrid $cols={targetTeamSize}>
+                                        {renderPetChoice('펫1 선택', selectedLeadId, (petId) => {
                                             const fallbackBenchId = selectedBenchId === petId
                                                 ? alivePets.find(p => p.id !== petId && p.id !== selectedThirdId)?.id || null
                                                 : selectedBenchId;
@@ -1065,40 +1313,40 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                                             setAcceptBattleTeamDraft(prev => ({ ...prev, leadPetId: petId, benchPetId: fallbackBenchId, thirdPetId: fallbackThirdId }));
                                         }, [])}
 
-                                        {targetTeamSize >= 2 && renderPetChoice('2번 대기 펫', selectedBenchId, (petId) => {
+                                        {targetTeamSize >= 2 && renderPetChoice('펫2 선택', selectedBenchId, (petId) => {
                                             const fallbackThirdId = selectedThirdId === petId ? null : selectedThirdId;
                                             setAcceptBattleTeamDraft(prev => ({ ...prev, benchPetId: petId, thirdPetId: fallbackThirdId }));
                                         }, [selectedLeadId].filter(Boolean))}
 
-                                        {targetTeamSize >= 3 && renderPetChoice('3번 대기 펫', selectedThirdId, (petId) => {
+                                        {targetTeamSize >= 3 && renderPetChoice('펫3 선택', selectedThirdId, (petId) => {
                                             setAcceptBattleTeamDraft(prev => ({ ...prev, thirdPetId: petId }));
                                         }, [selectedLeadId, selectedBenchId].filter(Boolean))}
-                                    </div>
+                                    </AcceptChoiceGrid>
                                 )}
 
                                 {!myPetFainted && !needsBenchSelect && !insufficientPets && (
-                                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px', padding: '0.6rem 0.8rem', marginBottom: '0.8rem', fontSize: '0.9rem', color: '#495057', textAlign: 'center', fontWeight: 700 }}>
+                                    <AcceptNotice>
                                         {alivePets.length === 1
                                             ? `내 펫이 1마리뿐이라 ${alivePets[0].name}이(가) 바로 참가합니다.`
                                             : '상대가 1 vs 1로 신청했습니다. 기존 파트너 펫으로 참가합니다.'}
-                                    </div>
+                                    </AcceptNotice>
                                 )}
 
-                                <div style={{ display: 'flex', gap: '10px' }}>
+                                <AcceptActionRow>
                                     <StyledButton
                                         onClick={handleAcceptBattle}
                                         disabled={acceptDisabled}
-                                        style={{ flex: 1, backgroundColor: acceptDisabled ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1.1rem', cursor: acceptDisabled ? 'not-allowed' : 'pointer' }}
+                                        style={{ flex: 1, backgroundColor: acceptDisabled ? '#adb5bd' : '#20c997', padding: '10px', fontSize: '1rem', cursor: acceptDisabled ? 'not-allowed' : 'pointer' }}
                                     >
-                                        ⚔️ 수락
+                                        ⚔️ 수락하기
                                     </StyledButton>
                                     <StyledButton
                                         onClick={handleRejectBattle}
-                                        style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1.1rem' }}
+                                        style={{ flex: 1, backgroundColor: '#adb5bd', padding: '10px', fontSize: '1rem' }}
                                     >
-                                        거절
+                                        거절하기
                                     </StyledButton>
-                                </div>
+                                </AcceptActionRow>
                             </ModalContent>
                         </ModalBackground>
                     );

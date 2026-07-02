@@ -1,4 +1,5 @@
 // src/features/battle/BattleStatusEffect.jsx
+// M32_SIDE_PANEL_HEIGHT_THRESHOLD_PATCH: 태블릿 가로 화면은 높이 1000px 이하까지 오른쪽 문제 패널을 사용합니다.
 
 import React from 'react';
 
@@ -571,6 +572,169 @@ function BattleStatusEffect({
             75% { transform: translate(-1px, -2px) rotate(-5deg) scale(1.08); }
           }
 
+
+          /* M28_RESTORE_STATUS_BADGE_READABILITY_PATCH
+             전투장 아래 문제 영역 구조로 복귀했을 때, CC 카드는 전투장 위쪽 바깥으로 살짝 나와도 보이게 하고
+             v5b에서 과하게 작아진 상태 카드와 오라를 다시 읽을 수 있는 크기로 되돌립니다. */
+          @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -22px !important;
+              transform: translateX(-50%) scale(0.92) !important;
+              transform-origin: top center !important;
+              padding: 0.38rem 0.66rem !important;
+              max-width: min(360px, 72vw);
+              white-space: nowrap;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(310px, 46dvh) !important;
+              height: min(310px, 46dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.45rem !important;
+            }
+          }
+
+          @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -18px !important;
+              transform: translateX(-50%) scale(0.84) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(270px, 42dvh) !important;
+              height: min(270px, 42dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.18rem !important;
+            }
+          }
+
+          /* M29_SIDE_PANEL_STATUS_OVERFLOW_PATCH
+             문제 영역이 오른쪽으로 이동한 가로 태블릿 화면에서 CC 카드가 전투장 위로 살짝 삐져나와도 보이게 합니다.
+             v5b처럼 너무 작게 만들지 않고, 읽을 수 있는 크기를 유지합니다. */
+          @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+  
+          /* M31_CC_CARD_BALANCE_PATCH
+             CC/상태 카드 크기 균형 보정.
+             - 기본/하단 문제 레이아웃에서는 기존 battle scale이 너무 커서 상태창과 화면 바깥을 침범하므로 줄입니다.
+             - 오른쪽 문제 패널 레이아웃에서는 너무 작아 보이지 않도록 적당히 키웁니다. */
+
+          /* 기본 battle 상태: 하단 문제 레이아웃, 큰 화면, 세로 화면에서 과대 표시 방지 */
+          .battleStatusLayer--battle .battleStatusBadge {
+            top: -30px !important;
+            transform: translateX(-50%) scale(0.9) !important;
+            transform-origin: top center !important;
+            padding: 0.38rem 0.68rem !important;
+            max-width: min(360px, 78vw);
+            white-space: nowrap;
+            z-index: 48;
+          }
+
+          .battleStatusLayer--battle .battleStatusAura {
+            width: min(330px, 54dvh) !important;
+            height: min(330px, 54dvh) !important;
+          }
+
+          .battleStatusLayer--battle .battleStatusAura span {
+            font-size: 2.55rem !important;
+          }
+
+          /* 오른쪽 문제 패널 레이아웃: 태블릿 가로 화면에서는 읽히는 정도로 살짝 작게 */
+          @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+            .battleStatusLayer {
+              overflow: visible;
+            }
+
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -20px !important;
+              transform: translateX(-50%) scale(0.86) !important;
+              padding: 0.34rem 0.6rem !important;
+              max-width: min(330px, 62vw);
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(285px, 42dvh) !important;
+              height: min(285px, 42dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.2rem !important;
+            }
+          }
+
+          @media (orientation: landscape) and (max-height: 700px) and (min-width: 920px) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -16px !important;
+              transform: translateX(-50%) scale(0.8) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(250px, 39dvh) !important;
+              height: min(250px, 39dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2rem !important;
+            }
+          }
+
+          @media (max-width: 900px) and (orientation: portrait) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -22px !important;
+              transform: translateX(-50%) scale(0.8) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(260px, 34vh) !important;
+              height: min(260px, 34vh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.05rem !important;
+            }
+          }
+          .battleStatusLayer {
+              overflow: visible;
+            }
+
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -24px !important;
+              transform: translateX(-50%) scale(0.9) !important;
+              transform-origin: top center !important;
+              padding: 0.36rem 0.64rem !important;
+              max-width: min(340px, 70vw);
+              white-space: nowrap;
+              z-index: 48;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(300px, 43dvh) !important;
+              height: min(300px, 43dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.35rem !important;
+            }
+          }
+
+          @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: -18px !important;
+              transform: translateX(-50%) scale(0.82) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(255px, 40dvh) !important;
+              height: min(255px, 40dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.05rem !important;
+            }
+          }
           .battleStatusLayer {
             position: absolute;
             inset: 0;
@@ -598,6 +762,72 @@ function BattleStatusEffect({
             border-width: 2px;
           }
 
+
+          /* M27_TABLET_STATUS_CARD_OVERFLOW_FIX_PATCH
+             낮은 높이의 가로 태블릿에서는 큰 CC/상태 카드와 오라가 전투장 상단에서 잘리지 않도록
+             카드 위치를 아래로 내리고 전체 시각효과를 조금 줄입니다. */
+          @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: 8px !important;
+              transform: translateX(-50%) scale(0.78) !important;
+              transform-origin: top center !important;
+              padding: 0.3rem 0.52rem !important;
+              max-width: min(260px, 70vw);
+              white-space: nowrap;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(240px, 35dvh) !important;
+              height: min(240px, 35dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 2.05rem !important;
+            }
+
+            .battleStatusLayer--battle .battleMiniStatusTray {
+              bottom: 8px;
+              gap: 0.18rem;
+              padding: 0.1rem 0.16rem;
+            }
+
+            .battleStatusLayer--battle .battleMiniStatus {
+              min-width: 26px;
+              height: 26px;
+              padding: 0 0.24rem;
+              border-width: 1.5px;
+            }
+
+            .battleStatusLayer--battle .battleMiniStatus--elementTrace {
+              min-width: 24px;
+              width: 24px;
+              height: 24px;
+            }
+
+            .battleStatusLayer--battle .battleMiniStatusIcon {
+              font-size: 0.9rem;
+            }
+
+            .battleStatusLayer--battle .battleMiniStatusLabel {
+              font-size: 0.5rem;
+            }
+          }
+
+          @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+            .battleStatusLayer--battle .battleStatusBadge {
+              top: 6px !important;
+              transform: translateX(-50%) scale(0.7) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura {
+              width: min(205px, 33dvh) !important;
+              height: min(205px, 33dvh) !important;
+            }
+
+            .battleStatusLayer--battle .battleStatusAura span {
+              font-size: 1.85rem !important;
+            }
+          }
           .battleMiniStatusTray {
             position: absolute;
             left: 50%;

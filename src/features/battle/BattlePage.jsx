@@ -1,4 +1,5 @@
 // src/features/battle/BattlePage.jsx
+// M32_SIDE_PANEL_HEIGHT_THRESHOLD_PATCH: 태블릿 가로 화면은 높이 1000px 이하까지 오른쪽 문제 패널을 사용합니다.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
@@ -903,19 +904,44 @@ const AvatarBox = styled.div`
 `;
 
 const InfoBox = styled.div`
-  width: 240px; 
-  padding: 1rem; 
+  width: 240px;
+  padding: 1rem;
   border: 2px solid;
-  border-radius: 16px; 
-  background-color: rgba(255,255,255,0.9); 
+  border-radius: 16px;
+  background-color: rgba(255,255,255,0.9);
   backdrop-filter: blur(5px);
-  display: flex; 
-  flex-direction: column; 
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  
-  span { font-weight: 800; color: #343a40; font-size: 1.05rem; margin-bottom: 0.2rem; }
-  @media (max-width: 768px) { width: 170px; padding: 0.8rem; span { font-size: 0.9rem; } }
+
+  span {
+    font-weight: 800;
+    color: #343a40;
+    font-size: 1.05rem;
+    margin-bottom: 0.2rem;
+  }
+
+  @media (max-width: 768px) {
+    width: 170px;
+    padding: 0.8rem;
+
+    span {
+      font-size: 0.9rem;
+    }
+  }
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    width: 172px;
+    padding: 0.55rem;
+    gap: 0.28rem;
+    border-radius: 12px;
+
+    span {
+      font-size: 0.82rem;
+      margin-bottom: 0;
+    }
+  }
 `;
 const MyInfoBox = styled(InfoBox)` border-color: #339af0; `;
 const OpponentInfoBox = styled(InfoBox)` border-color: #fa5252; `;
@@ -947,24 +973,76 @@ const RechargeEffect = styled.div`
 `;
 
 const Arena = styled.div`
-  max-width: 1200px; margin: 2rem auto; padding: 2rem; background-color: #f0f8ff;
-  border-radius: 24px; border: 5px solid #a5d8ff; overflow: hidden;
+  max-width: 1200px;
+  margin: 1rem auto 2rem;
+  padding: 1.25rem;
+  background-color: #f0f8ff;
+  border-radius: 24px;
+  border: 5px solid #a5d8ff;
+  overflow: visible;
   box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-  transform-origin: top center;
-  transform: scale(${props => props.$scale || 1});
-  transition: transform 0.2s ease;
-  margin-bottom: ${props => props.$scale ? `calc(2rem - (1 - ${props.$scale}) * 800px)` : '2rem'};
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    width: 100vw;
+    max-width: none;
+    min-height: auto;
+    margin: 0;
+    padding: 0.45rem;
+    border-radius: 0;
+    border-width: 0;
+    box-shadow: none;
+  }
+
+  @media (max-width: 900px) {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+  }
 `;
 
-const ScaleControlBar = styled.div`
-  max-width: 1200px; margin: 0 auto 0.5rem; padding: 0.5rem 1.5rem;
-  display: flex; align-items: center; gap: 1rem;
-  background: rgba(255,255,255,0.8); border-radius: 12px;
-  border: 1px solid #d0ebff; font-size: 0.85rem; font-weight: 700; color: #495057;
+const BattleUtilityBar = styled.div`
+  max-width: 1200px;
+  margin: 0.35rem auto 0.35rem;
+  padding: 0 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem;
+  pointer-events: auto;
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    width: 100vw;
+    max-width: none;
+    margin: 0;
+    padding: 0.25rem 0.45rem;
+    background: rgba(240, 248, 255, 0.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(51, 154, 240, 0.18);
+  }
 `;
 
-const ScaleSlider = styled.input`
-  flex: 1; accent-color: #339af0; cursor: pointer;
+const UtilityButton = styled.button`
+  padding: 0.38rem 0.7rem;
+  font-size: 0.82rem;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid ${props => props.$active ? '#51cf66' : '#339af0'};
+  background: ${props => props.$active ? '#ebfbee' : '#ffffff'};
+  color: ${props => props.$active ? '#2b8a3e' : '#1864ab'};
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+
+  &:active {
+    transform: translateY(1px);
+  }
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    padding: 0.32rem 0.62rem;
+    font-size: 0.76rem;
+  }
 `;
 
 // M21_RANDOM_CSS_BATTLE_BACKGROUNDS_PATCH
@@ -1184,7 +1262,7 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
 const BattleField = styled.div`
   height: 550px;
   position: relative;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
   overflow: visible;
   border-radius: 20px;
   border: 3px solid;
@@ -1218,11 +1296,40 @@ const BattleField = styled.div`
   > * {
     z-index: 1;
   }
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    height: clamp(315px, 48dvh, 380px);
+    margin-bottom: 0.45rem;
+    border-radius: 14px;
+    border-width: 2px;
+
+    &::before {
+      border-radius: 12px;
+      background-size: 18px 18px;
+    }
+
+    &::after {
+      bottom: 20px;
+      height: 70px;
+      border-width: 3px;
+    }
+  }
 `;
 
 const PetContainerWrapper = styled.div`
-  position: absolute; width: 400px; height: 400px;
-  @media (max-width: 768px) { width: 300px; height: 300px; }
+  position: absolute;
+  width: 400px;
+  height: 400px;
+
+  @media (max-width: 768px) {
+    width: 300px;
+    height: 300px;
+  }
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    width: clamp(190px, 26dvh, 245px);
+    height: clamp(190px, 26dvh, 245px);
+  }
 `;
 const MyPetContainerWrapper = styled(PetContainerWrapper)` bottom: 10px; left: 10px; `;
 const OpponentPetContainerWrapper = styled(PetContainerWrapper)` top: 10px; right: 10px; `;
@@ -1415,28 +1522,79 @@ const ReactionFlashOverlay = styled.div`
 `;
 
 const QuizArea = styled.div`
-  padding: 1.5rem; background-color: #fff; border: 2px solid #339af0;
-  border-radius: 20px; display: grid; grid-template-columns: 1fr 320px;
-  gap: 2rem; min-height: 220px; box-shadow: 0 4px 15px rgba(51, 154, 240, 0.1);
-  
-  @media (max-width: 900px) { grid-template-columns: 1fr; }
+  padding: 1.15rem;
+  background-color: #fff;
+  border: 2px solid #339af0;
+  border-radius: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  gap: 1.25rem;
+  min-height: 190px;
+  box-shadow: 0 4px 15px rgba(51, 154, 240, 0.1);
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 31vw);
+    gap: 0.6rem;
+    min-height: 0;
+    padding: 0.65rem;
+    border-radius: 14px;
+  }
 `;
 
-const LogText = styled.p` 
-  font-size: 1.3rem; font-weight: 700; min-height: 60px; margin: 0 0 1rem 0; color: #343a40;
-  display: flex; align-items: center; white-space: pre-line;
+const LogText = styled.p`
+  font-size: 1.2rem;
+  font-weight: 700;
+  min-height: 42px;
+  margin: 0 0 0.65rem 0;
+  color: #343a40;
+  display: flex;
+  align-items: center;
+  white-space: pre-line;
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    font-size: 0.95rem;
+    min-height: 28px;
+    margin-bottom: 0.35rem;
+    line-height: 1.35;
+  }
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    font-size: 0.86rem;
+    min-height: 24px;
+    margin-bottom: 0.28rem;
+    line-height: 1.28;
+  }
 `;
 
 // M19_RIGHT_ACTION_QUIZ_PANEL_PATCH
 const BattlePrompt = styled.h3`
-  margin: 0.75rem 0 0;
-  padding: 0.9rem 1rem;
+  margin: 0.65rem 0 0;
+  padding: 0.85rem 1rem;
   border-radius: 16px;
   background: #f8f9fa;
   border: 2px solid #e9ecef;
   color: #212529;
   font-size: 1.15rem;
   line-height: 1.5;
+
+  @media (orientation: landscape) and (max-height: 760px) {
+    margin-top: 0.35rem;
+    padding: 0.56rem 0.7rem;
+    border-radius: 12px;
+    font-size: 0.94rem;
+    line-height: 1.35;
+  }
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    margin-top: 0.32rem;
+    padding: 0.52rem 0.62rem;
+    font-size: 0.88rem;
+    line-height: 1.32;
+  }
 `;
 
 const RightActionPanel = styled.div`
@@ -1447,7 +1605,7 @@ const RightActionPanel = styled.div`
 `;
 
 const RightTaskCard = styled.div`
-  padding: 0.95rem;
+  padding: 0.9rem;
   border-radius: 16px;
   background: #f8f9fa;
   border: 2px solid #dee2e6;
@@ -1455,8 +1613,19 @@ const RightTaskCard = styled.div`
   font-weight: 900;
   text-align: center;
   line-height: 1.5;
-`;
 
+  @media (orientation: landscape) and (max-height: 760px) {
+    padding: 0.62rem;
+    border-radius: 12px;
+    line-height: 1.32;
+  }
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    padding: 0.52rem;
+    border-radius: 11px;
+    line-height: 1.28;
+  }
+`;
 
 const AnswerInput = styled.input`
   width: 100%; padding: 1rem; font-size: 1.2rem; text-align: center;
@@ -1467,6 +1636,10 @@ const AnswerInput = styled.input`
 
 const ActionMenu = styled.div`
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8rem;
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    gap: 0.45rem;
+  }
 `;
 
 const MenuItem = styled.button`
@@ -1481,6 +1654,13 @@ const MenuItem = styled.button`
     border-color: #339af0; 
     color: #1864ab; 
     transform: translateY(-2px); 
+  }
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    min-height: 48px;
+    padding: 0.48rem;
+    font-size: 0.82rem;
+    line-height: 1.22;
   }
 `;
 
@@ -1570,6 +1750,12 @@ const OptionGrid = styled.div`
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-top: 1rem;
+
+
+    @media (orientation: landscape) and (max-height: 760px) {
+        gap: 7px;
+        margin-top: 0.55rem;
+    }
 `;
 
 const OXGrid = styled.div`
@@ -1577,11 +1763,17 @@ const OXGrid = styled.div`
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin-top: 1rem;
+
+
+    @media (orientation: landscape) and (max-height: 760px) {
+        gap: 7px;
+        margin-top: 0.55rem;
+    }
 `;
 
 const OXButton = styled.button`
-    padding: 1.4rem;
-    font-size: 3rem;
+    padding: 1.25rem;
+    font-size: 2.8rem;
     font-weight: 900;
     border: 3px solid ${props => props.$ox === 'O' ? '#ff6b6b' : '#339af0'};
     border-radius: 16px;
@@ -1598,11 +1790,22 @@ const OXButton = styled.button`
     }
     &:active:not(:disabled) { transform: translateY(0) scale(0.97); }
     &:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    @media (orientation: landscape) and (max-height: 760px) {
+        padding: 0.72rem;
+        font-size: 2.15rem;
+        border-radius: 12px;
+    }
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    padding: 0.68rem;
+    font-size: 2rem;
+  }
 `;
 
 const OptionButton = styled.button`
-    padding: 1.2rem;
-    font-size: 1.1rem;
+    padding: 1rem;
+    font-size: 1.02rem;
     font-weight: 800;
     border: 2px solid #dee2e6;
     border-radius: 12px;
@@ -1610,6 +1813,7 @@ const OptionButton = styled.button`
     cursor: pointer;
     transition: all 0.2s;
     color: #495057;
+    word-break: keep-all;
 
     &:hover:not(:disabled) {
         background-color: #e7f5ff;
@@ -1617,16 +1821,335 @@ const OptionButton = styled.button`
         color: #1864ab;
         transform: translateY(-2px);
     }
-    
+
     &:active:not(:disabled) {
         transform: translateY(0);
     }
-    
+
     &:disabled {
         opacity: 0.6;
         cursor: not-allowed;
     }
+
+    @media (orientation: landscape) and (max-height: 760px) {
+        min-height: 58px;
+        padding: 0.56rem;
+        font-size: 0.88rem;
+        line-height: 1.25;
+        border-radius: 10px;
+    }
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    min-height: 54px;
+    padding: 0.48rem;
+    font-size: 0.82rem;
+    line-height: 1.22;
+  }
 `;
+
+// M26_LANDSCAPE_SIDE_PANEL_LAYOUT_PATCH
+// 낮은 높이의 가로 태블릿에서는 전투장과 문제/선택지를 좌우로 배치합니다.
+// 세로모드와 넉넉한 화면에서는 기존 상하 배치를 유지합니다.
+// M29_SIDE_PANEL_FINAL_FIX_PATCH
+// 낮은 높이의 가로 태블릿에서는 전투장은 왼쪽, 문제/선택지는 오른쪽에 배치합니다.
+// CC/상태 카드는 전투장 바깥으로 살짝 삐져나와도 보이도록 overflow를 열어 둡니다.
+const BattleContentGrid = styled.div`
+  display: block;
+
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 31vw, 345px);
+    gap: 0.55rem;
+    align-items: stretch;
+    overflow: visible;
+
+    ${BattleField} {
+      height: clamp(390px, calc(100dvh - 112px), 520px);
+      margin-bottom: 0;
+      overflow: visible;
+    }
+
+    ${QuizArea} {
+      height: clamp(390px, calc(100dvh - 112px), 520px);
+      min-height: 0;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 0.55rem;
+      align-content: start;
+      padding: 0.62rem;
+      overflow-y: auto;
+      overflow-x: visible;
+      overscroll-behavior: contain;
+    }
+
+    ${PetContainerWrapper} {
+      width: clamp(285px, 45dvh, 360px);
+      height: clamp(285px, 45dvh, 360px);
+    }
+
+    ${InfoBox} {
+      width: clamp(150px, 17vw, 185px);
+      padding: 0.48rem;
+      gap: 0.24rem;
+      border-radius: 12px;
+    }
+
+    ${InfoBox} span {
+      font-size: 0.78rem;
+      margin-bottom: 0;
+    }
+
+    ${AvatarBox} {
+      gap: 3px;
+    }
+
+    ${AvatarBox} .avatar-img-frame {
+      width: 42px;
+      height: 42px;
+      border-width: 2px;
+      border-radius: 10px;
+    }
+
+    ${AvatarBox} .name-badge {
+      font-size: 0.64rem;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+  }
+
+  @media (orientation: landscape) and (max-height: 700px) and (min-width: 920px) {
+    grid-template-columns: minmax(0, 1fr) clamp(288px, 30vw, 330px);
+    gap: 0.45rem;
+
+    ${BattleField} {
+      height: clamp(360px, calc(100dvh - 106px), 480px);
+    }
+
+    ${QuizArea} {
+      height: clamp(360px, calc(100dvh - 106px), 480px);
+      padding: 0.55rem;
+      gap: 0.45rem;
+    }
+
+    ${PetContainerWrapper} {
+      width: clamp(260px, 41dvh, 325px);
+      height: clamp(260px, 41dvh, 325px);
+    }
+
+    ${InfoBox} {
+      width: clamp(142px, 16vw, 172px);
+      padding: 0.42rem;
+    }
+  }
+
+  @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+    grid-template-columns: minmax(0, 1fr) clamp(276px, 29vw, 315px);
+
+    ${BattleField} {
+      height: clamp(330px, calc(100dvh - 96px), 430px);
+    }
+
+    ${QuizArea} {
+      height: clamp(330px, calc(100dvh - 96px), 430px);
+    }
+
+    ${PetContainerWrapper} {
+      width: clamp(235px, 38dvh, 285px);
+      height: clamp(235px, 38dvh, 285px);
+    }
+  }
+
+  /* M35_RIGHT_PANEL_READABLE_FONT_PATCH
+     태블릿 가로 오른쪽 문제 패널에서 학생이 실제로 읽고 누르는 영역만 선택적으로 키웁니다. */
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    ${QuizArea} {
+      font-size: 0.95rem;
+    }
+
+    ${LogText} {
+      font-size: 0.92rem;
+      line-height: 1.34;
+      min-height: 28px;
+      margin-bottom: 0.34rem;
+    }
+
+    ${BattlePrompt} {
+      font-size: 1rem;
+      line-height: 1.38;
+      padding: 0.62rem 0.72rem;
+      margin-top: 0.36rem;
+    }
+
+    ${RightTaskCard} {
+      font-size: 0.94rem;
+      line-height: 1.34;
+    }
+
+    ${RightTaskCard} > div:first-child {
+      font-size: 0.98rem !important;
+    }
+
+    ${OptionButton} {
+      min-height: 58px;
+      font-size: 0.95rem;
+      line-height: 1.25;
+      padding: 0.55rem;
+    }
+
+    ${OXButton} {
+      font-size: 2.08rem;
+      padding: 0.68rem;
+    }
+  }
+
+  @media (orientation: landscape) and (max-height: 700px) and (min-width: 920px) {
+    ${LogText} {
+      font-size: 0.88rem;
+      line-height: 1.28;
+      min-height: 24px;
+    }
+
+    ${BattlePrompt} {
+      font-size: 0.94rem;
+      line-height: 1.32;
+      padding: 0.52rem 0.62rem;
+    }
+
+    ${RightTaskCard} {
+      font-size: 0.9rem;
+      line-height: 1.28;
+    }
+
+    ${RightTaskCard} > div:first-child {
+      font-size: 0.94rem !important;
+    }
+
+    ${OptionButton} {
+      min-height: 54px;
+      font-size: 0.9rem;
+      line-height: 1.22;
+      padding: 0.48rem;
+    }
+
+    ${OXButton} {
+      font-size: 1.96rem;
+      padding: 0.62rem;
+    }
+  }
+
+  /* M36_RIGHT_PANEL_UNIFIED_FONT_PATCH
+     오른쪽 문제 패널에서 문제/선택지 단계와 공격/방어 버튼 단계의 글씨 크기 차이를 줄입니다.
+     학생이 읽고 누르는 패널 내부 요소를 0.96rem~1rem 톤으로 통일합니다. */
+  @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+    ${QuizArea} {
+      font-size: 0.98rem;
+    }
+
+    ${LogText} {
+      font-size: 0.94rem;
+      line-height: 1.34;
+      min-height: 28px;
+      margin-bottom: 0.32rem;
+    }
+
+    ${BattlePrompt} {
+      font-size: 1rem;
+      line-height: 1.36;
+      padding: 0.58rem 0.68rem;
+      margin-top: 0.32rem;
+    }
+
+    ${RightTaskCard} {
+      font-size: 0.96rem;
+      line-height: 1.34;
+    }
+
+    ${RightTaskCard} > div:first-child {
+      font-size: 0.98rem !important;
+      line-height: 1.3;
+    }
+
+    ${OptionButton} {
+      min-height: 58px;
+      font-size: 0.96rem;
+      line-height: 1.25;
+      padding: 0.54rem;
+    }
+
+    ${OXButton} {
+      font-size: 2.04rem;
+      padding: 0.66rem;
+    }
+
+    ${ActionMenu} {
+      gap: 0.46rem;
+    }
+
+    ${MenuItem} {
+      min-height: 52px;
+      font-size: 0.96rem;
+      line-height: 1.24;
+      padding: 0.52rem 0.56rem;
+    }
+
+    ${MenuItem} strong,
+    ${MenuItem} span,
+    ${MenuItem} small {
+      font-size: inherit;
+      line-height: inherit;
+    }
+
+  }
+
+  @media (orientation: landscape) and (max-height: 700px) and (min-width: 920px) {
+    ${QuizArea} {
+      font-size: 0.92rem;
+    }
+
+    ${LogText} {
+      font-size: 0.88rem;
+      line-height: 1.28;
+      min-height: 24px;
+    }
+
+    ${BattlePrompt} {
+      font-size: 0.92rem;
+      line-height: 1.3;
+      padding: 0.48rem 0.58rem;
+    }
+
+    ${RightTaskCard} {
+      font-size: 0.9rem;
+      line-height: 1.28;
+    }
+
+    ${RightTaskCard} > div:first-child {
+      font-size: 0.92rem !important;
+    }
+
+    ${OptionButton} {
+      min-height: 52px;
+      font-size: 0.9rem;
+      line-height: 1.22;
+      padding: 0.46rem;
+    }
+
+    ${OXButton} {
+      font-size: 1.9rem;
+      padding: 0.58rem;
+    }
+
+    ${MenuItem} {
+      min-height: 48px;
+      font-size: 0.9rem;
+      line-height: 1.22;
+      padding: 0.46rem 0.5rem;
+    }
+
+  }
+`;
+
+
 
 const DEFENSE_ACTIONS = { BRACE: '웅크리기', EVADE: '회피하기', FOCUS: '기 모으기', FLEE: '도망치기' };
 
@@ -2065,12 +2588,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const floatingNumberTimersRef = useRef([]);
 
     const [shuffledOptions, setShuffledOptions] = useState([]);
-    const [battleScale, setBattleScale] = useState(() => {
-        const saved = typeof window !== 'undefined' && localStorage.getItem('battleScale');
-        return saved ? parseFloat(saved) : 1.0;
-    });
-
-    // 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
+// 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
     const qType = battleState?.question?.type ? String(battleState.question.type).toLowerCase() : '';
     const qAns = battleState?.question?.answer ? String(battleState.question.answer).toUpperCase() : '';
     const hasOptions = battleState?.question?.options && battleState.question.options.length > 0;
@@ -2099,6 +2617,23 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
     const usableItems = Object.entries(myPlayerData?.petInventory || {})
         .filter(([itemId, qty]) => qty > 0 && itemId === 'brain_snack');
+    // M25_TABLET_FULLSCREEN_COMPACT_PATCH
+    // 태블릿 배틀에서는 주관식 입력 키보드가 화면을 덮으므로 OX/객관식 문제만 사용합니다.
+    const isBattleFriendlyQuestion = (questionObj) => {
+        if (!questionObj) return false;
+
+        const type = String(questionObj.type || '').toLowerCase().replace(/\s/g, '');
+        const answer = String(questionObj.answer || '').trim().toUpperCase();
+        const options = Array.isArray(questionObj.options) ? questionObj.options.filter(Boolean) : [];
+
+        const isOxType = ['ox', 'o/x', 'truefalse', 'true/false'].includes(type);
+        const isOxAnswer = ['O', 'X', '○', '×'].includes(answer);
+        const hasMultipleChoices = options.length >= 2;
+
+        return isOxType || isOxAnswer || hasMultipleChoices;
+    };
+
+
 
     useEffect(() => {
         const loadQuizzes = async () => {
@@ -2113,16 +2648,39 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                     }
                 });
             } else {
-                allQuestions = [{ question: "선생님이 출제한 퀴즈가 없습니다.", answer: "0", type: "subjective" }];
+
+                allQuestions = [];
+
             }
-            setQuizPool(allQuestions);
+
+
+            const battleFriendlyQuestions = allQuestions.filter(isBattleFriendlyQuestion);
+
+
+            setQuizPool(
+
+                battleFriendlyQuestions.length > 0
+
+                    ? battleFriendlyQuestions
+
+                    : [{
+
+                        question: "배틀용 문제(OX/객관식)가 없습니다. 선생님에게 알려주세요.",
+
+                        answer: "O",
+
+                        type: "ox"
+
+                    }]
+
+            );
         };
         loadQuizzes();
     }, [classId]);
 
     // 한 번 낸 문제가 다시 나오지 않도록 퀴즈를 섞어서 뽑는 헬퍼 함수
     const getNextQuizObj = (usedQuestions = []) => {
-        if (!quizPool || quizPool.length === 0) return { question: "퀴즈 로딩 중...", answer: "1" };
+        if (!quizPool || quizPool.length === 0) return { question: "배틀용 문제를 불러오는 중입니다.", answer: "O", type: "ox" };
         let available = quizPool.filter(q => !usedQuestions.includes(q.question));
         if (available.length === 0) {
             // 모든 퀴즈가 소모되었으면 쿨타임 초기화
@@ -2384,6 +2942,25 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
             stopBattleBgm();
         }
     };
+    // M25_TABLET_FULLSCREEN_COMPACT_PATCH
+    // 브라우저 정책상 전체화면은 사용자 클릭으로만 요청할 수 있습니다.
+    const handleToggleBattleFullscreen = async () => {
+        if (typeof document === 'undefined') return;
+
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen?.();
+                return;
+            }
+
+            const target = document.documentElement;
+            await target.requestFullscreen?.({ navigationUI: 'hide' });
+        } catch (error) {
+            console.warn('Battle fullscreen request failed:', error);
+        }
+    };
+
+
 
 
     useEffect(() => {
@@ -5863,45 +6440,30 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
     return (
         <>
-            <ScaleControlBar>
-                <span>🔍 화면 크기</span>
-                <ScaleSlider
-                    type="range" min="0.5" max="1.0" step="0.05"
-                    value={battleScale}
-                    onChange={e => {
-                        const v = parseFloat(e.target.value);
-                        setBattleScale(v);
-                        localStorage.setItem('battleScale', v);
-                    }}
-                />
-                <span style={{ minWidth: 40 }}>{Math.round(battleScale * 100)}%</span>
-                <button
-                    onClick={() => { setBattleScale(1.0); localStorage.removeItem('battleScale'); }}
-                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #dee2e6', background: '#f8f9fa', cursor: 'pointer' }}
-                >초기화</button>
-
-                <button
+            <BattleUtilityBar>
+                <UtilityButton
+                    type="button"
+                    onClick={handleToggleBattleFullscreen}
+                    title="전체화면"
+                    aria-label="전체화면"
+                >
+                    ⛶ 전체화면
+                </UtilityButton>
+                <UtilityButton
+                    type="button"
                     onClick={handleToggleBgm}
                     title={bgmEnabled ? '배틀 배경음악 끄기' : '배틀 배경음악 켜기'}
-                    style={{
-                        padding: '0.2rem 0.7rem',
-                        fontSize: '0.8rem',
-                        borderRadius: '6px',
-                        border: bgmEnabled ? '1px solid #51cf66' : '1px solid #dee2e6',
-                        background: bgmEnabled ? '#ebfbee' : '#f8f9fa',
-                        color: bgmEnabled ? '#2b8a3e' : '#495057',
-                        fontWeight: 800,
-                        cursor: 'pointer'
-                    }}
+                    aria-label={bgmEnabled ? '배틀 배경음악 끄기' : '배틀 배경음악 켜기'}
+                    $active={bgmEnabled}
                 >
                     {bgmEnabled ? '🎵 BGM ON' : '🎵 BGM OFF'}
-                </button>
-            </ScaleControlBar>
-            <Arena $scale={battleScale}>
+                </UtilityButton>
+            </BattleUtilityBar>
+            <Arena>
                 {battleState.status === 'pending' || battleState.status === 'starting' ? (
                     <WaitingText>{battleState.log}</WaitingText>
                 ) : (
-                    <>
+                    <BattleContentGrid>
                         <BattleField $theme={battleState.battleTheme || 'forest'}>
                             {showTimer && <Timer $variant={battleState.status === 'pending_switch' ? 'switch' : undefined}>{timeLeft}</Timer>}
                             {switchMessage && (
@@ -6083,9 +6645,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                                     : "오답입니다... 상대방의 결과를 기다리고 있습니다."}
                                             </RightTaskCard>
                                         ) : (
-                                            <div style={{ marginTop: '0.75rem', color: '#868e96', fontWeight: 800 }}>
-                                                정답 입력과 선택지는 오른쪽 영역에 표시됩니다.
-                                            </div>
+                                            null
                                         )}
                                     </>
                                 )}
@@ -6179,7 +6739,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                                         value={answer}
                                                         onChange={(e) => setAnswer(e.target.value)}
                                                         placeholder="정답을 입력하세요"
-                                                        autoFocus
+
                                                         disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
                                                     />
                                                 </form>
@@ -6218,7 +6778,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 />
                             </RightActionPanel>
                         </QuizArea>
-                    </>
+                    </BattleContentGrid>
                 )}
             </Arena>
             {battleState?.status === 'finished' && (() => {

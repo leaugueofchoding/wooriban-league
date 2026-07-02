@@ -1,4 +1,5 @@
 // src/features/battle/BattleTeamMiniBar.jsx
+// M32_SIDE_PANEL_HEIGHT_THRESHOLD_PATCH: 태블릿 가로 화면은 높이 1000px 이하까지 오른쪽 문제 패널을 사용합니다.
 
 import React from 'react';
 import styled from 'styled-components';
@@ -54,7 +55,151 @@ const TeamMiniBarWrapper = styled.div`
             bottom: 78px;
         `}
     }
-`;
+
+    /* M27_TABLET_TEAM_MINIBAR_OVERLAP_FIX_PATCH
+       낮은 높이의 가로 태블릿에서는 대기열 미니바를 세로형으로 가장자리에 붙여
+       출전 펫, 상태 오라, 타이머와 겹치는 문제를 줄입니다. */
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        gap: 4px;
+        padding: 4px;
+        border-width: 1px;
+        background: rgba(255, 255, 255, 0.74);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+
+        ${props => props.$isMine ? `
+            left: 12px;
+            top: 92px;
+            flex-direction: column;
+        ` : `
+            right: 12px;
+            bottom: 92px;
+            flex-direction: column-reverse;
+        `}
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        ${props => props.$isMine ? `
+            left: 10px;
+            top: 82px;
+        ` : `
+            right: 10px;
+            bottom: 82px;
+        `}
+    }
+    /* M28_RESTORE_MINIBAR_SIZE_PATCH
+       문제 영역을 다시 아래로 내렸으므로, 대기열 미니바는 너무 작게 세로 배치하지 않고
+       적당한 크기의 가로형으로 복구합니다. */
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        gap: 6px;
+        padding: 5px 7px;
+        border-width: 2px;
+        background: rgba(255, 255, 255, 0.82);
+
+        ${props => props.$isMine ? `
+            left: 220px;
+            top: 24px;
+            flex-direction: row;
+        ` : `
+            right: 220px;
+            bottom: 28px;
+            flex-direction: row-reverse;
+        `}
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        ${props => props.$isMine ? `
+            left: 200px;
+            top: 22px;
+        ` : `
+            right: 200px;
+            bottom: 24px;
+        `}
+    }
+    /* M29_PORTRAIT_STACKED_MINIBAR_PATCH
+       오른쪽 문제 패널 레이아웃에서는 대기열 펫을 주인 초상화 근처에 세로로 쌓습니다.
+       - 내 대기열: 내 초상화 아래
+       - 상대 대기열: 상대 초상화 위 */
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        gap: 5px;
+        padding: 5px;
+        border-width: 2px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.84);
+        box-shadow: 0 5px 14px rgba(0, 0, 0, 0.13);
+
+        ${props => props.$isMine ? `
+            left: auto;
+            right: 8px;
+            top: auto;
+            bottom: 68px;
+            flex-direction: column;
+        ` : `
+            right: auto;
+            left: 8px;
+            bottom: auto;
+            top: 68px;
+            flex-direction: column-reverse;
+        `}
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        gap: 4px;
+        padding: 4px;
+
+        ${props => props.$isMine ? `
+            right: 7px;
+            bottom: 62px;
+        ` : `
+            left: 7px;
+            top: 62px;
+        `}
+    }
+    /* M30_MINIBAR_PORTRAIT_NO_OVERLAP_PATCH
+       오른쪽 문제 패널 레이아웃에서 대기열 펫이 주인 초상화와 겹치지 않도록 최종 위치 보정.
+       - 내 대기열: 왼쪽 위 내 초상화 아래
+       - 상대 대기열: 오른쪽 아래 상대 초상화 위 */
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        z-index: 18;
+        gap: 5px;
+        padding: 5px;
+        border-width: 2px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 5px 14px rgba(0, 0, 0, 0.13);
+
+        ${props => props.$isMine ? `
+            left: 12px;
+            right: auto;
+            top: 106px;
+            bottom: auto;
+            flex-direction: column;
+        ` : `
+            right: 12px;
+            left: auto;
+            bottom: 106px;
+            top: auto;
+            flex-direction: column-reverse;
+        `}
+    }
+
+    @media (orientation: landscape) and (max-height: 700px) and (min-width: 920px) {
+        ${props => props.$isMine ? `
+            top: 100px;
+        ` : `
+            bottom: 100px;
+        `}
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        gap: 4px;
+        padding: 4px;
+
+        ${props => props.$isMine ? `
+            top: 92px;
+        ` : `
+            bottom: 92px;
+        `}
+    }`;
 
 const MiniPetSlot = styled.div`
     position: relative;
@@ -94,7 +239,60 @@ const MiniPetSlot = styled.div`
         width: 26px;
         height: 30px;
     }
-`;
+
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 28px;
+        height: 28px;
+        padding: 1px;
+        border-width: 1.5px;
+        transform: ${props => props.$active ? 'scale(1.04)' : 'none'};
+        box-shadow: ${props => props.$active ? '0 0 0 2px rgba(255, 212, 59, 0.38), 0 0 10px rgba(255, 212, 59, 0.62)' : '0 2px 5px rgba(0,0,0,0.10)'};
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        width: 25px;
+        height: 25px;
+    }
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 34px;
+        height: 34px;
+        padding: 2px;
+        border-width: 2px;
+        transform: ${props => props.$active ? 'translateY(-2px) scale(1.06)' : 'none'};
+        box-shadow: ${props => props.$active ? '0 0 0 2px rgba(255, 212, 59, 0.45), 0 0 12px rgba(255, 212, 59, 0.8)' : '0 2px 5px rgba(0,0,0,0.12)'};
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        width: 31px;
+        height: 31px;
+    }
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 34px;
+        height: 34px;
+        padding: 2px;
+        border-width: 2px;
+        transform: ${props => props.$active ? 'scale(1.06)' : 'none'};
+        box-shadow: ${props => props.$active ? '0 0 0 2px rgba(255, 212, 59, 0.45), 0 0 12px rgba(255, 212, 59, 0.8)' : '0 2px 5px rgba(0,0,0,0.12)'};
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        width: 31px;
+        height: 31px;
+    }
+    /* M30_MINIBAR_SIZE_RESTORE_PATCH */
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 36px;
+        height: 36px;
+        padding: 2px;
+        border-width: 2px;
+        transform: ${props => props.$active ? 'scale(1.06)' : 'none'};
+        box-shadow: ${props => props.$active ? '0 0 0 2px rgba(255, 212, 59, 0.45), 0 0 12px rgba(255, 212, 59, 0.8)' : '0 2px 5px rgba(0,0,0,0.12)'};
+    }
+
+    @media (orientation: landscape) and (max-height: 620px) and (min-width: 920px) {
+        width: 32px;
+        height: 32px;
+    }`;
 
 const HpMiniBar = styled.div`
     position: absolute;
@@ -118,7 +316,28 @@ const HpMiniBar = styled.div`
     @media (max-width: 768px) {
         width: 20px;
     }
-`;
+
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 20px;
+        height: 3px;
+        bottom: -4px;
+    }
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 26px;
+        height: 4px;
+        bottom: -5px;
+    }
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 26px;
+        height: 4px;
+        bottom: -5px;
+    }
+    /* M30_MINIBAR_HP_RESTORE_PATCH */
+    @media (orientation: landscape) and (max-height: 1000px) and (min-width: 920px) {
+        width: 28px;
+        height: 4px;
+        bottom: -5px;
+    }`;
 
 const getBattleTeam = (info) => {
     // M4_COOKIE_DISPLAY_ACTIVE_PET_PREFER_PATCH
