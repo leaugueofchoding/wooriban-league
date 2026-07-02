@@ -455,7 +455,7 @@ function TeamInfoContent({ teams, matches, currentSeason, myTeamId }) {
 }
 
 function HomePage() {
-  const { matches, teams, currentSeason, players, standingsData } = useLeagueStore();
+  const { matches, teams, currentSeason, players, standingsData, subscribeToMatches } = useLeagueStore();
   const navigate = useNavigate();
   const location = useLocation();
   // [수정] useState 대신 useSearchParams 사용하여 탭 상태를 URL과 동기화
@@ -473,6 +473,24 @@ function HomePage() {
     if (!myPlayerData || !currentSeason) return null;
     return teams.find(team => team.seasonId === currentSeason.id && team.members.includes(myPlayerData.id));
   }, [teams, myPlayerData, currentSeason]);
+
+
+  useEffect(() => {
+    if (!currentSeason?.id) return;
+
+    subscribeToMatches(currentSeason.id);
+
+    return () => {
+      const state = useLeagueStore.getState();
+      state.listeners?.matches?.();
+      useLeagueStore.setState(prev => ({
+        listeners: {
+          ...prev.listeners,
+          matches: null,
+        }
+      }));
+    };
+  }, [currentSeason?.id, subscribeToMatches]);
 
   useEffect(() => {
     if (location.state?.defaultTab) {

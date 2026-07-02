@@ -867,7 +867,7 @@ function MissionItem({ mission, myPlayerData, mySubmissions, canSubmitMission, o
 
 function MissionsPage() {
   const { classId } = useClassStore();
-  const { players, missions, missionSubmissions } = useLeagueStore();
+  const { players, missions, missionSubmissions, subscribeToMissions, subscribeToMissionSubmissions } = useLeagueStore();
   const navigate = useNavigate();
   const location = useLocation();
   const currentUser = auth.currentUser;
@@ -880,6 +880,27 @@ function MissionsPage() {
     if (!currentUser) return null;
     return players.find(p => p.authUid === currentUser.uid);
   }, [players, currentUser]);
+
+
+  useEffect(() => {
+    if (!classId || !currentUser?.uid || !myPlayerData) return;
+
+    subscribeToMissions();
+    subscribeToMissionSubmissions(currentUser.uid);
+
+    return () => {
+      const state = useLeagueStore.getState();
+      state.listeners?.missions?.();
+      state.listeners?.missionSubmissions?.();
+      useLeagueStore.setState(prev => ({
+        listeners: {
+          ...prev.listeners,
+          missions: null,
+          missionSubmissions: null,
+        }
+      }));
+    };
+  }, [classId, currentUser?.uid, myPlayerData?.id, subscribeToMissions, subscribeToMissionSubmissions]);
 
   useEffect(() => {
     const openModalFromLink = async () => {

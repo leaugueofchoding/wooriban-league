@@ -339,7 +339,7 @@ const SelectionInfo = styled.div`
 
 function RecorderPage({ isAdminView = false, initialMissionId = null }) {
   const { classId } = useClassStore();
-  const { players, missions, missionSubmissions, fetchInitialData } = useLeagueStore();
+  const { players, missions, missionSubmissions, subscribeToMissions, subscribeToMissionSubmissions } = useLeagueStore();
   const { missionId } = useParams();
   const navigate = useNavigate();
 
@@ -360,6 +360,27 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
   useEffect(() => {
     if (missionId) setSelectedMissionId(missionId);
   }, [missionId]);
+
+
+  useEffect(() => {
+    if (!classId || !currentUser?.uid) return;
+
+    subscribeToMissions();
+    subscribeToMissionSubmissions(currentUser.uid);
+
+    return () => {
+      const state = useLeagueStore.getState();
+      state.listeners?.missions?.();
+      state.listeners?.missionSubmissions?.();
+      useLeagueStore.setState(prev => ({
+        listeners: {
+          ...prev.listeners,
+          missions: null,
+          missionSubmissions: null,
+        }
+      }));
+    };
+  }, [classId, currentUser?.uid, subscribeToMissions, subscribeToMissionSubmissions]);
 
   const selectedMission = useMemo(() => missions.find(m => m.id === selectedMissionId), [missions, selectedMissionId]);
 
@@ -501,7 +522,7 @@ function RecorderPage({ isAdminView = false, initialMissionId = null }) {
         await approveMissionsInBatch(classId, selectedMissionId, Array.from(checkedStudents), currentUser.uid, mission.reward);
         alert('포인트 지급이 완료되었습니다.');
         setCheckedStudents(new Set());
-        await fetchInitialData();
+        // 미션/제출 현황은 RecorderPage의 페이지 단위 실시간 리스너가 갱신합니다.
       } catch (error) {
         alert(`오류: ${error.message}`);
       }

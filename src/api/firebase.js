@@ -31,27 +31,37 @@ export const db = getFirestore(app);
 
 // src/api/firebase.js
 
+const TITLE_SEED_VERSION = "2026-07-firestore-cost-v1";
+
 export async function seedInitialTitles(classId) {
   if (!classId) return;
+
+  const metaRef = doc(db, "classes", classId, "meta", "titleSeed");
+  const metaSnap = await getDoc(metaRef);
+
+  if (metaSnap.exists() && metaSnap.data()?.version === TITLE_SEED_VERSION) {
+    return;
+  }
+
   const titlesRef = collection(db, "classes", classId, "titles");
-
-  // [수정됨] 기존에는 비어있을 때만(snapshot.empty) 넣었지만, 
-  // 이제는 앱이 실행될 때마다 titles.json의 최신 데이터로 기존 DB를 업데이트(merge) 합니다.
-  console.log(`[${classId}] titles.json의 최신 내용으로 칭호 데이터를 강제 동기화합니다.`);
-
   const batch = writeBatch(db);
+
   initialTitles.forEach(title => {
     const docRef = doc(titlesRef, title.id);
-    // merge: true 옵션을 주면 기존에 유저들이 획득한 기록은 안전하게 놔두고,
-    // 설명(description)이나 아이콘 같은 정보만 최신으로 덮어씌웁니다.
     batch.set(docRef, {
       ...title,
       updatedAt: serverTimestamp()
     }, { merge: true });
   });
 
+  batch.set(metaRef, {
+    version: TITLE_SEED_VERSION,
+    titleCount: initialTitles.length,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
   await batch.commit();
-  console.log(`[${classId}] 칭호 데이터 강제 동기화 완료.`);
+  console.log(`[${classId}] 칭호 데이터 동기화 완료: ${TITLE_SEED_VERSION}`);
 }
 
 // --- 포인트 기록 헬퍼 함수 (classId 추가) ---
@@ -1809,12 +1819,31 @@ export async function updateMission(classId, missionId, missionData) {
   await updateDoc(missionRef, missionData);
 }
 
-export async function getMissionSubmissions(classId) {
+export async function getMissionSubmissions(classId, maxCount = 200) {
   if (!classId) return [];
   const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
-  const q = query(submissionsRef, orderBy("requestedAt", "desc"));
+  const q = query(submissionsRef, orderBy("requestedAt", "desc"), limit(maxCount));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function getMyMissionSubmissions(classId, studentId) {
+  if (!classId || !studentId) return [];
+  const submissionsRef = collection(db, 'classes', classId, 'missionSubmissions');
+  const q = query(submissionsRef, where("studentId", "==", studentId));
+  const querySnapshot = await getDocs(q);
+
+  const getMillis = (timestamp) => {
+    if (!timestamp) return 0;
+    if (typeof timestamp.toMillis === "function") return timestamp.toMillis();
+    if (typeof timestamp.getTime === "function") return timestamp.getTime();
+    if (timestamp instanceof Date) return timestamp.getTime();
+    return 0;
+  };
+
+  return querySnapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .sort((a, b) => getMillis(b.requestedAt) - getMillis(a.requestedAt));
 }
 
 export async function updateMissionStatus(classId, missionId, status) {
@@ -2409,15 +2438,8 @@ export async function likeMyRoom(classId, roomId, likerId, likerName) {
   const roomOwnerRef = doc(db, "classes", classId, "players", roomId);
   const likerRef = doc(db, "classes", classId, "players", likerId);
   const likeHistoryRef = doc(db, "classes", classId, "players", roomId, "myRoomLikes", likerId);
-  const likesCollectionRef = collection(db, "classes", classId, "players", roomId, "myRoomLikes");
 
   const currentMonth = new Date().toISOString().slice(0, 7);
-
-  // 기존 누적 필드가 없는 반을 위해 현재 남아 있는 unique 좋아요 문서 수를 baseline으로 사용합니다.
-  // 이미 같은 친구가 이전 달에 여러 번 눌렀던 기록은 문서가 덮어써져 복구할 수 없지만,
-  // 현재 남아 있는 친구 수에서 1부터 다시 시작하는 문제는 막습니다.
-  const existingLikesSnapshot = await getDocs(likesCollectionRef);
-  const existingUniqueLikeCount = existingLikesSnapshot.size;
 
   let roomOwnerName = '친구';
   let roomOwnerAuthUid = null;
@@ -2436,8 +2458,8 @@ export async function likeMyRoom(classId, roomId, likerId, likerName) {
     roomOwnerName = roomOwnerData.name || '친구';
     roomOwnerAuthUid = roomOwnerData.authUid || roomId;
 
-    const currentMyRoomLikesTotal = Number(roomOwnerData.myRoomLikesTotal || 0);
-    nextMyRoomLikesTotal = Math.max(currentMyRoomLikesTotal, existingUniqueLikeCount) + 1;
+    const currentMyRoomLikesTotal = Number(roomOwnerData.myRoomLikesTotal || roomOwnerData.totalLikes || 0);
+    nextMyRoomLikesTotal = currentMyRoomLikesTotal + 1;
 
     transaction.update(likerRef, { points: increment(100) });
 

@@ -22,6 +22,7 @@ import {
     getAvatarParts,
     getMissions,
     getMissionSubmissions,
+    getMyMissionSubmissions,
     updateMissionStatus,
     deleteMission,
     batchUpdateMissionOrder,
@@ -496,51 +497,9 @@ export const useLeagueStore = create((set, get) => ({
 
             get().cleanupListeners();
 
-            if (!activeSeason) {
-                // getTitles(classId)를 함께 불러오도록 수정합니다.
-                const [fetchedPlayers, usersData, avatarPartsData, myRoomItemsData, titlesData] = await Promise.all([
-                    getPlayers(classId),
-                    getUsers(),
-                    getAvatarParts(),
-                    getMyRoomItems(),
-                    getTitles(classId) // 👈 여기에 추가
-                ]);
-
-                let finalPlayers = [...fetchedPlayers];
-                if (isSuperAdmin) {
-                    const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
-                    if (myIndex !== -1) {
-                        finalPlayers[myIndex] = { ...finalPlayers[myIndex], role: 'admin' };
-                    } else {
-                        finalPlayers.push({
-                            id: 'super_admin', name: '슈퍼 관리자', role: 'admin', authUid: currentUser.uid, status: 'active', points: 999999
-                        });
-                    }
-                }
-
-                set({
-                    isLoading: false, players: finalPlayers, teams: [], matches: [], missions: [],
-                    users: usersData, avatarParts: avatarPartsData, myRoomItems: myRoomItemsData, currentSeason: null,
-                    titles: titlesData // 👈 빈 배열 대신 불러온 titlesData를 주입합니다!
-                });
-
-                if (currentUser) {
-                    get().subscribeToNotifications(currentUser.uid);
-                    get().subscribeToPlayerData(currentUser.uid);
-                    get().subscribeToMissionSubmissions(currentUser.uid);
-                }
-                get().subscribeToMissions();
-                return;
-            }
-
-            get().subscribeToMatches(activeSeason.id);
-            const [
-                fetchedPlayers, teamsData, usersData, avatarPartsData, myRoomItemsData, titlesData, allMissionsData, submissionsData
-            ] = await Promise.all([
-                getPlayers(classId), getTeams(classId, activeSeason.id), getUsers(), getAvatarParts(), getMyRoomItems(), getTitles(classId), getMissions(classId), getMissionSubmissions(classId)
-            ]);
-
+            const fetchedPlayers = await getPlayers(classId);
             let finalPlayers = [...fetchedPlayers];
+
             if (isSuperAdmin) {
                 const myIndex = finalPlayers.findIndex(p => p.authUid === currentUser.uid);
                 if (myIndex !== -1) {
@@ -552,29 +511,101 @@ export const useLeagueStore = create((set, get) => ({
                 }
             }
 
-            const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
-            const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
+            const myPlayerData = currentUser ? finalPlayers.find(p => p.authUid === currentUser.uid) : null;
+            const isStaff = Boolean(isSuperAdmin || myPlayerData?.role === 'admin' || myPlayerData?.role === 'recorder');
+
+            const loadSubmissions = () => {
+                if (!currentUser || !myPlayerData) return Promise.resolve([]);
+                return isStaff
+                    ? getMissionSubmissions(classId)
+                    : getMyMissionSubmissions(classId, myPlayerData.id);
+            };
+
             const sortMissions = (missions) => {
-                return missions.sort((a, b) => {
+                return [...missions].sort((a, b) => {
                     const orderA = typeof a.displayOrder === 'number' ? a.displayOrder : a.createdAt?.toMillis() || Infinity;
                     const orderB = typeof b.displayOrder === 'number' ? b.displayOrder : b.createdAt?.toMillis() || Infinity;
                     return orderA - orderB;
                 });
             };
 
+            if (!activeSeason) {
+                const [usersData, avatarPartsData, myRoomItemsData, titlesData, allMissionsData, submissionsData] = await Promise.all([
+                    isStaff ? getUsers() : Promise.resolve([]),
+                    getAvatarParts(),
+                    getMyRoomItems(),
+                    getTitles(classId),
+                    getMissions(classId),
+                    loadSubmissions()
+                ]);
+
+                const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
+                const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
+
+                set({
+                    isLoading: false,
+                    players: finalPlayers,
+                    teams: [],
+                    matches: [],
+                    missions: sortMissions(activeMissionsData),
+                    archivedMissions: sortMissions(archivedMissionsData),
+                    missionSubmissions: submissionsData,
+                    users: usersData,
+                    avatarParts: avatarPartsData,
+                    myRoomItems: myRoomItemsData,
+                    currentSeason: null,
+                    titles: titlesData
+                });
+
+                if (currentUser) {
+                    get().subscribeToNotifications(currentUser.uid);
+                    get().subscribeToPlayerData(currentUser.uid);
+                }
+                return;
+            }
+
+            const [
+                teamsData,
+                matchesData,
+                usersData,
+                avatarPartsData,
+                myRoomItemsData,
+                titlesData,
+                allMissionsData,
+                submissionsData
+            ] = await Promise.all([
+                getTeams(classId, activeSeason.id),
+                getMatches(classId, activeSeason.id),
+                isStaff ? getUsers() : Promise.resolve([]),
+                getAvatarParts(),
+                getMyRoomItems(),
+                getTitles(classId),
+                getMissions(classId),
+                loadSubmissions()
+            ]);
+
+            const activeMissionsData = allMissionsData.filter(m => m.status === 'active');
+            const archivedMissionsData = allMissionsData.filter(m => m.status === 'archived');
+
             set({
-                players: finalPlayers, teams: teamsData, users: usersData, avatarParts: avatarPartsData,
-                myRoomItems: myRoomItemsData, titles: titlesData, missions: sortMissions(activeMissionsData),
-                archivedMissions: sortMissions(archivedMissionsData), missionSubmissions: submissionsData,
-                currentSeason: activeSeason, isLoading: false,
+                players: finalPlayers,
+                teams: teamsData,
+                matches: matchesData,
+                users: usersData,
+                avatarParts: avatarPartsData,
+                myRoomItems: myRoomItemsData,
+                titles: titlesData,
+                missions: sortMissions(activeMissionsData),
+                archivedMissions: sortMissions(archivedMissionsData),
+                missionSubmissions: submissionsData,
+                currentSeason: activeSeason,
+                isLoading: false,
             });
 
             if (currentUser) {
                 get().subscribeToNotifications(currentUser.uid);
                 get().subscribeToPlayerData(currentUser.uid);
-                get().subscribeToMissionSubmissions(currentUser.uid);
             }
-            get().subscribeToMissions();
 
         } catch (error) {
             console.error("데이터 로딩 오류:", error);
