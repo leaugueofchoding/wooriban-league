@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import {
   useLeagueStore, useClassStore } from '../store/leagueStore';
-import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats, syncMissingAutoTitlesForClass
+import { auth, getActiveGoals, donatePointsToGoal, getPlayerSeasonStats
 } from '../api/firebase';
 import DashboardSimpleMode from '../components/dashboard/DashboardSimpleMode';
 import confetti from 'canvas-confetti';
@@ -90,28 +90,8 @@ function DashboardPage() {
 
     const myPlayerData = useMemo(() => currentUser ? players.find(p => p.authUid === currentUser.uid) : null, [players, currentUser]);
 
-    
-    useEffect(() => {
-        // AUTO_TITLE_DASHBOARD_BACKFILL_V4
-        // 관리자 대시보드에 들어오면 세션당 1회 전체 학생의 누락 자동칭호를 재검사합니다.
-        if (!classId || myPlayerData?.role !== 'admin' || players.length === 0) return;
-
-        const sessionKey = `auto-title-backfill-v4:${classId}`;
-        if (sessionStorage.getItem(sessionKey)) return;
-        sessionStorage.setItem(sessionKey, '1');
-
-        syncMissingAutoTitlesForClass(classId)
-            .then(result => {
-                if (result?.granted > 0) {
-                    console.log('[자동칭호 백필 완료]', result);
-                    fetchInitialData();
-                }
-            })
-            .catch(error => {
-                sessionStorage.removeItem(sessionKey);
-                console.error('자동칭호 전체 백필 오류:', error);
-            });
-    }, [classId, myPlayerData?.role, players.length, fetchInitialData]);
+    // Firestore 비용 절감을 위해 관리자 대시보드 진입 시 자동 칭호 전체 백필을 실행하지 않습니다.
+    // 누락 칭호 전체 재검사는 필요할 때만 관리자 전용 일회성 스크립트/버튼으로 실행하세요.
 const myPartnerPet = useMemo(() => {
         if (!myPlayerData) return null;
         if (myPlayerData.pets && myPlayerData.pets.length > 0) return myPlayerData.pets.find(p => p.id === myPlayerData.partnerPetId) || myPlayerData.pets[0];
