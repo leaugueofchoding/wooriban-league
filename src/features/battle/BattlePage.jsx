@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
 import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost , processBattleResults} from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
@@ -12,6 +12,7 @@ import { SKILLS, clearWaveMarks, PET_DATA } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
 import { playSkillSound, playHitSound, playHealSound, playElementReactionSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
+import { cancelRandomBattleQueueEntry } from './randomBattleApi';
 import BattleStatusEffect from './BattleStatusEffect';
 import { BattleHpBar, BattleSpBar } from './BattleStatBars';
 import BattlePetSlot from './BattlePetSlot';
@@ -2548,6 +2549,13 @@ const getHardCcDefenseLog = getCcDefenseLog;
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
+    // RANDOM_BATTLE_MATCH_ID_GUARD_PATCH
+    const location = useLocation();
+    const expectedRandomMatchId = useMemo(() => {
+        if (typeof URLSearchParams === 'undefined') return null;
+        const params = new URLSearchParams(location.search || '');
+        return params.get('randomMatchId') || null;
+    }, [location.search]);
     const { players, processBattleResults, processBattleDraw } = useLeagueStore();
     const { classId } = useClassStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
@@ -2860,6 +2868,18 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                 const overchargeGuardResult = applyPopularStarOverchargeGuardToBattle(rawData);
                 const data = overchargeGuardResult.data;
 
+                // RANDOM_BATTLE_MATCH_ID_GUARD_PATCH
+                // 같은 두 학생의 이전 랜덤대전 battle 문서가 남아 있어도,
+                // URL의 randomMatchId와 다르면 현재 입장한 매칭이 아니므로 표시하지 않습니다.
+                if (
+                    data?.randomBattle &&
+                    expectedRandomMatchId &&
+                    data.randomBattleMatchId !== expectedRandomMatchId
+                ) {
+                    setBattleState(null);
+                    return;
+                }
+
                 setBattleState(data);
 
                 if (overchargeGuardResult.changed) {
@@ -2882,7 +2902,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
             }
         });
         return () => unsubscribe();
-    }, [myPlayerData, battleId, classId, navigate]);
+    }, [myPlayerData, battleId, classId, navigate, expectedRandomMatchId]);
 
 
     useEffect(() => {
@@ -6391,14 +6411,49 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
         return <BattleSpBar sp={sp} maxSp={maxSp} />;
     };
 
+    // RANDOM_BATTLE_WAITING_CANCEL_PATCH
+    const handleRandomBattleWaitingCancel = async () => {
+        if (!classId || !myPlayerData?.id || isProcessing) return;
+
+        setIsProcessing(true);
+        try {
+            await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+            navigate('/pet');
+        } catch (error) {
+            console.error('랜덤대전 대기 취소 오류:', error);
+            alert('입장 취소 중 오류가 발생했습니다.');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     if (!myPlayerData) return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
     if (!battleState) return <Arena><WaitingText>상대 입장을 기다리는 중...</WaitingText></Arena>;
+
+    // RANDOM_BATTLE_WAITING_CANCEL_PATCH
+    if (battleState.status === 'pending' && battleState.randomBattle) {
+        return (
+            <Arena>
+                <WaitingText>
+                    <p>{battleState.log || '상대 입장을 기다리는 중...'}</p>
+                    <CancelButton
+                        type="button"
+                        onClick={handleRandomBattleWaitingCancel}
+                        disabled={isProcessing}
+                    >
+                        {isProcessing ? '취소 중...' : '입장 취소'}
+                    </CancelButton>
+                </WaitingText>
+            </Arena>
+        );
+    }
 
     if (battleState.status === 'pending' && myPlayerData.id === battleState.challenger.id) {
         return (
             <Arena>
                 <WaitingText>
-                    <p>{battleState.log || '상대 입장을 기다리는 중...'}</p>
+                    <p>{battleState.log || '상대방의 수락을 기다리는 중...'}</p>
+                    <CancelButton onClick={handleCancel}>신청 취소</CancelButton>
                 </WaitingText>
             </Arena>
         );

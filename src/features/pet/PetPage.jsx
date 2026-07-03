@@ -2,12 +2,21 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, createBattleChallenge, renamePetWithItem, releasePet, getScaledSkillCost } from '../../api/firebase';
-import { doc, onSnapshot } from "firebase/firestore";
+import {
+  useLeagueStore,
+  useClassStore } from '../../store/leagueStore';
+import { auth,
+  db,
+  createBattleChallenge,
+  renamePetWithItem,
+  releasePet,
+  getScaledSkillCost } from '../../api/firebase';
+import { doc,
+  onSnapshot } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '../../utils/petImageMap';
-import { PET_DATA, SKILLS } from './petData';
+import { PET_DATA,
+  SKILLS } from './petData';
 import { PET_ITEMS } from './petItems';
 import {
   cancelRandomBattleQueueEntry,
@@ -16,12 +25,14 @@ import {
   enterRandom1v1Battle,
   getRandomBattleQueueDocIds,
   tryMatchRandomBattleQueue,
-} from '../battle/randomBattleApi';
+  useVitaminJellyForRandomBattlePet,
+  } from '../battle/randomBattleApi';
 import {
   getAveragePetLevel,
   getRandomBattleCount,
   isPetEligibleForRandomBattle,
   sortRecommendedRandomBattlePets,
+  canUseRandomBattleVitaminJellyToday,
 } from '../battle/randomBattleRules';
 import confetti from 'canvas-confetti';
 import { filterProfanity } from '../../utils/profanityFilter';
@@ -1179,7 +1190,10 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   const [randomBattleQueueEntries, setRandomBattleQueueEntries] = useState({});
   const [isRandomBattleCancelling, setIsRandomBattleCancelling] = useState(false);
   const [isRandomBattleEntering, setIsRandomBattleEntering] = useState(false);
-  // ENTER_RANDOM_1V1_FIX_PATCH
+  
+  // RANDOM_BATTLE_VITAMIN_JELLY_UI_PATCH
+  const [randomBattleVitaminPetId, setRandomBattleVitaminPetId] = useState(null);
+// ENTER_RANDOM_1V1_FIX_PATCH
   const randomBattleAutoEnterRef = useRef(null);
   const [randomBattleDraft, setRandomBattleDraft] = useState({
     show: false,
@@ -1312,6 +1326,63 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
       }
     }
   }, [myPlayerData, selectedPetId, navigate]);
+
+  // RANDOM_BATTLE_MATCH_EXPIRY_PATCH
+  useEffect(() => {
+    if (!classId || !myPlayerData?.id) return;
+
+    const matchedEntries = [
+      randomBattleQueueEntries['random-1v1'],
+      randomBattleQueueEntries['random-team'],
+    ].filter(entry => (
+      entry &&
+      entry.status === 'matched' &&
+      Number(entry.matchExpiresAtMs || 0) > 0
+    ));
+
+    if (matchedEntries.length === 0) return;
+
+    let cancelled = false;
+    let isCancellingExpiredMatch = false;
+
+    const cancelExpiredMatchIfNeeded = async () => {
+      if (cancelled || isCancellingExpiredMatch) return;
+
+      const nowMs = Date.now();
+      const hasExpiredMatch = matchedEntries.some(entry => {
+        const expiresAtMs = Number(entry.matchExpiresAtMs || 0);
+        return expiresAtMs > 0 && nowMs >= expiresAtMs + 3000;
+      });
+
+      if (!hasExpiredMatch) return;
+
+      isCancellingExpiredMatch = true;
+      try {
+        await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+        if (!cancelled) setRandomBattleQueueEntries({});
+      } catch (error) {
+        console.warn('랜덤대전 매칭 만료 자동 취소 실패:', error);
+      } finally {
+        isCancellingExpiredMatch = false;
+      }
+    };
+
+    cancelExpiredMatchIfNeeded();
+    const intervalId = window.setInterval(cancelExpiredMatchIfNeeded, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    classId,
+    myPlayerData?.id,
+    randomBattleQueueEntries['random-1v1']?.status,
+    randomBattleQueueEntries['random-1v1']?.matchExpiresAtMs,
+    randomBattleQueueEntries['random-team']?.status,
+    randomBattleQueueEntries['random-team']?.matchExpiresAtMs,
+  ]);
+
 
   const selectedPet = myPlayerData?.pets?.find(p => p.id === selectedPetId);
 
@@ -1511,6 +1582,34 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   const getRandomBattlePetImage = (pet) => {
     if (!pet) return '';
     return petImageMap[(pet.appearanceId || '') + '_idle'] || petImageMap[pet.appearanceId] || '';
+  };
+
+  // RANDOM_BATTLE_VITAMIN_JELLY_UI_PATCH
+  const getRandomBattleVitaminRecoverablePets = () => {
+    const pets = Array.isArray(myPlayerData?.pets) ? myPlayerData.pets : [];
+    return pets
+      .filter(pet => {
+        if (!pet?.id) return false;
+        if (Number(pet.hp ?? 0) <= 0) return false;
+        if (getRandomBattleCount(pet) < 2) return false;
+        if (!canUseRandomBattleVitaminJellyToday(pet)) return false;
+        if (pet.activeBattleId || pet.currentBattleId || pet.battleLockId || pet.lockedBattleId) return false;
+        return true;
+      })
+      .sort((a, b) => Number(b.level ?? 1) - Number(a.level ?? 1));
+  };
+
+  const handleUseRandomBattleVitaminJelly = async (petId) => {
+    if (!classId || !myPlayerData?.id || !petId) return;
+
+    try {
+      setRandomBattleVitaminPetId(petId);
+      await useVitaminJellyForRandomBattlePet(classId, myPlayerData.id, petId);
+    } catch (error) {
+      alert('비타민젤리 사용 실패: ' + error.message);
+    } finally {
+      setRandomBattleVitaminPetId(null);
+    }
   };
 
   const getDefaultRandom1v1PetIds = () => {
@@ -2422,6 +2521,8 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                 .filter(Boolean);
               const averageLevel = getAveragePetLevel(selectedPets);
               const hasSelection = selectedPets.length > 0;
+              const vitaminRecoverablePets = getRandomBattleVitaminRecoverablePets();
+              const vitaminJellyCount = Number(myPlayerData?.petInventory?.vitamin_jelly || 0);
 
               const renderPetCard = (pet, isSelected, onClick) => {
                 const todayCount = getRandomBattleCount(pet);
@@ -2516,6 +2617,74 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                       </div>
                     )}
                   </div>
+
+                  {vitaminRecoverablePets.length > 0 && (
+                    <div style={{ marginTop: '0.9rem', padding: '0.75rem', borderRadius: '14px', border: '1px solid #ffe066', background: '#fff9db', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', marginBottom: '0.55rem' }}>
+                        <strong style={{ color: '#7c4a03', fontSize: '0.86rem' }}>비타민젤리로 회복</strong>
+                        <span style={{ color: '#868e96', fontSize: '0.76rem', fontWeight: 900 }}>
+                          보유 {vitaminJellyCount}개
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.7rem' }}>
+                        {vitaminRecoverablePets.map(pet => {
+                          const isUsing = randomBattleVitaminPetId === pet.id;
+                          const disabled = randomBattleDraft.isSubmitting || isUsing || vitaminJellyCount <= 0;
+                          return (
+                            <div
+                              key={'vitamin-' + pet.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.65rem',
+                                textAlign: 'left',
+                                padding: '0.65rem',
+                                borderRadius: '14px',
+                                border: '2px solid #ffd43b',
+                                background: '#ffffff',
+                              }}
+                            >
+                              <img
+                                src={getRandomBattlePetImage(pet)}
+                                alt={pet.name}
+                                style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '50%', background: '#fff3bf' }}
+                              />
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <strong style={{ display: 'block', color: '#343a40' }}>{pet.name}</strong>
+                                <span style={{ display: 'block', color: '#868e96', fontSize: '0.78rem', fontWeight: 800 }}>
+                                  Lv.{pet.level} · 랜덤대전 {getRandomBattleCount(pet)}/2회
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUseRandomBattleVitaminJelly(pet.id)}
+                                disabled={disabled}
+                                style={{
+                                  border: 'none',
+                                  borderRadius: '10px',
+                                  padding: '0.48rem 0.62rem',
+                                  background: disabled ? '#adb5bd' : '#f08c00',
+                                  color: 'white',
+                                  fontWeight: 1000,
+                                  cursor: disabled ? 'not-allowed' : 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {isUsing ? '사용중...' : '회복'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {vitaminJellyCount <= 0 && (
+                        <p style={{ margin: '0.55rem 0 0', color: '#868e96', fontSize: '0.78rem', fontWeight: 800 }}>
+                          비타민젤리가 없으면 회복할 수 없습니다.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {randomBattleDraft.mode === 'random-1v1' && selectedPets.length > 0 && selectedPets.length < 3 && (
                     <p style={{ margin: '0.8rem 0 0', color: '#f08c00', fontSize: '0.82rem', fontWeight: 900, lineHeight: 1.45, flexShrink: 0 }}>
