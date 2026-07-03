@@ -113,9 +113,8 @@ function PetSelectionPage() {
 
   const PET_SELECTION_DATA = {
     dragon: { ...PET_DATA.dragon, image: petImageMap.dragon_lv1_idle },
-    rabbit: { ...PET_DATA.rabbit, image: petImageMap.rabbit_lv1_idle },
     turtle: { ...PET_DATA.turtle, image: petImageMap.turtle_lv1_idle },
-    ice_bear: { ...PET_DATA.ice_bear, image: petImageMap.ice_bear_lv1_idle },
+    rabbit: { ...PET_DATA.rabbit, image: petImageMap.rabbit_lv1_idle },
   };
 
   // ▼▼▼ [수정] DB 직접 조회 로직으로 변경 ▼▼▼

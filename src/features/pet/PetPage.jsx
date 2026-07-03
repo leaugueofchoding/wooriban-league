@@ -26,7 +26,9 @@ import {
   getRandomBattleQueueDocIds,
   tryMatchRandomBattleQueue,
   useVitaminJellyForRandomBattlePet,
-  } from '../battle/randomBattleApi';
+  enterRandomTeamBattle,
+  forfeitRandomTeamBattleAndRequeue,
+} from '../battle/randomBattleApi';
 import {
   getAveragePetLevel,
   getRandomBattleCount,
@@ -1191,7 +1193,10 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   const [isRandomBattleCancelling, setIsRandomBattleCancelling] = useState(false);
   const [isRandomBattleEntering, setIsRandomBattleEntering] = useState(false);
   
-  // RANDOM_BATTLE_VITAMIN_JELLY_UI_PATCH
+  
+  // RANDOM_BATTLE_TEAM_QUEUE_STABILITY_PATCH
+  const [randomBattleNowMs, setRandomBattleNowMs] = useState(Date.now());
+// RANDOM_BATTLE_VITAMIN_JELLY_UI_PATCH
   const [randomBattleVitaminPetId, setRandomBattleVitaminPetId] = useState(null);
 // ENTER_RANDOM_1V1_FIX_PATCH
   const randomBattleAutoEnterRef = useRef(null);
@@ -1331,9 +1336,11 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   useEffect(() => {
     if (!classId || !myPlayerData?.id) return;
 
+    // RANDOM_BATTLE_TEAM_QUEUE_STABILITY_PATCH
+    // 1:1은 빠른 입장 확인이 자연스럽지만, 2:2 팀대전은 4명이 모여야 하므로
+    // 펫 페이지의 20초 자동 만료 대상에서 제외합니다.
     const matchedEntries = [
       randomBattleQueueEntries['random-1v1'],
-      randomBattleQueueEntries['random-team'],
     ].filter(entry => (
       entry &&
       entry.status === 'matched' &&
@@ -1381,6 +1388,28 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     randomBattleQueueEntries['random-1v1']?.matchExpiresAtMs,
     randomBattleQueueEntries['random-team']?.status,
     randomBattleQueueEntries['random-team']?.matchExpiresAtMs,
+  ]);
+
+
+  // RANDOM_BATTLE_TEAM_QUEUE_STABILITY_PATCH
+  useEffect(() => {
+    const hasActiveRandomQueue = Object.values(randomBattleQueueEntries || {}).some(entry => (
+      entry && ['waiting', 'matched', 'entering'].includes(entry.status)
+    ));
+
+    if (!hasActiveRandomQueue) return;
+
+    setRandomBattleNowMs(Date.now());
+    const intervalId = window.setInterval(() => {
+      setRandomBattleNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    randomBattleQueueEntries['random-1v1']?.status,
+    randomBattleQueueEntries['random-1v1']?.queueStartedAtMs,
+    randomBattleQueueEntries['random-team']?.status,
+    randomBattleQueueEntries['random-team']?.queueStartedAtMs,
   ]);
 
 
@@ -1744,19 +1773,33 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
 
   const cancelActiveRandomBattleQueue = async () => {
     if (!classId || !myPlayerData?.id) return;
+
+    // TEAM_MATCH_REJECT_PENALTY_FROM_PETPAGE_PATCH
+    const teamEntry = randomBattleQueueEntries['random-team'];
+    const isMatchedTeamBattle = teamEntry && ['matched', 'entering'].includes(teamEntry.status);
+
+    if (isMatchedTeamBattle) {
+      const ok = window.confirm('팀대전 매칭을 거절하면 3분 동안 팀대전에 다시 참가할 수 없습니다. 정말 거절할까요?');
+      if (!ok) return;
+    }
+
     try {
       setIsRandomBattleCancelling(true);
-      await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+
+      if (isMatchedTeamBattle) {
+        await forfeitRandomTeamBattleAndRequeue(classId, myPlayerData.id);
+      } else {
+        await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+      }
+
       setRandomBattleQueueEntries({});
     } catch (error) {
-      alert("대기 취소 실패: " + error.message);
+      alert('랜덤대전 취소 실패: ' + error.message);
     } finally {
       setIsRandomBattleCancelling(false);
     }
   };
 
-  // ENTER_RANDOM_1V1_BATTLE_PATCH
-  // ENTER_RANDOM_1V1_FIX_PATCH
   const enterMatchedRandom1v1Battle = async ({ silent = false } = {}) => {
     if (!classId || !myPlayerData?.id) return;
 
@@ -1794,6 +1837,22 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     randomBattleQueueEntries['random-1v1']?.matchId,
     randomBattleQueueEntries['random-1v1']?.matchedOpponentId,
   ]);
+
+  // ENTER_RANDOM_TEAM_BATTLE_ROOM_PATCH
+  const enterMatchedRandomTeamBattle = async () => {
+    if (!classId || !myPlayerData?.id) return;
+
+    try {
+      setIsRandomBattleEntering(true);
+      const result = await enterRandomTeamBattle(classId, myPlayerData.id);
+      navigate('/battle/team/' + encodeURIComponent(result.matchId));
+    } catch (error) {
+      alert('팀대전 입장 실패: ' + error.message);
+    } finally {
+      setIsRandomBattleEntering(false);
+    }
+  };
+
 
   const openBattleTeamDraft = (opponent) => {
     // M11C_CAP_TEAM_SIZE_BY_OPPONENT_PATCH
@@ -1998,15 +2057,27 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
     random1v1QueueEntry?.status === 'entering' && random1v1QueueEntry?.battleReady === true
   );
   const hasMatchedTeamBattle = ['matched', 'entering'].includes(randomTeamQueueEntry?.status);
+  // RANDOM_BATTLE_TEAM_QUEUE_STABILITY_PATCH
+  const getRandomBattleWaitSeconds = (entry) => {
+    const startedAtMs = Number(entry?.queueStartedAtMs || 0);
+    if (!startedAtMs) return null;
+    return Math.max(0, Math.floor((randomBattleNowMs - startedAtMs) / 1000));
+  };
+
+  const getRandomBattleWaitSuffix = (entry) => {
+    const seconds = getRandomBattleWaitSeconds(entry);
+    return seconds === null ? '' : ` · 대기 ${seconds}초`;
+  };
+
   // AUTO_MATCH_RANDOM_BATTLE_PATCH
   const randomBattleQueueLabels = [
     isRandom1v1QueueActive
-      ? (isRandom1v1WaitingForOpponent
+      ? `${isRandom1v1WaitingForOpponent
         ? '1:1 대전 상대 입장 대기중'
-        : (canEnterRandom1v1Battle ? '1:1 대전 매칭 완료' : '1:1 대전 매칭중'))
+        : (canEnterRandom1v1Battle ? '1:1 대전 매칭 완료' : '1:1 대전 매칭중')}${getRandomBattleWaitSuffix(random1v1QueueEntry)}`
       : null,
     isRandomTeamQueueActive
-      ? (['matched', 'entering'].includes(randomTeamQueueEntry?.status) ? '3:3 대전 매칭 완료' : '3:3 대전 매칭중')
+      ? `${['matched', 'entering'].includes(randomTeamQueueEntry?.status) ? '3:3 팀대전 매칭 완료' : '3:3 팀대전 매칭중'}${getRandomBattleWaitSuffix(randomTeamQueueEntry)}`
       : null,
     isLegacyRandomQueueActive ? '이전 랜덤대전 매칭중' : null,
   ].filter(Boolean);
@@ -2326,10 +2397,11 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                       {hasMatchedTeamBattle && !canEnterRandom1v1Battle && (
                         <button
                           type="button"
-                          disabled
-                          style={{ background: '#adb5bd', boxShadow: 'none' }}
+                          onClick={enterMatchedRandomTeamBattle}
+                          disabled={isRandomBattleEntering}
+                          style={{ background: '#5f3dc4', boxShadow: '0 2px 0 #3b2385' }}
                         >
-                          입장 준비중
+                          {isRandomBattleEntering ? "입장 중..." : "팀대전 입장"}
                         </button>
                       )}
                       <button
