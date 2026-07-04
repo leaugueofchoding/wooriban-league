@@ -41,6 +41,7 @@ import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
 import PetGiftModal from './components/PetGiftModal';
 import BattlePage from './features/battle/BattlePage.jsx';
+import RandomBattleMatchModal from './features/battle/RandomBattleMatchModal.jsx';
 import RandomTeamBattlePage from './features/battle/RandomTeamBattlePage.jsx';
 import NoticePage from './pages/NoticePage.jsx';
 import TermsPage from './pages/TermsPage';
@@ -206,6 +207,7 @@ function App() {
       <GlobalBackground $themeColor={themeColor} />
       <AppWrapper>
         {currentUser && <Auth user={currentUser} />}
+        {currentUser && <RandomBattleMatchModal />}
         <AttendanceModal />
         <PetGiftModal />
         {pointAdjustmentNotification && <PointAdjustmentModal />}
