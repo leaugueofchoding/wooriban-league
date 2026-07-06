@@ -20,6 +20,7 @@ import BattleTeamMiniBar from './BattleTeamMiniBar';
 import BattlePlayerPanel from './BattlePlayerPanel';
 import BattleActionMenu from './BattleActionMenu';
 import BattleDuelView from './BattleDuelView';
+import { battleDuelLayoutComponents } from './BattleDuelLayoutComponents';
 import { normalizeBattleParticipantForBattle, replaceActiveBattlePet } from './battlePetUtils';
 import { FEATURE_FLAGS } from './featureFlags';
 import { resolveElementReaction, applyReactionResultToPet, normalizeElement, ELEMENT_LABELS, getTraceDefaultTurns } from './elementReactionEngine';
@@ -6608,39 +6609,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                 switchablePets={switchablePets}
                 handleManualSwitch={handleManualSwitch}
                 availableDefenseActions={availableDefenseActions}
-                components={{
-                    BattleUtilityBar,
-                    UtilityButton,
-                    Arena,
-                    WaitingText,
-                    BattleContentGrid,
-                    BattleField,
-                    Timer,
-                    FloatingDamageNumber,
-                    ReactionFlashOverlay,
-                    OpponentProfileWrapper,
-                    MyProfileWrapper,
-                    AvatarBox,
-                    OpponentInfoBox,
-                    MyInfoBox,
-                    OpponentPetContainerWrapper,
-                    MyPetContainerWrapper,
-                    PetContainer,
-                    PetImage,
-                    ChatBubble,
-                    QuizArea,
-                    LogText,
-                    RightTaskCard,
-                    BattlePrompt,
-                    RightActionPanel,
-                    OXGrid,
-                    OXButton,
-                    OptionGrid,
-                    OptionButton,
-                    AnswerInput,
-                    ActionMenu,
-                    MenuItem,
-                }}
+                components={battleDuelLayoutComponents}
             />
             {battleState?.status === 'finished' && (() => {
                 const isWin = battleState.winner === myPlayerData?.id;
