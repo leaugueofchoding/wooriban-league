@@ -6,7 +6,10 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../api/firebase';
 import { useClassStore, useLeagueStore } from '../../store/leagueStore';
 import { petImageMap } from '../../utils/petImageMap';
-import { cancelRandomBattleQueueEntry, enterRandomTeamBattle, forfeitRandomTeamBattleAndRequeue } from './randomBattleApi';
+import { BattleHpBar, BattleSpBar } from './BattleStatBars';
+import { enterRandomTeamBattle } from './randomBattleApi';
+import BattleDuelView from './BattleDuelView';
+import { battleDuelLayoutComponents } from './BattleDuelLayoutComponents';
 
 const Page = styled.div`
   max-width: 920px;
@@ -152,6 +155,87 @@ const Button = styled.button`
   }
 `;
 
+const noop = () => {};
+const renderHpBar = (hp, maxHp) => <BattleHpBar hp={hp} maxHp={maxHp} />;
+const renderSpBar = (sp, maxSp) => <BattleSpBar sp={sp} maxSp={maxSp} />;
+const formatBattleLogForDisplay = (log) => Array.isArray(log) ? log.join('\n') : (log || '');
+
+const getMemberPet = (member) => member?.pet || member?.lockedPet || member?.lockedTeam?.[0] || {};
+
+const normalizeBattlePet = (member) => {
+  const pet = getMemberPet(member);
+
+  return {
+    ...pet,
+    id: pet.id || member?.petId || member?.playerId || 'pet',
+    name: member?.petName || pet.name || 'pet',
+    level: Number(member?.petLevel || pet.level || 1),
+    hp: Number(pet.hp ?? pet.maxHp ?? 1),
+    maxHp: Number(pet.maxHp ?? pet.hp ?? 1),
+    sp: Number(pet.sp ?? 0),
+    maxSp: Number(pet.maxSp ?? 0),
+    status: { ...(pet.status || {}) },
+  };
+};
+
+const getFirstAliveMember = (members) => {
+  if (!Array.isArray(members) || members.length === 0) return null;
+
+  return members.find((member) => {
+    const pet = getMemberPet(member);
+    return Number(pet.hp ?? pet.maxHp ?? 1) > 0;
+  }) || members[0];
+};
+
+const buildDuelParticipant = (activeMember, teamMembers = []) => {
+  if (!activeMember) return null;
+
+  const team = teamMembers
+    .map(normalizeBattlePet)
+    .filter((pet) => pet?.id);
+
+  const activePet = normalizeBattlePet(activeMember);
+  const activeIndex = Math.max(0, team.findIndex((pet) => pet.id === activePet.id));
+  const syncedTeam = team.length > 0
+    ? team.map((pet, index) => index === activeIndex ? activePet : pet)
+    : [activePet];
+
+  return {
+    id: activeMember.playerId,
+    name: activeMember.playerName || 'Player',
+    pet: activePet,
+    team: syncedTeam,
+    activePetIndex: activeIndex >= 0 ? activeIndex : 0,
+    activePetId: activePet.id,
+    participatedPetIds: [activePet.id].filter(Boolean),
+    avatarSnapshotUrl: activeMember.avatarSnapshotUrl || null,
+    photoURL: activeMember.photoURL || null,
+    equippedTitle: activeMember.equippedTitle || null,
+  };
+};
+
+const getPetImageSrc = (info, isMine) => {
+  const appearanceId = info?.pet?.appearanceId || info?.pet?.species || '';
+  if (!appearanceId) return '';
+
+  const suffixes = isMine
+    ? ['_battle', '_idle', '']
+    : ['_idle', ''];
+
+  for (const suffix of suffixes) {
+    const src = petImageMap[`${appearanceId}${suffix}`];
+    if (src) return src;
+  }
+
+  return petImageMap[appearanceId] || '';
+};
+
+const getMemberPetImage = (member) => {
+  const pet = getMemberPet(member);
+  const appearanceId = pet.appearanceId || member?.appearanceId || '';
+  return petImageMap[`${appearanceId}_idle`] || petImageMap[appearanceId] || '';
+};
+
 function RandomTeamBattlePage() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -161,6 +245,8 @@ function RandomTeamBattlePage() {
 
   const [room, setRoom] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [answer, setAnswer] = useState('');
+  const [actionSubMenu, setActionSubMenu] = useState(null);
 
   useEffect(() => {
     if (!classId || !matchId) return;
@@ -179,7 +265,31 @@ function RandomTeamBattlePage() {
   const isReady = Boolean(myPlayerData?.id && readyPlayerIds.includes(myPlayerData.id));
   const allReady = room?.status === 'starting' || readyCount >= neededCount;
 
-  // RANDOM_TEAM_FORFEIT_PENALTY_PATCH
+  const teamA = Array.isArray(room?.teamA) ? room.teamA : [];
+  const teamB = Array.isArray(room?.teamB) ? room.teamB : [];
+  const activeA = getFirstAliveMember(teamA);
+  const activeB = getFirstAliveMember(teamB);
+
+  const myTeamRole = teamA.some(member => member?.playerId === myPlayerData?.id)
+    ? 'A'
+    : teamB.some(member => member?.playerId === myPlayerData?.id)
+      ? 'B'
+      : null;
+
+  const myInfo = buildDuelParticipant(myTeamRole === 'B' ? activeB : activeA, myTeamRole === 'B' ? teamB : teamA);
+  const opponentInfo = buildDuelParticipant(myTeamRole === 'B' ? activeA : activeB, myTeamRole === 'B' ? teamA : teamB);
+
+  const previewBattleState = {
+    id: room?.id || matchId,
+    battleMode: 'random-team',
+    teamBattle: true,
+    status: 'team_preview',
+    battleTheme: room?.battleTheme || 'forest',
+    question: null,
+    chat: {},
+    log: room?.log || 'Team battle ready. The existing duel view is connected.',
+  };
+
   const wasCancelledByOther = Boolean(
     room?.status === 'cancelled' &&
     room?.cancelReason === 'team_member_forfeited' &&
@@ -207,14 +317,12 @@ function RandomTeamBattlePage() {
         navigate('/battle/team/' + encodeURIComponent(result.matchId), { replace: true });
       }
     } catch (error) {
-      alert('팀대전 입장 실패: ' + error.message);
+      alert('Team battle enter failed: ' + error.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  
-  // RANDOM_TEAM_FORFEIT_PENALTY_PATCH
   const renderBlindMember = (member) => {
     const isMemberReady = readyPlayerIds.includes(member.playerId);
 
@@ -231,59 +339,140 @@ function RandomTeamBattlePage() {
           }}
         />
         <div>
-          <strong>{member.playerName || '플레이어'}</strong>
-          <span>{isMemberReady ? '입장 완료' : '입장 대기중'}</span>
+          <strong>{member.playerName || 'Player'}</strong>
+          <span>{isMemberReady ? 'Ready' : 'Waiting'}</span>
         </div>
       </Member>
     );
   };
 
   const renderMember = (member) => {
-    const pet = member?.pet || {};
-    const imageSrc = petImageMap[(pet.appearanceId || '') + '_idle'] || petImageMap[pet.appearanceId] || '';
+    const pet = getMemberPet(member);
+    const imageSrc = getMemberPetImage(member);
+    const isActive = member?.playerId === activeA?.playerId || member?.playerId === activeB?.playerId;
 
     return (
-      <Member key={member.playerId}>
-        <img src={imageSrc} alt={member.petName || pet.name || '펫'} />
+      <Member key={member.playerId} style={{ background: isActive ? '#fff9db' : 'white' }}>
+        <img src={imageSrc} alt={member.petName || pet.name || 'pet'} />
         <div>
-          <strong>{member.playerName || '플레이어'}</strong>
-          <span>{member.petName || pet.name || '펫'} · Lv.{member.petLevel || pet.level || 1}</span>
+          <strong>{isActive ? 'ACTIVE ' : ''}{member.playerName || 'Player'}</strong>
+          <span>{member.petName || pet.name || 'pet'} · Lv.{member.petLevel || pet.level || 1}</span>
         </div>
       </Member>
     );
   };
+
+  if (room && allReady && !wasCancelledByOther && myInfo && opponentInfo) {
+    return (
+      <Page style={{ maxWidth: '1180px' }}>
+        <BattleDuelView
+          battleState={previewBattleState}
+          myPlayerData={myPlayerData}
+          bgmEnabled={false}
+          handleToggleBattleFullscreen={noop}
+          handleToggleBgm={noop}
+          showTimer={false}
+          timeLeft={0}
+          switchMessage=""
+          floatingNumbers={[]}
+          reactionFlash={null}
+          currentEffect={null}
+          opponentInfo={opponentInfo}
+          myInfo={myInfo}
+          renderHpBar={renderHpBar}
+          renderSpBar={renderSpBar}
+          getPetImageSrc={getPetImageSrc}
+          hitState={{ my: false, opponent: false }}
+          animState={{ my: null, opponent: null }}
+          ultimateSecretHide={{ my: false, opponent: false }}
+          introActive={false}
+          switchIntro={{ my: false, opponent: false }}
+          dotEffect={null}
+          formatBattleLogForDisplay={formatBattleLogForDisplay}
+          pendingSwitchForMe={false}
+          pendingSwitchPets={[]}
+          handleFaintedPetSwitch={noop}
+          isProcessing={isProcessing}
+          isQuizBlockedByCc={false}
+          isFrozen={false}
+          isStaggered={false}
+          hasSubmitted={false}
+          isOX={false}
+          hasOptions={false}
+          shuffledOptions={[]}
+          handleOptionClick={noop}
+          handleQuizSubmit={(event) => event.preventDefault()}
+          answer={answer}
+          setAnswer={setAnswer}
+          isStunned={false}
+          isBound={false}
+          showActionMenu={false}
+          showDefenseMenu={false}
+          actionSubMenu={actionSubMenu}
+          setActionSubMenu={setActionSubMenu}
+          myEquippedSkills={[]}
+          usableItems={[]}
+          getSkillCost={() => 0}
+          handleActionSelect={noop}
+          handleUseItem={noop}
+          switchablePets={[]}
+          handleManualSwitch={noop}
+          availableDefenseActions={{}}
+          components={battleDuelLayoutComponents}
+        />
+
+        <TeamGrid style={{ marginTop: '1rem' }}>
+          <TeamBox $side="A">
+            <h3>A Team</h3>
+            {teamA.map(renderMember)}
+          </TeamBox>
+
+          <TeamBox $side="B">
+            <h3>B Team</h3>
+            {teamB.map(renderMember)}
+          </TeamBox>
+        </TeamGrid>
+
+        <ButtonRow>
+          <Button type="button" $muted onClick={() => navigate('/pet')}>
+            Pet Page
+          </Button>
+        </ButtonRow>
+      </Page>
+    );
+  }
 
   return (
     <Page>
       <Card>
         <Header>
           <div>
-            <h2>👥 2:2 팀대전 베타</h2>
-            <p>4명이 모두 입장하면 팀대전 준비가 완료됩니다.</p>
+            <h2>2v2 Team Battle Beta</h2>
+            <p>Teams are revealed after all 4 players enter.</p>
           </div>
           <ReadyBadge $ready={allReady}>
-            {readyCount}/{neededCount} 입장
+            {readyCount}/{neededCount} Ready
           </ReadyBadge>
         </Header>
 
         {!room ? (
-          <LogBox>팀대전 입장방을 불러오는 중...</LogBox>
+          <LogBox>Loading team battle room...</LogBox>
         ) : (
           <>
             {wasCancelledByOther ? (
               <LogBox style={{ background: '#fff5f5', color: '#c92a2a' }}>
-                한 명이 팀대전을 포기해서 다시 매칭 대기열로 돌아갑니다.
+                A player forfeited. Returning to queue.
               </LogBox>
             ) : (
               <>
                 {!allReady ? (
                   <>
                     <LogBox>
-                      팀대전 매칭 완료! 4명이 모두 입장하면 팀과 펫 정보가 공개됩니다.
+                      Team battle matched. Team and pet info will be revealed after all 4 players enter.
                     </LogBox>
 
                     <TeamBox $side="A" style={{ marginTop: '1rem' }}>
-                      <h3>입장 확인</h3>
+                      <h3>Entry Check</h3>
                       {[...(room.teamA || []), ...(room.teamB || [])].map(renderBlindMember)}
                     </TeamBox>
                   </>
@@ -291,18 +480,18 @@ function RandomTeamBattlePage() {
                   <>
                     <TeamGrid>
                       <TeamBox $side="A">
-                        <h3>🔵 A팀</h3>
+                        <h3>A Team</h3>
                         {(room.teamA || []).map(renderMember)}
                       </TeamBox>
 
                       <TeamBox $side="B">
-                        <h3>🔴 B팀</h3>
+                        <h3>B Team</h3>
                         {(room.teamB || []).map(renderMember)}
                       </TeamBox>
                     </TeamGrid>
 
                     <LogBox>
-                      👥 2:2 팀대전 준비 완료! 다음 단계에서 퀴즈 전투 화면을 연결합니다.
+                      Team battle ready. The shared duel view will be connected.
                     </LogBox>
                   </>
                 )}
@@ -315,10 +504,10 @@ function RandomTeamBattlePage() {
                 onClick={handleReady}
                 disabled={isProcessing || isReady || allReady}
               >
-                {isReady ? '입장 완료' : isProcessing ? '처리 중...' : '입장 확인'}
+                {isReady ? 'Ready' : isProcessing ? 'Processing...' : 'Enter'}
               </Button>
               <Button type="button" $muted onClick={() => navigate('/pet')}>
-                펫 페이지
+                Pet Page
               </Button>
             </ButtonRow>
           </>
