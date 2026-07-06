@@ -6,10 +6,11 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../api/firebase';
 import { useClassStore, useLeagueStore } from '../../store/leagueStore';
 import { petImageMap } from '../../utils/petImageMap';
-import { cancelRandomBattleQueueEntry, enterRandomTeamBattle, forfeitRandomTeamBattleAndRequeue } from './randomBattleApi';
+import { enterRandomTeamBattle } from './randomBattleApi';
+import BattleDuelView from './BattleDuelView';
 
 const Page = styled.div`
-  max-width: 920px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 1rem 0.75rem 3rem;
   font-family: 'Pretendard', sans-serif;
@@ -126,6 +127,16 @@ const LogBox = styled.div`
   line-height: 1.45;
 `;
 
+const DuelSection = styled.div`
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+`;
+
+const TeamSummary = styled.div`
+  margin-top: 1rem;
+`;
+
 const ButtonRow = styled.div`
   display: flex;
   gap: 0.6rem;
@@ -152,6 +163,102 @@ const Button = styled.button`
   }
 `;
 
+const getMemberPet = (member) => member?.pet || member?.lockedPet || member?.lockedTeam?.[0] || {};
+
+const getMemberPetImage = (member, suffix = 'idle') => {
+  const pet = getMemberPet(member);
+  const appearanceId = pet.appearanceId || member?.appearanceId || '';
+  return petImageMap[`${appearanceId}_${suffix}`] || petImageMap[`${appearanceId}_idle`] || petImageMap[appearanceId] || '';
+};
+
+const getActiveMember = (members, activePlayerId, activePetId, activeIndex) => {
+  if (!Array.isArray(members) || members.length === 0) return null;
+
+  const byPlayerId = activePlayerId
+    ? members.find(member => member?.playerId === activePlayerId)
+    : null;
+  if (byPlayerId) return byPlayerId;
+
+  const byPetId = activePetId
+    ? members.find(member => getMemberPet(member)?.id === activePetId)
+    : null;
+  if (byPetId) return byPetId;
+
+  const index = Number(activeIndex ?? 0);
+  const safeIndex = Number.isInteger(index)
+    ? Math.min(Math.max(index, 0), members.length - 1)
+    : 0;
+
+  return members[safeIndex] || members[0];
+};
+
+const buildDuelParticipant = (activeMember, teamMembers = []) => {
+  if (!activeMember) return null;
+
+  const team = teamMembers
+    .map((member) => {
+      const pet = getMemberPet(member);
+      if (!pet?.id && !pet?.appearanceId) return null;
+      return {
+        ...pet,
+        id: pet.id || member.playerId,
+        name: member.petName || pet.name || '펫',
+        level: member.petLevel || pet.level || 1,
+        hp: Number(pet.hp ?? pet.maxHp ?? 1),
+        maxHp: Number(pet.maxHp ?? pet.hp ?? 1),
+        sp: Number(pet.sp ?? 0),
+        maxSp: Number(pet.maxSp ?? 0),
+        status: { ...(pet.status || {}) },
+      };
+    })
+    .filter(Boolean);
+
+  const activePet = {
+    ...getMemberPet(activeMember),
+    id: getMemberPet(activeMember).id || activeMember.playerId,
+    name: activeMember.petName || getMemberPet(activeMember).name || '펫',
+    level: activeMember.petLevel || getMemberPet(activeMember).level || 1,
+    hp: Number(getMemberPet(activeMember).hp ?? getMemberPet(activeMember).maxHp ?? 1),
+    maxHp: Number(getMemberPet(activeMember).maxHp ?? getMemberPet(activeMember).hp ?? 1),
+    sp: Number(getMemberPet(activeMember).sp ?? 0),
+    maxSp: Number(getMemberPet(activeMember).maxSp ?? 0),
+    status: { ...(getMemberPet(activeMember).status || {}) },
+  };
+
+  const activeIndex = Math.max(0, team.findIndex(pet => pet.id === activePet.id));
+  const syncedTeam = team.length > 0
+    ? team.map((pet, index) => index === activeIndex ? activePet : pet)
+    : [activePet];
+
+  return {
+    id: activeMember.playerId,
+    name: activeMember.playerName || '플레이어',
+    pet: activePet,
+    team: syncedTeam,
+    activePetIndex: activeIndex >= 0 ? activeIndex : 0,
+    activePetId: activePet.id,
+    participatedPetIds: [activePet.id].filter(Boolean),
+    avatarSnapshotUrl: activeMember.avatarSnapshotUrl || null,
+    photoURL: activeMember.photoURL || null,
+  };
+};
+
+const getViewerRole = ({ room, myPlayerId, activeA, activeB }) => {
+  const explicitRole = room?.viewerRoles?.[myPlayerId] || room?.viewerRoleMap?.[myPlayerId];
+  if (explicitRole) return explicitRole;
+
+  if (!myPlayerId) return 'spectator';
+
+  if (room?.status === 'quiz' && [activeA?.playerId, activeB?.playerId].includes(myPlayerId)) {
+    return 'quiz-responder';
+  }
+
+  if (room?.status === 'action' && room?.attackerPlayerId === myPlayerId) return 'attacker';
+  if (room?.status === 'action' && room?.defenderPlayerId === myPlayerId) return 'defender';
+
+  return 'spectator';
+};
+
 function RandomTeamBattlePage() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -161,6 +268,7 @@ function RandomTeamBattlePage() {
 
   const [room, setRoom] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [actionSubMenu, setActionSubMenu] = useState(null);
 
   useEffect(() => {
     if (!classId || !matchId) return;
@@ -177,7 +285,45 @@ function RandomTeamBattlePage() {
   const neededCount = Number(room?.neededCount || 4);
   const readyCount = Number(room?.readyCount || readyPlayerIds.length || 0);
   const isReady = Boolean(myPlayerData?.id && readyPlayerIds.includes(myPlayerData.id));
-  const allReady = room?.status === 'starting' || readyCount >= neededCount;
+  const allReady = room?.status === 'starting' || room?.status === 'quiz' || room?.status === 'action' || readyCount >= neededCount;
+
+  const teamA = Array.isArray(room?.teamA) ? room.teamA : [];
+  const teamB = Array.isArray(room?.teamB) ? room.teamB : [];
+  const activeDuel = room?.activeDuel || {};
+  const activeA = getActiveMember(
+    teamA,
+    activeDuel.teamAPlayerId || activeDuel.aPlayerId || room?.activeAPlayerId,
+    activeDuel.teamAPetId || activeDuel.aPetId || room?.activeAPetId,
+    activeDuel.teamAIndex ?? activeDuel.aIndex ?? room?.activeAIndex
+  );
+  const activeB = getActiveMember(
+    teamB,
+    activeDuel.teamBPlayerId || activeDuel.bPlayerId || room?.activeBPlayerId,
+    activeDuel.teamBPetId || activeDuel.bPetId || room?.activeBPetId,
+    activeDuel.teamBIndex ?? activeDuel.bIndex ?? room?.activeBIndex
+  );
+
+  const myTeamRole = teamA.some(member => member?.playerId === myPlayerData?.id)
+    ? 'A'
+    : teamB.some(member => member?.playerId === myPlayerData?.id)
+      ? 'B'
+      : null;
+
+  const myInfo = buildDuelParticipant(myTeamRole === 'B' ? activeB : activeA, myTeamRole === 'B' ? teamB : teamA);
+  const opponentInfo = buildDuelParticipant(myTeamRole === 'B' ? activeA : activeB, myTeamRole === 'B' ? teamA : teamB);
+  const viewerRole = getViewerRole({ room, myPlayerId: myPlayerData?.id, activeA, activeB });
+  const canAnswerQuiz = viewerRole === 'quiz-responder' && !room?.chat?.[myPlayerData?.id];
+  const showActionMenu = viewerRole === 'attacker' && room?.status === 'action' && !room?.attackerAction;
+  const showDefenseMenu = viewerRole === 'defender' && room?.status === 'action' && !room?.defenderAction;
+
+  const duelBattleState = {
+    status: room?.question || room?.currentQuestion ? 'quiz' : room?.status || 'starting',
+    question: room?.question || room?.currentQuestion || null,
+    chat: room?.chat || {},
+    log: room?.log || '👥 2:2 팀대전 준비 완료! 현재 출전 펫을 확인하세요.',
+    battleTheme: room?.battleTheme || 'forest',
+    turnStartTime: room?.turnStartTime || room?.questionStartedAtMs || null,
+  };
 
   // RANDOM_TEAM_FORFEIT_PENALTY_PATCH
   const wasCancelledByOther = Boolean(
@@ -213,7 +359,10 @@ function RandomTeamBattlePage() {
     }
   };
 
-  
+  const handleTeamDuelPendingAction = () => {
+    alert('팀대전 조작은 다음 단계에서 연결합니다. 현재는 공통 배틀 화면 표시 확인 단계입니다.');
+  };
+
   // RANDOM_TEAM_FORFEIT_PENALTY_PATCH
   const renderBlindMember = (member) => {
     const isMemberReady = readyPlayerIds.includes(member.playerId);
@@ -239,14 +388,15 @@ function RandomTeamBattlePage() {
   };
 
   const renderMember = (member) => {
-    const pet = member?.pet || {};
-    const imageSrc = petImageMap[(pet.appearanceId || '') + '_idle'] || petImageMap[pet.appearanceId] || '';
+    const pet = getMemberPet(member);
+    const imageSrc = getMemberPetImage(member, 'idle');
+    const isActive = member?.playerId === activeA?.playerId || member?.playerId === activeB?.playerId;
 
     return (
-      <Member key={member.playerId}>
+      <Member key={member.playerId} style={{ background: isActive ? '#fff9db' : 'white' }}>
         <img src={imageSrc} alt={member.petName || pet.name || '펫'} />
         <div>
-          <strong>{member.playerName || '플레이어'}</strong>
+          <strong>{isActive ? '⚔️ ' : ''}{member.playerName || '플레이어'}</strong>
           <span>{member.petName || pet.name || '펫'} · Lv.{member.petLevel || pet.level || 1}</span>
         </div>
       </Member>
@@ -289,21 +439,57 @@ function RandomTeamBattlePage() {
                   </>
                 ) : (
                   <>
-                    <TeamGrid>
-                      <TeamBox $side="A">
-                        <h3>🔵 A팀</h3>
-                        {(room.teamA || []).map(renderMember)}
-                      </TeamBox>
+                    {myInfo && opponentInfo ? (
+                      <DuelSection>
+                        <BattleDuelView
+                          battleState={duelBattleState}
+                          myPlayerData={myPlayerData}
+                          myInfo={myInfo}
+                          opponentInfo={opponentInfo}
+                          viewerRole={viewerRole}
+                          timeLeft={Number(room?.timeLeft ?? 0)}
+                          showTimer={Boolean(room?.question || room?.currentQuestion)}
+                          canAnswerQuiz={canAnswerQuiz}
+                          hasSubmitted={Boolean(room?.chat?.[myPlayerData?.id])}
+                          isOX={String((room?.question || room?.currentQuestion)?.type || '').toLowerCase() === 'ox'}
+                          hasOptions={Array.isArray((room?.question || room?.currentQuestion)?.options) && (room?.question || room?.currentQuestion)?.options?.length > 0}
+                          shuffledOptions={(room?.question || room?.currentQuestion)?.options || []}
+                          onOptionClick={handleTeamDuelPendingAction}
+                          onQuizSubmit={(event) => {
+                            event.preventDefault();
+                            handleTeamDuelPendingAction();
+                          }}
+                          showActionMenu={showActionMenu}
+                          showDefenseMenu={showDefenseMenu}
+                          actionSubMenu={actionSubMenu}
+                          setActionSubMenu={setActionSubMenu}
+                          myEquippedSkills={[]}
+                          usableItems={[]}
+                          onActionSelect={handleTeamDuelPendingAction}
+                          onUseItem={handleTeamDuelPendingAction}
+                          onManualSwitch={handleTeamDuelPendingAction}
+                          defenseActions={{}}
+                        />
+                      </DuelSection>
+                    ) : (
+                      <LogBox style={{ background: '#fff5f5', color: '#c92a2a' }}>
+                        팀대전 출전 정보를 불러오는 중입니다.
+                      </LogBox>
+                    )}
 
-                      <TeamBox $side="B">
-                        <h3>🔴 B팀</h3>
-                        {(room.teamB || []).map(renderMember)}
-                      </TeamBox>
-                    </TeamGrid>
+                    <TeamSummary>
+                      <TeamGrid>
+                        <TeamBox $side="A">
+                          <h3>🔵 A팀</h3>
+                          {teamA.map(renderMember)}
+                        </TeamBox>
 
-                    <LogBox>
-                      👥 2:2 팀대전 준비 완료! 다음 단계에서 퀴즈 전투 화면을 연결합니다.
-                    </LogBox>
+                        <TeamBox $side="B">
+                          <h3>🔴 B팀</h3>
+                          {teamB.map(renderMember)}
+                        </TeamBox>
+                      </TeamGrid>
+                    </TeamSummary>
                   </>
                 )}
               </>
