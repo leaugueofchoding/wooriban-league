@@ -8,10 +8,12 @@ import { useClassStore, useLeagueStore } from '../../store/leagueStore';
 import { petImageMap } from '../../utils/petImageMap';
 import { BattleHpBar, BattleSpBar } from './BattleStatBars';
 import { enterRandomTeamBattle } from './randomBattleApi';
+import { SKILLS } from '../pet/petData';
 import BattleDuelView from './BattleDuelView';
 import { battleDuelLayoutComponents } from './BattleDuelLayoutComponents';
 
 const QUIZ_LIMIT_MS = 15000;
+const ACTION_LIMIT_MS = 10000;
 
 const Page = styled.div`
   max-width: 920px;
@@ -278,6 +280,35 @@ const getMemberPetImage = (member) => {
   return petImageMap[`${appearanceId}_idle`] || petImageMap[appearanceId] || '';
 };
 
+
+const getEquippedSkillsForParticipant = (participant) => {
+  const equipped = Array.isArray(participant?.pet?.equippedSkills)
+    ? participant.pet.equippedSkills
+    : [];
+
+  return equipped
+    .filter(id => String(id || '').toLowerCase() !== 'tackle')
+    .map(id => {
+      const skillId = String(id || '').toUpperCase();
+      const skill = SKILLS[skillId];
+      return skill ? { ...skill, id: skillId } : null;
+    })
+    .filter(Boolean);
+};
+
+const getTeamSkillCost = (skill) => Number(skill?.cost || 0);
+
+const cloneParticipantForSkill = (member) => ({
+  id: member?.playerId,
+  name: member?.playerName || 'Player',
+  pet: {
+    ...getMemberPet(member),
+    status: { ...(getMemberPet(member).status || {}) },
+  },
+  equippedTitle: member?.equippedTitle || null,
+});
+
+
 const buildActiveDuelPatch = (activeA, activeB, previous = {}) => ({
   ...previous,
   teamAPlayerId: activeA?.playerId || previous.teamAPlayerId || null,
@@ -309,6 +340,64 @@ const applyActiveHpDelta = (members, activePlayerId, deltaHp) => (
   })
 );
 
+
+const replaceActiveMemberPet = (members, activePlayerId, nextPet) => (
+  (Array.isArray(members) ? members : []).map(member => {
+    if (member?.playerId !== activePlayerId) return member;
+
+    return {
+      ...member,
+      pet: {
+        ...nextPet,
+        status: { ...(nextPet.status || {}) },
+      },
+    };
+  })
+);
+
+const getTackleDamage = (attackerPet, defenderPet, defenderAction) => {
+  const atk = Number(attackerPet?.atk ?? 10);
+  const level = Number(attackerPet?.level ?? 1);
+  const defenderMaxHp = Number(defenderPet?.maxHp ?? defenderPet?.hp ?? 1);
+
+  let damage = Math.max(1, Math.floor(8 + atk * 0.7 + level * 0.8));
+
+  if (defenderAction === 'BRACE') {
+    damage = Math.max(1, Math.floor(damage * 0.55));
+  }
+
+  if (defenderAction === 'DODGE') {
+    const dodgeSuccess = Math.random() < 0.45;
+    if (dodgeSuccess) {
+      return { damage: 0, dodged: true };
+    }
+
+    damage = Math.max(1, Math.floor(damage * 0.8));
+  }
+
+  return {
+    damage: Math.min(Math.max(1, damage), Math.max(1, defenderMaxHp)),
+    dodged: false,
+  };
+};
+
+
+const getAliveMembers = (members) => (
+  (Array.isArray(members) ? members : []).filter(member => {
+    const pet = getMemberPet(member);
+    return Number(pet.hp ?? pet.maxHp ?? 1) > 0;
+  })
+);
+
+const pickNextAliveMember = (members, currentPlayerId) => {
+  const aliveMembers = getAliveMembers(members);
+  return aliveMembers.find(member => member?.playerId !== currentPlayerId) || aliveMembers[0] || null;
+};
+
+const getMemberDisplayName = (member) => member?.playerName || 'Player';
+const getPetDisplayName = (member) => member?.petName || getMemberPet(member)?.name || 'pet';
+
+
 function RandomTeamBattlePage() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -323,7 +412,13 @@ function RandomTeamBattlePage() {
   const [quizPool, setQuizPool] = useState([]);
   const [timeLeft, setTimeLeft] = useState(15);
   const [shuffledOptions, setShuffledOptions] = useState([]);
+  const [hitState, setHitState] = useState({ my: false, opponent: false });
+  const [animState, setAnimState] = useState({ my: null, opponent: null });
+  const [currentEffect, setCurrentEffect] = useState(null);
+  const [floatingNumbers, setFloatingNumbers] = useState([]);
   const timerRef = useRef(null);
+  const lastActionAnimationRef = useRef(null);
+  const actionAnimationTimersRef = useRef([]);
 
   useEffect(() => {
     if (!classId || !matchId) return;
@@ -394,6 +489,7 @@ function RandomTeamBattlePage() {
 
   const myInfo = buildDuelParticipant(myTeamRole === 'B' ? activeB : activeA, myTeamRole === 'B' ? teamB : teamA);
   const opponentInfo = buildDuelParticipant(myTeamRole === 'B' ? activeA : activeB, myTeamRole === 'B' ? teamA : teamB);
+  const myEquippedSkills = getEquippedSkillsForParticipant(myInfo);
   const controllerPlayerId = teamA[0]?.playerId || activeA?.playerId || null;
   const activeIds = [activeA?.playerId, activeB?.playerId].filter(Boolean);
   const canAnswerQuiz = room?.status === 'quiz' && activeIds.includes(myPlayerData?.id) && !room?.chat?.[myPlayerData?.id];
@@ -507,6 +603,173 @@ function RandomTeamBattlePage() {
     }, { merge: true });
   };
 
+  const resolveTeamActionAndNextQuiz = (transaction, roomRef, freshRoom, options = {}) => {
+    const freshTeamA = Array.isArray(freshRoom.teamA) ? freshRoom.teamA : [];
+    const freshTeamB = Array.isArray(freshRoom.teamB) ? freshRoom.teamB : [];
+    const freshActiveDuel = freshRoom.activeDuel || {};
+    const freshActiveA = getActiveMember(freshTeamA, freshActiveDuel.teamAPlayerId, freshActiveDuel.teamAPetId, freshActiveDuel.teamAIndex);
+    const freshActiveB = getActiveMember(freshTeamB, freshActiveDuel.teamBPlayerId, freshActiveDuel.teamBPetId, freshActiveDuel.teamBIndex);
+
+    if (!freshActiveA?.playerId || !freshActiveB?.playerId) return;
+
+    const attackerPlayerId = freshRoom.attackerPlayerId || freshRoom.turn;
+    const defenderPlayerId = freshRoom.defenderPlayerId;
+    const attackerIsA = attackerPlayerId === freshActiveA.playerId;
+    const defenderIsA = defenderPlayerId === freshActiveA.playerId;
+
+    const attackerMember = attackerIsA ? freshActiveA : freshActiveB;
+    const defenderMember = defenderIsA ? freshActiveA : freshActiveB;
+
+    if (!attackerMember?.playerId || !defenderMember?.playerId) return;
+
+    const attackerAction = options.attackerAction || freshRoom.attackerAction || 'TACKLE';
+    const defenderAction = options.defenderAction || freshRoom.defenderAction || 'BRACE';
+    const actionType = String(attackerAction || 'TACKLE').toUpperCase();
+    const skill = SKILLS[actionType] || null;
+
+    const attackerForSkill = cloneParticipantForSkill(attackerMember);
+    const defenderForSkill = cloneParticipantForSkill(defenderMember);
+    const beforeDefenderHp = Number(defenderForSkill.pet.hp ?? defenderForSkill.pet.maxHp ?? 1);
+
+    let actionLog = '';
+
+    if (defenderAction === 'FOCUS') {
+      if (!defenderForSkill.pet.status) defenderForSkill.pet.status = {};
+      defenderForSkill.pet.status.focusCharge = 1;
+    }
+
+    if (skill?.effect && actionType !== 'TACKLE') {
+      const beforeSp = Number(attackerForSkill.pet.sp ?? 0);
+      const cost = Number(skill.cost || 0);
+      attackerForSkill.pet.sp = Math.max(0, beforeSp - cost);
+      actionLog = skill.effect(attackerForSkill, defenderForSkill, defenderAction) || '';
+    } else {
+      const result = getTackleDamage(attackerForSkill.pet, defenderForSkill.pet, defenderAction);
+      defenderForSkill.pet.hp = Math.max(0, Number(defenderForSkill.pet.hp ?? defenderForSkill.pet.maxHp ?? 1) - result.damage);
+      actionLog = result.damage > 0
+        ? `${getMemberDisplayName(attackerMember)} used TACKLE. ${getMemberDisplayName(defenderMember)} took ${result.damage} damage.`
+        : `${getMemberDisplayName(attackerMember)} used TACKLE, but ${getMemberDisplayName(defenderMember)} dodged it.`;
+    }
+
+    if (defenderAction === 'FOCUS') {
+      actionLog += ' Defender focused and charged power for the next attack.';
+    }
+
+    const afterDefenderHp = Math.max(0, Number(defenderForSkill.pet.hp ?? 0));
+    defenderForSkill.pet.hp = afterDefenderHp;
+    const damage = Math.max(0, beforeDefenderHp - afterDefenderHp);
+    const defenderFainted = afterDefenderHp <= 0;
+
+    const nextTeamAAfterAttacker = attackerIsA
+      ? replaceActiveMemberPet(freshTeamA, attackerMember.playerId, attackerForSkill.pet)
+      : freshTeamA;
+    const nextTeamBAfterAttacker = !attackerIsA
+      ? replaceActiveMemberPet(freshTeamB, attackerMember.playerId, attackerForSkill.pet)
+      : freshTeamB;
+
+    const nextTeamA = defenderIsA
+      ? replaceActiveMemberPet(nextTeamAAfterAttacker, defenderMember.playerId, defenderForSkill.pet)
+      : nextTeamAAfterAttacker;
+    const nextTeamB = !defenderIsA
+      ? replaceActiveMemberPet(nextTeamBAfterAttacker, defenderMember.playerId, defenderForSkill.pet)
+      : nextTeamBAfterAttacker;
+
+    const nextActiveA = defenderIsA && defenderFainted
+      ? pickNextAliveMember(nextTeamA, defenderMember.playerId)
+      : getActiveMember(nextTeamA, freshActiveA.playerId, getMemberPet(freshActiveA)?.id, freshActiveDuel.teamAIndex);
+
+    const nextActiveB = !defenderIsA && defenderFainted
+      ? pickNextAliveMember(nextTeamB, defenderMember.playerId)
+      : getActiveMember(nextTeamB, freshActiveB.playerId, getMemberPet(freshActiveB)?.id, freshActiveDuel.teamBIndex);
+
+    const teamAAlive = getAliveMembers(nextTeamA);
+    const teamBAlive = getAliveMembers(nextTeamB);
+    const teamADefeated = teamAAlive.length === 0;
+    const teamBDefeated = teamBAlive.length === 0;
+    const isFinished = teamADefeated || teamBDefeated;
+
+    const actionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const lastAction = {
+      id: actionId,
+      actionType,
+      attackerAction: actionType,
+      defenderAction,
+      attackerPlayerId: attackerMember.playerId,
+      defenderPlayerId: defenderMember.playerId,
+      damage,
+      defenderFainted,
+      defenderTeam: defenderIsA ? 'A' : 'B',
+      nextActivePlayerId: defenderIsA ? nextActiveA?.playerId || null : nextActiveB?.playerId || null,
+      createdAtMs: Date.now(),
+    };
+
+    const timeoutPrefix = options.timeout ? 'Time out. Missing choices were selected automatically. ' : '';
+    const fallbackLog = damage > 0
+      ? `${getMemberDisplayName(attackerMember)} dealt ${damage} damage.`
+      : `${getMemberDisplayName(attackerMember)} attacked, but no damage was dealt.`;
+
+    let finalLog = timeoutPrefix + (actionLog || fallbackLog);
+
+    if (defenderFainted) {
+      finalLog += ` ${getPetDisplayName(defenderMember)} fainted.`;
+
+      const nextActive = defenderIsA ? nextActiveA : nextActiveB;
+      if (nextActive) {
+        finalLog += ` ${getPetDisplayName(nextActive)} enters next.`;
+      }
+    }
+
+    if (isFinished) {
+      const winnerTeam = teamADefeated ? 'B' : 'A';
+      finalLog += ` Team ${winnerTeam} wins!`;
+
+      transaction.set(roomRef, {
+        teamA: nextTeamA,
+        teamB: nextTeamB,
+        activeDuel: buildActiveDuelPatch(nextActiveA || freshActiveA, nextActiveB || freshActiveB, freshActiveDuel),
+        status: 'finished',
+        winnerTeam,
+        winnerPlayerIds: winnerTeam === 'A'
+          ? nextTeamA.map(member => member.playerId).filter(Boolean)
+          : nextTeamB.map(member => member.playerId).filter(Boolean),
+        loserTeam: winnerTeam === 'A' ? 'B' : 'A',
+        question: null,
+        attackerPlayerId: null,
+        defenderPlayerId: null,
+        turn: null,
+        attackerAction: null,
+        defenderAction: null,
+        chat: {},
+        lastAction,
+        log: finalLog,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      return;
+    }
+
+    const nextQuiz = getNextQuizObj(freshRoom.usedQuestions || []);
+    const nextUsedQuestions = [...new Set([...(freshRoom.usedQuestions || []), nextQuiz.question].filter(Boolean))];
+
+    transaction.set(roomRef, {
+      teamA: nextTeamA,
+      teamB: nextTeamB,
+      activeDuel: buildActiveDuelPatch(nextActiveA, nextActiveB, freshActiveDuel),
+      status: 'quiz',
+      question: nextQuiz,
+      usedQuestions: nextUsedQuestions,
+      turnStartTime: Date.now(),
+      attackerPlayerId: null,
+      defenderPlayerId: null,
+      turn: null,
+      attackerAction: null,
+      defenderAction: null,
+      chat: {},
+      lastAction,
+      log: finalLog,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  };
+
   const handleTeamQuizAnswer = async (selectedAnswer) => {
     if (!classId || !matchId || !myPlayerData?.id || isProcessing) return;
 
@@ -594,24 +857,33 @@ function RandomTeamBattlePage() {
 
   useEffect(() => {
     clearInterval(timerRef.current);
-    if (room?.status !== 'quiz') {
+
+    if (room?.status !== 'quiz' && room?.status !== 'action') {
       setTimeLeft(0);
       return () => clearInterval(timerRef.current);
     }
+
     const updateTimer = () => {
       const now = Date.now();
+      const limitMs = room.status === 'action' ? ACTION_LIMIT_MS : QUIZ_LIMIT_MS;
       const elapsed = now - Number(room.turnStartTime || now);
-      const remaining = Math.max(0, Math.ceil((QUIZ_LIMIT_MS - elapsed) / 1000));
+      const remaining = Math.max(0, Math.ceil((limitMs - elapsed) / 1000));
       setTimeLeft(remaining);
-      if (elapsed > QUIZ_LIMIT_MS + 800) {
+
+      if (elapsed > limitMs + 800) {
         clearInterval(timerRef.current);
-        handleTeamQuizTimeout();
+        if (room.status === 'action') {
+          handleTeamActionTimeout();
+        } else {
+          handleTeamQuizTimeout();
+        }
       }
     };
+
     updateTimer();
     timerRef.current = setInterval(updateTimer, 250);
     return () => clearInterval(timerRef.current);
-  }, [room?.status, room?.turnStartTime, controllerPlayerId, myPlayerData?.id, classId, matchId]);
+  }, [room?.status, room?.turnStartTime, myPlayerData?.id, classId, matchId]);
 
   const handleQuizSubmit = (event) => {
     event.preventDefault();
@@ -619,13 +891,86 @@ function RandomTeamBattlePage() {
     handleTeamQuizAnswer(answer);
   };
 
-  const handleTeamActionPlaceholder = () => alert('Attack/defense resolution will be connected in the next step.');
+  const handleTeamActionSelect = async (action) => {
+    if (!classId || !matchId || !myPlayerData?.id || isProcessing) return;
+
+    try {
+      setIsProcessing(true);
+      const roomRef = doc(db, 'classes', classId, 'randomTeamBattleRooms', matchId);
+
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(roomRef);
+        if (!snap.exists()) throw new Error('Team battle room not found.');
+
+        const freshRoom = { id: snap.id, ...snap.data() };
+        if (freshRoom.status !== 'action') return;
+
+        const isAttackerNow = freshRoom.attackerPlayerId === myPlayerData.id || freshRoom.turn === myPlayerData.id;
+        const isDefenderNow = freshRoom.defenderPlayerId === myPlayerData.id;
+
+        if (!isAttackerNow && !isDefenderNow) return;
+
+        const nextAttackerAction = isAttackerNow ? action : freshRoom.attackerAction;
+        const nextDefenderAction = isDefenderNow ? action : freshRoom.defenderAction;
+
+        if (isAttackerNow && freshRoom.attackerAction) return;
+        if (isDefenderNow && freshRoom.defenderAction) return;
+
+        if (nextAttackerAction && nextDefenderAction) {
+          resolveTeamActionAndNextQuiz(transaction, roomRef, {
+            ...freshRoom,
+            attackerAction: nextAttackerAction,
+            defenderAction: nextDefenderAction,
+          });
+          return;
+        }
+
+        transaction.set(roomRef, {
+          attackerAction: nextAttackerAction || null,
+          defenderAction: nextDefenderAction || null,
+          log: isAttackerNow
+            ? 'Attack selected. Waiting for defender choice.'
+            : 'Defense selected. Waiting for attacker choice.',
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      });
+    } catch (error) {
+      console.error('Team battle action select failed:', error);
+      alert('Team battle action select failed: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+      setActionSubMenu(null);
+    }
+  };
+
+  const handleTeamActionTimeout = async () => {
+    if (!classId || !matchId || !myPlayerData?.id) return;
+
+    const roomRef = doc(db, 'classes', classId, 'randomTeamBattleRooms', matchId);
+
+    runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(roomRef);
+      if (!snap.exists()) return;
+
+      const freshRoom = { id: snap.id, ...snap.data() };
+      if (freshRoom.status !== 'action') return;
+
+      const elapsed = Date.now() - Number(freshRoom.turnStartTime || Date.now());
+      if (elapsed <= ACTION_LIMIT_MS + 700) return;
+
+      resolveTeamActionAndNextQuiz(transaction, roomRef, freshRoom, {
+        attackerAction: freshRoom.attackerAction || 'TACKLE',
+        defenderAction: freshRoom.defenderAction || 'BRACE',
+        timeout: true,
+      });
+    }).catch(error => console.error('Team battle action timeout failed:', error));
+  };
 
   const previewBattleState = {
     id: room?.id || matchId,
     battleMode: 'random-team',
     teamBattle: true,
-    status: room?.status === 'quiz' || room?.status === 'action' ? room.status : 'team_preview',
+    status: ['quiz', 'action', 'finished'].includes(room?.status) ? room.status : 'team_preview',
     battleTheme: room?.battleTheme || 'forest',
     question: currentQuestion,
     chat: room?.chat || {},
@@ -640,6 +985,68 @@ function RandomTeamBattlePage() {
     const timer = window.setTimeout(() => navigate('/pet', { replace: true }), 2500);
     return () => window.clearTimeout(timer);
   }, [wasCancelledByOther, navigate]);
+
+  useEffect(() => {
+    const lastAction = room?.lastAction;
+    if (!lastAction?.id || lastActionAnimationRef.current === lastAction.id) return;
+    if (!myInfo || !opponentInfo) return;
+
+    lastActionAnimationRef.current = lastAction.id;
+    actionAnimationTimersRef.current.forEach(timer => window.clearTimeout(timer));
+    actionAnimationTimersRef.current = [];
+
+    const actionType = String(lastAction.actionType || lastAction.attackerAction || 'TACKLE').toUpperCase();
+    const attackerSide = lastAction.attackerPlayerId === myInfo.id ? 'my' : 'opponent';
+    const defenderSide = lastAction.defenderPlayerId === myInfo.id ? 'my' : 'opponent';
+    const damage = Number(lastAction.damage || 0);
+
+    setAnimState({ my: null, opponent: null });
+    setHitState({ my: false, opponent: false });
+    setCurrentEffect(null);
+
+    const startTimer = window.setTimeout(() => {
+      setAnimState(prev => ({ ...prev, [attackerSide]: actionType }));
+      setCurrentEffect({ type: actionType, isMine: attackerSide === 'my' });
+    }, 80);
+
+    const hitTimer = window.setTimeout(() => {
+      setHitState(prev => ({ ...prev, [defenderSide]: true }));
+
+      if (damage > 0) {
+        const id = `${lastAction.id}_damage`;
+        setFloatingNumbers([{
+          id,
+          side: defenderSide,
+          kind: 'damage',
+          amount: `-${damage}`,
+          label: lastAction.defenderFainted ? 'K.O.' : '',
+          lane: 0,
+        }]);
+
+        const numberClearTimer = window.setTimeout(() => {
+          setFloatingNumbers(prev => prev.filter(item => item.id !== id));
+        }, 1200);
+        actionAnimationTimersRef.current.push(numberClearTimer);
+      }
+    }, 420);
+
+    const clearHitTimer = window.setTimeout(() => {
+      setHitState({ my: false, opponent: false });
+    }, 760);
+
+    const clearTimer = window.setTimeout(() => {
+      setAnimState({ my: null, opponent: null });
+      setCurrentEffect(null);
+      setHitState({ my: false, opponent: false });
+    }, 1350);
+
+    actionAnimationTimersRef.current.push(startTimer, hitTimer, clearHitTimer, clearTimer);
+
+    return () => {
+      actionAnimationTimersRef.current.forEach(timer => window.clearTimeout(timer));
+      actionAnimationTimersRef.current = [];
+    };
+  }, [room?.lastAction?.id, myInfo?.id, opponentInfo?.id]);
 
   const handleReady = async () => {
     if (!classId || !myPlayerData?.id) return;
@@ -679,6 +1086,7 @@ function RandomTeamBattlePage() {
   if (room && allReady && !wasCancelledByOther && myInfo && opponentInfo) {
     const isAttacker = room?.attackerPlayerId === myPlayerData?.id || room?.turn === myPlayerData?.id;
     const isDefender = room?.defenderPlayerId === myPlayerData?.id;
+    const canActInAction = isAttacker || isDefender;
     const showActionMenu = room?.status === 'action' && isAttacker && !room?.attackerAction;
     const showDefenseMenu = room?.status === 'action' && isDefender && !room?.defenderAction;
 
@@ -693,16 +1101,16 @@ function RandomTeamBattlePage() {
           showTimer={room?.status === 'quiz' || room?.status === 'action'}
           timeLeft={timeLeft}
           switchMessage=""
-          floatingNumbers={[]}
+          floatingNumbers={floatingNumbers}
           reactionFlash={null}
-          currentEffect={null}
+          currentEffect={currentEffect}
           opponentInfo={opponentInfo}
           myInfo={myInfo}
           renderHpBar={renderHpBar}
           renderSpBar={renderSpBar}
           getPetImageSrc={getPetImageSrc}
-          hitState={{ my: false, opponent: false }}
-          animState={{ my: null, opponent: null }}
+          hitState={hitState}
+          animState={animState}
           ultimateSecretHide={{ my: false, opponent: false }}
           introActive={false}
           switchIntro={{ my: false, opponent: false }}
@@ -713,6 +1121,7 @@ function RandomTeamBattlePage() {
           handleFaintedPetSwitch={noop}
           isProcessing={isProcessing}
           canAnswerQuiz={canAnswerQuiz}
+          canActInAction={canActInAction}
           isQuizBlockedByCc={false}
           isFrozen={false}
           isStaggered={false}
@@ -730,14 +1139,14 @@ function RandomTeamBattlePage() {
           showDefenseMenu={showDefenseMenu}
           actionSubMenu={actionSubMenu}
           setActionSubMenu={setActionSubMenu}
-          myEquippedSkills={[]}
+          myEquippedSkills={myEquippedSkills}
           usableItems={[]}
-          getSkillCost={() => 0}
-          handleActionSelect={handleTeamActionPlaceholder}
-          handleUseItem={handleTeamActionPlaceholder}
+          getSkillCost={getTeamSkillCost}
+          handleActionSelect={handleTeamActionSelect}
+          handleUseItem={handleTeamActionSelect}
           switchablePets={[]}
-          handleManualSwitch={handleTeamActionPlaceholder}
-          availableDefenseActions={{ BRACE: '방어', DODGE: '회피' }}
+          handleManualSwitch={handleTeamActionSelect}
+          availableDefenseActions={{ BRACE: '방어', DODGE: '회피', FOCUS: '기 모으기' }}
           components={battleDuelLayoutComponents}
         />
 
