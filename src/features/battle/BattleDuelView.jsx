@@ -38,6 +38,8 @@ export default function BattleDuelView({
     pendingSwitchPets,
     handleFaintedPetSwitch,
     isProcessing,
+    canAnswerQuiz = true,
+    canActInAction = true,
     isQuizBlockedByCc,
     isFrozen,
     isStaggered,
@@ -160,6 +162,8 @@ export default function BattleDuelView({
                                     $glow={item.glow}
                                     $delay={item.delay}
                                     $lane={item.lane}
+                                    $x={item.x}
+                                    $y={item.y}
                                 >
                                     {item.label && <span className="damageLabel">{item.label}</span>}
                                     <span className="damageAmount">{item.amount}</span>
@@ -294,7 +298,12 @@ export default function BattleDuelView({
                                 {battleState.status === 'quiz' && battleState.question && (
                                     <>
                                         <BattlePrompt>Q. {battleState.question.question}</BattlePrompt>
-                                        {isQuizBlockedByCc ? (
+                                        {!canAnswerQuiz ? (
+                                            <RightTaskCard style={{ marginTop: '1rem', color: '#495057', background: '#f8f9fa', borderColor: '#dee2e6' }}>
+                                                <div style={{ fontSize: '1.15rem' }}>👀 관전 중</div>
+                                                <div style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>현재 출전 중인 학생만 정답을 선택할 수 있습니다.</div>
+                                            </RightTaskCard>
+                                        ) : isQuizBlockedByCc ? (
                                             <RightTaskCard style={{ marginTop: '1rem', color: '#e03131', background: '#fff5f5', borderColor: '#ffc9c9' }}>
                                                 <div style={{ fontSize: '1.15rem' }}>{isFrozen ? '❄️ 빙결 상태!' : isStaggered ? '⚡ 경직 상태!' : '💫 기절 상태!'}</div>
                                                 <div style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>문제는 보이지만 이번 턴에는 정답을 제출할 수 없습니다.</div>
@@ -355,7 +364,7 @@ export default function BattleDuelView({
                                     </RightTaskCard>
                                 )}
 
-                                {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && (
+                                {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && canAnswerQuiz && (
                                     <RightTaskCard style={{ background: '#ffffff', borderColor: '#339af0' }}>
                                         <div style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#1864ab' }}>✏️ 정답 선택</div>
                                         {(() => {
@@ -367,7 +376,7 @@ export default function BattleDuelView({
                                                                 key={ox}
                                                                 $ox={ox}
                                                                 onClick={() => handleOptionClick(ox)}
-                                                                disabled={isProcessing || hasSubmitted}
+                                                                disabled={isProcessing || hasSubmitted || !canAnswerQuiz}
                                                             >
                                                                 {ox === 'O' ? '⭕' : '❌'}
                                                             </OXButton>
@@ -383,7 +392,7 @@ export default function BattleDuelView({
                                                             <OptionButton
                                                                 key={idx}
                                                                 onClick={() => handleOptionClick(opt)}
-                                                                disabled={isProcessing || hasSubmitted}
+                                                                disabled={isProcessing || hasSubmitted || !canAnswerQuiz}
                                                                 style={{ opacity: hasSubmitted ? 0.5 : 1, cursor: hasSubmitted ? 'not-allowed' : 'pointer' }}
                                                             >
                                                                 {opt}
@@ -401,7 +410,7 @@ export default function BattleDuelView({
                                                         onChange={(e) => setAnswer(e.target.value)}
                                                         placeholder="정답을 입력하세요"
 
-                                                        disabled={isProcessing || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
+                                                        disabled={isProcessing || !canAnswerQuiz || (hasSubmitted && battleState.chat?.[myPlayerData.id]?.isCorrect)}
                                                     />
                                                 </form>
                                             );
@@ -413,6 +422,15 @@ export default function BattleDuelView({
                                                     : "오답입니다... 대기 중"}
                                             </div>
                                         )}
+                                    </RightTaskCard>
+                                )}
+
+                                {battleState.status === 'action' && !showActionMenu && !showDefenseMenu && !canActInAction && (
+                                    <RightTaskCard style={{ background: '#f8f9fa', borderColor: '#dee2e6', color: '#495057' }}>
+                                        <div style={{ fontSize: '1.12rem' }}>👀 관전 중</div>
+                                        <div style={{ fontSize: '0.86rem', marginTop: '0.35rem', opacity: 0.85 }}>
+                                            현재 출전 중인 학생만 공격/방어를 선택할 수 있습니다.
+                                        </div>
                                     </RightTaskCard>
                                 )}
 

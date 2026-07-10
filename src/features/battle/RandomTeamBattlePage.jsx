@@ -159,6 +159,34 @@ const Button = styled.button`
   }
 `;
 
+const ResultPanel = styled.div`
+  margin: 1rem 0;
+  padding: 1.1rem;
+  border-radius: 20px;
+  border: 4px solid ${props => props.$win ? '#339af0' : '#fa5252'};
+  background: ${props => props.$win ? '#e7f5ff' : '#fff5f5'};
+  color: ${props => props.$win ? '#1864ab' : '#c92a2a'};
+  box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+  text-align: center;
+
+  h2 {
+    margin: 0 0 0.45rem;
+    font-size: 1.55rem;
+    font-weight: 1000;
+  }
+
+  p {
+    margin: 0.25rem 0;
+    color: #343a40;
+    font-weight: 850;
+    line-height: 1.45;
+  }
+
+  strong {
+    font-weight: 1000;
+  }
+`;
+
 const noop = () => {};
 const renderHpBar = (hp, maxHp) => <BattleHpBar hp={hp} maxHp={maxHp} />;
 const renderSpBar = (sp, maxSp) => <BattleSpBar sp={sp} maxSp={maxSp} />;
@@ -396,6 +424,38 @@ const pickNextAliveMember = (members, currentPlayerId) => {
 
 const getMemberDisplayName = (member) => member?.playerName || 'Player';
 const getPetDisplayName = (member) => member?.petName || getMemberPet(member)?.name || 'pet';
+
+const getFloatingDamageStyle = (lastAction) => {
+  const element = String(lastAction?.element || '').trim();
+
+  if (lastAction?.defenderFainted) {
+    return {
+      kind: 'critical',
+      color: '#ffec99',
+      stroke: '#862e9c',
+      glow: 'rgba(134, 46, 156, 0.85)',
+    };
+  }
+
+  switch (element) {
+    case '불':
+      return { kind: 'damage', color: '#ff6b6b', stroke: '#7f1d1d', glow: 'rgba(255, 107, 107, 0.85)' };
+    case '물':
+      return { kind: 'damage', color: '#74c0fc', stroke: '#0b7285', glow: 'rgba(116, 192, 252, 0.85)' };
+    case '풀':
+      return { kind: 'damage', color: '#69db7c', stroke: '#2b8a3e', glow: 'rgba(105, 219, 124, 0.85)' };
+    case '번개':
+      return { kind: 'damage', color: '#ffd43b', stroke: '#e67700', glow: 'rgba(255, 212, 59, 0.9)' };
+    case '흙':
+      return { kind: 'damage', color: '#d8a25e', stroke: '#7c4a03', glow: 'rgba(216, 162, 94, 0.85)' };
+    case '얼음':
+      return { kind: 'damage', color: '#99e9f2', stroke: '#0c8599', glow: 'rgba(153, 233, 242, 0.85)' };
+    case '바람':
+      return { kind: 'damage', color: '#b2f2bb', stroke: '#087f5b', glow: 'rgba(178, 242, 187, 0.85)' };
+    default:
+      return { kind: 'damage', color: '#ff8787', stroke: '#862e2e', glow: 'rgba(255, 135, 135, 0.85)' };
+  }
+};
 
 
 function RandomTeamBattlePage() {
@@ -698,6 +758,8 @@ function RandomTeamBattlePage() {
       defenderPlayerId: defenderMember.playerId,
       damage,
       defenderFainted,
+      skillName: skill?.name || (actionType === 'TACKLE' ? '기본 공격' : actionType),
+      element: skill?.element || null,
       defenderTeam: defenderIsA ? 'A' : 'B',
       nextActivePlayerId: defenderIsA ? nextActiveA?.playerId || null : nextActiveB?.playerId || null,
       createdAtMs: Date.now(),
@@ -1014,12 +1076,18 @@ function RandomTeamBattlePage() {
 
       if (damage > 0) {
         const id = `${lastAction.id}_damage`;
+        const damageStyle = getFloatingDamageStyle(lastAction);
         setFloatingNumbers([{
           id,
           side: defenderSide,
-          kind: 'damage',
+          kind: damageStyle.kind,
+          color: damageStyle.color,
+          stroke: damageStyle.stroke,
+          glow: damageStyle.glow,
           amount: `-${damage}`,
-          label: lastAction.defenderFainted ? 'K.O.' : '',
+          label: lastAction.defenderFainted ? 'K.O.' : (lastAction.skillName || ''),
+          x: defenderSide === 'my' ? '31%' : '69%',
+          y: defenderSide === 'my' ? '58%' : '17%',
           lane: 0,
         }]);
 
@@ -1149,6 +1217,19 @@ function RandomTeamBattlePage() {
           availableDefenseActions={{ BRACE: '방어', DODGE: '회피', FOCUS: '기 모으기' }}
           components={battleDuelLayoutComponents}
         />
+
+        {room?.status === 'finished' && (
+          <ResultPanel $win={room?.winnerTeam === myTeamRole}>
+            <h2>{room?.winnerTeam === myTeamRole ? '🏆 승리!' : '💫 패배'}</h2>
+            <p><strong>승리 팀:</strong> {room?.winnerTeam || '-'}</p>
+            <p>{room?.log || '팀대전이 종료되었습니다.'}</p>
+            <ButtonRow style={{ marginTop: '0.85rem', justifyContent: 'center' }}>
+              <Button type="button" onClick={() => navigate('/pet')}>
+                펫 페이지로 돌아가기
+              </Button>
+            </ButtonRow>
+          </ResultPanel>
+        )}
 
         <TeamGrid style={{ marginTop: '1rem' }}>
           <TeamBox $side="A"><h3>A Team</h3>{teamA.map(renderMember)}</TeamBox>

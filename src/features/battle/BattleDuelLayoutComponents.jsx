@@ -996,10 +996,10 @@ const FloatingDamageNumber = styled.div`
   position: absolute;
   z-index: 92;
   pointer-events: none;
-  left: ${props => props.$side === 'my' ? '210px' : 'auto'};
-  right: ${props => props.$side === 'opponent' ? '210px' : 'auto'};
-  bottom: ${props => props.$side === 'my' ? '258px' : 'auto'};
-  top: ${props => props.$side === 'opponent' ? '168px' : 'auto'};
+  left: ${props => props.$x || (props.$side === 'my' ? '210px' : 'auto')};
+  right: ${props => props.$x ? 'auto' : props.$side === 'opponent' ? '210px' : 'auto'};
+  bottom: ${props => props.$y ? 'auto' : props.$side === 'my' ? '258px' : 'auto'};
+  top: ${props => props.$y || (props.$side === 'opponent' ? '168px' : 'auto')};
   min-width: 118px;
   text-align: center;
   font-family: inherit;
@@ -1033,10 +1033,10 @@ const FloatingDamageNumber = styled.div`
   }
 
   @media (max-width: 768px) {
-    left: ${props => props.$side === 'my' ? '160px' : 'auto'};
-    right: ${props => props.$side === 'opponent' ? '160px' : 'auto'};
-    bottom: ${props => props.$side === 'my' ? '220px' : 'auto'};
-    top: ${props => props.$side === 'opponent' ? '150px' : 'auto'};
+    left: ${props => props.$x || (props.$side === 'my' ? '160px' : 'auto')};
+    right: ${props => props.$x ? 'auto' : props.$side === 'opponent' ? '160px' : 'auto'};
+    bottom: ${props => props.$y ? 'auto' : props.$side === 'my' ? '220px' : 'auto'};
+    top: ${props => props.$y || (props.$side === 'opponent' ? '150px' : 'auto')};
   }
 `;
 
