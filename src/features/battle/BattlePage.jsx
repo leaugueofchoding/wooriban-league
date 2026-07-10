@@ -3,15 +3,16 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost , processBattleResults} from '../../api/firebase';
+import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost, processBattleResults } from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS, clearWaveMarks, PET_DATA } from '../pet/petData';
 import { filterProfanity } from '../../utils/profanityFilter';
 import BattleSkillEffect from './BattleSkillEffect';
 import { playSkillSound, playHitSound, playHealSound, playElementReactionSound, startBattleBgm, stopBattleBgm } from './BattleSoundEngine';
+import { cancelRandomBattleQueueEntry } from './randomBattleApi';
 import BattleStatusEffect from './BattleStatusEffect';
 import { BattleHpBar, BattleSpBar } from './BattleStatBars';
 import BattlePetSlot from './BattlePetSlot';
@@ -102,26 +103,26 @@ const switchToNextAlivePetIfNeeded = (participant) => {
         status: { ...(syncedTeam[nextIndex]?.status || {}) },
     };
 
-    
-                // M24B_SWITCH_IN_CC_SKIP_TURN
-                // 뇌우 등으로 행동불가 상태가 된 대기 펫을 수동교체로 꺼내면,
-                // 등장 연출은 보여주되 공격 기회는 스킵하고 다음 문제턴으로 넘깁니다.
-                const getSwitchInCcSkipState = (pet) => {
-                    const status = pet?.status || {};
-                    if (status.stunned) return { key: 'stunned', turnsKey: 'stunnedTurns', label: '기절', icon: '💫' };
-                    if (status.staggered) return { key: 'staggered', turnsKey: 'staggeredTurns', label: '경직', icon: '⚡' };
-                    if (status.frozen) return { key: 'frozen', turnsKey: 'frozenTurns', label: '빙결', icon: '❄️' };
-                    return null;
-                };
 
-                const switchInCcSkipState = getSwitchInCcSkipState(nextPet);
+    // M24B_SWITCH_IN_CC_SKIP_TURN
+    // 뇌우 등으로 행동불가 상태가 된 대기 펫을 수동교체로 꺼내면,
+    // 등장 연출은 보여주되 공격 기회는 스킵하고 다음 문제턴으로 넘깁니다.
+    const getSwitchInCcSkipState = (pet) => {
+        const status = pet?.status || {};
+        if (status.stunned) return { key: 'stunned', turnsKey: 'stunnedTurns', label: '기절', icon: '💫' };
+        if (status.staggered) return { key: 'staggered', turnsKey: 'staggeredTurns', label: '경직', icon: '⚡' };
+        if (status.frozen) return { key: 'frozen', turnsKey: 'frozenTurns', label: '빙결', icon: '❄️' };
+        return null;
+    };
 
-                if (switchInCcSkipState) {
-                    delete nextPet.status[switchInCcSkipState.key];
-                    delete nextPet.status[switchInCcSkipState.turnsKey];
-                }
+    const switchInCcSkipState = getSwitchInCcSkipState(nextPet);
 
-const nextTeam = syncedTeam.map((pet, index) => (
+    if (switchInCcSkipState) {
+        delete nextPet.status[switchInCcSkipState.key];
+        delete nextPet.status[switchInCcSkipState.turnsKey];
+    }
+
+    const nextTeam = syncedTeam.map((pet, index) => (
         index === nextIndex ? nextPet : pet
     ));
 
@@ -1047,9 +1048,9 @@ const UtilityButton = styled.button`
 
 // M21_RANDOM_CSS_BATTLE_BACKGROUNDS_PATCH
 const getBattleFieldThemeCss = (theme = 'forest') => {
-  switch (theme) {
-    case 'sunset':
-      return css`
+    switch (theme) {
+        case 'sunset':
+            return css`
         border-color: #ff922b;
         background:
           radial-gradient(circle at 18% 18%, rgba(255, 236, 153, 0.9) 0 8%, transparent 9%),
@@ -1081,8 +1082,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'ice':
-      return css`
+        case 'ice':
+            return css`
         border-color: #74c0fc;
         background:
           radial-gradient(circle at 20% 22%, rgba(255,255,255,0.75) 0 7%, transparent 8%),
@@ -1115,8 +1116,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'star':
-      return css`
+        case 'star':
+            return css`
         border-color: #845ef7;
         background:
           radial-gradient(circle at 16% 20%, rgba(255,255,255,0.95) 0 2px, transparent 3px),
@@ -1150,8 +1151,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'thunder':
-      return css`
+        case 'thunder':
+            return css`
         border-color: #ffd43b;
         background:
           linear-gradient(135deg, transparent 0 58%, rgba(255, 212, 59, 0.78) 59% 62%, transparent 63%),
@@ -1184,8 +1185,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'cherry':
-      return css`
+        case 'cherry':
+            return css`
         border-color: #f783ac;
         background:
           radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.72) 0 5%, transparent 6%),
@@ -1218,9 +1219,9 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'forest':
-    default:
-      return css`
+        case 'forest':
+        default:
+            return css`
         border-color: #8ce99a;
         background:
           linear-gradient(
@@ -1256,7 +1257,7 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
             0 12px 0 rgba(47, 158, 68, 0.15);
         }
       `;
-  }
+    }
 };
 
 const BattleField = styled.div`
@@ -1353,12 +1354,12 @@ const PetContainer = styled.div`
                                                             props.$animType === 'BLOSSOM_CURRENT' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.25s ease-in-out` :
                                                                 props.$animType === 'ARA_BLOOM' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft} 1.75s ease-in-out` :
                                                                     props.$animType === 'WATER_BALL' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.2s ease-in-out` :
-                                                            props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
-                                                                props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 2.2s ease-in-out` :
-                                                                    props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
-                                                                        props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
-                                                                            props.$intro ? css`${props.$isMine ? petIntroMine : petIntroOpponent} 1.05s cubic-bezier(.18,.89,.32,1.28)` :
-                                                                                    'none'};
+                                                                        props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
+                                                                            props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 2.2s ease-in-out` :
+                                                                                props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
+                                                                                    props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
+                                                                                        props.$intro ? css`${props.$isMine ? petIntroMine : petIntroOpponent} 1.05s cubic-bezier(.18,.89,.32,1.28)` :
+                                                                                            'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -2548,6 +2549,13 @@ const getHardCcDefenseLog = getCcDefenseLog;
 function BattlePage() {
     const { opponentId } = useParams();
     const navigate = useNavigate();
+    // RANDOM_BATTLE_MATCH_ID_GUARD_PATCH
+    const location = useLocation();
+    const expectedRandomMatchId = useMemo(() => {
+        if (typeof URLSearchParams === 'undefined') return null;
+        const params = new URLSearchParams(location.search || '');
+        return params.get('randomMatchId') || null;
+    }, [location.search]);
     const { players, processBattleResults, processBattleDraw } = useLeagueStore();
     const { classId } = useClassStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
@@ -2561,12 +2569,12 @@ function BattlePage() {
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
-            const [bgmEnabled, setBgmEnabled] = useState(() => {
+    const [bgmEnabled, setBgmEnabled] = useState(() => {
         if (typeof window === 'undefined') return true;
         const saved = localStorage.getItem('battleBgmEnabled');
         return saved === null ? true : saved === 'true';
     });
-const [introActive, setIntroActive] = useState(false);
+    const [introActive, setIntroActive] = useState(false);
     const introPlayedRef = useRef(false);
     // M5_SWITCH_INTRO_PATCH
     const [switchIntro, setSwitchIntro] = useState({ my: false, opponent: false });
@@ -2574,7 +2582,7 @@ const [introActive, setIntroActive] = useState(false);
     const prevActivePetIdsRef = useRef({ my: null, opponent: null });
     const switchIntroTimerRef = useRef(null);
     const switchMessageTimerRef = useRef(null);
-const [hitState, setHitState] = useState({ my: false, opponent: false });
+    const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
@@ -2588,7 +2596,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const floatingNumberTimersRef = useRef([]);
 
     const [shuffledOptions, setShuffledOptions] = useState([]);
-// 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
+    // 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
     const qType = battleState?.question?.type ? String(battleState.question.type).toLowerCase() : '';
     const qAns = battleState?.question?.answer ? String(battleState.question.answer).toUpperCase() : '';
     const hasOptions = battleState?.question?.options && battleState.question.options.length > 0;
@@ -2860,6 +2868,18 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
                 const overchargeGuardResult = applyPopularStarOverchargeGuardToBattle(rawData);
                 const data = overchargeGuardResult.data;
 
+                // RANDOM_BATTLE_MATCH_ID_GUARD_PATCH
+                // 같은 두 학생의 이전 랜덤대전 battle 문서가 남아 있어도,
+                // URL의 randomMatchId와 다르면 현재 입장한 매칭이 아니므로 표시하지 않습니다.
+                if (
+                    data?.randomBattle &&
+                    expectedRandomMatchId &&
+                    data.randomBattleMatchId !== expectedRandomMatchId
+                ) {
+                    setBattleState(null);
+                    return;
+                }
+
                 setBattleState(data);
 
                 if (overchargeGuardResult.changed) {
@@ -2882,7 +2902,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
             }
         });
         return () => unsubscribe();
-    }, [myPlayerData, battleId, classId, navigate]);
+    }, [myPlayerData, battleId, classId, navigate, expectedRandomMatchId]);
 
 
     useEffect(() => {
@@ -4011,7 +4031,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
     }, [battleState, myPlayerData]);
 
-    
+
     useEffect(() => {
         // M10_7_FLOATING_DAMAGE_CLEANUP
         return () => {
@@ -4057,7 +4077,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         }
     }, [battleState?.status, battleState?.turn, battleState?.attackerAction, myPlayerData?.id]);
 
-const handleCancel = async () => {
+    const handleCancel = async () => {
         if (!classId || !battleId) return;
         if (window.confirm("대결 신청을 취소하시겠습니까?")) {
             await cancelBattleChallenge(classId, battleId);
@@ -4175,21 +4195,21 @@ const handleCancel = async () => {
                 return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
             });
 
-                        if (result && result.isFinished) {
+            if (result && result.isFinished) {
                 // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
                 // team 전체 HP/SP는 저장하되, 경험치/전적은 실제 출전 펫에게만 적용합니다.
                 const winnerParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalChallenger
                     : result.finalOpponent;
-            
+
                 const loserParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalOpponent
                     : result.finalChallenger;
-            
+
                 const winnerPet = winnerParticipant.pet;
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
-            
+
                 const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
@@ -4321,31 +4341,31 @@ const handleCancel = async () => {
 
                         let switchMessages = [];
 
-                const challengerSwitch = switchToNextAlivePetIfNeeded(challenger);
-                challenger = challengerSwitch.participant;
-                if (challengerSwitch.switched) {
-                    switchMessages.push(`${challenger.name}의 다음 펫 ${challengerSwitch.switchedPetName}이(가) 등장!`);
-                }
+                        const challengerSwitch = switchToNextAlivePetIfNeeded(challenger);
+                        challenger = challengerSwitch.participant;
+                        if (challengerSwitch.switched) {
+                            switchMessages.push(`${challenger.name}의 다음 펫 ${challengerSwitch.switchedPetName}이(가) 등장!`);
+                        }
 
-                const opponentSwitch = switchToNextAlivePetIfNeeded(opponent);
-                opponent = opponentSwitch.participant;
-                if (opponentSwitch.switched) {
-                    switchMessages.push(`${opponent.name}의 다음 펫 ${opponentSwitch.switchedPetName}이(가) 등장!`);
-                }
+                        const opponentSwitch = switchToNextAlivePetIfNeeded(opponent);
+                        opponent = opponentSwitch.participant;
+                        if (opponentSwitch.switched) {
+                            switchMessages.push(`${opponent.name}의 다음 펫 ${opponentSwitch.switchedPetName}이(가) 등장!`);
+                        }
 
-                const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
-                let winnerId = null;
+                        const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
+                        let winnerId = null;
 
-                if (isFinished) {
-                    if (challenger.pet.hp > 0) winnerId = challenger.id;
-                    else if (opponent.pet.hp > 0) winnerId = opponent.id;
-                }
+                        if (isFinished) {
+                            if (challenger.pet.hp > 0) winnerId = challenger.id;
+                            else if (opponent.pet.hp > 0) winnerId = opponent.id;
+                        }
 
-                const nextQuiz = getNextQuizObj(data.usedQuestions);
-                const hasSwitchPause = !isFinished && switchMessages.length > 0;
-                const nextTurnUpdate = hasSwitchPause
-                    ? buildSwitchPauseUpdate(data, nextQuiz)
-                    : buildNextQuizUpdate(data, nextQuiz);
+                        const nextQuiz = getNextQuizObj(data.usedQuestions);
+                        const hasSwitchPause = !isFinished && switchMessages.length > 0;
+                        const nextTurnUpdate = hasSwitchPause
+                            ? buildSwitchPauseUpdate(data, nextQuiz)
+                            : buildNextQuizUpdate(data, nextQuiz);
 
                         let logMessage = `❌ 둘 다 오답! 서로 틀려서 데미지를 입었습니다. (정답: ${data.question.answer})`;
                         if (opponent.equippedTitle === 'daily_helper' || challenger.equippedTitle === 'daily_helper') {
@@ -4410,22 +4430,22 @@ const handleCancel = async () => {
                 }
             });
 
-                        if (result && result.isFinished) {
+            if (result && result.isFinished) {
                 // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
                 // team 전체 HP/SP는 저장하되, 경험치/전적은 실제 출전 펫에게만 적용합니다.
                 const winnerParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalChallenger
                     : result.finalOpponent;
-            
+
                 const loserParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalOpponent
                     : result.finalChallenger;
-            
+
                 const winnerPet = winnerParticipant.pet;
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
-            
-                                const resultSummary = await processBattleResults(
+
+                const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -4460,7 +4480,7 @@ const handleCancel = async () => {
         processQuizAnswer(option);
     };
 
-    
+
     // M5_CC_FIXED_TURNS_ITEM_SWITCH_DOT_PATCH
     const BATTLE_STATUS_TURN_DEFAULTS = {
         burned: 3,
@@ -4512,11 +4532,11 @@ const handleCancel = async () => {
 
         delete pet.status[key];
 
-        
+
         if (key === 'healPulse') {
             delete pet.status.healPulseKind;
         }
-const turnField = BATTLE_STATUS_TURN_FIELDS[key];
+        const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         if (turnField) {
             delete pet.status[turnField];
         }
@@ -4976,7 +4996,7 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
     };
 
 
-const handleUseItem = async (itemId) => {
+    const handleUseItem = async (itemId) => {
         // M5_ITEM_SWITCH_DOT_BOTH_SIDES_PATCH
         if (isProcessing) return;
         setIsProcessing(true);
@@ -5157,7 +5177,7 @@ const handleUseItem = async (itemId) => {
                         ? result.finalOpponent
                         : result.finalChallenger;
 
-                                        const resultSummary = await processBattleResults(
+                    const resultSummary = await processBattleResults(
                         classId,
                         result.winnerId,
                         loserId,
@@ -5186,7 +5206,7 @@ const handleUseItem = async (itemId) => {
 
 
 
-    
+
     const handleFaintedPetSwitch = async (nextPetId) => {
         // M10_FAINTED_SWITCH_CHOICE_PATCH
         if (!battleState || !myPlayerData || isProcessing) return;
@@ -5548,7 +5568,7 @@ const handleUseItem = async (itemId) => {
                     ? result.finalOpponent
                     : result.finalChallenger;
 
-                                const resultSummary = await processBattleResults(
+                const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -5577,7 +5597,7 @@ const handleUseItem = async (itemId) => {
 
 
 
-const handleActionSelect = async (actionId) => {
+    const handleActionSelect = async (actionId) => {
         if (isProcessing) return;
         setIsProcessing(true);
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
@@ -5709,14 +5729,14 @@ const handleActionSelect = async (actionId) => {
 
                 let { challenger, opponent, turn, attackerAction, defenderAction } = data;
 
-                
+
                 if (!attackerAction || !defenderAction) return null;
 
                 const isChallengerAttacker = turn === challenger.id;
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
-                
+
                 // M5_NEW_CC_CARD_TURNS_FIX_V2
                 if (!attacker.pet.status) attacker.pet.status = {};
                 if (!defender.pet.status) defender.pet.status = {};
@@ -5726,15 +5746,15 @@ const handleActionSelect = async (actionId) => {
                 // 이번 공격으로 새로 걸린 화상/중독/속박은 같은 턴에는 DOT/턴감소가 없습니다.
                 const initialAttackerStatusKeys = getActiveStatusKeys(attacker.pet.status);
                 const initialDefenderStatusKeys = getActiveStatusKeys(defender.pet.status);
-// M11_CC_CLEAR_DEFENDER_ONE_TURN_CC
+                // M11_CC_CLEAR_DEFENDER_ONE_TURN_CC
 
-// 기절/경직/빙결은 해당 턴 방어 판정에 반영된 뒤 소거합니다.
+                // 기절/경직/빙결은 해당 턴 방어 판정에 반영된 뒤 소거합니다.
 
-if (defender.pet.status?.stunned) delete defender.pet.status.stunned;
+                if (defender.pet.status?.stunned) delete defender.pet.status.stunned;
 
-if (defender.pet.status?.staggered) delete defender.pet.status.staggered;
+                if (defender.pet.status?.staggered) delete defender.pet.status.staggered;
 
-if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
+                if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 let skillId = String(attackerAction || '').toUpperCase();
                 let skill = SKILLS[skillId];
@@ -5772,35 +5792,35 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 let log = "";
 
-                
+
                 const preHp = defender.pet.hp;
 
 
-                
+
                 const preDefenderTeamSnapshotForAoe = Array.isArray(defender.team)
 
 
-                
+
                     ? defender.team.map((pet, index) => ({
 
 
-                
+
                         index,
 
 
-                
+
                         id: pet?.id || null,
 
 
-                
+
                         hp: Number(pet?.hp ?? 0),
 
 
-                
+
                     }))
 
 
-                
+
                     : [];
                 const actionName = skill?.name || '공격';
                 let normalActionResolved = false;
@@ -5936,7 +5956,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                     const activeDamage = Math.max(0, Number(preHp ?? 0) - Number(defender.pet?.hp ?? 0));
 
 
-                
+
 
 
                     if (activeDamage > 0) {
@@ -5957,7 +5977,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 : [];
 
 
-                
+
 
 
                         const activePetId = defender.activePetId || defender.pet?.id || null;
@@ -5981,7 +6001,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             : Math.min(Math.max(Number(defender.activePetIndex ?? 0), 0), Math.max(rawTeam.length - 1, 0));
 
 
-                
+
 
 
                         const teamWithSyncedActive = rawTeam.map((pet, index) => (
@@ -5999,7 +6019,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         ));
 
 
-                
+
 
 
                         const benchDamage = Math.max(1, Math.round(activeDamage * 0.35));
@@ -6011,7 +6031,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         const preHpByIndex = new Map(preDefenderTeamSnapshotForAoe.map(entry => [entry.index, entry.hp]));
 
 
-                
+
 
 
                         const nextTeam = teamWithSyncedActive.map((pet, index) => {
@@ -6020,7 +6040,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             if (!pet || index === activeIndex || Number(pet.hp ?? 0) <= 0) return pet;
 
 
-                
+
 
 
                             const beforeBattlePageHp = Number(pet.hp ?? 0);
@@ -6035,7 +6055,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 : beforeBattlePageHp;
 
 
-                
+
 
 
                             // petData 쪽에서 이미 대기 펫 피해를 적용했다면 여기서는 건드리지 않습니다.
@@ -6044,7 +6064,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             if (originalHp > beforeBattlePageHp) return pet;
 
 
-                
+
 
 
                             const afterHp = Math.max(1, beforeBattlePageHp - benchDamage);
@@ -6053,13 +6073,13 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             const appliedDamage = Math.max(0, beforeBattlePageHp - afterHp);
 
 
-                
+
 
 
                             if (appliedDamage <= 0) return pet;
 
 
-                
+
 
 
                             benchEntries.push({
@@ -6074,7 +6094,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             });
 
 
-                
+
 
 
                             return {
@@ -6095,7 +6115,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         });
 
 
-                
+
 
 
                         if (benchEntries.length > 0) {
@@ -6113,7 +6133,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             defender.pet = nextTeam[activeIndex] || defender.pet;
 
 
-                
+
 
 
                             const benchTotal = benchEntries.reduce((sum, entry) => sum + Number(entry.damage ?? 0), 0);
@@ -6338,22 +6358,22 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                 };
             });
 
-                        if (result && result.isFinished) {
+            if (result && result.isFinished) {
                 // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
                 // team 전체 HP/SP는 저장하되, 경험치/전적은 실제 출전 펫에게만 적용합니다.
                 const winnerParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalChallenger
                     : result.finalOpponent;
-            
+
                 const loserParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalOpponent
                     : result.finalChallenger;
-            
+
                 const winnerPet = winnerParticipant.pet;
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
-            
-                                const resultSummary = await processBattleResults(
+
+                const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -6391,14 +6411,49 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
         return <BattleSpBar sp={sp} maxSp={maxSp} />;
     };
 
+    // RANDOM_BATTLE_WAITING_CANCEL_PATCH
+    const handleRandomBattleWaitingCancel = async () => {
+        if (!classId || !myPlayerData?.id || isProcessing) return;
+
+        setIsProcessing(true);
+        try {
+            await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+            navigate('/pet');
+        } catch (error) {
+            console.error('랜덤대전 대기 취소 오류:', error);
+            alert('입장 취소 중 오류가 발생했습니다.');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     if (!myPlayerData) return <Arena><p>플레이어 정보를 불러오는 중...</p></Arena>;
     if (!battleState) return <Arena><WaitingText>상대 입장을 기다리는 중...</WaitingText></Arena>;
+
+    // RANDOM_BATTLE_WAITING_CANCEL_PATCH
+    if (battleState.status === 'pending' && battleState.randomBattle) {
+        return (
+            <Arena>
+                <WaitingText>
+                    <p>{battleState.log || '상대 입장을 기다리는 중...'}</p>
+                    <CancelButton
+                        type="button"
+                        onClick={handleRandomBattleWaitingCancel}
+                        disabled={isProcessing}
+                    >
+                        {isProcessing ? '취소 중...' : '입장 취소'}
+                    </CancelButton>
+                </WaitingText>
+            </Arena>
+        );
+    }
 
     if (battleState.status === 'pending' && myPlayerData.id === battleState.challenger.id) {
         return (
             <Arena>
                 <WaitingText>
-                    <p>{battleState.log || '상대 입장을 기다리는 중...'}</p>
+                    <p>{battleState.log || '상대방의 수락을 기다리는 중...'}</p>
+                    <CancelButton onClick={handleCancel}>신청 취소</CancelButton>
                 </WaitingText>
             </Arena>
         );

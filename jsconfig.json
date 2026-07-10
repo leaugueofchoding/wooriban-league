@@ -8,5 +8,5 @@
   },
   "include": [
     "src"
-  ]
+, "patch-battle-challenger-team-select-v3.cjs"  ]
 }

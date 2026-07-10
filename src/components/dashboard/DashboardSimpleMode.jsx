@@ -369,7 +369,7 @@ function DashboardSimpleMode({
                     ) : (
                       <span>{friendTeamName}</span>
                     )}
-                  </InfoBadge>
+                  </InfoBadge>
                 </FriendInfo>
               </FriendCardContent>
             </FriendSection>

@@ -213,7 +213,15 @@ export async function createRandomTeamQueueEntry(classId, playerId, selectedPetI
     playerId,
     mode: 'random-team',
     resolvePayload: (playerData) => {
-      const resolvedPet = resolveRandomTeamBattlePet({
+      
+      // RANDOM_TEAM_FORFEIT_PENALTY_PATCH
+      const penaltyUntilMs = Number(playerData.randomTeamBattlePenaltyUntilMs || 0);
+      if (penaltyUntilMs > Date.now()) {
+        const remainSec = Math.ceil((penaltyUntilMs - Date.now()) / 1000);
+        throw new Error('팀대전 포기 페널티가 남아 있습니다. ' + remainSec + '초 후 다시 참가할 수 있습니다.');
+      }
+
+const resolvedPet = resolveRandomTeamBattlePet({
         player: playerData,
         selectedPetId,
         today,
@@ -986,6 +994,348 @@ export async function enterRandom1v1Battle(classId, playerId, options = {}) {
       matchId: myQueue.matchId || null,
       waitingForOpponent: false,
       battleReady: true,
+    };
+  });
+}
+
+
+// ENTER_RANDOM_TEAM_BATTLE_ROOM_PATCH
+
+// RANDOM_TEAM_FORFEIT_PENALTY_PATCH
+export async function forfeitRandomTeamBattleAndRequeue(classId, playerId) {
+  assertClassAndPlayer(classId, playerId);
+
+  const penaltyMs = 3 * 60 * 1000;
+  const penaltyUntilMs = Date.now() + penaltyMs;
+
+  const myQueueRef = queueRefOf(classId, playerId, 'random-team');
+  const myPlayerRef = playerRefOf(classId, playerId);
+
+  return await runTransaction(db, async (transaction) => {
+    const myQueueSnap = await transaction.get(myQueueRef);
+    const myPlayerSnap = await transaction.get(myPlayerRef);
+
+    if (!myPlayerSnap.exists()) {
+      throw new Error('플레이어 정보를 찾을 수 없습니다.');
+    }
+
+    if (!myQueueSnap.exists()) {
+      transaction.update(myPlayerRef, {
+        ...clearPlayerQueueState(),
+        randomTeamBattlePenaltyUntilMs: penaltyUntilMs,
+      });
+      return { requeued: false, penaltyUntilMs };
+    }
+
+    const myQueue = { id: myQueueSnap.id, ...myQueueSnap.data() };
+
+    if (
+      myQueue.mode !== 'random-team' ||
+      !['matched', 'entering'].includes(myQueue.status) ||
+      !myQueue.matchId
+    ) {
+      transaction.set(myQueueRef, {
+        status: 'cancelled',
+        cancelReason: 'team_forfeit_penalty',
+        cancelledAt: serverTimestamp(),
+        randomTeamBattlePenaltyUntilMs: penaltyUntilMs,
+        rematchBlockedUntilMs: penaltyUntilMs,
+      }, { merge: true });
+
+      transaction.update(myPlayerRef, {
+        ...clearPlayerQueueState(),
+        randomTeamBattlePenaltyUntilMs: penaltyUntilMs,
+      });
+
+      return { requeued: false, penaltyUntilMs };
+    }
+
+    const matchId = myQueue.matchId;
+    const myTeamIds = Array.isArray(myQueue.matchedTeamPlayerIds) ? myQueue.matchedTeamPlayerIds.filter(Boolean) : [];
+    const opponentTeamIds = Array.isArray(myQueue.matchedOpponentPlayerIds) ? myQueue.matchedOpponentPlayerIds.filter(Boolean) : [];
+    const allPlayerIds = [...new Set([...myTeamIds, ...opponentTeamIds])];
+
+    const roomRef = doc(db, 'classes', classId, 'randomTeamBattleRooms', matchId);
+
+    const refsById = Object.fromEntries(allPlayerIds.map((id) => [id, {
+      queue: queueRefOf(classId, id, 'random-team'),
+      player: playerRefOf(classId, id),
+    }]));
+
+    const roomSnap = await transaction.get(roomRef);
+
+    const queueSnapsById = {};
+    const playerSnapsById = {};
+
+    for (const id of allPlayerIds) {
+      queueSnapsById[id] = await transaction.get(refsById[id].queue);
+    }
+
+    for (const id of allPlayerIds) {
+      playerSnapsById[id] = await transaction.get(refsById[id].player);
+    }
+
+    const requeuedPlayerIds = allPlayerIds.filter((id) => id !== playerId);
+    const nowMs = Date.now();
+
+    transaction.set(myQueueRef, {
+      status: 'cancelled',
+      cancelReason: 'team_forfeit_penalty',
+      cancelledAt: serverTimestamp(),
+      randomTeamBattlePenaltyUntilMs: penaltyUntilMs,
+      rematchBlockedUntilMs: penaltyUntilMs,
+    }, { merge: true });
+
+    transaction.update(myPlayerRef, {
+      ...clearPlayerQueueState(),
+      randomTeamBattlePenaltyUntilMs: penaltyUntilMs,
+    });
+
+    for (const id of requeuedPlayerIds) {
+      const queueSnap = queueSnapsById[id];
+      const playerSnap = playerSnapsById[id];
+      if (!queueSnap?.exists() || !playerSnap?.exists()) continue;
+
+      const queueData = { id: queueSnap.id, ...queueSnap.data() };
+
+      if (
+        queueData.mode !== 'random-team' ||
+        queueData.matchId !== matchId ||
+        !['matched', 'entering'].includes(queueData.status)
+      ) {
+        continue;
+      }
+
+      transaction.set(refsById[id].queue, {
+        status: 'waiting',
+        cancelReason: null,
+        matchId: null,
+        matchedAt: null,
+        matchExpiresAtMs: null,
+        matchedTeamRole: null,
+        matchedTeamPlayerIds: null,
+        matchedOpponentPlayerIds: null,
+        matchedBattleId: null,
+        battleReady: false,
+        battleReadyAt: null,
+        entrantConfirmedAt: null,
+        queueStartedAtMs: nowMs,
+        queuedAt: serverTimestamp(),
+        requeuedFromMatchId: matchId,
+        requeuedBecausePlayerId: playerId,
+      }, { merge: true });
+
+      transaction.update(refsById[id].player, {
+        randomBattleQueueStatus: 'waiting',
+        randomBattleQueuedAt: serverTimestamp(),
+        randomBattleQueueModes: ['random-team'],
+        randomBattleMode: 'random-team',
+        randomBattleLockedPetIds: queueData.lockedPetIds || [],
+        randomBattleMatchLevel: queueData.matchLevel || null,
+      });
+    }
+
+    if (roomSnap?.exists()) {
+      transaction.set(roomRef, {
+        status: 'cancelled',
+        cancelReason: 'team_member_forfeited',
+        cancelledBy: playerId,
+        cancelledAt: serverTimestamp(),
+        requeuedPlayerIds,
+        log: '한 명이 팀대전을 포기해서 남은 학생들은 다시 매칭 대기열로 돌아갑니다.',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+
+    return {
+      requeued: true,
+      matchId,
+      penaltyUntilMs,
+      requeuedPlayerIds,
+    };
+  });
+}
+
+export async function enterRandomTeamBattle(classId, playerId) {
+  assertClassAndPlayer(classId, playerId);
+
+  const myQueueRef = queueRefOf(classId, playerId, 'random-team');
+
+  return await runTransaction(db, async (transaction) => {
+    const myQueueSnap = await transaction.get(myQueueRef);
+
+    if (!myQueueSnap.exists()) {
+      throw new Error('팀대전 매칭 정보를 찾을 수 없습니다.');
+    }
+
+    const myQueue = { id: myQueueSnap.id, ...myQueueSnap.data() };
+
+    if (
+      myQueue.mode !== 'random-team' ||
+      !['matched', 'entering'].includes(myQueue.status) ||
+      !myQueue.matchId
+    ) {
+      throw new Error('입장 가능한 팀대전 매칭 상태가 아닙니다.');
+    }
+
+    const matchId = myQueue.matchId;
+    const myTeamIds = Array.isArray(myQueue.matchedTeamPlayerIds) ? myQueue.matchedTeamPlayerIds.filter(Boolean) : [];
+    const opponentTeamIds = Array.isArray(myQueue.matchedOpponentPlayerIds) ? myQueue.matchedOpponentPlayerIds.filter(Boolean) : [];
+    const allPlayerIds = [...new Set([...myTeamIds, ...opponentTeamIds])];
+
+    if (allPlayerIds.length < RANDOM_BATTLE_CONFIG.TEAM_BATTLE_BETA_SIZE * 2) {
+      throw new Error('팀대전 인원이 부족합니다.');
+    }
+
+    const roomRef = doc(db, 'classes', classId, 'randomTeamBattleRooms', matchId);
+    const roomSnap = await transaction.get(roomRef);
+
+    const queueRefs = Object.fromEntries(allPlayerIds.map((id) => [id, queueRefOf(classId, id, 'random-team')]));
+    const playerRefs = Object.fromEntries(allPlayerIds.map((id) => [id, playerRefOf(classId, id)]));
+
+    const queueSnaps = {};
+    const playerSnaps = {};
+
+    for (const id of allPlayerIds) {
+      queueSnaps[id] = await transaction.get(queueRefs[id]);
+    }
+
+    for (const id of allPlayerIds) {
+      playerSnaps[id] = await transaction.get(playerRefs[id]);
+    }
+
+    const queueByPlayerId = {};
+    const playerById = {};
+
+    for (const id of allPlayerIds) {
+      if (!queueSnaps[id].exists()) {
+        throw new Error('팀원의 대기열 정보를 찾을 수 없습니다.');
+      }
+
+      const queueData = { id: queueSnaps[id].id, ...queueSnaps[id].data() };
+
+      if (
+        queueData.mode !== 'random-team' ||
+        queueData.matchId !== matchId ||
+        !['matched', 'entering', 'battle_started'].includes(queueData.status)
+      ) {
+        throw new Error('팀원의 매칭 상태가 변경되었습니다.');
+      }
+
+      queueByPlayerId[id] = queueData;
+
+      if (!playerSnaps[id].exists()) {
+        throw new Error('팀원 정보를 찾을 수 없습니다.');
+      }
+
+      playerById[id] = { id: playerSnaps[id].id, ...playerSnaps[id].data() };
+    }
+
+    const roleAEntry = Object.values(queueByPlayerId).find((entry) => entry.matchedTeamRole === 'A');
+    const roleBEntry = Object.values(queueByPlayerId).find((entry) => entry.matchedTeamRole === 'B');
+
+    const teamAPlayerIds = roleAEntry?.matchedTeamPlayerIds?.filter(Boolean)
+      || (myQueue.matchedTeamRole === 'A' ? myTeamIds : opponentTeamIds);
+
+    const teamBPlayerIds = roleBEntry?.matchedTeamPlayerIds?.filter(Boolean)
+      || (myQueue.matchedTeamRole === 'B' ? myTeamIds : opponentTeamIds);
+
+    const buildMember = (id) => {
+      const playerData = playerById[id] || {};
+      const queueData = queueByPlayerId[id] || {};
+      const pet = Array.isArray(queueData.lockedTeam) ? queueData.lockedTeam[0] : null;
+
+      if (!pet?.id) {
+        throw new Error('팀원의 출전 펫 정보를 찾을 수 없습니다.');
+      }
+
+      return {
+        playerId: id,
+        playerName: playerData.name || queueData.playerName || '플레이어',
+        authUid: playerData.authUid || queueData.authUid || null,
+        pet: { ...pet, status: { ...(pet.status || {}) } },
+        petId: pet.id,
+        petName: pet.name || '펫',
+        petLevel: Number(pet.level || queueData.petLevel || 1),
+        avatarSnapshotUrl: playerData.avatarSnapshotUrl || null,
+        photoURL: playerData.photoURL || null,
+      };
+    };
+
+    const roomData = roomSnap.exists() ? roomSnap.data() : null;
+    const previousReadyIds = Array.isArray(roomData?.readyPlayerIds) ? roomData.readyPlayerIds : [];
+    const readyPlayerIds = [...new Set([...previousReadyIds, playerId])].filter((id) => allPlayerIds.includes(id));
+    const neededCount = allPlayerIds.length;
+    const allReady = readyPlayerIds.length >= neededCount;
+    const alreadyConsumed = roomData?.teamBattleFatigueConsumed === true;
+    const startAtMs = roomData?.startAtMs || Date.now() + 1800;
+
+    const roomPayload = {
+      id: matchId,
+      matchId,
+      randomBattle: true,
+      battleMode: 'random-team',
+      teamBattle: true,
+      teamBattleSize: RANDOM_BATTLE_CONFIG.TEAM_BATTLE_BETA_SIZE,
+      status: allReady ? 'starting' : 'pending',
+      teamAPlayerIds,
+      teamBPlayerIds,
+      allPlayerIds,
+      readyPlayerIds,
+      readyCount: readyPlayerIds.length,
+      neededCount,
+      teamA: teamAPlayerIds.map(buildMember),
+      teamB: teamBPlayerIds.map(buildMember),
+      startAtMs: allReady ? startAtMs : null,
+      log: allReady
+        ? '👥 2:2 팀대전 준비 완료!'
+        : '👥 팀원이 모두 입장하면 2:2 팀대전이 시작됩니다.',
+      createdAt: roomData?.createdAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      teamBattleFatigueConsumed: allReady ? true : Boolean(roomData?.teamBattleFatigueConsumed),
+    };
+
+    transaction.set(roomRef, roomPayload, { merge: true });
+
+    if (allReady && !alreadyConsumed) {
+      for (const id of allPlayerIds) {
+        const queueData = queueByPlayerId[id];
+        const playerData = playerById[id];
+
+        const nextPets = applyRandomBattleFatigueToPets({
+          pets: playerData.pets || [],
+          petIds: queueData.lockedPetIds || [],
+        });
+
+        transaction.update(playerRefs[id], {
+          pets: nextPets,
+          ...clearPlayerQueueState(),
+        });
+
+        markRandomQueueBattleStarted(transaction, queueRefs[id], matchId);
+      }
+    } else if (!allReady) {
+      transaction.set(myQueueRef, {
+        status: 'entering',
+        entrantConfirmedAt: serverTimestamp(),
+        matchedBattleId: matchId,
+      }, { merge: true });
+
+      transaction.update(playerRefs[playerId], {
+        randomBattleQueueStatus: 'entering',
+        randomBattleQueueModes: ['random-team'],
+        randomBattleMode: 'random-team',
+        randomBattleLockedPetIds: myQueue.lockedPetIds || [],
+        randomBattleMatchLevel: myQueue.matchLevel || null,
+      });
+    }
+
+    return {
+      matchId,
+      roomId: matchId,
+      readyCount: readyPlayerIds.length,
+      neededCount,
+      battleReady: allReady,
     };
   });
 }
