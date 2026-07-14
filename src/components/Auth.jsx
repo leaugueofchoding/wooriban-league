@@ -775,8 +775,16 @@ const notificationRef = useRef(null);
         const q = query(battlesRef, where("opponent.id", "==", myPlayerData.id), where("status", "==", "pending"));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const challengeDoc = snapshot.docs[0];
+            // AUTH_IGNORE_RANDOM_PENDING_BATTLE_PATCH
+            // 랜덤대전 대기방도 battles 컬렉션에서 status='pending'을 사용하지만,
+            // 기존 친구 지정 대결 수락창과는 별개이므로 여기서는 제외합니다.
+            const challengeDoc = snapshot.docs.find((docSnap) => {
+                const data = docSnap.data();
+                const battleMode = String(data.battleMode || '');
+                return !data.randomBattle && !battleMode.startsWith('random-');
+            });
+
+            if (challengeDoc) {
                 setBattleChallenge({ id: challengeDoc.id, ...challengeDoc.data() });
             } else {
                 setBattleChallenge(null);

@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useLeagueStore, useClassStore } from '../../store/leagueStore';
-import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost , processBattleResults} from '../../api/firebase';
+import { auth, db, cancelBattleChallenge, getActiveQuizSets, getScaledSkillCost, processBattleResults } from '../../api/firebase';
 import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { petImageMap } from '../../utils/petImageMap';
 import { SKILLS, clearWaveMarks, PET_DATA } from '../pet/petData';
@@ -103,26 +103,26 @@ const switchToNextAlivePetIfNeeded = (participant) => {
         status: { ...(syncedTeam[nextIndex]?.status || {}) },
     };
 
-    
-                // M24B_SWITCH_IN_CC_SKIP_TURN
-                // 뇌우 등으로 행동불가 상태가 된 대기 펫을 수동교체로 꺼내면,
-                // 등장 연출은 보여주되 공격 기회는 스킵하고 다음 문제턴으로 넘깁니다.
-                const getSwitchInCcSkipState = (pet) => {
-                    const status = pet?.status || {};
-                    if (status.stunned) return { key: 'stunned', turnsKey: 'stunnedTurns', label: '기절', icon: '💫' };
-                    if (status.staggered) return { key: 'staggered', turnsKey: 'staggeredTurns', label: '경직', icon: '⚡' };
-                    if (status.frozen) return { key: 'frozen', turnsKey: 'frozenTurns', label: '빙결', icon: '❄️' };
-                    return null;
-                };
 
-                const switchInCcSkipState = getSwitchInCcSkipState(nextPet);
+    // M24B_SWITCH_IN_CC_SKIP_TURN
+    // 뇌우 등으로 행동불가 상태가 된 대기 펫을 수동교체로 꺼내면,
+    // 등장 연출은 보여주되 공격 기회는 스킵하고 다음 문제턴으로 넘깁니다.
+    const getSwitchInCcSkipState = (pet) => {
+        const status = pet?.status || {};
+        if (status.stunned) return { key: 'stunned', turnsKey: 'stunnedTurns', label: '기절', icon: '💫' };
+        if (status.staggered) return { key: 'staggered', turnsKey: 'staggeredTurns', label: '경직', icon: '⚡' };
+        if (status.frozen) return { key: 'frozen', turnsKey: 'frozenTurns', label: '빙결', icon: '❄️' };
+        return null;
+    };
 
-                if (switchInCcSkipState) {
-                    delete nextPet.status[switchInCcSkipState.key];
-                    delete nextPet.status[switchInCcSkipState.turnsKey];
-                }
+    const switchInCcSkipState = getSwitchInCcSkipState(nextPet);
 
-const nextTeam = syncedTeam.map((pet, index) => (
+    if (switchInCcSkipState) {
+        delete nextPet.status[switchInCcSkipState.key];
+        delete nextPet.status[switchInCcSkipState.turnsKey];
+    }
+
+    const nextTeam = syncedTeam.map((pet, index) => (
         index === nextIndex ? nextPet : pet
     ));
 
@@ -1048,9 +1048,9 @@ const UtilityButton = styled.button`
 
 // M21_RANDOM_CSS_BATTLE_BACKGROUNDS_PATCH
 const getBattleFieldThemeCss = (theme = 'forest') => {
-  switch (theme) {
-    case 'sunset':
-      return css`
+    switch (theme) {
+        case 'sunset':
+            return css`
         border-color: #ff922b;
         background:
           radial-gradient(circle at 18% 18%, rgba(255, 236, 153, 0.9) 0 8%, transparent 9%),
@@ -1082,8 +1082,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'ice':
-      return css`
+        case 'ice':
+            return css`
         border-color: #74c0fc;
         background:
           radial-gradient(circle at 20% 22%, rgba(255,255,255,0.75) 0 7%, transparent 8%),
@@ -1116,8 +1116,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'star':
-      return css`
+        case 'star':
+            return css`
         border-color: #845ef7;
         background:
           radial-gradient(circle at 16% 20%, rgba(255,255,255,0.95) 0 2px, transparent 3px),
@@ -1151,8 +1151,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'thunder':
-      return css`
+        case 'thunder':
+            return css`
         border-color: #ffd43b;
         background:
           linear-gradient(135deg, transparent 0 58%, rgba(255, 212, 59, 0.78) 59% 62%, transparent 63%),
@@ -1185,8 +1185,8 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'cherry':
-      return css`
+        case 'cherry':
+            return css`
         border-color: #f783ac;
         background:
           radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.72) 0 5%, transparent 6%),
@@ -1219,9 +1219,9 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
         }
       `;
 
-    case 'forest':
-    default:
-      return css`
+        case 'forest':
+        default:
+            return css`
         border-color: #8ce99a;
         background:
           linear-gradient(
@@ -1257,7 +1257,7 @@ const getBattleFieldThemeCss = (theme = 'forest') => {
             0 12px 0 rgba(47, 158, 68, 0.15);
         }
       `;
-  }
+    }
 };
 
 const BattleField = styled.div`
@@ -1354,12 +1354,12 @@ const PetContainer = styled.div`
                                                             props.$animType === 'BLOSSOM_CURRENT' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.25s ease-in-out` :
                                                                 props.$animType === 'ARA_BLOOM' ? css`${props.$isMine ? tornadoSweepRight : tornadoSweepLeft} 1.75s ease-in-out` :
                                                                     props.$animType === 'WATER_BALL' ? css`${props.$isMine ? waterBallRight : waterBallLeft} 1.2s ease-in-out` :
-                                                            props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
-                                                                props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 2.2s ease-in-out` :
-                                                                    props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
-                                                                        props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
-                                                                            props.$intro ? css`${props.$isMine ? petIntroMine : petIntroOpponent} 1.05s cubic-bezier(.18,.89,.32,1.28)` :
-                                                                                    'none'};
+                                                                        props.$animType === 'COUNTER_STANCE' ? css`${props.$isMine ? counterStanceRight : counterStanceLeft} 1.0s ease-in-out` :
+                                                                            props.$animType === 'ULTIMATE_SECRET' ? css`${props.$isMine ? ultimateSecretRight : ultimateSecretLeft} 2.2s ease-in-out` :
+                                                                                props.$animType === 'REED_BOW' ? css`${props.$isMine ? reedBowRight : reedBowLeft} 1.5s ease-in-out` :
+                                                                                    props.$animType ? css`${props.$isMine ? previewStyleSkillRight : previewStyleSkillLeft} 1.15s ease-in-out` :
+                                                                                        props.$intro ? css`${props.$isMine ? petIntroMine : petIntroOpponent} 1.05s cubic-bezier(.18,.89,.32,1.28)` :
+                                                                                            'none'};
   display: flex; flex-direction: column; align-items: center;
 `;
 
@@ -2546,8 +2546,11 @@ const getCcDefenseLog = (pet, attackerName = '상대') => {
 
 const getHardCcDefenseLog = getCcDefenseLog;
 
-function BattlePage() {
-    const { opponentId } = useParams();
+function TeamBattlePage() {
+    // TEAM_BATTLE_ROUTE_PARAM_PATCH
+    // 1:1은 [나, 상대] id를 정렬해 battleId를 만들지만, 팀대전은 4명이라
+    // 매칭 시스템이 만들어준 matchId를 battleId로 그대로 씁니다.
+    const { matchId } = useParams();
     const navigate = useNavigate();
     // RANDOM_BATTLE_MATCH_ID_GUARD_PATCH
     const location = useLocation();
@@ -2559,7 +2562,7 @@ function BattlePage() {
     const { players, processBattleResults, processBattleDraw } = useLeagueStore();
     const { classId } = useClassStore();
     const myPlayerData = useMemo(() => players.find(p => p.authUid === auth.currentUser?.uid), [players]);
-    const battleId = useMemo(() => [myPlayerData?.id, opponentId].sort().join('_'), [myPlayerData, opponentId]);
+    const battleId = matchId;
 
     const [battleState, setBattleState] = useState(null);
     // M18B_RESULT_SUMMARY_LOCAL_FALLBACK_V3_PATCH
@@ -2569,12 +2572,12 @@ function BattlePage() {
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
-            const [bgmEnabled, setBgmEnabled] = useState(() => {
+    const [bgmEnabled, setBgmEnabled] = useState(() => {
         if (typeof window === 'undefined') return true;
         const saved = localStorage.getItem('battleBgmEnabled');
         return saved === null ? true : saved === 'true';
     });
-const [introActive, setIntroActive] = useState(false);
+    const [introActive, setIntroActive] = useState(false);
     const introPlayedRef = useRef(false);
     // M5_SWITCH_INTRO_PATCH
     const [switchIntro, setSwitchIntro] = useState({ my: false, opponent: false });
@@ -2582,7 +2585,7 @@ const [introActive, setIntroActive] = useState(false);
     const prevActivePetIdsRef = useRef({ my: null, opponent: null });
     const switchIntroTimerRef = useRef(null);
     const switchMessageTimerRef = useRef(null);
-const [hitState, setHitState] = useState({ my: false, opponent: false });
+    const [hitState, setHitState] = useState({ my: false, opponent: false });
     const [animState, setAnimState] = useState({ my: null, opponent: null });
     const [currentEffect, setCurrentEffect] = useState(null);
     const [dotEffect, setDotEffect] = useState(null);
@@ -2596,7 +2599,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
     const floatingNumberTimersRef = useRef([]);
 
     const [shuffledOptions, setShuffledOptions] = useState([]);
-// 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
+    // 퀴즈 타입에 따른 OX 판별 변수 최상단으로 분리
     const qType = battleState?.question?.type ? String(battleState.question.type).toLowerCase() : '';
     const qAns = battleState?.question?.answer ? String(battleState.question.answer).toUpperCase() : '';
     const hasOptions = battleState?.question?.options && battleState.question.options.length > 0;
@@ -4031,7 +4034,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
 
     }, [battleState, myPlayerData]);
 
-    
+
     useEffect(() => {
         // M10_7_FLOATING_DAMAGE_CLEANUP
         return () => {
@@ -4077,7 +4080,7 @@ const [hitState, setHitState] = useState({ my: false, opponent: false });
         }
     }, [battleState?.status, battleState?.turn, battleState?.attackerAction, myPlayerData?.id]);
 
-const handleCancel = async () => {
+    const handleCancel = async () => {
         if (!classId || !battleId) return;
         if (window.confirm("대결 신청을 취소하시겠습니까?")) {
             await cancelBattleChallenge(classId, battleId);
@@ -4195,21 +4198,21 @@ const handleCancel = async () => {
                 return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
             });
 
-                        if (result && result.isFinished) {
+            if (result && result.isFinished) {
                 // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
                 // team 전체 HP/SP는 저장하되, 경험치/전적은 실제 출전 펫에게만 적용합니다.
                 const winnerParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalChallenger
                     : result.finalOpponent;
-            
+
                 const loserParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalOpponent
                     : result.finalChallenger;
-            
+
                 const winnerPet = winnerParticipant.pet;
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
-            
+
                 const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
@@ -4268,6 +4271,13 @@ const handleCancel = async () => {
 
                 if (txIsQuestionObjective && data.chat && data.chat[myId]) return null;
 
+                // TEAM_BATTLE_MEMBERSHIP_GUARD
+                // 팀대전에서는 벤치(대기) 학생도 같은 배틀 문서를 보고 있습니다.
+                // "challenger가 아니면 무조건 opponent"라고 가정하면 벤치 학생이
+                // 상대팀으로 오인되어 답을 대신 제출할 수 있으므로, 실제로 이 배틀의
+                // 두 조작권자(challenger.id / opponent.id) 중 하나인지 먼저 확인합니다.
+                if (myId !== data.challenger.id && myId !== data.opponent.id) return null;
+
                 const isChallenger = myId === data.challenger.id;
                 const myRole = isChallenger ? 'challenger' : 'opponent';
                 const opponentRole = isChallenger ? 'opponent' : 'challenger';
@@ -4302,7 +4312,8 @@ const handleCancel = async () => {
                             question: nextQuiz,
                             usedQuestions: [...(data.usedQuestions || []), nextQuiz.question],
                             turnStartTime: Date.now(),
-                            chat: {}
+                            chat: {},
+                            manualSwitchLockedThisAction: false,
                         });
                     } else {
                         transaction.update(battleRef, {
@@ -4311,7 +4322,10 @@ const handleCancel = async () => {
                             log: `🎉 정답! ${myPet.name}의 행동 선택! (정답: ${data.question.answer})`,
                             question: null,
                             turnStartTime: Date.now(),
-                            chat: {}
+                            chat: {},
+                            // TEAM_BATTLE_SWITCH_ONCE_PER_ATTACK_TURN
+                            // 새로 시작하는 공격턴이니 교체 잠금을 풉니다.
+                            manualSwitchLockedThisAction: false,
                         });
                     }
                     return null;
@@ -4341,31 +4355,31 @@ const handleCancel = async () => {
 
                         let switchMessages = [];
 
-                const challengerSwitch = switchToNextAlivePetIfNeeded(challenger);
-                challenger = challengerSwitch.participant;
-                if (challengerSwitch.switched) {
-                    switchMessages.push(`${challenger.name}의 다음 펫 ${challengerSwitch.switchedPetName}이(가) 등장!`);
-                }
+                        const challengerSwitch = switchToNextAlivePetIfNeeded(challenger);
+                        challenger = challengerSwitch.participant;
+                        if (challengerSwitch.switched) {
+                            switchMessages.push(`${challenger.name}의 다음 펫 ${challengerSwitch.switchedPetName}이(가) 등장!`);
+                        }
 
-                const opponentSwitch = switchToNextAlivePetIfNeeded(opponent);
-                opponent = opponentSwitch.participant;
-                if (opponentSwitch.switched) {
-                    switchMessages.push(`${opponent.name}의 다음 펫 ${opponentSwitch.switchedPetName}이(가) 등장!`);
-                }
+                        const opponentSwitch = switchToNextAlivePetIfNeeded(opponent);
+                        opponent = opponentSwitch.participant;
+                        if (opponentSwitch.switched) {
+                            switchMessages.push(`${opponent.name}의 다음 펫 ${opponentSwitch.switchedPetName}이(가) 등장!`);
+                        }
 
-                const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
-                let winnerId = null;
+                        const isFinished = challenger.pet.hp <= 0 || opponent.pet.hp <= 0;
+                        let winnerId = null;
 
-                if (isFinished) {
-                    if (challenger.pet.hp > 0) winnerId = challenger.id;
-                    else if (opponent.pet.hp > 0) winnerId = opponent.id;
-                }
+                        if (isFinished) {
+                            if (challenger.pet.hp > 0) winnerId = challenger.id;
+                            else if (opponent.pet.hp > 0) winnerId = opponent.id;
+                        }
 
-                const nextQuiz = getNextQuizObj(data.usedQuestions);
-                const hasSwitchPause = !isFinished && switchMessages.length > 0;
-                const nextTurnUpdate = hasSwitchPause
-                    ? buildSwitchPauseUpdate(data, nextQuiz)
-                    : buildNextQuizUpdate(data, nextQuiz);
+                        const nextQuiz = getNextQuizObj(data.usedQuestions);
+                        const hasSwitchPause = !isFinished && switchMessages.length > 0;
+                        const nextTurnUpdate = hasSwitchPause
+                            ? buildSwitchPauseUpdate(data, nextQuiz)
+                            : buildNextQuizUpdate(data, nextQuiz);
 
                         let logMessage = `❌ 둘 다 오답! 서로 틀려서 데미지를 입었습니다. (정답: ${data.question.answer})`;
                         if (opponent.equippedTitle === 'daily_helper' || challenger.equippedTitle === 'daily_helper') {
@@ -4430,22 +4444,22 @@ const handleCancel = async () => {
                 }
             });
 
-                        if (result && result.isFinished) {
+            if (result && result.isFinished) {
                 // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
                 // team 전체 HP/SP는 저장하되, 경험치/전적은 실제 출전 펫에게만 적용합니다.
                 const winnerParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalChallenger
                     : result.finalOpponent;
-            
+
                 const loserParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalOpponent
                     : result.finalChallenger;
-            
+
                 const winnerPet = winnerParticipant.pet;
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
-            
-                                const resultSummary = await processBattleResults(
+
+                const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -4480,7 +4494,7 @@ const handleCancel = async () => {
         processQuizAnswer(option);
     };
 
-    
+
     // M5_CC_FIXED_TURNS_ITEM_SWITCH_DOT_PATCH
     const BATTLE_STATUS_TURN_DEFAULTS = {
         burned: 3,
@@ -4532,11 +4546,11 @@ const handleCancel = async () => {
 
         delete pet.status[key];
 
-        
+
         if (key === 'healPulse') {
             delete pet.status.healPulseKind;
         }
-const turnField = BATTLE_STATUS_TURN_FIELDS[key];
+        const turnField = BATTLE_STATUS_TURN_FIELDS[key];
         if (turnField) {
             delete pet.status[turnField];
         }
@@ -4824,9 +4838,17 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
             ].filter(Boolean)),
         ];
 
+        // TEAM_BATTLE_CONTROLLER_HANDOFF
+        // 팀대전에서는 team 배열의 펫이 서로 다른 학생 소유일 수 있습니다.
+        // 새로 나온 펫의 실제 주인(ownerId/ownerName)이 있으면 그 학생이 조작권을 넘겨받습니다.
+        const nextOwnerId = nextPet.ownerId || state.participant.id;
+        const nextOwnerName = nextPet.ownerName || state.participant.name;
+
         return {
             participant: {
                 ...state.participant,
+                id: nextOwnerId,
+                name: nextOwnerName,
                 pet: nextPet,
                 team: nextTeam,
                 activePetIndex: selectedChoice.index,
@@ -4996,7 +5018,7 @@ const turnField = BATTLE_STATUS_TURN_FIELDS[key];
     };
 
 
-const handleUseItem = async (itemId) => {
+    const handleUseItem = async (itemId) => {
         // M5_ITEM_SWITCH_DOT_BOTH_SIDES_PATCH
         if (isProcessing) return;
         setIsProcessing(true);
@@ -5177,7 +5199,7 @@ const handleUseItem = async (itemId) => {
                         ? result.finalOpponent
                         : result.finalChallenger;
 
-                                        const resultSummary = await processBattleResults(
+                    const resultSummary = await processBattleResults(
                         classId,
                         result.winnerId,
                         loserId,
@@ -5206,7 +5228,7 @@ const handleUseItem = async (itemId) => {
 
 
 
-    
+
     const handleFaintedPetSwitch = async (nextPetId) => {
         // M10_FAINTED_SWITCH_CHOICE_PATCH
         if (!battleState || !myPlayerData || isProcessing) return;
@@ -5223,6 +5245,9 @@ const handleUseItem = async (itemId) => {
 
                 const data = battleDoc.data();
                 if (data.status !== 'pending_switch') return null;
+
+                // TEAM_BATTLE_MEMBERSHIP_GUARD (핸들FaintedPetSwitch)
+                if (myPlayerData.id !== data.challenger.id && myPlayerData.id !== data.opponent.id) return null;
 
                 const iAmChallenger = myPlayerData.id === data.challenger.id;
                 const myRole = iAmChallenger ? 'challenger' : 'opponent';
@@ -5354,6 +5379,11 @@ const handleUseItem = async (itemId) => {
 
                 if (!txCanAct) return null;
 
+                // TEAM_BATTLE_SWITCH_ONCE_PER_ATTACK_TURN
+                // "누가" 교체했는지가 아니라 "이번 공격턴에 교체가 있었는지"로 막아야
+                // A -> B -> A -> B ... 로 무한히 시간 끄는 걸 막을 수 있습니다.
+                if (data.manualSwitchLockedThisAction) return null;
+
                 const txManualSwitchUsedBy = data.manualSwitchTurnStartTime === data.turnStartTime && Array.isArray(data.manualSwitchUsedBy)
                     ? data.manualSwitchUsedBy
                     : [];
@@ -5441,8 +5471,15 @@ const handleUseItem = async (itemId) => {
                     ].filter(Boolean)),
                 ];
 
+                // TEAM_BATTLE_CONTROLLER_HANDOFF
+                // 팀대전에서는 교체 대상 펫이 팀원 소유일 수 있습니다. 그 경우 조작권도 함께 넘어갑니다.
+                const nextOwnerId = nextPet.ownerId || participant.id;
+                const nextOwnerName = nextPet.ownerName || participant.name;
+
                 const nextParticipantBeforeResolve = {
                     ...participant,
+                    id: nextOwnerId,
+                    name: nextOwnerName,
                     pet: nextPet,
                     team: nextTeam,
                     activePetIndex: nextIndex,
@@ -5475,8 +5512,8 @@ const handleUseItem = async (itemId) => {
                 }
 
                 const switchLog = switchInCcSkipState
-                    ? `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! ${switchInCcSkipState.icon} ${nextPet.name}은(는) ${switchInCcSkipState.label} 상태라 잠시 움직일 수 없습니다. 공격 기회를 넘깁니다!`
-                    : `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! 공격 기회는 유지된다!`;
+                    ? `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! ${nextOwnerId !== participant.id ? `이제 ${nextOwnerName}님이 조작합니다! ` : ''}${switchInCcSkipState.icon} ${nextPet.name}은(는) ${switchInCcSkipState.label} 상태라 잠시 움직일 수 없습니다. 공격 기회를 넘깁니다!`
+                    : `🔁 ${participant.name}이(가) ${currentPetBeforeSwitch.name || '펫'}을(를) 불러들이고 ${nextPet.name}을(를) 내보냈습니다! ${nextOwnerId !== participant.id ? `이제 ${nextOwnerName}님이 조작합니다! ` : ''}공격 기회는 유지된다!`;
 
                 const log = [switchLog].filter(Boolean).join(' ');
 
@@ -5492,13 +5529,18 @@ const handleUseItem = async (itemId) => {
                     [opponentRole]: opponentTurnParticipant,
                     status: 'action',
                     winner: null,
-                    turn: data.turn,
+                    // TEAM_BATTLE_TURN_HANDOFF_FIX
+                    // 공격턴 중 교체로 조작권이 팀원에게 넘어갔는데 turn 필드를 안 갱신하면
+                    // 원래 조작자가 계속 공격 행동을 선택하게 되는 버그가 있었습니다.
+                    turn: nextOwnerId,
                     turnStartTime: nextTurnStartTime,
                     attackerAction: null,
                     attackerActionPayload: null,
                     defenderAction: null,
                     manualSwitchUsedBy: nextManualSwitchUsedBy,
                     manualSwitchTurnStartTime: nextTurnStartTime,
+                    // TEAM_BATTLE_SWITCH_ONCE_PER_ATTACK_TURN
+                    manualSwitchLockedThisAction: true,
                     log,
                 };
 
@@ -5568,7 +5610,7 @@ const handleUseItem = async (itemId) => {
                     ? result.finalOpponent
                     : result.finalChallenger;
 
-                                const resultSummary = await processBattleResults(
+                const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -5597,7 +5639,7 @@ const handleUseItem = async (itemId) => {
 
 
 
-const handleActionSelect = async (actionId) => {
+    const handleActionSelect = async (actionId) => {
         if (isProcessing) return;
         setIsProcessing(true);
         const battleRef = doc(db, 'classes', classId, 'battles', battleId);
@@ -5729,14 +5771,14 @@ const handleActionSelect = async (actionId) => {
 
                 let { challenger, opponent, turn, attackerAction, defenderAction } = data;
 
-                
+
                 if (!attackerAction || !defenderAction) return null;
 
                 const isChallengerAttacker = turn === challenger.id;
                 let attacker = isChallengerAttacker ? { ...challenger } : { ...opponent };
                 let defender = isChallengerAttacker ? { ...opponent } : { ...challenger };
 
-                
+
                 // M5_NEW_CC_CARD_TURNS_FIX_V2
                 if (!attacker.pet.status) attacker.pet.status = {};
                 if (!defender.pet.status) defender.pet.status = {};
@@ -5746,15 +5788,15 @@ const handleActionSelect = async (actionId) => {
                 // 이번 공격으로 새로 걸린 화상/중독/속박은 같은 턴에는 DOT/턴감소가 없습니다.
                 const initialAttackerStatusKeys = getActiveStatusKeys(attacker.pet.status);
                 const initialDefenderStatusKeys = getActiveStatusKeys(defender.pet.status);
-// M11_CC_CLEAR_DEFENDER_ONE_TURN_CC
+                // M11_CC_CLEAR_DEFENDER_ONE_TURN_CC
 
-// 기절/경직/빙결은 해당 턴 방어 판정에 반영된 뒤 소거합니다.
+                // 기절/경직/빙결은 해당 턴 방어 판정에 반영된 뒤 소거합니다.
 
-if (defender.pet.status?.stunned) delete defender.pet.status.stunned;
+                if (defender.pet.status?.stunned) delete defender.pet.status.stunned;
 
-if (defender.pet.status?.staggered) delete defender.pet.status.staggered;
+                if (defender.pet.status?.staggered) delete defender.pet.status.staggered;
 
-if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
+                if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 let skillId = String(attackerAction || '').toUpperCase();
                 let skill = SKILLS[skillId];
@@ -5792,35 +5834,35 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
                 let log = "";
 
-                
+
                 const preHp = defender.pet.hp;
 
 
-                
+
                 const preDefenderTeamSnapshotForAoe = Array.isArray(defender.team)
 
 
-                
+
                     ? defender.team.map((pet, index) => ({
 
 
-                
+
                         index,
 
 
-                
+
                         id: pet?.id || null,
 
 
-                
+
                         hp: Number(pet?.hp ?? 0),
 
 
-                
+
                     }))
 
 
-                
+
                     : [];
                 const actionName = skill?.name || '공격';
                 let normalActionResolved = false;
@@ -5956,7 +5998,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                     const activeDamage = Math.max(0, Number(preHp ?? 0) - Number(defender.pet?.hp ?? 0));
 
 
-                
+
 
 
                     if (activeDamage > 0) {
@@ -5977,7 +6019,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 : [];
 
 
-                
+
 
 
                         const activePetId = defender.activePetId || defender.pet?.id || null;
@@ -6001,7 +6043,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             : Math.min(Math.max(Number(defender.activePetIndex ?? 0), 0), Math.max(rawTeam.length - 1, 0));
 
 
-                
+
 
 
                         const teamWithSyncedActive = rawTeam.map((pet, index) => (
@@ -6019,7 +6061,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         ));
 
 
-                
+
 
 
                         const benchDamage = Math.max(1, Math.round(activeDamage * 0.35));
@@ -6031,7 +6073,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         const preHpByIndex = new Map(preDefenderTeamSnapshotForAoe.map(entry => [entry.index, entry.hp]));
 
 
-                
+
 
 
                         const nextTeam = teamWithSyncedActive.map((pet, index) => {
@@ -6040,7 +6082,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             if (!pet || index === activeIndex || Number(pet.hp ?? 0) <= 0) return pet;
 
 
-                
+
 
 
                             const beforeBattlePageHp = Number(pet.hp ?? 0);
@@ -6055,7 +6097,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                 : beforeBattlePageHp;
 
 
-                
+
 
 
                             // petData 쪽에서 이미 대기 펫 피해를 적용했다면 여기서는 건드리지 않습니다.
@@ -6064,7 +6106,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             if (originalHp > beforeBattlePageHp) return pet;
 
 
-                
+
 
 
                             const afterHp = Math.max(1, beforeBattlePageHp - benchDamage);
@@ -6073,13 +6115,13 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             const appliedDamage = Math.max(0, beforeBattlePageHp - afterHp);
 
 
-                
+
 
 
                             if (appliedDamage <= 0) return pet;
 
 
-                
+
 
 
                             benchEntries.push({
@@ -6094,7 +6136,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             });
 
 
-                
+
 
 
                             return {
@@ -6115,7 +6157,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                         });
 
 
-                
+
 
 
                         if (benchEntries.length > 0) {
@@ -6133,7 +6175,7 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                             defender.pet = nextTeam[activeIndex] || defender.pet;
 
 
-                
+
 
 
                             const benchTotal = benchEntries.reduce((sum, entry) => sum + Number(entry.damage ?? 0), 0);
@@ -6358,22 +6400,22 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                 };
             });
 
-                        if (result && result.isFinished) {
+            if (result && result.isFinished) {
                 // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
                 // team 전체 HP/SP는 저장하되, 경험치/전적은 실제 출전 펫에게만 적용합니다.
                 const winnerParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalChallenger
                     : result.finalOpponent;
-            
+
                 const loserParticipant = result.winnerId === result.finalChallenger.id
                     ? result.finalOpponent
                     : result.finalChallenger;
-            
+
                 const winnerPet = winnerParticipant.pet;
                 const loserPet = loserParticipant.pet;
                 const loserId = loserParticipant.id;
-            
-                                const resultSummary = await processBattleResults(
+
+                const resultSummary = await processBattleResults(
                     classId,
                     result.winnerId,
                     loserId,
@@ -6459,7 +6501,18 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
         );
     }
 
-    const IamChallenger = myPlayerData.id === battleState.challenger.id;
+    // TEAM_BATTLE_SIDE_MEMBERSHIP_FIX
+    // "challenger가 아니면 무조건 opponent"라고 가정하면, 지금 조작권이 없는
+    // 벤치 팀원은 자기 팀인데도 상대팀 화면을 "내 화면"으로 보게 됩니다.
+    // team 배열의 ownerId를 기준으로 "내가 실제로 어느 팀 소속인지"를 먼저 확인합니다.
+    const isOnChallengerRoster = Array.isArray(battleState.challenger?.team)
+        && battleState.challenger.team.some((pet) => (pet.ownerId || battleState.challenger.id) === myPlayerData.id);
+    const isOnOpponentRoster = Array.isArray(battleState.opponent?.team)
+        && battleState.opponent.team.some((pet) => (pet.ownerId || battleState.opponent.id) === myPlayerData.id);
+
+    const IamChallenger = isOnOpponentRoster && !isOnChallengerRoster
+        ? false
+        : (isOnChallengerRoster ? true : myPlayerData.id === battleState.challenger.id);
     const myRole = IamChallenger ? 'challenger' : 'opponent';
     const opponentRole = IamChallenger ? 'opponent' : 'challenger';
 
@@ -6474,10 +6527,10 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
 
     // M20_SWITCH_WITHOUT_CONSUMING_TURN
     // 교체는 공격권을 소모하지 않지만, 같은 action 턴에 1회만 허용합니다.
-    const manualSwitchUsedByThisTurn = battleState.manualSwitchTurnStartTime === battleState.turnStartTime && Array.isArray(battleState.manualSwitchUsedBy)
-        ? battleState.manualSwitchUsedBy
-        : [];
-    const hasUsedManualSwitchThisTurn = manualSwitchUsedByThisTurn.includes(myPlayerData.id);
+    // TEAM_BATTLE_SWITCH_ONCE_PER_ATTACK_TURN
+    // 팀대전에서는 "내가 교체했는지"가 아니라 "이번 공격턴에 (누구든) 교체가 있었는지"로 막아야
+    // A <-> B 로 조작권을 주고받으며 무한히 시간을 끄는 걸 막을 수 있습니다.
+    const hasUsedManualSwitchThisTurn = Boolean(battleState.manualSwitchLockedThisAction);
 
     // M5_MANUAL_SWITCH_PATCH_V1
     const switchablePets = (() => {
@@ -6525,7 +6578,14 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
     })();
 
     const showActionMenu = battleState.status === 'action' && isAttacker && !battleState.attackerAction;
-    const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction;
+    // TEAM_BATTLE_DEFENSE_MENU_GUARD
+    // "공격자가 아니면 방어자"라는 가정은 팀대전에서 안 통합니다 (벤치 학생도 공격자가 아니니까요).
+    // 지금 턴의 실제 방어측 조작권자 id와 내가 일치할 때만 방어 메뉴를 보여줍니다.
+    const currentDefenderId = battleState.turn === battleState.challenger?.id
+        ? battleState.opponent?.id
+        : battleState.challenger?.id;
+    const showDefenseMenu = battleState.status === 'action' && !isAttacker && !battleState.defenderAction
+        && myPlayerData.id === currentDefenderId;
 
     // M15_FLEE_LIMIT_AND_FLEE_WIN_PATCH
     // 도망은 플레이어당 전투 1회만 시도할 수 있습니다.
@@ -6549,6 +6609,14 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
     const isStaggered = myInfo.pet.status?.staggered;
     const isFrozen = myInfo.pet.status?.frozen;
     const isQuizBlockedByCc = !!(isStunned || isStaggered || isFrozen);
+    // TEAM_BATTLE_BENCH_SPECTATOR_FLAG
+    // 팀대전에서 지금 내 펫이 조작권을 갖고 있지 않으면(팀원이 조작 중) 관전만 가능합니다.
+    const isTeamBenchSpectator = Boolean(
+        battleState?.battleMode === 'random-team' &&
+        myPlayerData?.id &&
+        battleState.challenger?.id !== myPlayerData.id &&
+        battleState.opponent?.id !== myPlayerData.id
+    );
     const isBound = myInfo.pet.status?.bound;
     const hasSubmitted = battleState.chat?.[myPlayerData?.id] !== undefined;
 
@@ -6808,7 +6876,16 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
                                     </RightTaskCard>
                                 )}
 
-                                {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && (
+                                {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && isTeamBenchSpectator && (
+                                    <RightTaskCard style={{ background: '#f1f3f5', borderColor: '#adb5bd' }}>
+                                        <div style={{ fontSize: '1.05rem', marginBottom: '0.4rem', color: '#495057' }}>👀 관전 중</div>
+                                        <div style={{ fontSize: '0.86rem', opacity: 0.85 }}>
+                                            지금은 우리 팀의 조작권을 가진 친구가 문제를 풀고 있어요.
+                                        </div>
+                                    </RightTaskCard>
+                                )}
+
+                                {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && !isTeamBenchSpectator && (
                                     <RightTaskCard style={{ background: '#ffffff', borderColor: '#339af0' }}>
                                         <div style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#1864ab' }}>✏️ 정답 선택</div>
                                         {(() => {
@@ -7058,4 +7135,4 @@ if (defender.pet.status?.frozen) delete defender.pet.status.frozen;
     );
 }
 
-export default BattlePage;
+export default TeamBattlePage;

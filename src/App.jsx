@@ -41,6 +41,9 @@ import Footer from './components/Footer';
 import PatchNoteModal from './components/PatchNoteModal';
 import PetGiftModal from './components/PetGiftModal';
 import BattlePage from './features/battle/BattlePage.jsx';
+import RandomBattleMatchModal from './features/battle/RandomBattleMatchModal.jsx';
+import RandomTeamBattlePage from './features/battle/RandomTeamBattlePage.jsx';
+import TeamBattlePage from './features/battle/TeamBattlePage.jsx';
 import NoticePage from './pages/NoticePage.jsx';
 import TermsPage from './pages/TermsPage';
 
@@ -140,34 +143,6 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
-function RouteScopedMatchListener() {
-  const location = useLocation();
-  const { currentSeason, subscribeToMatches } = useLeagueStore();
-  const shouldListen = location.pathname === '/broadcast' || location.pathname === '/recorder-dashboard';
-
-  useEffect(() => {
-    if (!shouldListen || !currentSeason?.id) return;
-
-    // 비용 절감은 유지하면서 실시간성이 필요한 화면에서만 경기 데이터를 구독합니다.
-    const existingListener = useLeagueStore.getState().listeners?.matches;
-    existingListener?.();
-    subscribeToMatches(currentSeason.id);
-
-    return () => {
-      const state = useLeagueStore.getState();
-      state.listeners?.matches?.();
-      useLeagueStore.setState(prev => ({
-        listeners: {
-          ...prev.listeners,
-          matches: null,
-        }
-      }));
-    };
-  }, [shouldListen, currentSeason?.id, subscribeToMatches]);
-
-  return null;
-}
-
 function App() {
   const {
     isLoading, setLoading, initializeClass, cleanupListeners,
@@ -230,10 +205,10 @@ function App() {
 
   return (
     <BrowserRouter>
-      <RouteScopedMatchListener />
       <GlobalBackground $themeColor={themeColor} />
       <AppWrapper>
         {currentUser && <Auth user={currentUser} />}
+        {currentUser && <RandomBattleMatchModal />}
         <AttendanceModal />
         <PetGiftModal />
         {pointAdjustmentNotification && <PointAdjustmentModal />}
@@ -270,12 +245,16 @@ function App() {
             <Route path="/pet-dex" element={<ProtectedRoute><PetDexPage /></ProtectedRoute>} />
             <Route path="/pet/select" element={<ProtectedRoute><PetSelectionPage /></ProtectedRoute>} />
             <Route path="/pet-center" element={<ProtectedRoute><PetCenterPage /></ProtectedRoute>} />
+            <Route path="/battle/team/:matchId" element={<ProtectedRoute><RandomTeamBattlePage /></ProtectedRoute>} />
+            <Route path="/battle/team-fight/:matchId" element={<ProtectedRoute><TeamBattlePage /></ProtectedRoute>} />
             <Route path="/battle/:opponentId" element={<ProtectedRoute><BattlePage /></ProtectedRoute>} />
             <Route path="/notices" element={<ProtectedRoute><NoticePage /></ProtectedRoute>} />
 
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/admin/:tab" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/terms" element={<TermsPage />} />
+            {/* 어떤 라우트에도 안 걸리면 흰 화면 대신 홈으로 돌려보냅니다. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </MainContent>
         <Footer onVersionClick={() => setIsPatchNoteModalOpen(true)} />
