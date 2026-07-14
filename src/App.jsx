@@ -143,6 +143,38 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
+
+
+function RouteScopedMatchListener() {
+  const location = useLocation();
+  const { currentSeason, subscribeToMatches } = useLeagueStore();
+  const shouldListen =
+    location.pathname === '/broadcast' ||
+    location.pathname === '/recorder-dashboard';
+
+  useEffect(() => {
+    if (!shouldListen || !currentSeason?.id) return;
+
+    // 비용 절감은 유지하면서 실시간성이 필요한 화면에서만 경기 데이터를 구독합니다.
+    const existingListener = useLeagueStore.getState().listeners?.matches;
+    existingListener?.();
+    subscribeToMatches(currentSeason.id);
+
+    return () => {
+      const state = useLeagueStore.getState();
+      state.listeners?.matches?.();
+      useLeagueStore.setState(prev => ({
+        listeners: {
+          ...prev.listeners,
+          matches: null,
+        },
+      }));
+    };
+  }, [shouldListen, currentSeason?.id, subscribeToMatches]);
+
+  return null;
+}
+
 function App() {
   const {
     isLoading, setLoading, initializeClass, cleanupListeners,
@@ -205,6 +237,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <RouteScopedMatchListener />
       <GlobalBackground $themeColor={themeColor} />
       <AppWrapper>
         {currentUser && <Auth user={currentUser} />}
