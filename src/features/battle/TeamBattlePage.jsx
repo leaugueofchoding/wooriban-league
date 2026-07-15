@@ -871,6 +871,28 @@ const AvatarBox = styled.div`
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     overflow: hidden;
     position: relative;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  /* CONTROL_RIGHT_INDICATOR_PATCH
+     팀대전에서 지금 조작권을 가진 쪽은 골드/주황 펄스 글로우, 관전 중인 쪽은 은은한 회색 테두리로 구분합니다. */
+  @keyframes controlRightPulse {
+    0%, 100% {
+      box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.5), 0 0 12px rgba(255, 146, 43, 0.75);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(255, 212, 59, 0.75), 0 0 20px rgba(255, 146, 43, 1);
+    }
+  }
+
+  .avatar-img-frame.control-active {
+    border-color: #ffd43b;
+    animation: controlRightPulse 1.6s ease-in-out infinite;
+  }
+
+  .avatar-img-frame.control-bench {
+    border-color: #ced4da;
+    box-shadow: 0 0 0 2px rgba(206, 212, 218, 0.4);
   }
 
   img {
@@ -1532,6 +1554,34 @@ const QuizArea = styled.div`
   gap: 1.25rem;
   min-height: 190px;
   box-shadow: 0 4px 15px rgba(51, 154, 240, 0.1);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+
+  /* CONTROL_RIGHT_INDICATOR_PATCH
+     팀대전에서 지금 내가 조작권을 가지고 있을 때만, 실제로 행동해야 하는
+     문제/선택 영역 전체에 골드 펄스 테두리를 표시합니다. */
+  @keyframes quizAreaControlPulse {
+    0%, 100% {
+      border-color: #ffd43b;
+      box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.35), 0 0 18px rgba(255, 146, 43, 0.55);
+    }
+    50% {
+      border-color: #ff922b;
+      box-shadow: 0 0 0 4px rgba(255, 212, 59, 0.55), 0 0 28px rgba(255, 146, 43, 0.85);
+    }
+  }
+
+  ${props => props.$controlActive && `
+    animation: quizAreaControlPulse 1.6s ease-in-out infinite;
+  `}
+
+  /* CONTROL_RIGHT_INDICATOR_PATCH: 관전 중인 학생 화면은 살짝 톤 다운합니다. */
+  ${props => props.$controlBench && `
+    background-color: #f8f9fa;
+    border-color: #ced4da;
+    box-shadow: none;
+    filter: grayscale(0.4);
+    opacity: 0.88;
+  `}
 
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
@@ -4316,17 +4366,96 @@ function TeamBattlePage() {
                             manualSwitchLockedThisAction: false,
                         });
                     } else {
-                        transaction.update(battleRef, {
-                            status: 'action',
-                            turn: winnerId,
-                            log: `🎉 정답! ${myPet.name}의 행동 선택! (정답: ${data.question.answer})`,
-                            question: null,
-                            turnStartTime: Date.now(),
-                            chat: {},
-                            // TEAM_BATTLE_SWITCH_ONCE_PER_ATTACK_TURN
-                            // 새로 시작하는 공격턴이니 교체 잠금을 풉니다.
-                            manualSwitchLockedThisAction: false,
-                        });
+                        // TEAM_ROTATION_FORCED_SWITCH_PATCH
+                        // 같은 학생이 공격권을 3턴 연속으로 가져가면, 팀원의 살아있는 벤치 펫이
+                        // 있는 경우 자동으로 조작권을 넘겨 한 명이 계속 도맡는 것을 막습니다.
+                        // (공격권을 얻은 쪽만 셉니다. 방어만 한 라운드는 세지 않습니다.)
+                        const streakField = `${myRole}ControlStreak`;
+                        const prevStreak = data[streakField] || {};
+                        const sameOwnerStreak = prevStreak.ownerId === winnerId ? Number(prevStreak.count || 0) : 0;
+                        const nextStreakCount = sameOwnerStreak + 1;
+
+                        const participant = data[myRole];
+                        const team = Array.isArray(participant.team) && participant.team.length > 0
+                            ? participant.team
+                            : participant.pet
+                                ? [participant.pet]
+                                : [];
+                        const activePetId = participant.activePetId || participant.pet?.id || null;
+                        const activeIndex = team.findIndex(pet => pet?.id === activePetId);
+
+                        const teammateBenchPets = team.filter(pet => (
+                            pet?.id &&
+                            pet.id !== activePetId &&
+                            Number(pet.hp ?? 0) > 0 &&
+                            (pet.ownerId || participant.id) !== winnerId
+                        ));
+
+                        const shouldForceHandoff = nextStreakCount >= 3 && activeIndex >= 0 && teammateBenchPets.length > 0;
+
+                        if (shouldForceHandoff) {
+                            const syncedTeam = team.map((pet, index) => (
+                                index === activeIndex
+                                    ? { ...myPet, status: { ...(myPet.status || {}) } }
+                                    : { ...pet, status: { ...(pet?.status || {}) } }
+                            ));
+
+                            const nextIndex = syncedTeam.findIndex(pet => pet?.id === teammateBenchPets[0].id);
+                            const nextPet = {
+                                ...syncedTeam[nextIndex],
+                                status: { ...(syncedTeam[nextIndex]?.status || {}) },
+                            };
+                            const nextTeam = syncedTeam.map((pet, index) => (
+                                index === nextIndex ? nextPet : pet
+                            ));
+
+                            const nextOwnerId = nextPet.ownerId || participant.id;
+                            const nextOwnerName = nextPet.ownerName || participant.name;
+
+                            const participatedPetIds = [
+                                ...new Set([
+                                    ...(Array.isArray(participant.participatedPetIds) ? participant.participatedPetIds : []),
+                                    myPet.id,
+                                    nextPet.id,
+                                ].filter(Boolean)),
+                            ];
+
+                            const nextParticipant = {
+                                ...participant,
+                                id: nextOwnerId,
+                                name: nextOwnerName,
+                                pet: nextPet,
+                                team: nextTeam,
+                                activePetIndex: nextIndex,
+                                activePetId: nextPet.id || null,
+                                participatedPetIds,
+                            };
+
+                            transaction.update(battleRef, {
+                                status: 'action',
+                                turn: nextOwnerId,
+                                [myRole]: nextParticipant,
+                                [streakField]: { ownerId: nextOwnerId, count: 0 },
+                                log: `🔄 ${participant.name}이(가) 3턴 연속으로 공격권을 가져서, ${nextOwnerName}님에게 자동으로 조작권이 넘어갑니다! ${nextPet.name} 등장!`,
+                                question: null,
+                                turnStartTime: Date.now(),
+                                chat: {},
+                                manualSwitchLockedThisAction: false,
+                            });
+                        } else {
+                            transaction.update(battleRef, {
+                                status: 'action',
+                                turn: winnerId,
+                                [streakField]: { ownerId: winnerId, count: nextStreakCount },
+                                log: `🎉 정답! ${myPet.name}의 행동 선택! (정답: ${data.question.answer})`,
+                                question: null,
+                                turnStartTime: Date.now(),
+                                chat: {},
+                                // TEAM_BATTLE_SWITCH_ONCE_PER_ATTACK_TURN
+                                // 새로 시작하는 공격턴이니 교체 잠금을 풉니다.
+                                manualSwitchLockedThisAction: false,
+                            });
+                        }
                     }
                     return null;
                 } else {
@@ -6617,6 +6746,14 @@ function TeamBattlePage() {
         battleState.challenger?.id !== myPlayerData.id &&
         battleState.opponent?.id !== myPlayerData.id
     );
+    // CONTROL_RIGHT_INDICATOR_PATCH
+    // 팀대전(2:2)에서만 조작권 표시를 켭니다. 1:1이면 이 개념 자체가 없으므로 undefined로 둡니다.
+    const myControlState = battleState?.battleMode === 'random-team'
+        ? (isTeamBenchSpectator ? 'bench' : 'active')
+        : undefined;
+    // TEAM_ROTATION_FORCED_SWITCH_PATCH
+    // 강제 교체 전, "다음 턴엔 자동으로 넘어간다"는 걸 미리 알려주기 위한 카운트입니다.
+    const myControlStreakCount = Number(battleState?.[`${myRole}ControlStreak`]?.count || 0);
     const isBound = myInfo.pet.status?.bound;
     const hasSubmitted = battleState.chat?.[myPlayerData?.id] !== undefined;
 
@@ -6735,6 +6872,7 @@ function TeamBattlePage() {
                                 InfoBoxComponent={MyInfoBox}
                                 renderHpBar={renderHpBar}
                                 renderSpBar={renderSpBar}
+                                controlState={myControlState}
                             />
                             <BattleTeamMiniBar
                                 isMine={true}
@@ -6773,7 +6911,7 @@ function TeamBattlePage() {
                             />
                         </BattleField>
 
-                        <QuizArea>
+                        <QuizArea $controlActive={myControlState === 'active'} $controlBench={myControlState === 'bench'}>
                             <div>
                                 <LogText>{formatBattleLogForDisplay(battleState.log)}</LogText>
                                 {battleState.status === 'switching' && (
@@ -6888,6 +7026,20 @@ function TeamBattlePage() {
                                 {battleState.status === 'quiz' && battleState.question && !isQuizBlockedByCc && !isTeamBenchSpectator && (
                                     <RightTaskCard style={{ background: '#ffffff', borderColor: '#339af0' }}>
                                         <div style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#1864ab' }}>✏️ 정답 선택</div>
+                                        {battleState?.battleMode === 'random-team' && myControlStreakCount >= 2 && (
+                                            <div style={{
+                                                margin: '-0.15rem 0 0.6rem',
+                                                padding: '0.5rem 0.65rem',
+                                                borderRadius: '10px',
+                                                background: '#fff9db',
+                                                color: '#e8590c',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 800,
+                                                lineHeight: 1.4,
+                                            }}>
+                                                🔄 다음 공격턴엔 팀원에게 자동으로 조작권이 넘어가요!
+                                            </div>
+                                        )}
                                         {(() => {
                                             if (isOX) {
                                                 return (

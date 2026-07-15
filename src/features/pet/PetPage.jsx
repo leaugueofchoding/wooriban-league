@@ -28,6 +28,7 @@ import {
   useVitaminJellyForRandomBattlePet,
   enterRandomTeamBattle,
   forfeitRandomTeamBattleAndRequeue,
+  declineAutoJoinedTeamMatch,
 } from '../battle/randomBattleApi';
 import {
   getAveragePetLevel,
@@ -1319,6 +1320,68 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     randomBattleQueueEntries['random-team']?.status,
   ]);
 
+  // AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH
+  // 1:1 대전 대기가 30초를 넘으면, 1:1에 낸 펫 중 가장 첫 순서 펫으로
+  // 2:2 팀대전 대기열에도 자동으로 함께 참가합니다(중복 매칭 확률을 높이기 위함).
+  // 이미 팀대전 큐에 있거나(수동 참가 포함) 매칭/입장 단계로 넘어간 경우에는 시도하지 않습니다.
+  useEffect(() => {
+    if (!classId || !myPlayerData?.id) return;
+
+    const entry1v1 = randomBattleQueueEntries['random-1v1'];
+    if (!entry1v1 || entry1v1.status !== 'waiting') return;
+    // 이번 1:1 대기 세션에서 이미 자동 팀대전 매칭을 거절했다면 다시 넣지 않습니다.
+    if (entry1v1.autoTeamJoinDeclined) return;
+
+    const teamEntry = randomBattleQueueEntries['random-team'];
+    if (teamEntry && ['waiting', 'matched', 'entering'].includes(teamEntry.status)) return;
+
+    const queueStartedAtMs = Number(entry1v1.queueStartedAtMs || 0);
+    if (!queueStartedAtMs) return;
+
+    const elapsedMs = Date.now() - queueStartedAtMs;
+    const remainingMs = 30000 - elapsedMs;
+
+    let cancelled = false;
+    let timeoutId = null;
+
+    const autoJoinTeamQueue = async () => {
+      if (cancelled) return;
+
+      const firstPetId = entry1v1.lockedPetIds?.[0] || null;
+      if (!firstPetId) return;
+
+      try {
+        await createRandomTeamQueueEntry(classId, myPlayerData.id, firstPetId, { teamSize: 2, autoJoined: true });
+        if (!cancelled) {
+          await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
+        }
+      } catch (error) {
+        // 자동 참가는 배경에서 조용히 시도합니다. 실패해도(팀대전 포기 페널티 등)
+        // 1:1 대기 화면을 방해하지 않도록 alert 없이 콘솔 경고만 남깁니다.
+        console.warn('1:1 대기 중 팀대전 자동 참가 실패:', error);
+      }
+    };
+
+    if (remainingMs <= 0) {
+      autoJoinTeamQueue();
+    } else {
+      timeoutId = window.setTimeout(autoJoinTeamQueue, remainingMs);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [
+    classId,
+    myPlayerData?.id,
+    randomBattleQueueEntries['random-1v1']?.status,
+    randomBattleQueueEntries['random-1v1']?.queueStartedAtMs,
+    randomBattleQueueEntries['random-1v1']?.lockedPetIds,
+    randomBattleQueueEntries['random-1v1']?.autoTeamJoinDeclined,
+    randomBattleQueueEntries['random-team']?.status,
+  ]);
+
   useEffect(() => {
     if (myPlayerData && !myPlayerData.pet && (!myPlayerData.pets || myPlayerData.pets.length === 0)) {
       navigate('/pet/select');
@@ -1778,8 +1841,21 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     const teamEntry = randomBattleQueueEntries['random-team'];
     const isMatchedTeamBattle = teamEntry && ['matched', 'entering'].includes(teamEntry.status);
 
+    // AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH
+    // 1:1 대기 중 자동으로 참가된 팀대전이고, 아직 1:1을 활발히 기다리고 있다면 페널티 없이 거절할 수 있습니다.
+    const entry1v1ForDecline = randomBattleQueueEntries['random-1v1'];
+    const canDeclineTeamFreely = Boolean(
+      isMatchedTeamBattle &&
+      teamEntry?.autoJoined &&
+      entry1v1ForDecline &&
+      ['waiting', 'matched', 'entering'].includes(entry1v1ForDecline.status)
+    );
+
     if (isMatchedTeamBattle) {
-      const ok = window.confirm('팀대전 매칭을 거절하면 3분 동안 팀대전에 다시 참가할 수 없습니다. 정말 거절할까요?');
+      const message = canDeclineTeamFreely
+        ? '이 팀대전은 1:1 대기 중 자동으로 참가된 매칭이에요. 거절하면 페널티 없이 1:1 대기를 계속할 수 있어요. 거절할까요?'
+        : '팀대전 매칭을 거절하면 3분 동안 팀대전에 다시 참가할 수 없습니다. 정말 거절할까요?';
+      const ok = window.confirm(message);
       if (!ok) return;
     }
 
@@ -1787,7 +1863,11 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
       setIsRandomBattleCancelling(true);
 
       if (isMatchedTeamBattle) {
-        await forfeitRandomTeamBattleAndRequeue(classId, myPlayerData.id);
+        if (canDeclineTeamFreely) {
+          await declineAutoJoinedTeamMatch(classId, myPlayerData.id);
+        } else {
+          await forfeitRandomTeamBattleAndRequeue(classId, myPlayerData.id);
+        }
       } else {
         await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
       }
@@ -2552,7 +2632,13 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                     ? '현재는 2:2 베타로 운영됩니다. 참가할 펫 1마리를 선택하세요.'
                     : '출전할 펫을 1~3마리 선택하세요. 가능하면 3마리 구성이 유리합니다.'}
                 </p>
+                {randomBattleDraft.mode === 'random-1v1' && (
+                  <p style={{ margin: '0.5rem 0 0', color: '#5f3dc4', fontSize: '0.82rem', fontWeight: 800, lineHeight: 1.45 }}>
+                    ⏱️ 30초 안에 1:1 상대를 찾지 못하면, 선택한 펫 중 가장 첫 번째 펫으로 2:2 팀대전 대기열에도 자동으로 함께 참가해요.
+                  </p>
+                )}
               </div>
+
               <button
                 type="button"
                 onClick={closeRandomBattleDraft}

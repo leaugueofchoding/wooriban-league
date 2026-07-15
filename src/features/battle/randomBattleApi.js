@@ -188,6 +188,8 @@ export async function createRandom1v1QueueEntry(classId, playerId, selectedPetId
         authUid: playerData.authUid || auth.currentUser?.uid || null,
         mode: 'random-1v1',
         status: 'waiting',
+        // AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH: 새 1:1 대기를 시작할 때마다 초기화합니다.
+        autoTeamJoinDeclined: false,
         selectedPetCount: resolvedTeam.selectedPetCount,
         lockedTeam: resolvedTeam.team.map(snapshotPetForRandomQueue),
         lockedPetIds: resolvedTeam.petIds,
@@ -208,6 +210,9 @@ export async function createRandom1v1QueueEntry(classId, playerId, selectedPetId
 export async function createRandomTeamQueueEntry(classId, playerId, selectedPetId, options = {}) {
   const today = getTodayString();
   const teamSize = Number(options.teamSize || RANDOM_BATTLE_CONFIG.TEAM_BATTLE_BETA_SIZE);
+  // AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH
+  // 1:1 대기 30초 초과로 자동 참가된 큐인지 표시합니다. 자동 참가는 거절 시 페널티가 면제됩니다.
+  const autoJoined = Boolean(options.autoJoined);
 
   return await createQueueEntryForMode({
     classId,
@@ -239,6 +244,7 @@ export async function createRandomTeamQueueEntry(classId, playerId, selectedPetI
         mode: 'random-team',
         status: 'waiting',
         teamSize,
+        autoJoined,
         selectedPetId: resolvedPet.petId,
         selectedPetCount: 1,
         lockedTeam: [snapshotPetForRandomQueue(resolvedPet.pet)],
@@ -1240,6 +1246,153 @@ export async function forfeitRandomTeamBattleAndRequeue(classId, playerId) {
       requeued: true,
       matchId,
       penaltyUntilMs,
+      requeuedPlayerIds,
+    };
+  });
+}
+
+// AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH
+// 1:1 대기 중 30초 초과로 자동 참가된 팀대전 매칭을, 아직 1:1을 활발히 기다리고 있는 경우에 한해
+// 페널티 없이 거절할 수 있게 합니다. 남은 팀원들은 forfeitRandomTeamBattleAndRequeue와 동일하게
+// 다시 매칭 대기열로 돌아갑니다. 같은 1:1 대기 세션 동안은 재자동참가를 막기 위해
+// 1:1 큐 문서에 autoTeamJoinDeclined 플래그를 남깁니다.
+export async function declineAutoJoinedTeamMatch(classId, playerId) {
+  assertClassAndPlayer(classId, playerId);
+
+  const myQueueRef = queueRefOf(classId, playerId, 'random-team');
+  const myOneVOneRef = queueRefOf(classId, playerId, 'random-1v1');
+  const myPlayerRef = playerRefOf(classId, playerId);
+
+  return await runTransaction(db, async (transaction) => {
+    const myQueueSnap = await transaction.get(myQueueRef);
+    const myOneVOneSnap = await transaction.get(myOneVOneRef);
+    const myPlayerSnap = await transaction.get(myPlayerRef);
+
+    if (!myPlayerSnap.exists()) {
+      throw new Error('플레이어 정보를 찾을 수 없습니다.');
+    }
+
+    if (!myQueueSnap.exists()) {
+      throw new Error('팀대전 매칭 정보를 찾을 수 없습니다.');
+    }
+
+    const myQueue = { id: myQueueSnap.id, ...myQueueSnap.data() };
+    const myOneVOne = queueDataFromSnap(myOneVOneSnap, 'random-1v1');
+
+    if (
+      myQueue.mode !== 'random-team' ||
+      !['matched', 'entering'].includes(myQueue.status) ||
+      !myQueue.matchId
+    ) {
+      throw new Error('거절할 수 있는 팀대전 매칭 상태가 아닙니다.');
+    }
+
+    if (!myQueue.autoJoined || !isActiveQueueStatus(myOneVOne?.status)) {
+      throw new Error('이 팀대전은 페널티 없이 거절할 수 있는 자동 참가 매칭이 아닙니다.');
+    }
+
+    const matchId = myQueue.matchId;
+    const myTeamIds = Array.isArray(myQueue.matchedTeamPlayerIds) ? myQueue.matchedTeamPlayerIds.filter(Boolean) : [];
+    const opponentTeamIds = Array.isArray(myQueue.matchedOpponentPlayerIds) ? myQueue.matchedOpponentPlayerIds.filter(Boolean) : [];
+    const allPlayerIds = [...new Set([...myTeamIds, ...opponentTeamIds])];
+
+    const roomRef = doc(db, 'classes', classId, 'randomTeamBattleRooms', matchId);
+
+    const refsById = Object.fromEntries(allPlayerIds.map((id) => [id, {
+      queue: queueRefOf(classId, id, 'random-team'),
+      player: playerRefOf(classId, id),
+    }]));
+
+    const roomSnap = await transaction.get(roomRef);
+
+    const queueSnapsById = {};
+    const playerSnapsById = {};
+
+    for (const id of allPlayerIds) {
+      queueSnapsById[id] = await transaction.get(refsById[id].queue);
+    }
+
+    for (const id of allPlayerIds) {
+      playerSnapsById[id] = await transaction.get(refsById[id].player);
+    }
+
+    const requeuedPlayerIds = allPlayerIds.filter((id) => id !== playerId);
+    const nowMs = Date.now();
+
+    // 내 팀대전 큐만 취소합니다. 페널티는 부여하지 않습니다.
+    transaction.set(myQueueRef, {
+      status: 'cancelled',
+      cancelReason: 'auto_join_declined_no_penalty',
+      cancelledAt: serverTimestamp(),
+    }, { merge: true });
+
+    // 1:1 큐는 그대로 두고, 같은 세션에서 팀대전 자동 재참가만 막습니다.
+    transaction.set(myOneVOneRef, {
+      autoTeamJoinDeclined: true,
+    }, { merge: true });
+
+    // 플레이어 요약 필드는 1:1만 남은 상태로 재계산합니다(팀대전 페널티 없음).
+    updatePlayerQueueSummary(transaction, myPlayerRef, ['random-1v1'], { 'random-1v1': myOneVOne || {} });
+
+    for (const id of requeuedPlayerIds) {
+      const queueSnap = queueSnapsById[id];
+      const playerSnap = playerSnapsById[id];
+      if (!queueSnap?.exists() || !playerSnap?.exists()) continue;
+
+      const queueData = { id: queueSnap.id, ...queueSnap.data() };
+
+      if (
+        queueData.mode !== 'random-team' ||
+        queueData.matchId !== matchId ||
+        !['matched', 'entering'].includes(queueData.status)
+      ) {
+        continue;
+      }
+
+      transaction.set(refsById[id].queue, {
+        status: 'waiting',
+        cancelReason: null,
+        matchId: null,
+        matchedAt: null,
+        matchExpiresAtMs: null,
+        matchedTeamRole: null,
+        matchedTeamPlayerIds: null,
+        matchedOpponentPlayerIds: null,
+        matchedBattleId: null,
+        battleReady: false,
+        battleReadyAt: null,
+        entrantConfirmedAt: null,
+        queueStartedAtMs: nowMs,
+        queuedAt: serverTimestamp(),
+        requeuedFromMatchId: matchId,
+        requeuedBecausePlayerId: playerId,
+      }, { merge: true });
+
+      transaction.update(refsById[id].player, {
+        randomBattleQueueStatus: 'waiting',
+        randomBattleQueuedAt: serverTimestamp(),
+        randomBattleQueueModes: ['random-team'],
+        randomBattleMode: 'random-team',
+        randomBattleLockedPetIds: queueData.lockedPetIds || [],
+        randomBattleMatchLevel: queueData.matchLevel || null,
+      });
+    }
+
+    if (roomSnap?.exists()) {
+      transaction.set(roomRef, {
+        status: 'cancelled',
+        cancelReason: 'team_member_declined_auto_join',
+        cancelledBy: playerId,
+        cancelledAt: serverTimestamp(),
+        requeuedPlayerIds,
+        log: '1:1 대기 중 자동 참가했던 학생이 팀대전을 거절하고 1:1을 계속 기다리기로 하여, 남은 학생들은 다시 매칭 대기열로 돌아갑니다.',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+
+    return {
+      requeued: true,
+      matchId,
       requeuedPlayerIds,
     };
   });

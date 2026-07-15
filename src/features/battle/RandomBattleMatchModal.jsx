@@ -8,6 +8,7 @@ import { auth, db } from '../../api/firebase';
 import { useClassStore, useLeagueStore } from '../../store/leagueStore';
 import {
   cancelRandomBattleQueueEntry,
+  declineAutoJoinedTeamMatch,
   enterRandom1v1Battle,
   enterRandomTeamBattle,
   forfeitRandomTeamBattleAndRequeue,
@@ -142,11 +143,22 @@ function RandomBattleMatchModal() {
     }
   };
 
+  // AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH
+  // 1:1 대기 중 자동으로 참가된 팀대전이고, 아직 1:1을 활발히 기다리고 있다면 페널티 없이 거절할 수 있습니다.
+  const canDeclineTeamFreely = Boolean(
+    isTeam &&
+    activeEntry?.autoJoined &&
+    random1v1Entry &&
+    ['waiting', 'matched', 'entering'].includes(random1v1Entry.status)
+  );
+
   const handleReject = async () => {
     if (!classId || !myPlayerData?.id) return;
 
     const message = isTeam
-      ? '팀대전 매칭을 거절하면 3분 동안 팀대전에 다시 참가할 수 없습니다. 정말 거절할까요?'
+      ? (canDeclineTeamFreely
+        ? '이 팀대전은 1:1 대기 중 자동으로 참가된 매칭이에요. 거절하면 페널티 없이 1:1 대기를 계속할 수 있어요. 거절할까요?'
+        : '팀대전 매칭을 거절하면 3분 동안 팀대전에 다시 참가할 수 없습니다. 정말 거절할까요?')
       : '이번 랜덤대전을 취소할까요?';
 
     const ok = window.confirm(message);
@@ -156,7 +168,11 @@ function RandomBattleMatchModal() {
       setIsProcessing(true);
 
       if (isTeam) {
-        await forfeitRandomTeamBattleAndRequeue(classId, myPlayerData.id);
+        if (canDeclineTeamFreely) {
+          await declineAutoJoinedTeamMatch(classId, myPlayerData.id);
+        } else {
+          await forfeitRandomTeamBattleAndRequeue(classId, myPlayerData.id);
+        }
       } else {
         await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
       }
@@ -166,6 +182,11 @@ function RandomBattleMatchModal() {
       setIsProcessing(false);
     }
   };
+
+  // GLOBAL_RANDOM_BATTLE_MATCH_MODAL_COLOR_PATCH
+  // 1:1은 기존 보라, 2:2 팀대전은 청록으로 구분해 한눈에 어떤 매칭인지 알 수 있게 합니다.
+  const themeColor = isTeam ? '#0ca678' : '#5f3dc4';
+  const themeSoftBg = isTeam ? '#e6fcf5' : '#f3f0ff';
 
   const overlayStyle = {
     position: 'fixed',
@@ -182,7 +203,7 @@ function RandomBattleMatchModal() {
     width: 'min(420px, 100%)',
     background: 'white',
     borderRadius: '24px',
-    border: '5px solid #5f3dc4',
+    border: '5px solid ' + themeColor,
     padding: '1.25rem',
     textAlign: 'center',
     fontFamily: 'Pretendard, sans-serif',
@@ -196,8 +217,8 @@ function RandomBattleMatchModal() {
     margin: '0.65rem auto 0',
     padding: '0.45rem 0.75rem',
     borderRadius: '999px',
-    background: '#f3f0ff',
-    color: '#5f3dc4',
+    background: themeSoftBg,
+    color: themeColor,
     fontWeight: 1000,
     fontSize: '0.88rem',
   };
@@ -216,7 +237,7 @@ function RandomBattleMatchModal() {
     color: 'white',
     fontWeight: 1000,
     cursor: isProcessing ? 'not-allowed' : 'pointer',
-    background: isProcessing ? '#adb5bd' : '#5f3dc4',
+    background: isProcessing ? '#adb5bd' : themeColor,
     boxShadow: isProcessing ? 'none' : '0 4px 0 rgba(0,0,0,0.16)',
   };
 
@@ -248,13 +269,19 @@ function RandomBattleMatchModal() {
           )}
         </p>
 
+        {canDeclineTeamFreely && (
+          <p style={{ margin: '-0.4rem 0 1rem', color: '#0ca678', fontSize: '0.85rem', fontWeight: 800, lineHeight: 1.4 }}>
+            💡 1:1 대기 중 자동으로 참가된 매칭이에요. 거절해도 페널티 없이 1:1을 계속 기다릴 수 있어요.
+          </p>
+        )}
+
         <div style={buttonRowStyle}>
           <button type="button" onClick={handleEnter} disabled={isProcessing} style={enterButtonStyle}>
             {isProcessing ? '처리 중...' : (isTeam ? '팀대전 입장' : '입장하기')}
           </button>
 
           <button type="button" onClick={handleReject} disabled={isProcessing} style={rejectButtonStyle}>
-            {isTeam ? '거절하기' : '이번엔 쉬기'}
+            {isTeam ? (canDeclineTeamFreely ? '거절하고 1:1 계속 대기' : '거절하기') : '이번엔 쉬기'}
           </button>
         </div>
       </div>

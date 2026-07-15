@@ -22,6 +22,7 @@ export default function BattlePlayerPanel({
     InfoBoxComponent,
     renderHpBar,
     renderSpBar,
+    controlState, // CONTROL_RIGHT_INDICATOR_PATCH: 'active' | 'bench' | undefined (팀대전에서만 사용)
 }) {
     if (!info?.pet) return null;
 
@@ -32,11 +33,21 @@ export default function BattlePlayerPanel({
 
     const badgeClassName = isMine ? 'mine' : 'opponent';
     const avatarAlt = isMine ? '나의 아바타' : '상대방 아바타';
+    const controlClassName = controlState ? `control-${controlState}` : '';
+    const controlTitle = controlState === 'active'
+        ? '지금 조작권을 가지고 있어요'
+        : controlState === 'bench'
+            ? '지금은 팀원이 조작 중이에요 (관전 중)'
+            : undefined;
 
     return (
         <WrapperComponent>
             <AvatarBoxComponent>
-                <div className="avatar-img-frame">
+                <div
+                    className={`avatar-img-frame ${controlClassName}`.trim()}
+                    title={controlTitle}
+                    aria-label={controlTitle}
+                >
                     <img
                         src={avatarSrc}
                         alt={avatarAlt}
