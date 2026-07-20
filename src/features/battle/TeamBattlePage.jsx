@@ -32,6 +32,53 @@ const syncBattleParticipantActivePet = (participant) => {
     return replaceActiveBattlePet(participant, participant.pet);
 };
 
+// BATTLE_RESULT_STATS_PATCH
+// 결과창(딜량/CC건/회복량/받은피해량 막대그래프)용 누적 통계입니다.
+// 스킬 효과 함수 내부는 건드리지 않고, 스킬 실행 전후 HP/상태 스냅샷을 비교해서 계산합니다.
+// (그래서 원소반응/기절 등 스킬 결과를 개별적으로 다시 구현할 필요가 없습니다.)
+// 범위: 공격 대 방어 활성 펫끼리의 교환만 집계합니다. 화상/중독 등 DOT 틱 데미지,
+// 토네이도 스윕 같은 대기 펫 광역 스플래시는 이번 버전에서는 포함하지 않습니다.
+// M_CC_STAT_INCLUDE_BURN_AND_REACTION_FREEZE
+// 화상(스킬 직접 부여 'burned', 원소반응 연소 'combustion')도 CC/상태이상 통계에 포함합니다.
+// 빙결('frozen')은 이미 포함되어 있었지만, 원소반응으로 거는 빙결은 스냅샷 시점이 반응 적용 전이라
+// 집계에서 빠지고 있었습니다 -> 아래 반응 처리 이후 재집계로 보정합니다.
+const BATTLE_STAT_CC_KEYS = ['stunned', 'frozen', 'staggered', 'bound', 'confused', 'burned', 'combustion'];
+
+function mergeBattleStatsDelta(existingStats, deltas) {
+    const next = { ...(existingStats || {}) };
+
+    (deltas || []).forEach(delta => {
+        if (!delta?.petId) return;
+
+        const prev = next[delta.petId] || {
+            petId: delta.petId,
+            ownerId: null,
+            ownerName: '',
+            petName: '',
+            damageDealt: 0,
+            damageTaken: 0,
+            healingDone: 0,
+            ccInflicted: 0,
+            reactionDamageDealt: 0,
+        };
+
+        next[delta.petId] = {
+            ...prev,
+            ownerId: delta.ownerId || prev.ownerId,
+            ownerName: delta.ownerName || prev.ownerName,
+            petName: delta.petName || prev.petName,
+            damageDealt: Number(prev.damageDealt || 0) + Number(delta.damageDealt || 0),
+            damageTaken: Number(prev.damageTaken || 0) + Number(delta.damageTaken || 0),
+            healingDone: Number(prev.healingDone || 0) + Number(delta.healingDone || 0),
+            ccInflicted: Number(prev.ccInflicted || 0) + Number(delta.ccInflicted || 0),
+            // BATTLE_RESULT_REACTION_DAMAGE_STAT_PATCH: 원소반응으로 들어간 추가 피해만 따로 누적합니다.
+            reactionDamageDealt: Number(prev.reactionDamageDealt || 0) + Number(delta.reactionDamageDealt || 0),
+        };
+    });
+
+    return next;
+}
+
 
 const switchToNextAlivePetIfNeeded = (participant) => {
     // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH
@@ -421,6 +468,15 @@ const appendElementReactionAfterAction = ({
         if (bonusDamage > 0) {
             defender.pet.hp = Math.max(0, Number(defender.pet.hp ?? 0) - bonusDamage);
             logParts.push('원소반응 추가 피해 ' + bonusDamage + '!');
+
+            // BATTLE_RESULT_REACTION_DAMAGE_STAT_PATCH
+            // 결과창 막대그래프(보라색 원소반응 피해)용으로 값만 임시로 얹어둡니다.
+            // 이 함수는 문자열 로그를 반환하는 계약이라 반환 타입을 바꾸지 않고,
+            // 호출부에서 이 값을 읽은 뒤 바로 지웁니다(전투 저장 데이터에는 남지 않음).
+            if (defender.pet.status) {
+                defender.pet.status.__reactionDamageForStats =
+                    Number(defender.pet.status.__reactionDamageForStats || 0) + bonusDamage;
+            }
         }
 
         if (reactionResult.logParts?.length) {
@@ -1736,6 +1792,7 @@ const ModalBackground = styled.div`
 const ModalContent = styled.div`
   padding: 2rem 3rem; background: white; border-radius: 24px; text-align: center;
   box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  width: min(920px, 94vw);
   h2 { font-size: 2.5rem; margin-bottom: 1rem; color: ${props => props.$color || '#333'}; font-weight: 900; }
   p { font-size: 1.2rem; margin: 0.5rem 0; color: #495057; }
   button { 
@@ -2598,7 +2655,7 @@ const getHardCcDefenseLog = getCcDefenseLog;
 
 function TeamBattlePage() {
     // TEAM_BATTLE_ROUTE_PARAM_PATCH
-    // 1:1은 [나, 상대] id를 정렬해 battleId를 만들지만, 팀대전은 4명이라
+    // 1:1은 [나, 상대] id를 정렬해 battleId를 만들지만, 팀대전은 6명이라
     // 매칭 시스템이 만들어준 matchId를 battleId로 그대로 씁니다.
     const { matchId } = useParams();
     const navigate = useNavigate();
@@ -2618,6 +2675,8 @@ function TeamBattlePage() {
     // M18B_RESULT_SUMMARY_LOCAL_FALLBACK_V3_PATCH
     // resultSummary가 Firestore snapshot으로 늦게 들어와도 결과창에 즉시 표시하기 위한 로컬 fallback
     const [localResultSummary, setLocalResultSummary] = useState(null); // M18H_MINIMAL_RESULT_SUMMARY_SAVE_PATCH
+    // BATTLE_RESULT_STATS_PATCH: 결과창 딜량/CC/회복량 탭 선택 상태
+    const [resultStatTab, setResultStatTab] = useState('damageDealt');
     const [timeLeft, setTimeLeft] = useState(20);
     const [answer, setAnswer] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -4245,7 +4304,7 @@ function TeamBattlePage() {
                     ...(!isFinished && nextTurnUpdate)
                 };
                 transaction.update(battleRef, updateData);
-                return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
+                return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent, battleStats: updateData.battleStats || data.battleStats || null };
             });
 
             if (result && result.isFinished) {
@@ -4273,7 +4332,9 @@ function TeamBattlePage() {
                     winnerParticipant.team || [winnerPet],
                     loserParticipant.team || [loserPet],
                     winnerParticipant.participatedPetIds || null,
-                    loserParticipant.participatedPetIds || null
+                    loserParticipant.participatedPetIds || null,
+                    true, // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH: 팀대전은 승리 시 못 나온 팀원 펫도 경험치를 받습니다.
+                    result?.battleStats || null // BATTLE_RESULT_STATS_PATCH
                 );
 
                 if (resultSummary) {
@@ -4370,6 +4431,14 @@ function TeamBattlePage() {
                         // 같은 학생이 공격권을 3턴 연속으로 가져가면, 팀원의 살아있는 벤치 펫이
                         // 있는 경우 자동으로 조작권을 넘겨 한 명이 계속 도맡는 것을 막습니다.
                         // (공격권을 얻은 쪽만 셉니다. 방어만 한 라운드는 세지 않습니다.)
+                        //
+                        // M_STREAK_HANDOFF_OFF_BY_ONE_FIX
+                        // 기존에는 "이번이 3번째 정답"인 순간 바로 강제교체가 발동해서,
+                        // 정작 3번째 정답의 행동(스킬 사용)이 통째로 스위치로 소모됐습니다.
+                        // (포롱이 물결표식처럼 '내가 3번 연속 직접 공격해서 3스택을 채우는' 콤보가
+                        //  실제로는 4번째 정답까지 필요해지는 부작용이 있었습니다.)
+                        // 이제는 "이미 3연속으로 행동을 마친 학생이 또 이겼을 때"(=4번째 정답 시점)에만
+                        // 강제교체를 발동시켜, 3연속 행동 자체는 온전히 보장합니다.
                         const streakField = `${myRole}ControlStreak`;
                         const prevStreak = data[streakField] || {};
                         const sameOwnerStreak = prevStreak.ownerId === winnerId ? Number(prevStreak.count || 0) : 0;
@@ -4391,7 +4460,7 @@ function TeamBattlePage() {
                             (pet.ownerId || participant.id) !== winnerId
                         ));
 
-                        const shouldForceHandoff = nextStreakCount >= 3 && activeIndex >= 0 && teammateBenchPets.length > 0;
+                        const shouldForceHandoff = sameOwnerStreak >= 3 && activeIndex >= 0 && teammateBenchPets.length > 0;
 
                         if (shouldForceHandoff) {
                             const syncedTeam = team.map((pet, index) => (
@@ -4436,7 +4505,7 @@ function TeamBattlePage() {
                                 turn: nextOwnerId,
                                 [myRole]: nextParticipant,
                                 [streakField]: { ownerId: nextOwnerId, count: 0 },
-                                log: `🔄 ${participant.name}이(가) 3턴 연속으로 공격권을 가져서, ${nextOwnerName}님에게 자동으로 조작권이 넘어갑니다! ${nextPet.name} 등장!`,
+                                log: `🔄 ${participant.name}이(가) 3턴 연속으로 공격을 마치고 또 공격권을 가져가서, ${nextOwnerName}님에게 자동으로 조작권이 넘어갑니다! ${nextPet.name} 등장!`,
                                 question: null,
                                 turnStartTime: Date.now(),
                                 chat: {},
@@ -4530,7 +4599,7 @@ function TeamBattlePage() {
                         transaction.update(battleRef, updateData);
 
                         if (isFinished) {
-                            return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent };
+                            return { isFinished, winnerId, finalChallenger: updateData.challenger, finalOpponent: updateData.opponent, battleStats: updateData.battleStats || data.battleStats || null };
                         }
                     } else {
                         const opponentTitle = data[opponentRole].equippedTitle;
@@ -4554,7 +4623,7 @@ function TeamBattlePage() {
                                     winner: opponentId,
                                     turn: null
                                 });
-                                return { isFinished: true, winnerId: opponentId, finalChallenger: challenger, finalOpponent: opponent };
+                                return { isFinished: true, winnerId: opponentId, finalChallenger: challenger, finalOpponent: opponent, battleStats: data.battleStats || null };
                             } else {
                                 transaction.update(battleRef, {
                                     chat: updatedChat,
@@ -4598,7 +4667,9 @@ function TeamBattlePage() {
                     winnerParticipant.team || [winnerPet],
                     loserParticipant.team || [loserPet],
                     winnerParticipant.participatedPetIds || null,
-                    loserParticipant.participatedPetIds || null
+                    loserParticipant.participatedPetIds || null,
+                    true, // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH: 팀대전은 승리 시 못 나온 팀원 펫도 경험치를 받습니다.
+                    result?.battleStats || null // BATTLE_RESULT_STATS_PATCH
                 );
                 if (resultSummary) {
                     setLocalResultSummary(resultSummary);
@@ -5293,6 +5364,7 @@ function TeamBattlePage() {
                     winnerId,
                     finalChallenger: myRole === 'challenger' ? nextMyParticipant : nextOpponentParticipant,
                     finalOpponent: myRole === 'opponent' ? nextMyParticipant : nextOpponentParticipant,
+                    battleStats: data.battleStats || null,
                 };
             });
 
@@ -5338,7 +5410,9 @@ function TeamBattlePage() {
                         winnerParticipant.team || [winnerPet],
                         loserParticipant.team || [loserPet],
                         winnerParticipant.participatedPetIds || null,
-                        loserParticipant.participatedPetIds || null
+                        loserParticipant.participatedPetIds || null,
+                        true, // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH: 팀대전은 승리 시 못 나온 팀원 펫도 경험치를 받습니다.
+                        result?.battleStats || null // BATTLE_RESULT_STATS_PATCH
                     );
                     if (resultSummary) {
                         setLocalResultSummary(resultSummary);
@@ -5697,6 +5771,7 @@ function TeamBattlePage() {
                     finalChallenger: myRole === 'challenger' ? nextParticipantBeforeResolve : opponentTurnParticipant,
                     finalOpponent: myRole === 'opponent' ? nextParticipantBeforeResolve : opponentTurnParticipant,
                     switchedPetName: nextPet.name,
+                    battleStats: data.battleStats || null,
                 };
             });
 
@@ -5749,7 +5824,9 @@ function TeamBattlePage() {
                     winnerParticipant.team || [winnerPet],
                     loserParticipant.team || [loserPet],
                     winnerParticipant.participatedPetIds || null,
-                    loserParticipant.participatedPetIds || null
+                    loserParticipant.participatedPetIds || null,
+                    true, // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH: 팀대전은 승리 시 못 나온 팀원 펫도 경험치를 받습니다.
+                    result?.battleStats || null // BATTLE_RESULT_STATS_PATCH
                 );
                 if (resultSummary) {
                     setLocalResultSummary(resultSummary);
@@ -5857,7 +5934,9 @@ function TeamBattlePage() {
                             opponentParticipant?.team || [opponentPet],
                             myParticipant?.team || [myPet],
                             opponentParticipant?.participatedPetIds || null,
-                            myParticipant?.participatedPetIds || null
+                            myParticipant?.participatedPetIds || null,
+                            true, // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH: 팀대전은 승리 시 못 나온 팀원 펫도 경험치를 받습니다.
+                            battleState?.battleStats || null // BATTLE_RESULT_STATS_PATCH
                         );
 
                         if (resultSummary) {
@@ -5965,6 +6044,8 @@ function TeamBattlePage() {
 
 
                 const preHp = defender.pet.hp;
+                // BATTLE_RESULT_STATS_PATCH: 결과창 통계용 사전 스냅샷
+                const preAttackerHpForStats = Number(attacker.pet?.hp ?? 0);
 
 
 
@@ -6109,6 +6190,36 @@ function TeamBattlePage() {
 
 
                 }
+
+                // BATTLE_RESULT_STATS_PATCH
+                // 스킬 실행 전후 스냅샷을 비교해 이번 행동의 딜량/자해/회복/CC를 집계합니다.
+                const battleStatSkillDamageDealt = Math.max(0, Number(preHp ?? 0) - Number(defender.pet?.hp ?? 0));
+                const battleStatAttackerHpDelta = Number(attacker.pet?.hp ?? 0) - preAttackerHpForStats;
+                // getActiveStatusKeys는 Set을 반환합니다 (배열 아님) - Set.has()로 비교합니다.
+                const battleStatDefenderStatusKeysAfter = getActiveStatusKeys(defender.pet?.status);
+                const battleStatNewDefenderCcKeys = BATTLE_STAT_CC_KEYS.filter(key => (
+                    battleStatDefenderStatusKeysAfter.has(key) && !initialDefenderStatusKeys.has(key)
+                ));
+
+                const battleStatDeltas = [
+                    {
+                        petId: attacker.pet?.id,
+                        ownerId: attacker.id,
+                        ownerName: attacker.name,
+                        petName: attacker.pet?.name,
+                        damageDealt: battleStatSkillDamageDealt,
+                        damageTaken: battleStatAttackerHpDelta < 0 ? -battleStatAttackerHpDelta : 0,
+                        healingDone: battleStatAttackerHpDelta > 0 ? battleStatAttackerHpDelta : 0,
+                        ccInflicted: battleStatNewDefenderCcKeys.length,
+                    },
+                    {
+                        petId: defender.pet?.id,
+                        ownerId: defender.id,
+                        ownerName: defender.name,
+                        petName: defender.pet?.name,
+                        damageTaken: battleStatSkillDamageDealt,
+                    },
+                ];
 
 
 
@@ -6373,6 +6484,24 @@ function TeamBattlePage() {
                     actionResolved: normalActionResolved,
                 });
 
+                // M_CC_STAT_INCLUDE_BURN_AND_REACTION_FREEZE
+                // 원소반응 적용은 위 딜량/CC 스냅샷보다 나중에 일어나므로,
+                // 반응으로 새로 생긴 상태(빙결/연소 등)는 여기서 다시 한번 비교해 반영합니다.
+                const battleStatDefenderStatusKeysAfterReaction = getActiveStatusKeys(defender.pet?.status);
+                battleStatDeltas[0].ccInflicted = BATTLE_STAT_CC_KEYS.filter(key => (
+                    battleStatDefenderStatusKeysAfterReaction.has(key) && !initialDefenderStatusKeys.has(key)
+                )).length;
+
+                // BATTLE_RESULT_REACTION_DAMAGE_STAT_PATCH
+                // 원소반응으로 들어간 추가 피해만 별도로 집계해 결과창 보라색 막대에 씁니다.
+                const battleStatReactionDamage = Number(defender.pet?.status?.__reactionDamageForStats || 0);
+                if (battleStatReactionDamage > 0) {
+                    battleStatDeltas[0].reactionDamageDealt = battleStatReactionDamage;
+                }
+                if (defender.pet?.status) {
+                    delete defender.pet.status.__reactionDamageForStats;
+                }
+
                 if (elementReactionLog) {
                     log += elementReactionLog;
 
@@ -6512,6 +6641,7 @@ function TeamBattlePage() {
                     opponent: syncBattleParticipantActivePet(isChallengerAttacker ? defender : attacker),
                     status: isFinished ? 'finished' : hasPendingSwitch ? 'pending_switch' : hasSwitchPause ? 'switching' : 'quiz',
                     winner: winnerId,
+                    battleStats: mergeBattleStatsDelta(data.battleStats, battleStatDeltas),
                     ...(!isFinished && {
                         ...nextTurnUpdate,
                         turn: null,
@@ -6520,12 +6650,15 @@ function TeamBattlePage() {
                     })
                 };
 
+                // BATTLE_RESULT_STATS_PATCH_DEBUG_CLEANUP: 원인 파악 완료, 디버그 로그 제거
+
                 transaction.update(battleRef, updateData);
                 return {
                     isFinished,
                     winnerId,
                     finalChallenger: updateData.challenger,
                     finalOpponent: updateData.opponent,
+                    battleStats: updateData.battleStats || data.battleStats || null,
                 };
             });
 
@@ -6554,7 +6687,9 @@ function TeamBattlePage() {
                     winnerParticipant.team || [winnerPet],
                     loserParticipant.team || [loserPet],
                     winnerParticipant.participatedPetIds || null,
-                    loserParticipant.participatedPetIds || null
+                    loserParticipant.participatedPetIds || null,
+                    true, // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH: 팀대전은 승리 시 못 나온 팀원 펫도 경험치를 받습니다.
+                    result?.battleStats || null // BATTLE_RESULT_STATS_PATCH
                 );
                 if (resultSummary) {
                     setLocalResultSummary(resultSummary);
@@ -6747,13 +6882,23 @@ function TeamBattlePage() {
         battleState.opponent?.id !== myPlayerData.id
     );
     // CONTROL_RIGHT_INDICATOR_PATCH
-    // 팀대전(2:2)에서만 조작권 표시를 켭니다. 1:1이면 이 개념 자체가 없으므로 undefined로 둡니다.
+    // 팀대전(3:3)에서만 조작권 표시를 켭니다. 1:1이면 이 개념 자체가 없으므로 undefined로 둡니다.
     const myControlState = battleState?.battleMode === 'random-team'
         ? (isTeamBenchSpectator ? 'bench' : 'active')
         : undefined;
     // TEAM_ROTATION_FORCED_SWITCH_PATCH
     // 강제 교체 전, "다음 턴엔 자동으로 넘어간다"는 걸 미리 알려주기 위한 카운트입니다.
-    const myControlStreakCount = Number(battleState?.[`${myRole}ControlStreak`]?.count || 0);
+    // TEAM_ROTATION_STREAK_DISPLAY_OWNER_FIX
+    // 스트릭은 개인별로 쌓이는데(정답 시 ownerId가 나와 다르면 0부터 다시 셈),
+    // 화면에는 ownerId를 확인하지 않고 저장된 count를 그대로 보여주고 있었습니다.
+    // 그러면 교체로 조작권을 새로 넘겨받은 팀원이, 자기는 아직 한 문제도 안 풀었는데도
+    // 이전 조작자가 쌓아둔 카운트가 남아 있어 "다음 턴에 교체돼요" 경고를 잘못 보게 됩니다.
+    // 지금 조작 중인 나(myPlayerData.id)의 스트릭이 맞을 때만 카운트를 보여주고,
+    // 아니면(=방금 교체돼서 아직 안 풀었으면) 0으로 보여줍니다.
+    const myControlStreakEntry = battleState?.[`${myRole}ControlStreak`];
+    const myControlStreakCount = myControlStreakEntry?.ownerId === myPlayerData?.id
+        ? Number(myControlStreakEntry.count || 0)
+        : 0;
     const isBound = myInfo.pet.status?.bound;
     const hasSubmitted = battleState.chat?.[myPlayerData?.id] !== undefined;
 
@@ -7125,28 +7270,22 @@ function TeamBattlePage() {
                 )}
             </Arena>
             {battleState?.status === 'finished' && (() => {
-                const isWin = battleState.winner === myPlayerData?.id;
+                // TEAM_BATTLE_RESULT_SAME_SIDE_PATCH
+                // battleState.winner는 "그 순간 조작권을 쥐고 있던 특정 플레이어 id"입니다
+                // (교체가 일어나면 challenger.id/opponent.id 자체가 팀원 id로 바뀝니다).
+                // 그래서 승리 팀 소속인데도 마지막에 조작권이 없던 팀원은 winner id와
+                // 자기 id가 달라 "패배"로 잘못 표시되는 문제가 있었습니다.
+                // 팀(challenger/opponent, myRole로 이미 로스터 기준 판별됨) 단위로 승패를 비교해서
+                // 같은 팀이면 항상 같은 결과가 뜨도록 고칩니다.
+                const winnerRole = battleState.winner
+                    ? (battleState.winner === battleState.challenger?.id
+                        ? 'challenger'
+                        : battleState.winner === battleState.opponent?.id
+                            ? 'opponent'
+                            : null)
+                    : null;
+                const isWin = winnerRole !== null && winnerRole === myRole;
                 const isDraw = !battleState.winner;
-                // M17_TEAM_RESULT_MODAL_PATCH
-                // 2v2/3v3에서는 파트너 펫 1마리보다 이번 배틀 팀 전체를 보여주는 편이 자연스럽습니다.
-                const resultParticipant = rawMyInfo || myInfo || {};
-                const battleTeam = Array.isArray(resultParticipant.team) && resultParticipant.team.length > 0
-                    ? resultParticipant.team
-                    : resultParticipant.pet
-                        ? [resultParticipant.pet]
-                        : [];
-
-                const latestPetMap = new Map((myPlayerData?.pets || []).map(pet => [pet.id, pet]));
-                const participatedIds = new Set([
-                    ...(Array.isArray(resultParticipant.participatedPetIds) ? resultParticipant.participatedPetIds : []),
-                    resultParticipant.pet?.id,
-                ].filter(Boolean));
-
-                const resultTeamPets = battleTeam.map(pet => ({
-                    ...pet,
-                    ...(latestPetMap.get(pet.id) || {}),
-                    participated: participatedIds.has(pet.id),
-                }));
 
                 const resultSummary = battleState.resultSummary || localResultSummary || null;
                 const isFleeResult = Boolean(battleState.fledBy || resultSummary?.fled);
@@ -7161,14 +7300,13 @@ function TeamBattlePage() {
 
                 const myExpGains = resultSummary
                     ? (
-                        battleState.winner === myPlayerData?.id
+                        isWin
                             ? (resultSummary.winnerPetExpGains || [])
                             : (resultSummary.loserPetExpGains || [])
                     )
                     : [];
 
                 const totalExpGain = myExpGains.reduce((sum, item) => sum + Number(item.exp || 0), 0);
-                const expGainMap = new Map(myExpGains.map(item => [item.petId, item.exp]));
                 const hasRewardSummary = Boolean(resultSummary && (pointChangeText !== null || totalExpGain > 0));
                 const color = isDraw ? '#6c757d' : isWin ? '#007bff' : '#dc3545';
                 return (
@@ -7197,87 +7335,246 @@ function TeamBattlePage() {
                                     ⚠️ 보상 요약을 불러오지 못했습니다. 실제 보상은 처리되었을 수 있습니다.
                                 </div>
                             )}
-                            {hasRewardSummary && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.18)',
-                                    borderRadius: '12px',
-                                    padding: '0.8rem 1rem',
-                                    margin: '0.6rem 0 1rem',
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                                    gap: '0.6rem',
-                                    fontWeight: 900,
-                                }}>
-                                    {pointChangeText !== null && (
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>포인트 변화</div>
-                                            <div style={{ fontSize: '1.1rem' }}>
-                                                {Number(pointChange) > 0 ? '💰 ' : Number(pointChange) < 0 ? '💸 ' : '➖ '}
-                                                {pointChangeText}
-                                            </div>
+                            {(() => {
+                                // BATTLE_RESULT_STATS_PATCH / BATTLE_RESULT_STATS_LAYOUT_PATCH
+                                // 롤(LoL)식 결과창처럼, 항목(딜량/받은피해/회복량/상태이상)을 탭으로 골라
+                                // 이번 배틀에 등장했던 펫들끼리 막대그래프로 비교합니다.
+                                // 더 이상 요약/상세 화면을 나누지 않고, 상세 그래프를 항상 기본으로 보여줍니다.
+                                // 흰 배경 모달에 맞춰 카드/막대 색을 어둡고 또렷하게 씁니다.
+                                const statsMap = resultSummary?.battleStats || {};
+                                const statsList = Object.values(statsMap).filter(Boolean);
+                                const hasStats = statsList.length > 0;
+
+                                const STAT_TABS = [
+                                    { key: 'damageDealt', label: '⚔️ 가한 피해', color: '#f5a623' },
+                                    { key: 'damageTaken', label: '🛡️ 받은 피해', color: '#e8590c' },
+                                    { key: 'healingDone', label: '💚 회복량', color: '#2f9e44' },
+                                    { key: 'ccInflicted', label: '💫 상태이상', color: '#7048e8' },
+                                ];
+                                const activeTab = STAT_TABS.find(tab => tab.key === resultStatTab) || STAT_TABS[0];
+
+                                const myRosterIds = (battleState?.[myRole]?.rosterPlayerIds && battleState[myRole].rosterPlayerIds.length > 0)
+                                    ? battleState[myRole].rosterPlayerIds
+                                    : [myPlayerData?.id].filter(Boolean);
+
+                                // 탭을 바꿔도 줄 순서가 흔들리지 않도록, 정렬 기준은 항상 '딜량'으로 고정합니다.
+                                const mySideList = [...statsList.filter(item => myRosterIds.includes(item.ownerId))]
+                                    .sort((a, b) => Number(b.damageDealt || 0) - Number(a.damageDealt || 0));
+                                const opponentSideList = [...statsList.filter(item => !myRosterIds.includes(item.ownerId))]
+                                    .sort((a, b) => Number(b.damageDealt || 0) - Number(a.damageDealt || 0));
+
+                                const maxValue = Math.max(1, ...statsList.map(item => (
+                                    resultStatTab === 'damageDealt'
+                                        ? Number(item.damageDealt || 0) + Number(item.reactionDamageDealt || 0)
+                                        : Number(item[resultStatTab] || 0)
+                                )));
+
+                                const gridBg = {
+                                    backgroundImage: 'repeating-linear-gradient(to right, transparent, transparent 23px, rgba(0,0,0,0.07) 23px, rgba(0,0,0,0.07) 24px)',
+                                };
+
+                                // 우리 팀 한 줄 + 상대 팀 한 줄이 같은 행(row)에 나란히 놓이도록,
+                                // 인덱스 기준으로 짝을 지어 좌/우 대칭 막대그래프로 그립니다.
+                                const pairedRowCount = Math.max(mySideList.length, opponentSideList.length);
+
+                                const renderSideHalf = (item, side) => {
+                                    if (!item) return <div style={{ flex: 1 }} />;
+                                    const value = Number(item[resultStatTab] || 0);
+                                    // BATTLE_RESULT_REACTION_DAMAGE_BAR_PATCH
+                                    // '가한 피해' 탭에서만 원소반응 추가 피해를 보라색으로 이어 붙여 보여줍니다.
+                                    const reactionValue = resultStatTab === 'damageDealt'
+                                        ? Number(item.reactionDamageDealt || 0)
+                                        : 0;
+                                    const widthPercent = Math.max(4, Math.round((value / maxValue) * 100));
+                                    const reactionWidthPercent = reactionValue > 0
+                                        ? Math.max(2, Math.round((reactionValue / maxValue) * 100))
+                                        : 0;
+                                    const isMine = item.ownerId === myPlayerData?.id;
+                                    const label = (
+                                        <span style={{
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            maxWidth: '110px',
+                                        }}>
+                                            {isMine ? '⭐ ' : ''}{item.ownerName} · {item.petName}
+                                        </span>
+                                    );
+                                    const valueLabel = (
+                                        <span style={{ fontWeight: 900, color: '#212529', flexShrink: 0 }}>
+                                            {value + reactionValue}
+                                            {reactionValue > 0 && (
+                                                <span style={{ color: '#9c36b5', fontWeight: 800 }}> (+{reactionValue})</span>
+                                            )}
+                                        </span>
+                                    );
+                                    const edgeKey = side === 'mine' ? 'right' : 'left';
+                                    const bar = (
+                                        <div style={{
+                                            flex: 1,
+                                            height: '11px',
+                                            borderRadius: '999px',
+                                            background: '#f1f3f5',
+                                            overflow: 'hidden',
+                                            position: 'relative',
+                                            ...gridBg,
+                                        }}>
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                height: '100%',
+                                                width: `${widthPercent}%`,
+                                                borderRadius: '999px',
+                                                background: activeTab.color,
+                                                transition: 'width 0.3s ease',
+                                                [edgeKey]: 0,
+                                            }} />
+                                            {reactionWidthPercent > 0 && (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    height: '100%',
+                                                    width: `${reactionWidthPercent}%`,
+                                                    background: '#9c36b5',
+                                                    transition: 'width 0.3s ease',
+                                                    [edgeKey]: `${widthPercent}%`,
+                                                }} />
+                                            )}
                                         </div>
-                                    )}
-                                    <div>
-                                        <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>획득 경험치</div>
-                                        <div style={{ fontSize: '1.1rem' }}>✨ +{totalExpGain} EXP</div>
-                                    </div>
-                                    {isFleeResult && resultSummary?.fleeRewardPercent && (
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>도망 보상</div>
-                                            <div style={{ fontSize: '1.1rem' }}>{resultSummary.fleeRewardPercent}% 반영</div>
+                                    );
+                                    return (
+                                        <div style={{
+                                            flex: 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem',
+                                            fontSize: '0.72rem',
+                                            color: '#495057',
+                                            flexDirection: side === 'mine' ? 'row-reverse' : 'row',
+                                            minWidth: 0,
+                                        }}>
+                                            {label}
+                                            {valueLabel}
+                                            {bar}
                                         </div>
-                                    )}
-                                </div>
-                            )}
-                            {resultTeamPets.length > 0 && (
-                                <div style={{
-                                    background: 'rgba(255,255,255,0.15)',
-                                    borderRadius: '12px',
-                                    padding: '0.75rem 1rem',
-                                    margin: '0.5rem 0 1rem',
-                                    fontSize: '0.88rem',
-                                }}>
-                                    <div style={{ fontWeight: 900, marginBottom: '0.55rem', opacity: 0.9 }}>
-                                        이번 배틀 팀
-                                    </div>
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                                        gap: '0.5rem',
+                                    );
+                                };
+
+                                const renderPairedRow = (index) => (
+                                    <div key={index} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.6rem',
+                                        marginBottom: '0.55rem',
                                     }}>
-                                        {resultTeamPets.map(pet => (
-                                            <div
-                                                key={pet.id}
-                                                style={{
-                                                    background: pet.participated ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-                                                    border: pet.participated ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.16)',
-                                                    borderRadius: '10px',
-                                                    padding: '0.5rem',
-                                                    opacity: pet.participated ? 1 : 0.72,
-                                                }}
-                                            >
-                                                <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
-                                                    {pet.participated ? '✅' : '대기'} {pet.name}
-                                                </div>
-                                                <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>
-                                                    Lv.{pet.level || 1} · HP {Math.max(0, Number(pet.hp ?? 0))}/{pet.maxHp ?? '?'}
-                                                </div>
-                                                {Number(expGainMap.get(pet.id) || 0) > 0 && (
-                                                    <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', fontWeight: 900 }}>
-                                                        ✨ +{expGainMap.get(pet.id)} EXP
+                                        {renderSideHalf(mySideList[index], 'mine')}
+                                        <div style={{ width: '1px', alignSelf: 'stretch', background: '#e9ecef', flexShrink: 0 }} />
+                                        {renderSideHalf(opponentSideList[index], 'opponent')}
+                                    </div>
+                                );
+
+                                return (
+                                    <div style={{ textAlign: 'left' }}>
+                                        {/* TEAM_BATTLE_RESULT_SIMPLE_REWARD_PATCH
+                                            "이번 배틀 팀" 로스터 패널 대신, 내가 획득한 포인트(골드)와
+                                            경험치만 간단히 보여줍니다. */}
+                                        {hasRewardSummary && (
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '0.6rem',
+                                                margin: '0.5rem 0 1rem',
+                                            }}>
+                                                {pointChangeText !== null && (
+                                                    <div style={{
+                                                        flex: 1,
+                                                        background: '#fff9db',
+                                                        border: '1px solid #ffe066',
+                                                        borderRadius: '12px',
+                                                        padding: '0.7rem 0.85rem',
+                                                        textAlign: 'center',
+                                                    }}>
+                                                        <div style={{ fontSize: '0.78rem', color: '#7c4a03', fontWeight: 800 }}>💰 획득 포인트</div>
+                                                        <div style={{ fontSize: '1.15rem', fontWeight: 1000, color: '#212529', marginTop: '0.2rem' }}>
+                                                            {pointChangeText}
+                                                        </div>
                                                     </div>
                                                 )}
-                                                <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', opacity: 0.9 }}>
-                                                    🏆 {pet.battleWins || 0}승 · 💀 {pet.battleLosses || 0}패
-                                                </div>
+                                                {totalExpGain > 0 && (
+                                                    <div style={{
+                                                        flex: 1,
+                                                        background: '#e7f5ff',
+                                                        border: '1px solid #a5d8ff',
+                                                        borderRadius: '12px',
+                                                        padding: '0.7rem 0.85rem',
+                                                        textAlign: 'center',
+                                                    }}>
+                                                        <div style={{ fontSize: '0.78rem', color: '#1864ab', fontWeight: 800 }}>✨ 획득 경험치</div>
+                                                        <div style={{ fontSize: '1.15rem', fontWeight: 1000, color: '#212529', marginTop: '0.2rem' }}>
+                                                            +{totalExpGain} EXP
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
+                                        )}
+
+                                        {hasStats && (
+                                            <div style={{
+                                                borderTop: '2px solid #e9ecef',
+                                                paddingTop: '0.9rem',
+                                            }}>
+                                                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+                                                    {STAT_TABS.map(tab => (
+                                                        <button
+                                                            key={tab.key}
+                                                            type="button"
+                                                            onClick={() => setResultStatTab(tab.key)}
+                                                            style={{
+                                                                margin: 0,
+                                                                padding: '0.3rem 0.6rem',
+                                                                borderRadius: '999px',
+                                                                border: resultStatTab === tab.key ? 'none' : '1px solid #dee2e6',
+                                                                fontWeight: 900,
+                                                                fontSize: '0.72rem',
+                                                                cursor: 'pointer',
+                                                                background: resultStatTab === tab.key ? tab.color : 'white',
+                                                                color: resultStatTab === tab.key ? 'white' : '#495057',
+                                                            }}
+                                                        >
+                                                            {tab.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {resultStatTab === 'damageDealt' && (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.3rem',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 800,
+                                                        color: '#868e96',
+                                                        marginBottom: '0.4rem',
+                                                    }}>
+                                                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#9c36b5', display: 'inline-block' }} />
+                                                        보라색 = 원소반응으로 들어간 추가 피해
+                                                    </div>
+                                                )}
+                                                <div style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 900,
+                                                    color: '#868e96',
+                                                    marginBottom: '0.4rem',
+                                                }}>
+                                                    <span>◀ 우리 팀</span>
+                                                    <span>상대 팀 ▶</span>
+                                                </div>
+                                                {Array.from({ length: pairedRowCount }).map((_, index) => renderPairedRow(index))}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div style={{ marginTop: '0.45rem', fontSize: '0.76rem', opacity: 0.78 }}>
-                                        ✅ 표시된 펫은 이번 배틀에 실제로 출전한 펫입니다.
-                                    </div>
-                                </div>
-                            )}
+                                );
+                            })()}
                             <button onClick={() => navigate('/pet')}>확인</button>
                         </ModalContent>
                     </ModalBackground>

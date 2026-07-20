@@ -184,7 +184,7 @@ function RandomBattleMatchModal() {
   };
 
   // GLOBAL_RANDOM_BATTLE_MATCH_MODAL_COLOR_PATCH
-  // 1:1은 기존 보라, 2:2 팀대전은 청록으로 구분해 한눈에 어떤 매칭인지 알 수 있게 합니다.
+  // 1:1은 기존 보라, 3:3 팀대전은 청록으로 구분해 한눈에 어떤 매칭인지 알 수 있게 합니다.
   const themeColor = isTeam ? '#0ca678' : '#5f3dc4';
   const themeSoftBg = isTeam ? '#e6fcf5' : '#f3f0ff';
 
@@ -254,12 +254,12 @@ function RandomBattleMatchModal() {
         </h2>
 
         <div style={badgeStyle}>
-          {isTeam ? '2:2 팀대전 베타' : '랜덤 1:1 대전'}
+          {isTeam ? '3:3 팀대전 베타' : '랜덤 1:1 대전'}
         </div>
 
         <p style={{ margin: '0.75rem 0 1rem', color: '#495057', fontWeight: 850, lineHeight: 1.5 }}>
           {isTeam
-            ? '4명이 모였습니다. 팀과 펫 정보는 모두 입장한 뒤 공개됩니다.'
+            ? '6명이 모였습니다. 팀과 펫 정보는 모두 입장한 뒤 공개됩니다.'
             : '상대가 정해졌습니다. 입장하면 대기방으로 이동합니다.'}
           {waitSeconds !== null && (
             <>

@@ -357,11 +357,15 @@ export const useLeagueStore = create((set, get) => ({
         finalWinnerTeam = null,
         finalLoserTeam = null,
         finalWinnerParticipatedPetIds = null,
-        finalLoserParticipatedPetIds = null
+        finalLoserParticipatedPetIds = null,
+        isTeamBattle = false,
+        battleStats = null
     ) => {
         // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH_FIX_AFTER_V2
         try {
             // M18H_RETURN_RESULT_SUMMARY_FROM_STORE_PATCH
+            // BATTLE_RESULT_STATS_PATCH: isTeamBattle/battleStats도 그대로 전달해야
+            // 팀대전 전체 로스터 경험치 지급과 결과창 통계가 동작합니다.
             const resultSummary = await firebaseProcessBattleResults(
                 classIdArg,
                 winnerId,
@@ -372,7 +376,9 @@ export const useLeagueStore = create((set, get) => ({
                 finalWinnerTeam,
                 finalLoserTeam,
                 finalWinnerParticipatedPetIds,
-                finalLoserParticipatedPetIds
+                finalLoserParticipatedPetIds,
+                isTeamBattle,
+                battleStats
             );
             const updatedPlayers = await getPlayers(classIdArg);
             set({ players: updatedPlayers });

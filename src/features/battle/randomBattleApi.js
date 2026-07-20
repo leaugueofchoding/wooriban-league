@@ -1530,8 +1530,8 @@ export async function enterRandomTeamBattle(classId, playerId) {
       teamB: teamBPlayerIds.map(buildMember),
       startAtMs: allReady ? startAtMs : null,
       log: allReady
-        ? '👥 2:2 팀대전 준비 완료!'
-        : '👥 팀원이 모두 입장하면 2:2 팀대전이 시작됩니다.',
+        ? '👥 3:3 팀대전 준비 완료!'
+        : '👥 팀원이 모두 입장하면 3:3 팀대전이 시작됩니다.',
       createdAt: roomData?.createdAt || serverTimestamp(),
       updatedAt: serverTimestamp(),
       teamBattleFatigueConsumed: allReady ? true : Boolean(roomData?.teamBattleFatigueConsumed),

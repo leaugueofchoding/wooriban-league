@@ -36,6 +36,7 @@ import {
   isPetEligibleForRandomBattle,
   sortRecommendedRandomBattlePets,
   canUseRandomBattleVitaminJellyToday,
+  RANDOM_BATTLE_CONFIG,
 } from '../battle/randomBattleRules';
 import confetti from 'canvas-confetti';
 import { filterProfanity } from '../../utils/profanityFilter';
@@ -1322,7 +1323,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
 
   // AUTO_JOIN_TEAM_QUEUE_AFTER_1V1_WAIT_PATCH
   // 1:1 대전 대기가 30초를 넘으면, 1:1에 낸 펫 중 가장 첫 순서 펫으로
-  // 2:2 팀대전 대기열에도 자동으로 함께 참가합니다(중복 매칭 확률을 높이기 위함).
+  // 3:3 팀대전 대기열에도 자동으로 함께 참가합니다(중복 매칭 확률을 높이기 위함).
   // 이미 팀대전 큐에 있거나(수동 참가 포함) 매칭/입장 단계로 넘어간 경우에는 시도하지 않습니다.
   useEffect(() => {
     if (!classId || !myPlayerData?.id) return;
@@ -1351,7 +1352,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
       if (!firstPetId) return;
 
       try {
-        await createRandomTeamQueueEntry(classId, myPlayerData.id, firstPetId, { teamSize: 2, autoJoined: true });
+        await createRandomTeamQueueEntry(classId, myPlayerData.id, firstPetId, { teamSize: RANDOM_BATTLE_CONFIG.TEAM_BATTLE_BETA_SIZE, autoJoined: true });
         if (!cancelled) {
           await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
         }
@@ -1400,7 +1401,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     if (!classId || !myPlayerData?.id) return;
 
     // RANDOM_BATTLE_TEAM_QUEUE_STABILITY_PATCH
-    // 1:1은 빠른 입장 확인이 자연스럽지만, 2:2 팀대전은 4명이 모여야 하므로
+    // 1:1은 빠른 입장 확인이 자연스럽지만, 3:3 팀대전은 6명이 모여야 하므로
     // 펫 페이지의 20초 자동 만료 대상에서 제외합니다.
     const matchedEntries = [
       randomBattleQueueEntries['random-1v1'],
@@ -1748,7 +1749,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     }
 
     if (isRandomTeamQueueActive) {
-      alert("이미 2:2 팀대전 매칭을 기다리는 중입니다.");
+      alert("이미 3:3 팀대전 매칭을 기다리는 중입니다.");
       return;
     }
 
@@ -1823,7 +1824,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
         await createRandom1v1QueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedPetIds);
         await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-1v1');
       } else {
-        await createRandomTeamQueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedTeamPetId, { teamSize: 2 });
+        await createRandomTeamQueueEntry(classId, myPlayerData.id, randomBattleDraft.selectedTeamPetId, { teamSize: RANDOM_BATTLE_CONFIG.TEAM_BATTLE_BETA_SIZE });
         await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
       }
 
@@ -2157,7 +2158,7 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
         : (canEnterRandom1v1Battle ? '1:1 대전 매칭 완료' : '1:1 대전 매칭중')}${getRandomBattleWaitSuffix(random1v1QueueEntry)}`
       : null,
     isRandomTeamQueueActive
-      ? `${['matched', 'entering'].includes(randomTeamQueueEntry?.status) ? '2:2 팀대전 매칭 완료' : '2:2 팀대전 매칭중'}${getRandomBattleWaitSuffix(randomTeamQueueEntry)}`
+      ? `${['matched', 'entering'].includes(randomTeamQueueEntry?.status) ? '3:3 팀대전 매칭 완료' : '3:3 팀대전 매칭중'}${getRandomBattleWaitSuffix(randomTeamQueueEntry)}`
       : null,
     isLegacyRandomQueueActive ? '이전 랜덤대전 매칭중' : null,
   ].filter(Boolean);
@@ -2491,8 +2492,8 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                     onClick={openRandomTeamBattleDraft}
                     disabled={isRandomTeamQueueActive || isRandomBattleLockedByMatch}
                   >
-                    <span className="main">2:2 팀대전 참가</span>
-                    <span className="sub">현재 2:2 베타</span>
+                    <span className="main">3:3 팀대전 참가</span>
+                    <span className="sub">현재 3:3 베타</span>
                   </RandomBattleEntryButton>
                 </BattleEntryGrid>
               </BattleEntryPanel>
@@ -2625,16 +2626,16 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem', flexShrink: 0 }}>
               <div style={{ textAlign: 'left' }}>
                 <h3 style={{ margin: 0 }}>
-                  {randomBattleDraft.mode === 'random-team' ? '👥 2:2 팀대전 참가' : '⚔️ 1:1 대전 참가'}
+                  {randomBattleDraft.mode === 'random-team' ? '👥 3:3 팀대전 참가' : '⚔️ 1:1 대전 참가'}
                 </h3>
                 <p style={{ margin: '0.35rem 0 0', color: '#868e96', fontSize: '0.9rem', fontWeight: 700, lineHeight: 1.45 }}>
                   {randomBattleDraft.mode === 'random-team'
-                    ? '현재는 2:2 베타로 운영됩니다. 참가할 펫 1마리를 선택하세요.'
+                    ? '현재는 3:3 베타로 운영됩니다. 참가할 펫 1마리를 선택하세요.'
                     : '출전할 펫을 1~3마리 선택하세요. 가능하면 3마리 구성이 유리합니다.'}
                 </p>
                 {randomBattleDraft.mode === 'random-1v1' && (
                   <p style={{ margin: '0.5rem 0 0', color: '#5f3dc4', fontSize: '0.82rem', fontWeight: 800, lineHeight: 1.45 }}>
-                    ⏱️ 30초 안에 1:1 상대를 찾지 못하면, 선택한 펫 중 가장 첫 번째 펫으로 2:2 팀대전 대기열에도 자동으로 함께 참가해요.
+                    ⏱️ 30초 안에 1:1 상대를 찾지 못하면, 선택한 펫 중 가장 첫 번째 펫으로 3:3 팀대전 대기열에도 자동으로 함께 참가해요.
                   </p>
                 )}
               </div>

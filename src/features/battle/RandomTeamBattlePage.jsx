@@ -1,7 +1,7 @@
 // src/features/battle/RandomTeamBattlePage.jsx
 //
-// 이 페이지는 "2:2 팀대전 로비"만 담당합니다 (4명이 모이고, 입장 확인하는 대기실).
-// 4명이 다 입장하면 실제 배틀 문서를 만들고 TeamBattlePage.jsx(진짜 전투 엔진)로 넘어갑니다.
+// 이 페이지는 "3:3 팀대전 로비"만 담당합니다 (6명이 모이고, 입장 확인하는 대기실).
+// 6명이 다 입장하면 실제 배틀 문서를 만들고 TeamBattlePage.jsx(진짜 전투 엔진)로 넘어갑니다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -152,7 +152,7 @@ function RandomTeamBattlePage() {
   }, [classId, matchId]);
 
   const readyPlayerIds = Array.isArray(room?.readyPlayerIds) ? room.readyPlayerIds : [];
-  const neededCount = Number(room?.neededCount || 4);
+  const neededCount = Number(room?.neededCount || 6);
   const readyCount = Number(room?.readyCount || readyPlayerIds.length || 0);
   const isReady = Boolean(myPlayerData?.id && readyPlayerIds.includes(myPlayerData.id));
   const allReady = room?.status === 'starting' || readyCount >= neededCount;
@@ -170,7 +170,7 @@ function RandomTeamBattlePage() {
     return () => window.clearTimeout(timer);
   }, [wasCancelledByOther, navigate]);
 
-  // 4명 다 입장하면 실제 배틀 문서를 만들고 진짜 전투 화면으로 이동합니다.
+  // 6명 다 입장하면 실제 배틀 문서를 만들고 진짜 전투 화면으로 이동합니다.
   useEffect(() => {
     if (!classId || !matchId) return;
     if (room?.status !== 'starting') return;
@@ -245,8 +245,8 @@ function RandomTeamBattlePage() {
       <Card>
         <Header>
           <div>
-            <h2>👥 2:2 팀대전 베타</h2>
-            <p>4명이 모두 입장하면 실제 전투 화면으로 넘어갑니다.</p>
+            <h2>👥 3:3 팀대전 베타</h2>
+            <p>6명이 모두 입장하면 실제 전투 화면으로 넘어갑니다.</p>
           </div>
           <ReadyBadge $ready={allReady}>{readyCount}/{neededCount} 입장</ReadyBadge>
         </Header>
@@ -263,7 +263,7 @@ function RandomTeamBattlePage() {
               <>
                 {!allReady ? (
                   <>
-                    <LogBox>팀대전 매칭 완료! 4명이 모두 입장하면 팀과 펫 정보가 공개됩니다.</LogBox>
+                    <LogBox>팀대전 매칭 완료! 6명이 모두 입장하면 팀과 펫 정보가 공개됩니다.</LogBox>
                     <TeamBox $side="A" style={{ marginTop: '1rem' }}>
                       <h3>입장 확인</h3>
                       {[...(room.teamA || []), ...(room.teamB || [])].map(renderBlindMember)}
@@ -281,7 +281,7 @@ function RandomTeamBattlePage() {
                         {(room.teamB || []).map(renderMember)}
                       </TeamBox>
                     </TeamGrid>
-                    <LogBox>👥 4명 입장 완료! 전투 화면으로 이동 중...</LogBox>
+                    <LogBox>👥 6명 입장 완료! 전투 화면으로 이동 중...</LogBox>
                   </>
                 )}
               </>

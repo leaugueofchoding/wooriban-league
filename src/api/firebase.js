@@ -3869,12 +3869,42 @@ export async function processBattleResults(
   finalWinnerTeam = null,
   finalLoserTeam = null,
   finalWinnerParticipatedPetIds = null,
-  finalLoserParticipatedPetIds = null
+  finalLoserParticipatedPetIds = null,
+  isTeamBattle = false,
+  battleStats = null
 ) {
   // M5_BATTLE_FINAL_PARTICIPATED_PERSIST_PATCH_FIX_AFTER_V2
   if (!classId) throw new Error("학급 정보가 없습니다.");
   const winnerRef = doc(db, "classes", classId, "players", winnerId);
   const loserRef = doc(db, "classes", classId, "players", loserId);
+
+  // TEAM_BATTLE_FULL_ROSTER_REWARD_PATCH
+  // 3:3 팀대전에서는 finalWinnerTeam/finalLoserTeam의 각 펫에 실제 주인(ownerId)이
+  // 붙어 있습니다. 그동안은 조작권을 가진 대표 1명(winnerId/loserId) 문서만
+  // 갱신해서, 나머지 두 팀원은 포인트도 펫 경험치도 받지 못했습니다.
+  // 여기서 팀 로스터 전체(실제 플레이어 계정)를 구해 전원에게 반영합니다.
+  const getTeamRosterPlayerIds = (finalTeam, primaryId) => {
+    const ids = [];
+    const seen = new Set();
+    if (primaryId) { ids.push(primaryId); seen.add(primaryId); }
+    (Array.isArray(finalTeam) ? finalTeam : []).forEach((pet) => {
+      const ownerId = pet?.ownerId;
+      if (ownerId && !seen.has(ownerId)) {
+        seen.add(ownerId);
+        ids.push(ownerId);
+      }
+    });
+    return ids;
+  };
+
+  const winnerRosterIds = getTeamRosterPlayerIds(finalWinnerTeam, winnerId);
+  const loserRosterIds = getTeamRosterPlayerIds(finalLoserTeam, loserId);
+  const extraRosterIds = [...winnerRosterIds, ...loserRosterIds].filter(
+    (id, idx, arr) => id && id !== winnerId && id !== loserId && arr.indexOf(id) === idx
+  );
+  const extraRosterRefs = new Map(
+    extraRosterIds.map((id) => [id, doc(db, "classes", classId, "players", id)])
+  );
 
   return await runTransaction(db, async (transaction) => {
     const winnerDoc = await transaction.get(winnerRef);
@@ -3882,13 +3912,21 @@ export async function processBattleResults(
 
     if (!winnerDoc.exists() || !loserDoc.exists()) throw new Error("플레이어 정보를 찾을 수 없습니다.");
 
+    // 나머지 팀원 문서도 트랜잭션 안에서 함께 읽습니다 (Firestore 트랜잭션은
+    // 모든 read가 write보다 먼저 끝나야 하므로 여기서 미리 조회합니다).
+    const extraRosterDocs = new Map();
+    for (const [id, ref] of extraRosterRefs) {
+      const snap = await transaction.get(ref);
+      if (snap.exists()) extraRosterDocs.set(id, snap);
+    }
+
+    const rosterDocsById = new Map([[winnerId, winnerDoc], [loserId, loserDoc], ...extraRosterDocs]);
+
     const winnerData = winnerDoc.data();
     const loserData = loserDoc.data();
 
-    const winnerTitle = winnerData.equippedTitle;
-    const loserTitle = loserData.equippedTitle;
-
-    // 포인트 보상/페널티는 플레이어 단위로 한 번만 적용
+    // 포인트 보상/페널티 기본값 (팀 공통 배율까지 적용된 값이며,
+    // 실제 지급은 아래에서 winnerRosterIds/loserRosterIds 각 팀원에게 개별 적용됩니다)
     let victoryReward = 150;
     let fleeRewardNote = '';
     let fleeExpMultiplier = 1;
@@ -3916,14 +3954,12 @@ export async function processBattleResults(
       fleeRewardNote = ` (도망 승리 보상 ${fleeRewardPercent}%)`;
       fleeExpMultiplier = fleeRewardMultiplier;
     }
-    if (winnerTitle === 'point_rich') {
-      victoryReward = Math.floor(victoryReward * 1.2);
-    }
+    // TEAM_BATTLE_FULL_ROSTER_REWARD_PATCH
+    // point_rich/기부천사 칭호 보너스는 팀 전체가 아니라 각 팀원 "본인"의 칭호를
+    // 기준으로 개인별로 적용해야 하므로, 여기서는 팀 공통 배율만 계산하고
+    // 칭호 보너스는 팀원별 지급 단계에서 적용합니다.
 
     let defeatPenalty = fled ? 0 : 50;
-    // M20E_DILIGENT_GIVER_STACK_PENALTY_PATCH
-    // 성실한 기부천사 감면은 레벨차 감면까지 반영된 "최종 패널티"에 마지막으로 적용합니다.
-    let diligentGiverPenaltyNote = '';
 
     // M9_EFFECTIVE_TEAM_LEVEL_SCALE_PATCH
     // 레벨 차 보상/패널티는 마지막 active 펫 1마리가 아니라,
@@ -3938,9 +3974,6 @@ export async function processBattleResults(
     let defeatPenaltyLevelNote = '';
     let winExpMultiplier = 1.0;
     let loseExpMultiplier = 1.0;
-
-    let winnerPets = [...(winnerData.pets || [])];
-    let loserPets = [...(loserData.pets || [])];
 
     const clampBattleHp = (storedPet, battlePet) => {
       const rawHp = Number(battlePet?.hp);
@@ -4078,14 +4111,10 @@ export async function processBattleResults(
       defeatPenaltyLevelNote = ` (상대 최고 레벨 +${maxLevelGap}: 강팀 상대 감면)`;
     }
 
-    // M20E_DILIGENT_GIVER_STACK_PENALTY_PATCH
-    // 성실한 기부천사는 레벨차/도망 여부까지 계산된 최종 패배 페널티를 다시 50% 감면합니다.
-    // 예: 기본 50P → 강팀 상대 감면 25P → 기부천사 추가 감면 12P
-    if (loserTitle === 'diligent_giver' && defeatPenalty > 0) {
-      const beforeDiligentGiverPenalty = defeatPenalty;
-      defeatPenalty = Math.max(1, Math.floor(defeatPenalty * 0.5));
-      diligentGiverPenaltyNote = ` (기부천사 추가 감면 ${beforeDiligentGiverPenalty}P→${defeatPenalty}P)`;
-    }
+    // TEAM_BATTLE_FULL_ROSTER_REWARD_PATCH
+    // 기부천사 감면도 팀 전체가 아니라 각 패배 팀원 "본인"의 칭호 기준으로
+    // 개인별로 적용하므로, 여기서는 팀 공통 defeatPenalty만 남겨둡니다.
+    // (개인별 적용은 팀원별 지급 단계에서 처리)
 
     // M15B_FLEE_EXP_SCALE_PATCH
 
@@ -4123,14 +4152,12 @@ export async function processBattleResults(
       return ids;
     };
 
-    const applyTeamOutcome = (storedPets, finalTeam, fallbackPet, explicitParticipatedIds, outcome) => {
-      const battleTeam = dedupeBattleTeam(finalTeam, fallbackPet);
-      if (battleTeam.length === 0) return storedPets;
+    const applyTeamOutcome = (storedPets, ownerBattleTeam, participatedIds, outcome) => {
+      if (!ownerBattleTeam || ownerBattleTeam.length === 0) return storedPets;
 
-      const participatedIds = getParticipatedIds(explicitParticipatedIds, battleTeam, fallbackPet);
       const nextPets = [...storedPets];
 
-      battleTeam.forEach((battlePet) => {
+      ownerBattleTeam.forEach((battlePet) => {
         if (!battlePet?.id) return;
 
         const idx = nextPets.findIndex(p => p.id === battlePet.id);
@@ -4184,35 +4211,51 @@ export async function processBattleResults(
       return nextPets;
     };
 
-    // HP/SP는 team 전체 저장, 경험치/전적은 participatedPetIds 기준 적용
-    winnerPets = applyTeamOutcome(
-      winnerPets,
-      finalWinnerTeam,
-      finalWinnerPet,
-      finalWinnerParticipatedPetIds,
-      'win'
-    );
+    // TEAM_BATTLE_FULL_ROSTER_WIN_EXP_PATCH
+    // 팀대전에서는 조작권을 못 받아 한 번도 못 나온 팀원 펫이라도, 팀이 이겼다면
+    // 함께 싸운 것으로 보고 경험치를 지급합니다. (패배 팀/1:1은 기존대로 실제 출전 펫만 지급)
+    const winnerBattleTeamAll = dedupeBattleTeam(finalWinnerTeam, finalWinnerPet);
+    const loserBattleTeamAll = dedupeBattleTeam(finalLoserTeam, finalLoserPet);
 
-    loserPets = applyTeamOutcome(
-      loserPets,
-      finalLoserTeam,
-      finalLoserPet,
-      finalLoserParticipatedPetIds,
-      'lose'
-    );
+    const effectiveWinnerParticipatedPetIds = isTeamBattle
+      ? winnerBattleTeamAll.map(pet => pet.id).filter(Boolean)
+      : finalWinnerParticipatedPetIds;
+
+    const winnerParticipatedIdsSet = getParticipatedIds(effectiveWinnerParticipatedPetIds, winnerBattleTeamAll, finalWinnerPet);
+    const loserParticipatedIdsSet = getParticipatedIds(finalLoserParticipatedPetIds, loserBattleTeamAll, finalLoserPet);
+
+    // TEAM_BATTLE_FULL_ROSTER_REWARD_PATCH
+    // finalWinnerTeam/finalLoserTeam에는 팀원 3명의 펫이 함께 들어있으므로,
+    // "누구 소유 펫인지"(ownerId, 없으면 대표 계정)로 나눠서 그 팀원 "본인" 문서의
+    // pets 배열에만 반영해야 합니다. (예전엔 항상 대표 1명의 pets 배열에서만
+    // id를 찾았기 때문에 나머지 두 팀원의 펫은 조용히 갱신에서 누락됐습니다.)
+    const resolveOwnerId = (pet, fallbackId) => pet?.ownerId || fallbackId;
+
+    const winnerPetsUpdatesByOwner = new Map();
+    winnerRosterIds.forEach((ownerId) => {
+      const ownerDoc = rosterDocsById.get(ownerId);
+      if (!ownerDoc) return;
+      const ownerBattleTeam = winnerBattleTeamAll.filter(pet => resolveOwnerId(pet, winnerId) === ownerId);
+      const ownerStoredPets = [...(ownerDoc.data().pets || [])];
+      winnerPetsUpdatesByOwner.set(ownerId, applyTeamOutcome(ownerStoredPets, ownerBattleTeam, winnerParticipatedIdsSet, 'win'));
+    });
+
+    const loserPetsUpdatesByOwner = new Map();
+    loserRosterIds.forEach((ownerId) => {
+      const ownerDoc = rosterDocsById.get(ownerId);
+      if (!ownerDoc) return;
+      const ownerBattleTeam = loserBattleTeamAll.filter(pet => resolveOwnerId(pet, loserId) === ownerId);
+      const ownerStoredPets = [...(ownerDoc.data().pets || [])];
+      loserPetsUpdatesByOwner.set(ownerId, applyTeamOutcome(ownerStoredPets, ownerBattleTeam, loserParticipatedIdsSet, 'lose'));
+    });
+
+    const winnerPets = winnerPetsUpdatesByOwner.get(winnerId) || [...(winnerData.pets || [])];
+    const loserPets = loserPetsUpdatesByOwner.get(loserId) || [...(loserData.pets || [])];
 
     // M18_RESULT_REWARD_SUMMARY_PATCH
     // 결과창에서 보여줄 포인트/경험치 요약을 생성합니다.
-    const winnerParticipatedIdsForSummary = getParticipatedIds(
-      finalWinnerParticipatedPetIds,
-      dedupeBattleTeam(finalWinnerTeam, finalWinnerPet),
-      finalWinnerPet
-    );
-    const loserParticipatedIdsForSummary = getParticipatedIds(
-      finalLoserParticipatedPetIds,
-      dedupeBattleTeam(finalLoserTeam, finalLoserPet),
-      finalLoserPet
-    );
+    const winnerParticipatedIdsForSummary = winnerParticipatedIdsSet;
+    const loserParticipatedIdsForSummary = loserParticipatedIdsSet;
 
     const winnerExpGain = Math.round(100 * winExpMultiplier);
     const loserBaseExp = fled ? 10 : 30;
@@ -4228,43 +4271,102 @@ export async function processBattleResults(
         }));
     };
 
+    // TEAM_BATTLE_FULL_ROSTER_REWARD_PATCH
+    // 팀원 각자 "본인" 칭호 기준으로 개인별 골드 보상/페널티를 계산합니다.
+    const winnerRewardById = new Map();
+    winnerRosterIds.forEach((id) => {
+      const memberData = rosterDocsById.get(id)?.data();
+      const memberTitle = memberData?.equippedTitle;
+      let reward = victoryReward;
+      let titleNote = '';
+      if (memberTitle === 'point_rich') {
+        reward = Math.floor(reward * 1.2);
+        titleNote = ' (포인트 부자 보너스)';
+      }
+      winnerRewardById.set(id, { reward, titleNote, data: memberData });
+    });
+
+    const loserPenaltyById = new Map();
+    loserRosterIds.forEach((id) => {
+      const memberData = rosterDocsById.get(id)?.data();
+      const memberTitle = memberData?.equippedTitle;
+      let penalty = defeatPenalty;
+      let titleNote = '';
+      if (memberTitle === 'diligent_giver' && penalty > 0) {
+        const before = penalty;
+        penalty = Math.max(1, Math.floor(penalty * 0.5));
+        titleNote = ` (기부천사 추가 감면 ${before}P→${penalty}P)`;
+      }
+      loserPenaltyById.set(id, { penalty, titleNote, data: memberData });
+    });
+
+    const pointChanges = {};
+    winnerRosterIds.forEach((id) => { pointChanges[id] = winnerRewardById.get(id).reward; });
+    loserRosterIds.forEach((id) => { pointChanges[id] = -(loserPenaltyById.get(id).penalty); });
+
     const battleResultSummary = {
       winnerId,
       loserId,
       fled,
       fleeRewardPercent,
       battleTeamSize: battleTeamSizeForReward,
-      winnerPoints: victoryReward,
-      loserPoints: -defeatPenalty,
-      pointChanges: {
-        [winnerId]: victoryReward,
-        [loserId]: -defeatPenalty,
-      },
+      winnerPoints: winnerRewardById.get(winnerId).reward,
+      loserPoints: -(loserPenaltyById.get(loserId).penalty),
+      pointChanges,
       winnerExpGain,
       loserExpGain,
       winnerPetExpGains: buildPetExpGains(finalWinnerTeam, finalWinnerPet, winnerParticipatedIdsForSummary, winnerExpGain),
       loserPetExpGains: buildPetExpGains(finalLoserTeam, finalLoserPet, loserParticipatedIdsForSummary, loserExpGain),
-      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, diligentGiverPenaltyNote, lossExpScaleNote].filter(Boolean),
+      notes: [fleeRewardNote, teamSizeRewardNote, levelScaleNote, defeatPenaltyLevelNote, loserPenaltyById.get(loserId).titleNote, lossExpScaleNote].filter(Boolean),
+      // BATTLE_RESULT_STATS_PATCH: 결과창 딜량/CC/회복량 막대그래프용 원본 통계
+      battleStats: battleStats || null,
     };
 
-    transaction.update(winnerRef, { points: increment(victoryReward), pets: winnerPets });
-    transaction.update(loserRef, { points: increment(-defeatPenalty), pets: loserPets });
+    // 팀원 전원(대표 1명 + 나머지 실제 팀원 계정)에게 각각 포인트/펫 갱신을 반영합니다.
+    winnerRosterIds.forEach((id) => {
+      if (!rosterDocsById.has(id)) return;
+      const ref = id === winnerId ? winnerRef : extraRosterRefs.get(id);
+      if (!ref) return;
+      const { reward } = winnerRewardById.get(id);
+      const pets = winnerPetsUpdatesByOwner.get(id);
+      const updates = { points: increment(reward) };
+      if (pets) updates.pets = pets;
+      transaction.update(ref, updates);
+    });
 
-    await addPointHistory(
-      classId,
-      winnerData.authUid,
-      winnerData.name,
-      victoryReward,
-      "퀴즈 배틀 승리" + (winnerTitle === 'point_rich' ? ' (포인트 부자 보너스)' : '') + fleeRewardNote + teamSizeRewardNote + levelScaleNote
-    );
+    loserRosterIds.forEach((id) => {
+      if (!rosterDocsById.has(id)) return;
+      const ref = id === loserId ? loserRef : extraRosterRefs.get(id);
+      if (!ref) return;
+      const { penalty } = loserPenaltyById.get(id);
+      const pets = loserPetsUpdatesByOwner.get(id);
+      const updates = {};
+      if (penalty > 0) updates.points = increment(-penalty);
+      if (pets) updates.pets = pets;
+      if (Object.keys(updates).length > 0) transaction.update(ref, updates);
+    });
 
-    if (defeatPenalty > 0) {
+    for (const id of winnerRosterIds) {
+      const { reward, titleNote, data } = winnerRewardById.get(id);
+      if (!data) continue;
       await addPointHistory(
         classId,
-        loserData.authUid,
-        loserData.name,
-        -defeatPenalty,
-        "퀴즈 배틀 패배" + defeatPenaltyLevelNote + diligentGiverPenaltyNote + lossExpScaleNote
+        data.authUid,
+        data.name,
+        reward,
+        "퀴즈 배틀 승리" + titleNote + fleeRewardNote + teamSizeRewardNote + levelScaleNote
+      );
+    }
+
+    for (const id of loserRosterIds) {
+      const { penalty, titleNote, data } = loserPenaltyById.get(id);
+      if (!data || penalty <= 0) continue;
+      await addPointHistory(
+        classId,
+        data.authUid,
+        data.name,
+        -penalty,
+        "퀴즈 배틀 패배" + defeatPenaltyLevelNote + titleNote + lossExpScaleNote
       );
     }
 

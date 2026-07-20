@@ -1,12 +1,12 @@
 // src/features/battle/teamBattleStart.js
 //
-// 2:2 팀대전 로비(randomTeamBattleRooms)가 4명 다 입장 완료되면,
+// 3:3 팀대전 로비(randomTeamBattleRooms)가 6명 다 입장 완료되면,
 // 실제 전투는 TeamBattlePage.jsx(BattlePage.jsx를 복제해 일반화한 진짜 엔진)가 담당합니다.
 // 이 파일은 그 진짜 엔진이 읽을 수 있는, 1:1과 완전히 동일한 shape의
 // classes/{classId}/battles/{matchId} 문서를 만드는 역할만 합니다.
 //
 // 핵심 아이디어: challenger/opponent의 team 배열 안에 있는 각 펫에
-// ownerId/ownerName을 붙여서, "이 팀은 사람이 2명"이라는 걸 표시합니다.
+// ownerId/ownerName을 붙여서, "이 팀은 사람이 3명"이라는 걸 표시합니다.
 // TeamBattlePage.jsx는 교체(자동/수동)가 일어날 때 이 태그를 보고 조작권을
 // 실제 펫 주인에게 넘겨줍니다.
 
@@ -101,7 +101,7 @@ export async function startTeamBattleFight(classId, matchId) {
       switchResumeAt: null,
       pendingSwitch: null,
       chat: {},
-      log: '👥 4명 입장 완료! 곧 2:2 팀대전이 시작됩니다.',
+      log: '👥 6명 입장 완료! 곧 3:3 팀대전이 시작됩니다.',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
