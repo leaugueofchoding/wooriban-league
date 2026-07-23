@@ -8,6 +8,9 @@ import { useLeagueStore, useClassStore } from '../store/leagueStore.js';
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import styled from 'styled-components';
 import { petImageMap } from '../utils/petImageMap'; // [추가] 이미지 맵 import
+// PET_BATTLE_QUEUE_TOPBAR_PATCH: 상단 바 펫 배틀(팀전) 대기 인원 표시 + 간편 참가 버튼
+import { createRandomTeamQueueEntry, cancelRandomBattleQueueEntry, tryMatchRandomBattleQueue } from '../features/battle/randomBattleApi';
+import { RANDOM_BATTLE_CONFIG } from '../features/battle/randomBattleRules';
 
 // ... (기존 상단 스타일: AuthWrapper, UserProfile, Button, IconContainer 등 유지) ...
 const AuthWrapper = styled.div`
@@ -161,6 +164,30 @@ const ClockDisplay = styled.div`
     letter-spacing: 0.03em; flex-shrink: 0;
 
     @media (max-width: 600px) { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
+`;
+
+// PET_BATTLE_QUEUE_TOPBAR_PATCH: 시계 옆 펫 배틀 대기 인원 뱃지 + 참가 버튼
+const PetBattleQueueBadge = styled.div`
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.85rem; font-weight: 800; color: #495057;
+    background: #f1f3f5; border-radius: 20px;
+    padding: 0.3rem 0.5rem 0.3rem 0.85rem;
+    flex-shrink: 0; white-space: nowrap;
+
+    @media (max-width: 600px) { font-size: 0.74rem; padding: 0.25rem 0.4rem 0.25rem 0.6rem; }
+`;
+
+const PetBattleJoinButton = styled.button`
+    border: none; border-radius: 16px; cursor: pointer;
+    font-weight: 900; font-size: 0.78rem;
+    padding: 0.32rem 0.7rem;
+    color: #fff;
+    background: ${props => (props.disabled ? '#adb5bd' : (props.$variant === 'cancel' ? '#fa5252' : '#0ca678'))};
+    transition: filter 0.15s;
+
+    &:hover { filter: ${props => (props.disabled ? 'none' : 'brightness(0.95)')}; }
+
+    @media (max-width: 600px) { font-size: 0.7rem; padding: 0.28rem 0.55rem; }
 `;
 
 const ClassAlertOverlay = styled.div`
@@ -669,14 +696,14 @@ function Auth({ user }) {
     const navigate = useNavigate();
     const [showNotifications, setShowNotifications] = useState(false);
     const [battleChallenge, setBattleChallenge] = useState(null);
-    
+
     const [acceptBattleTeamDraft, setAcceptBattleTeamDraft] = useState({
         // M11_ENABLE_3V3_TEAM_SELECTION_PATCH
         leadPetId: null,
         benchPetId: null,
         thirdPetId: null,
     }); // M4_ACCEPTOR_TEAM_SELECT_PATCH
-const notificationRef = useRef(null);
+    const notificationRef = useRef(null);
 
     // ─── 시계 + 수업시간 알림 ───────────────────────────────
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -751,6 +778,71 @@ const notificationRef = useRef(null);
         return players.find(p => p.authUid === user.uid);
     }, [players, user]);
 
+    // PET_BATTLE_QUEUE_TOPBAR_PATCH: 팀전 펫 배틀 대기 인원 + 내 참가 상태 구독
+    const [petBattleWaitingCount, setPetBattleWaitingCount] = useState(0);
+    const [myTeamQueueEntry, setMyTeamQueueEntry] = useState(null);
+    const [isJoiningPetBattle, setIsJoiningPetBattle] = useState(false);
+
+    useEffect(() => {
+        if (!classId) { setPetBattleWaitingCount(0); return; }
+
+        const q = query(
+            collection(db, 'classes', classId, 'randomBattleQueue'),
+            where('mode', '==', 'random-team'),
+            where('status', '==', 'waiting'),
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setPetBattleWaitingCount(snapshot.size);
+        });
+
+        return () => unsubscribe();
+    }, [classId]);
+
+    useEffect(() => {
+        if (!classId || !myPlayerData?.id) { setMyTeamQueueEntry(null); return; }
+
+        const queueRef = doc(db, 'classes', classId, 'randomBattleQueue', myPlayerData.id + '_team');
+        const unsubscribe = onSnapshot(queueRef, (snap) => {
+            setMyTeamQueueEntry(snap.exists() ? snap.data() : null);
+        });
+
+        return () => unsubscribe();
+    }, [classId, myPlayerData?.id]);
+
+    const myTeamQueueStatus = myTeamQueueEntry?.status || null;
+    const isWaitingPetBattle = myTeamQueueStatus === 'waiting';
+    const isMatchedPetBattle = ['matched', 'entering'].includes(myTeamQueueStatus);
+
+    const handleJoinPetBattleQueue = async () => {
+        if (!classId || !myPlayerData?.id || isJoiningPetBattle) return;
+
+        try {
+            setIsJoiningPetBattle(true);
+            await createRandomTeamQueueEntry(classId, myPlayerData.id, null, {
+                teamSize: RANDOM_BATTLE_CONFIG.TEAM_BATTLE_BETA_SIZE,
+            });
+            await tryMatchRandomBattleQueue(classId, myPlayerData.id, 'random-team');
+        } catch (error) {
+            alert('펫 배틀 참가 실패: ' + error.message);
+        } finally {
+            setIsJoiningPetBattle(false);
+        }
+    };
+
+    const handleLeavePetBattleQueue = async () => {
+        if (!classId || !myPlayerData?.id || isJoiningPetBattle) return;
+
+        try {
+            setIsJoiningPetBattle(true);
+            await cancelRandomBattleQueueEntry(classId, myPlayerData.id);
+        } catch (error) {
+            alert('대기 취소 실패: ' + error.message);
+        } finally {
+            setIsJoiningPetBattle(false);
+        }
+    };
+
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -795,13 +887,13 @@ const notificationRef = useRef(null);
     }, [myPlayerData, classId]);
 
 
-    
+
 
     useEffect(() => {
         // M4_ACCEPTOR_TEAM_SELECT_PATCH
         setAcceptBattleTeamDraft({ leadPetId: null, benchPetId: null, thirdPetId: null });
     }, [battleChallenge?.id]);
-const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
+    const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlayerData.role);
 
     const groupedNotifications = useMemo(() => {
         if (!notifications) return [];
@@ -1064,6 +1156,38 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     <UserProfile>
                         {/* 시계 표시 */}
                         <ClockDisplay>🕐 {timeStr}</ClockDisplay>
+
+                        {/* PET_BATTLE_QUEUE_TOPBAR_PATCH: 펫 배틀(팀전) 대기 인원 + 나도 참가하기 */}
+                        {myPlayerData && !currentLocation.pathname.startsWith('/battle/') && (
+                            <PetBattleQueueBadge title="펫 배틀 팀전 대기 인원">
+                                {petBattleWaitingCount > 0 && (
+                                    <span>⚔️ 대기 {petBattleWaitingCount}명</span>
+                                )}
+                                {isMatchedPetBattle ? (
+                                    <PetBattleJoinButton type="button" disabled>
+                                        매칭완료
+                                    </PetBattleJoinButton>
+                                ) : isWaitingPetBattle ? (
+                                    <PetBattleJoinButton
+                                        type="button"
+                                        $variant="cancel"
+                                        onClick={handleLeavePetBattleQueue}
+                                        disabled={isJoiningPetBattle}
+                                    >
+                                        대기 취소
+                                    </PetBattleJoinButton>
+                                ) : (
+                                    <PetBattleJoinButton
+                                        type="button"
+                                        onClick={handleJoinPetBattleQueue}
+                                        disabled={isJoiningPetBattle}
+                                    >
+                                        {isJoiningPetBattle ? '참가 중...' : '나도 참가하기'}
+                                    </PetBattleJoinButton>
+                                )}
+                            </PetBattleQueueBadge>
+                        )}
+
                         <IconContainer>
                             <IconLink to="/">🏠</IconLink>
                             {(myPlayerData?.role === 'admin' || myPlayerData?.role === 'recorder') && (
@@ -1197,8 +1321,8 @@ const isRecorderOrAdmin = myPlayerData && ['admin', 'recorder'].includes(myPlaye
                     const selectedThirdId = targetTeamSize >= 3
                         ? (
                             aliveIds.has(acceptBattleTeamDraft.thirdPetId) &&
-                            acceptBattleTeamDraft.thirdPetId !== selectedLeadId &&
-                            acceptBattleTeamDraft.thirdPetId !== selectedBenchId
+                                acceptBattleTeamDraft.thirdPetId !== selectedLeadId &&
+                                acceptBattleTeamDraft.thirdPetId !== selectedBenchId
                                 ? acceptBattleTeamDraft.thirdPetId
                                 : alivePets.find(pet => pet.id !== selectedLeadId && pet.id !== selectedBenchId)?.id || null
                         )
