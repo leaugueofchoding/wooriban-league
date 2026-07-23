@@ -4,19 +4,26 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import {
   useLeagueStore,
-  useClassStore } from '../../store/leagueStore';
-import { auth,
+  useClassStore
+} from '../../store/leagueStore';
+import {
+  auth,
   db,
   createBattleChallenge,
   renamePetWithItem,
   releasePet,
-  getScaledSkillCost } from '../../api/firebase';
-import { doc,
-  onSnapshot } from "firebase/firestore";
+  getScaledSkillCost
+} from '../../api/firebase';
+import {
+  doc,
+  onSnapshot
+} from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import { petImageMap } from '../../utils/petImageMap';
-import { PET_DATA,
-  SKILLS } from './petData';
+import {
+  PET_DATA,
+  SKILLS
+} from './petData';
 import { PET_ITEMS } from './petItems';
 import {
   cancelRandomBattleQueueEntry,
@@ -1187,20 +1194,20 @@ function PetPage() {
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [equippedSkills, setEquippedSkills] = useState([]);
   const [selectedSkillSlot, setSelectedSkillSlot] = useState(null);
-    const [skillTooltip, setSkillTooltip] = useState({ show: false, text: '', x: 0, y: 0 });
-const [pendingSkillId, setPendingSkillId] = useState(null);
+  const [skillTooltip, setSkillTooltip] = useState({ show: false, text: '', x: 0, y: 0 });
+  const [pendingSkillId, setPendingSkillId] = useState(null);
   const [isOpponentModalOpen, setIsOpponentModalOpen] = useState(false);
   // DUAL_QUEUE_RANDOM_BATTLE_PATCH
   const [randomBattleQueueEntries, setRandomBattleQueueEntries] = useState({});
   const [isRandomBattleCancelling, setIsRandomBattleCancelling] = useState(false);
   const [isRandomBattleEntering, setIsRandomBattleEntering] = useState(false);
-  
-  
+
+
   // RANDOM_BATTLE_TEAM_QUEUE_STABILITY_PATCH
   const [randomBattleNowMs, setRandomBattleNowMs] = useState(Date.now());
-// RANDOM_BATTLE_VITAMIN_JELLY_UI_PATCH
+  // RANDOM_BATTLE_VITAMIN_JELLY_UI_PATCH
   const [randomBattleVitaminPetId, setRandomBattleVitaminPetId] = useState(null);
-// ENTER_RANDOM_1V1_FIX_PATCH
+  // ENTER_RANDOM_1V1_FIX_PATCH
   const randomBattleAutoEnterRef = useRef(null);
   const [randomBattleDraft, setRandomBattleDraft] = useState({
     show: false,
@@ -1209,7 +1216,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
     selectedTeamPetId: null,
     isSubmitting: false,
   });
-  
+
   const [battleTeamDraft, setBattleTeamDraft] = useState({
     // M11_ENABLE_3V3_TEAM_SELECTION_PATCH
     show: false,
@@ -2048,7 +2055,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   const learnedSkills = selectedPet.skills || PET_DATA[selectedPet.species].initialSkills;
   const unequippedSkills = learnedSkills.filter(id => !(equippedSkills || []).includes(id));
 
-  
+
 
   // M25C_PET_SKILL_TOOLTIP
   // 스킬 카드 안 설명은 작게 말줄임 처리하되, 마우스 호버/키보드 포커스 시 전체 설명을 보여줍니다.
@@ -2086,7 +2093,7 @@ const [pendingSkillId, setPendingSkillId] = useState(null);
   const hideSkillTooltip = () => {
     setSkillTooltip({ show: false, text: '', x: 0, y: 0 });
   };
-const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp) * 100));
+  const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp) * 100));
   const spPercent = Math.min(100, Math.max(0, (selectedPet.sp / selectedPet.maxSp) * 100));
   const isMaxLevel = selectedPet.level >= MAX_PET_LEVEL || selectedPet.isMaxLevel === true;
   const expPercent = isMaxLevel
@@ -2259,16 +2266,16 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                               $isSignature={isSignature}
                               $isSelected={selectedSkillSlot === index}
                               onClick={() => handleSkillSlotClick(index)}
-                            
-                                data-skill-tooltip-disabled={getSkillTooltipText(skill, scaledCost)}
-                                title={getSkillTooltipText(skill, scaledCost)}
-                                tabIndex={0}
-                                onMouseEnter={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCost))}
-                                onMouseMove={moveSkillTooltip}
-                                onMouseLeave={hideSkillTooltip}
-                                onFocus={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCost))}
-                                onBlur={hideSkillTooltip}
-                              >
+
+                              data-skill-tooltip-disabled={getSkillTooltipText(skill, scaledCost)}
+                              title={getSkillTooltipText(skill, scaledCost)}
+                              tabIndex={0}
+                              onMouseEnter={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCost))}
+                              onMouseMove={moveSkillTooltip}
+                              onMouseLeave={hideSkillTooltip}
+                              onFocus={(event) => showSkillTooltip(event, getSkillTooltipText(skill, scaledCost))}
+                              onBlur={hideSkillTooltip}
+                            >
                               {skill ? (
                                 <>
                                   <div className="skill-head">
@@ -2307,7 +2314,7 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                                 $isSignature={false}
                                 $isEquipped={isEquipped}
                                 onClick={() => handleLearnedSkillClick(skillId)}
-                              
+
                                 data-skill-tooltip-disabled={getSkillTooltipText(skill, scaledCostUnequipped)}
                                 title={getSkillTooltipText(skill, scaledCostUnequipped)}
                                 tabIndex={0}
@@ -2493,7 +2500,7 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                     disabled={isRandomTeamQueueActive || isRandomBattleLockedByMatch}
                   >
                     <span className="main">3:3 팀대전 참가</span>
-                    <span className="sub">현재 3:3 베타</span>
+                    <span className="sub">펫 1마리 선택</span>
                   </RandomBattleEntryButton>
                 </BattleEntryGrid>
               </BattleEntryPanel>
@@ -2630,7 +2637,7 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
                 </h3>
                 <p style={{ margin: '0.35rem 0 0', color: '#868e96', fontSize: '0.9rem', fontWeight: 700, lineHeight: 1.45 }}>
                   {randomBattleDraft.mode === 'random-team'
-                    ? '현재는 3:3 베타로 운영됩니다. 참가할 펫 1마리를 선택하세요.'
+                    ? '3:3 팀대전에 참가할 펫 1마리를 선택하세요.'
                     : '출전할 펫을 1~3마리 선택하세요. 가능하면 3마리 구성이 유리합니다.'}
                 </p>
                 {randomBattleDraft.mode === 'random-1v1' && (
@@ -2929,198 +2936,198 @@ const hpPercent = Math.min(100, Math.max(0, (selectedPet.hp / selectedPet.maxHp)
             }}>
 
 
-            {(() => {
+              {(() => {
 
 
-              // M11B_BATTLE_SIZE_CHOICE_PATCH
-              const alivePets = getAliveBattlePets();
-              const opponentAliveCount = (battleTeamDraft.opponent?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
-              const maxSelectableTeamSize = Math.min(3, alivePets.length, Math.max(1, opponentAliveCount));
-              const leadPet = alivePets.find(pet => pet.id === battleTeamDraft.leadPetId);
-              const benchPet = alivePets.find(pet => pet.id === battleTeamDraft.benchPetId);
-              const thirdPet = battleTeamDraft.benchPetId
-                ? alivePets.find(pet => pet.id === battleTeamDraft.thirdPetId)
-                : null;
-              const selectedTeamIds = [
-                battleTeamDraft.leadPetId,
-                battleTeamDraft.benchPetId,
-                battleTeamDraft.benchPetId ? battleTeamDraft.thirdPetId : null,
-              ].filter(Boolean);
-              const selectedTeamSize = new Set(selectedTeamIds).size || 1;
-              const isSubmitDisabled =
-                !battleTeamDraft.leadPetId ||
-                new Set(selectedTeamIds).size !== selectedTeamIds.length;
+                // M11B_BATTLE_SIZE_CHOICE_PATCH
+                const alivePets = getAliveBattlePets();
+                const opponentAliveCount = (battleTeamDraft.opponent?.pets || []).filter(pet => Number(pet?.hp ?? 0) > 0).length;
+                const maxSelectableTeamSize = Math.min(3, alivePets.length, Math.max(1, opponentAliveCount));
+                const leadPet = alivePets.find(pet => pet.id === battleTeamDraft.leadPetId);
+                const benchPet = alivePets.find(pet => pet.id === battleTeamDraft.benchPetId);
+                const thirdPet = battleTeamDraft.benchPetId
+                  ? alivePets.find(pet => pet.id === battleTeamDraft.thirdPetId)
+                  : null;
+                const selectedTeamIds = [
+                  battleTeamDraft.leadPetId,
+                  battleTeamDraft.benchPetId,
+                  battleTeamDraft.benchPetId ? battleTeamDraft.thirdPetId : null,
+                ].filter(Boolean);
+                const selectedTeamSize = new Set(selectedTeamIds).size || 1;
+                const isSubmitDisabled =
+                  !battleTeamDraft.leadPetId ||
+                  new Set(selectedTeamIds).size !== selectedTeamIds.length;
 
-              const renderNoneButton = (isSelected, onSelect) => (
-                <button
-                  type="button"
-                  onClick={onSelect}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    textAlign: 'center',
-                    padding: '0.65rem',
-                    borderRadius: '14px',
-                    border: isSelected ? '3px solid #868e96' : '2px dashed #ced4da',
-                    background: isSelected ? '#f1f3f5' : 'white',
-                    color: '#495057',
-                    fontWeight: 900,
-                    cursor: 'pointer',
-                    minHeight: '66px',
-                  }}
-                >
-                  선택 안함
-                </button>
-              );
+                const renderNoneButton = (isSelected, onSelect) => (
+                  <button
+                    type="button"
+                    onClick={onSelect}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      padding: '0.65rem',
+                      borderRadius: '14px',
+                      border: isSelected ? '3px solid #868e96' : '2px dashed #ced4da',
+                      background: isSelected ? '#f1f3f5' : 'white',
+                      color: '#495057',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      minHeight: '66px',
+                    }}
+                  >
+                    선택 안함
+                  </button>
+                );
 
-              const renderTeamChoice = (slotLabel, selectedId, onSelect, blockedIds = [], allowNone = false, onNone = null) => (
-                <div style={{ marginBottom: '1rem' }}>
-                  <h4 style={{ margin: '0 0 0.55rem', color: '#343a40' }}>{slotLabel}</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.7rem' }}>
-                    {allowNone && renderNoneButton(!selectedId, onNone)}
-                    {alivePets.map(pet => {
-                      const isSelected = selectedId === pet.id;
-                      const isBlocked = Array.isArray(blockedIds) ? blockedIds.includes(pet.id) : blockedIds === pet.id;
-                      return (
+                const renderTeamChoice = (slotLabel, selectedId, onSelect, blockedIds = [], allowNone = false, onNone = null) => (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <h4 style={{ margin: '0 0 0.55rem', color: '#343a40' }}>{slotLabel}</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.7rem' }}>
+                      {allowNone && renderNoneButton(!selectedId, onNone)}
+                      {alivePets.map(pet => {
+                        const isSelected = selectedId === pet.id;
+                        const isBlocked = Array.isArray(blockedIds) ? blockedIds.includes(pet.id) : blockedIds === pet.id;
+                        return (
+                          <button
+                            key={pet.id}
+                            type="button"
+                            onClick={() => !isBlocked && onSelect(pet.id)}
+                            disabled={isBlocked}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.65rem',
+                              textAlign: 'left',
+                              padding: '0.65rem',
+                              borderRadius: '14px',
+                              border: isSelected ? '3px solid #339af0' : '2px solid #e9ecef',
+                              background: isSelected ? '#e7f5ff' : isBlocked ? '#f1f3f5' : 'white',
+                              opacity: isBlocked ? 0.45 : 1,
+                              cursor: isBlocked ? 'not-allowed' : 'pointer',
+                              boxShadow: isSelected ? '0 6px 18px rgba(51,154,240,0.18)' : '0 3px 10px rgba(0,0,0,0.06)',
+                            }}
+                          >
+                            <img
+                              src={petImageMap[`${pet.appearanceId}_idle`]}
+                              alt={pet.name}
+                              style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa' }}
+                            />
+                            <div>
+                              <strong style={{ display: 'block', color: '#343a40' }}>{pet.name}</strong>
+                              <span style={{ display: 'block', color: '#868e96', fontSize: '0.78rem', fontWeight: 800 }}>
+                                Lv.{pet.level} · HP {pet.hp}/{pet.maxHp}
+                              </span>
+                              {isBlocked && (
+                                <span style={{ display: 'block', color: '#fa5252', fontSize: '0.72rem', fontWeight: 800 }}>
+                                  이미 다른 칸에 선택됨
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+
+                return (
+                  <>
+                    <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '16px', padding: '0.8rem 1rem', marginBottom: '1rem' }}>
+                      <p style={{ margin: 0, color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
+                        신청 상대: {battleTeamDraft.opponent?.name || '상대'} · 상대 생존 펫 {opponentAliveCount}마리 · 최대 {maxSelectableTeamSize} vs {maxSelectableTeamSize}
+                      </p>
+                    </div>
+
+                    {renderTeamChoice('1번 선발 펫', battleTeamDraft.leadPetId, (petId) => {
+                      const nextBenchId = battleTeamDraft.benchPetId === petId ? null : battleTeamDraft.benchPetId;
+                      const nextThirdId = battleTeamDraft.thirdPetId === petId ? null : battleTeamDraft.thirdPetId;
+                      setBattleTeamDraft(prev => ({
+                        ...prev,
+                        leadPetId: petId,
+                        benchPetId: nextBenchId,
+                        thirdPetId: nextBenchId ? nextThirdId : null,
+                      }));
+                    }, [])}
+
+                    {maxSelectableTeamSize >= 2 && renderTeamChoice(
+                      '2번 대기 펫',
+                      battleTeamDraft.benchPetId,
+                      (petId) => {
+                        const nextThirdId = battleTeamDraft.thirdPetId === petId ? null : battleTeamDraft.thirdPetId;
+                        setBattleTeamDraft(prev => ({ ...prev, benchPetId: petId, thirdPetId: nextThirdId }));
+                      },
+                      [battleTeamDraft.leadPetId].filter(Boolean),
+                      true,
+                      () => setBattleTeamDraft(prev => ({ ...prev, benchPetId: null, thirdPetId: null }))
+                    )}
+
+                    {maxSelectableTeamSize >= 3 && battleTeamDraft.benchPetId && renderTeamChoice(
+                      '3번 대기 펫',
+                      battleTeamDraft.thirdPetId,
+                      (petId) => {
+                        setBattleTeamDraft(prev => ({ ...prev, thirdPetId: petId }));
+                      },
+                      [battleTeamDraft.leadPetId, battleTeamDraft.benchPetId].filter(Boolean),
+                      true,
+                      () => setBattleTeamDraft(prev => ({ ...prev, thirdPetId: null }))
+                    )}
+
+                    {maxSelectableTeamSize >= 3 && !battleTeamDraft.benchPetId && (
+                      <div style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: '14px', background: '#f8f9fa', border: '1px dashed #ced4da', color: '#868e96', fontWeight: 800, textAlign: 'center' }}>
+                        2번 대기 펫을 선택하면 3번 대기 펫도 선택할 수 있습니다.
+                      </div>
+                    )}
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem',
+                      marginTop: '1.2rem',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      position: 'sticky',
+                      bottom: 0,
+                      background: 'white',
+                      padding: '0.85rem 0 0.15rem',
+                      borderTop: '1px solid #f1f3f5',
+                      zIndex: 2,
+                    }}>
+                      <div style={{ color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
+                        선택: {[leadPet?.name, benchPet?.name, thirdPet?.name].filter(Boolean).join(' + ') || '-'} · {selectedTeamSize} vs {selectedTeamSize}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.6rem' }}>
                         <button
-                          key={pet.id}
                           type="button"
-                          onClick={() => !isBlocked && onSelect(pet.id)}
-                          disabled={isBlocked}
+                          onClick={closeBattleTeamDraft}
+                          style={{ padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #dee2e6', background: 'white', color: '#495057', fontWeight: 800, cursor: 'pointer' }}
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmBattleTeamDraft}
+                          disabled={isSubmitDisabled}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.65rem',
-                            textAlign: 'left',
-                            padding: '0.65rem',
-                            borderRadius: '14px',
-                            border: isSelected ? '3px solid #339af0' : '2px solid #e9ecef',
-                            background: isSelected ? '#e7f5ff' : isBlocked ? '#f1f3f5' : 'white',
-                            opacity: isBlocked ? 0.45 : 1,
-                            cursor: isBlocked ? 'not-allowed' : 'pointer',
-                            boxShadow: isSelected ? '0 6px 18px rgba(51,154,240,0.18)' : '0 3px 10px rgba(0,0,0,0.06)',
+                            padding: '0.75rem 1.2rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            background: isSubmitDisabled
+                              ? '#adb5bd'
+                              : 'linear-gradient(135deg, #339af0, #1c7ed6)',
+                            color: 'white',
+                            fontWeight: 900,
+                            cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
                           }}
                         >
-                          <img
-                            src={petImageMap[`${pet.appearanceId}_idle`]}
-                            alt={pet.name}
-                            style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '50%', background: '#f8f9fa' }}
-                          />
-                          <div>
-                            <strong style={{ display: 'block', color: '#343a40' }}>{pet.name}</strong>
-                            <span style={{ display: 'block', color: '#868e96', fontSize: '0.78rem', fontWeight: 800 }}>
-                              Lv.{pet.level} · HP {pet.hp}/{pet.maxHp}
-                            </span>
-                            {isBlocked && (
-                              <span style={{ display: 'block', color: '#fa5252', fontSize: '0.72rem', fontWeight: 800 }}>
-                                이미 다른 칸에 선택됨
-                              </span>
-                            )}
-                          </div>
+                          {selectedTeamSize} vs {selectedTeamSize} 신청하기
                         </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-
-              return (
-                <>
-                  <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '16px', padding: '0.8rem 1rem', marginBottom: '1rem' }}>
-                    <p style={{ margin: 0, color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
-                      신청 상대: {battleTeamDraft.opponent?.name || '상대'} · 상대 생존 펫 {opponentAliveCount}마리 · 최대 {maxSelectableTeamSize} vs {maxSelectableTeamSize}
-                    </p>
-                  </div>
-
-                  {renderTeamChoice('1번 선발 펫', battleTeamDraft.leadPetId, (petId) => {
-                    const nextBenchId = battleTeamDraft.benchPetId === petId ? null : battleTeamDraft.benchPetId;
-                    const nextThirdId = battleTeamDraft.thirdPetId === petId ? null : battleTeamDraft.thirdPetId;
-                    setBattleTeamDraft(prev => ({
-                      ...prev,
-                      leadPetId: petId,
-                      benchPetId: nextBenchId,
-                      thirdPetId: nextBenchId ? nextThirdId : null,
-                    }));
-                  }, [])}
-
-                  {maxSelectableTeamSize >= 2 && renderTeamChoice(
-                    '2번 대기 펫',
-                    battleTeamDraft.benchPetId,
-                    (petId) => {
-                      const nextThirdId = battleTeamDraft.thirdPetId === petId ? null : battleTeamDraft.thirdPetId;
-                      setBattleTeamDraft(prev => ({ ...prev, benchPetId: petId, thirdPetId: nextThirdId }));
-                    },
-                    [battleTeamDraft.leadPetId].filter(Boolean),
-                    true,
-                    () => setBattleTeamDraft(prev => ({ ...prev, benchPetId: null, thirdPetId: null }))
-                  )}
-
-                  {maxSelectableTeamSize >= 3 && battleTeamDraft.benchPetId && renderTeamChoice(
-                    '3번 대기 펫',
-                    battleTeamDraft.thirdPetId,
-                    (petId) => {
-                      setBattleTeamDraft(prev => ({ ...prev, thirdPetId: petId }));
-                    },
-                    [battleTeamDraft.leadPetId, battleTeamDraft.benchPetId].filter(Boolean),
-                    true,
-                    () => setBattleTeamDraft(prev => ({ ...prev, thirdPetId: null }))
-                  )}
-
-                  {maxSelectableTeamSize >= 3 && !battleTeamDraft.benchPetId && (
-                    <div style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: '14px', background: '#f8f9fa', border: '1px dashed #ced4da', color: '#868e96', fontWeight: 800, textAlign: 'center' }}>
-                      2번 대기 펫을 선택하면 3번 대기 펫도 선택할 수 있습니다.
+                      </div>
                     </div>
-                  )}
-
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    marginTop: '1.2rem',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    position: 'sticky',
-                    bottom: 0,
-                    background: 'white',
-                    padding: '0.85rem 0 0.15rem',
-                    borderTop: '1px solid #f1f3f5',
-                    zIndex: 2,
-                  }}>
-                    <div style={{ color: '#495057', fontSize: '0.9rem', fontWeight: 800 }}>
-                      선택: {[leadPet?.name, benchPet?.name, thirdPet?.name].filter(Boolean).join(' + ') || '-'} · {selectedTeamSize} vs {selectedTeamSize}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                      <button
-                        type="button"
-                        onClick={closeBattleTeamDraft}
-                        style={{ padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #dee2e6', background: 'white', color: '#495057', fontWeight: 800, cursor: 'pointer' }}
-                      >
-                        취소
-                      </button>
-                      <button
-                        type="button"
-                        onClick={confirmBattleTeamDraft}
-                        disabled={isSubmitDisabled}
-                        style={{
-                          padding: '0.75rem 1.2rem',
-                          borderRadius: '12px',
-                          border: 'none',
-                          background: isSubmitDisabled
-                            ? '#adb5bd'
-                            : 'linear-gradient(135deg, #339af0, #1c7ed6)',
-                          color: 'white',
-                          fontWeight: 900,
-                          cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {selectedTeamSize} vs {selectedTeamSize} 신청하기
-                      </button>
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
+                  </>
+                );
+              })()}
 
             </div>
           </ModalContent>

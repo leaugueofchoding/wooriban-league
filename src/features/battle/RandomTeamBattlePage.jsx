@@ -245,7 +245,7 @@ function RandomTeamBattlePage() {
       <Card>
         <Header>
           <div>
-            <h2>👥 3:3 팀대전 베타</h2>
+            <h2>👥 3:3 팀대전</h2>
             <p>6명이 모두 입장하면 실제 전투 화면으로 넘어갑니다.</p>
           </div>
           <ReadyBadge $ready={allReady}>{readyCount}/{neededCount} 입장</ReadyBadge>

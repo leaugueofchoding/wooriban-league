@@ -254,7 +254,7 @@ function RandomBattleMatchModal() {
         </h2>
 
         <div style={badgeStyle}>
-          {isTeam ? '3:3 팀대전 베타' : '랜덤 1:1 대전'}
+          {isTeam ? '3:3 팀대전' : '랜덤 1:1 대전'}
         </div>
 
         <p style={{ margin: '0.75rem 0 1rem', color: '#495057', fontWeight: 850, lineHeight: 1.5 }}>
