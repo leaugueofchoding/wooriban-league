@@ -180,9 +180,21 @@ const switchToNextAlivePetIfNeeded = (participant) => {
         ].filter(Boolean)),
     ];
 
+    // TEAM_BATTLE_CONTROLLER_HANDOFF_ON_AUTO_SWITCH
+    // 팀대전에서는 team 배열의 펫이 서로 다른 학생 소유일 수 있습니다.
+    // (applyPendingSwitchSelection과 동일하게) 새로 나온 펫의 실제 주인
+    // (ownerId/ownerName)이 있으면 그 학생에게 조작권(participant.id/name)도
+    // 함께 넘겨야 합니다. 이전에는 pet/team만 바뀌고 id/name은 그대로 남아,
+    // A의 펫이 쓰러져 B의 펫으로 자동교체되어도 조작권이 계속 A에게 남는
+    // 버그가 있었습니다.
+    const nextOwnerId = nextPet.ownerId || participant.id;
+    const nextOwnerName = nextPet.ownerName || participant.name;
+
     return {
         participant: {
             ...participant,
+            id: nextOwnerId,
+            name: nextOwnerName,
             pet: nextPet,
             team: nextTeam,
             activePetIndex: nextIndex,

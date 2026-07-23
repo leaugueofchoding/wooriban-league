@@ -175,8 +175,8 @@ const PetDashboard = styled.div`
   grid-column: 2;
   grid-row: 1;
   display: grid;
-  grid-template-columns: 235px minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: stretch;
   gap: 0.75rem;
   min-height: clamp(500px, calc(100dvh - 130px), 640px);
   max-height: clamp(500px, calc(100dvh - 130px), 640px);
@@ -197,7 +197,7 @@ const PetDashboard = styled.div`
   &::-webkit-scrollbar-thumb { background: #748ffc; border: 2px solid #2f6fdb; border-radius: 999px; }
 
   @media (min-width: 901px) and (max-width: 1080px) {
-    grid-template-columns: 215px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
     gap: 0.62rem;
     padding: 0.62rem;
   }
@@ -351,6 +351,7 @@ const PetProfile = styled.div`
   align-items: center;
   text-align: center;
   min-width: 0;
+  height: 100%;
   padding: 0.7rem;
   border-radius: 16px;
   background: rgba(255,255,255,0.92);
@@ -424,9 +425,11 @@ const PetLevel = styled.h3`
 
 const PetInfo = styled.div`
   width: 100%;
+  height: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 0.55rem;
   padding: 0.65rem;
   border-radius: 16px;
@@ -434,6 +437,14 @@ const PetInfo = styled.div`
   border: 1px solid #e9ecef;
   box-shadow: 0 8px 22px rgba(0,0,0,0.06);
   box-sizing: border-box;
+`;
+
+const PetInfoTopGroup = styled.div`
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 `;
 
 const StatBarContainer = styled.div`
@@ -696,6 +707,10 @@ const ModalContent = styled.div`
 const AccordionContainer = styled.div`
   width: 100%;
   margin-top: 0.65rem;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 `;
 
 const AccordionButtonRow = styled.div`
@@ -719,6 +734,9 @@ const AccordionContent = styled.div`
   padding: 0.68rem;
   border: 1px solid #e9ecef;
   animation: ${fadeIn} 0.3s ease-out;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 `;
 
 const SkillMiniGuide = styled.div`
@@ -1736,8 +1754,15 @@ function PetPage() {
 
     const defaultPetIds = getDefaultRandom1v1PetIds();
     if (defaultPetIds.length === 0) {
-      alert("랜덤 1:1 대전에 참가할 수 있는 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.");
-      return;
+      // RANDOM_BATTLE_VITAMIN_JELLY_GATE_FIX
+      // 즉시 참가 가능한 펫이 0마리여도, 비타민젤리로 회복 가능한(피로도만 다 찬)
+      // 펫이 있다면 여기서 바로 막지 않고 드래프트 모달을 열어야 합니다.
+      // 모달 안의 "비타민젤리로 회복" UI에서 회복 후 참가할 수 있기 때문입니다.
+      const vitaminRecoverablePets = getRandomBattleVitaminRecoverablePets();
+      if (vitaminRecoverablePets.length === 0) {
+        alert("랜덤 1:1 대전에 참가할 수 있는 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.");
+        return;
+      }
     }
 
     setRandomBattleDraft({
@@ -1762,13 +1787,19 @@ function PetPage() {
 
     const eligiblePets = getRandomBattleEligiblePets();
     if (eligiblePets.length === 0) {
-      alert("팀대전에 참가할 수 있는 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.");
-      return;
+      // RANDOM_BATTLE_VITAMIN_JELLY_GATE_FIX
+      // 즉시 참가 가능한 펫이 0마리여도, 비타민젤리로 회복 가능한 펫이 있다면
+      // 드래프트 모달을 열어 회복 UI를 사용할 수 있게 해야 합니다.
+      const vitaminRecoverablePets = getRandomBattleVitaminRecoverablePets();
+      if (vitaminRecoverablePets.length === 0) {
+        alert("팀대전에 참가할 수 있는 펫이 없습니다. 기절했거나 오늘 랜덤대전을 모두 사용한 펫은 제외됩니다.");
+        return;
+      }
     }
 
     const defaultPetId = isPetEligibleForRandomBattle({ pet: selectedPet })
       ? selectedPet.id
-      : eligiblePets[0].id;
+      : (eligiblePets[0]?.id || null);
 
     setRandomBattleDraft({
       show: true,
@@ -2360,57 +2391,59 @@ function PetPage() {
             </AccordionContainer>
           </PetProfile>
           <PetInfo>
-            <StatBarContainer><StatBar $percent={hpPercent} $barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
-            <StatBarContainer><StatBar $percent={spPercent} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
-            <StatBarContainer>
-              <StatBar
-                $percent={expPercent}
-                $barColor={isMaxLevel
-                  ? "linear-gradient(90deg, #845ef7, #5f3dc4)"
-                  : "linear-gradient(90deg, #ffc107, #ff9800)"
-                }
-              />
-              <StatText>
-                {isMaxLevel ? "MAX LEVEL" : `EXP: ${selectedPet.exp} / ${selectedPet.maxExp}`}
-              </StatText>
-            </StatBarContainer>
-            {isLevelCapped && (
-              <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#856404', marginTop: '4px' }}>
-                ⚠️ <strong>Lv.{evoCapLevel} 상한 도달!</strong> 진화하지 않으면 레벨업할 수 없습니다. 경험치는 누적되고 있으니 진화 후 한꺼번에 반영됩니다.
-              </div>
-            )}
-            {isMaxLevel && (
-              <div style={{ background: '#f3f0ff', border: '1px solid #b197fc', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#5f3dc4', marginTop: '4px', fontWeight: 700 }}>
-                👑 <strong>Lv.{MAX_PET_LEVEL} 만렙 달성!</strong> 이 펫은 최고 레벨에 도달했습니다. 이제 배틀과 수집에서 멋지게 활약시켜 주세요!
-              </div>
-            )}
-
-            <InfoCard>
-              <div
-                onClick={() => setIsInventoryOpen(!isInventoryOpen)}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', paddingBottom: '4px' }}
-              >
-                <h4 style={{ margin: 0 }}>🎒 인벤토리</h4>
-                <span style={{ fontSize: '0.85rem', color: '#868e96', fontWeight: 'bold' }}>{isInventoryOpen ? '▲ 닫기' : '▼ 열기'}</span>
-              </div>
-
-              {isInventoryOpen && (
-                <div style={{ marginTop: '1rem', padding: '0.4rem 0 0 0', borderTop: '1px dashed #e9ecef' }}>
-                  {Object.values(PET_ITEMS)
-                    .filter(item => (petInventory?.[item.id] || 0) > 0)
-                    .map(item => (
-                      <InventoryItem key={item.id}>
-                        <img src={item.icon} alt={item.name} />
-                        {item.name}: {petInventory[item.id]}개
-                      </InventoryItem>
-                    ))}
-                  {Object.values(PET_ITEMS).filter(item => (petInventory?.[item.id] || 0) > 0).length === 0 && (
-                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem', color: '#adb5bd', fontWeight: '600' }}>현재 가방에 보유 중인 아이템이 없습니다.</p>
-                  )}
+            <PetInfoTopGroup>
+              <StatBarContainer><StatBar $percent={hpPercent} $barColor="linear-gradient(90deg, #90ee90, #28a745)" /><StatText>HP: {selectedPet.hp} / {selectedPet.maxHp}</StatText></StatBarContainer>
+              <StatBarContainer><StatBar $percent={spPercent} $barColor="linear-gradient(90deg, #87cefa, #007bff)" /><StatText>SP: {selectedPet.sp} / {selectedPet.maxSp}</StatText></StatBarContainer>
+              <StatBarContainer>
+                <StatBar
+                  $percent={expPercent}
+                  $barColor={isMaxLevel
+                    ? "linear-gradient(90deg, #845ef7, #5f3dc4)"
+                    : "linear-gradient(90deg, #ffc107, #ff9800)"
+                  }
+                />
+                <StatText>
+                  {isMaxLevel ? "MAX LEVEL" : `EXP: ${selectedPet.exp} / ${selectedPet.maxExp}`}
+                </StatText>
+              </StatBarContainer>
+              {isLevelCapped && (
+                <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#856404', marginTop: '4px' }}>
+                  ⚠️ <strong>Lv.{evoCapLevel} 상한 도달!</strong> 진화하지 않으면 레벨업할 수 없습니다. 경험치는 누적되고 있으니 진화 후 한꺼번에 반영됩니다.
+                </div>
+              )}
+              {isMaxLevel && (
+                <div style={{ background: '#f3f0ff', border: '1px solid #b197fc', borderRadius: '8px', padding: '8px 12px', fontSize: '0.8rem', color: '#5f3dc4', marginTop: '4px', fontWeight: 700 }}>
+                  👑 <strong>Lv.{MAX_PET_LEVEL} 만렙 달성!</strong> 이 펫은 최고 레벨에 도달했습니다. 이제 배틀과 수집에서 멋지게 활약시켜 주세요!
                 </div>
               )}
 
-            </InfoCard>
+              <InfoCard>
+                <div
+                  onClick={() => setIsInventoryOpen(!isInventoryOpen)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', paddingBottom: '4px' }}
+                >
+                  <h4 style={{ margin: 0 }}>🎒 인벤토리</h4>
+                  <span style={{ fontSize: '0.85rem', color: '#868e96', fontWeight: 'bold' }}>{isInventoryOpen ? '▲ 닫기' : '▼ 열기'}</span>
+                </div>
+
+                {isInventoryOpen && (
+                  <div style={{ marginTop: '1rem', padding: '0.4rem 0 0 0', borderTop: '1px dashed #e9ecef' }}>
+                    {Object.values(PET_ITEMS)
+                      .filter(item => (petInventory?.[item.id] || 0) > 0)
+                      .map(item => (
+                        <InventoryItem key={item.id}>
+                          <img src={item.icon} alt={item.name} />
+                          {item.name}: {petInventory[item.id]}개
+                        </InventoryItem>
+                      ))}
+                    {Object.values(PET_ITEMS).filter(item => (petInventory?.[item.id] || 0) > 0).length === 0 && (
+                      <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem', color: '#adb5bd', fontWeight: '600' }}>현재 가방에 보유 중인 아이템이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+
+              </InfoCard>
+            </PetInfoTopGroup>
 
             <ActionButtonGroup>
               <TooltipWrapper
