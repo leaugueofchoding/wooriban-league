@@ -180,21 +180,9 @@ const switchToNextAlivePetIfNeeded = (participant) => {
         ].filter(Boolean)),
     ];
 
-    // TEAM_BATTLE_CONTROLLER_HANDOFF_ON_AUTO_SWITCH
-    // 팀대전에서는 team 배열의 펫이 서로 다른 학생 소유일 수 있습니다.
-    // (applyPendingSwitchSelection과 동일하게) 새로 나온 펫의 실제 주인
-    // (ownerId/ownerName)이 있으면 그 학생에게 조작권(participant.id/name)도
-    // 함께 넘겨야 합니다. 이전에는 pet/team만 바뀌고 id/name은 그대로 남아,
-    // A의 펫이 쓰러져 B의 펫으로 자동교체되어도 조작권이 계속 A에게 남는
-    // 버그가 있었습니다.
-    const nextOwnerId = nextPet.ownerId || participant.id;
-    const nextOwnerName = nextPet.ownerName || participant.name;
-
     return {
         participant: {
             ...participant,
-            id: nextOwnerId,
-            name: nextOwnerName,
             pet: nextPet,
             team: nextTeam,
             activePetIndex: nextIndex,
@@ -3557,7 +3545,28 @@ function TeamBattlePage() {
                 setIsProcessing(true);
                 processedTurnRef.current = turnUniqueId;
 
-                const isAttackerMe = battleState.turn === myPlayerData.id;
+                // TEAM_BATTLE_EFFECT_DIRECTION_FIX: 3:3 팀전에서는 턴 주인(owner)이 '나'가 아니라
+                // '같은 팀 동료'인 경우가 많습니다. 기존에는 turn === myPlayerData.id로만 판정해서
+                // 동료가 공격할 때 이펙트가 반대편(상대) 방향으로 재생되는 문제가 있었습니다.
+                // 같은 팀 로스터(rosterPlayerIds)에 속해 있는지로 판정하도록 수정합니다.
+                // TEAM_BATTLE_EFFECT_DIRECTION_FIX: 3:3 팀전에서는 턴 주인(owner)이 '나'가 아니라
+                // '같은 팀 동료'인 경우가 많습니다. 기존에는 turn === myPlayerData.id로만 판정해서
+                // 동료가 공격할 때 이펙트가 반대편(상대) 방향으로 재생되는 문제가 있었습니다.
+                // 또한 challenger/opponent.id는 "팀 대표(1번 멤버)"일 뿐이라 iAmChallenger만으로
+                // 내 소속 팀을 판정하면 벤치 팀원(2/3번 멤버)이 자기 팀을 상대팀으로 오인합니다.
+                // 그래서 rosterPlayerIds(또는 team 배열의 ownerId)로 내가 실제로 어느 팀 소속인지부터 확인합니다.
+                const challengerRosterIds = (battleState.challenger?.rosterPlayerIds?.length > 0)
+                    ? battleState.challenger.rosterPlayerIds
+                    : (Array.isArray(battleState.challenger?.team)
+                        ? battleState.challenger.team.map((pet) => pet.ownerId || battleState.challenger.id)
+                        : [battleState.challenger?.id].filter(Boolean));
+                const opponentRosterIds = (battleState.opponent?.rosterPlayerIds?.length > 0)
+                    ? battleState.opponent.rosterPlayerIds
+                    : (Array.isArray(battleState.opponent?.team)
+                        ? battleState.opponent.team.map((pet) => pet.ownerId || battleState.opponent.id)
+                        : [battleState.opponent?.id].filter(Boolean));
+                const myRosterIds = challengerRosterIds.includes(myPlayerData.id) ? challengerRosterIds : opponentRosterIds;
+                const isAttackerMe = myRosterIds.includes(battleState.turn);
                 const actionType = battleState.attackerAction ? battleState.attackerAction.toUpperCase() : '';
 
                 // M10_7_SYNC_RESOLUTION_WITH_HIT
@@ -3605,7 +3614,7 @@ function TeamBattlePage() {
                 }
 
                 if (actionType === 'SWITCH_PET') {
-                    const switchName = battleState.turn === myPlayerData.id
+                    const switchName = isAttackerMe
                         ? myInfo?.pet?.name
                         : opponentInfo?.pet?.name;
 
